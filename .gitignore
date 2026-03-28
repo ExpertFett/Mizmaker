@@ -1,0 +1,34 @@
+# Reference materials — not part of this project
+reference/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# SRTM cache
+*.hgt
+
+# Miz files (test data)
+*.miz

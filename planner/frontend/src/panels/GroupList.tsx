@@ -1,0 +1,132 @@
+import { useState } from 'react';
+import { useMissionStore } from '../store/missionStore';
+import { useMapStore } from '../store/mapStore';
+import type { MissionGroup, Coalition, UnitCategory } from '../types/mission';
+import { filterGroups } from '../map/layers/routeLayer';
+import { getAircraftType, isPlayerGroup } from '../utils/groups';
+
+const COALITION_COLORS: Record<string, string> = {
+  blue: '#4a8fd4',
+  red: '#d95050',
+  neutrals: '#8fa8c0',
+};
+
+const CATEGORY_ICONS: Record<string, string> = {
+  plane: '\u2708',
+  helicopter: '\u{1F681}',
+  vehicle: '\u{1F69A}',
+  ship: '\u26F5',
+  static: '\u25CF',
+};
+
+export function GroupList() {
+  const { groups, selectedGroupId, selectGroup } = useMissionStore();
+  const viewMode = useMapStore((s) => s.viewMode);
+  const [filter, setFilter] = useState('');
+  const [coalitionFilter, setCoalitionFilter] = useState<string>('all');
+
+  // Apply global view mode first, then local filters
+  const viewFiltered = filterGroups(groups, viewMode);
+  const filtered = viewFiltered.filter((g) => {
+    if (coalitionFilter !== 'all' && g.coalition !== coalitionFilter) return false;
+    if (filter && !g.groupName.toLowerCase().includes(filter.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1a2a3a' }}>
+      <div style={{ padding: '8px 12px', display: 'flex', gap: 6 }}>
+        <input
+          type="text"
+          placeholder="Filter groups..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          style={{
+            flex: 1,
+            background: '#0f1a28',
+            border: '1px solid #1a2a3a',
+            borderRadius: 4,
+            color: '#ccdae8',
+            padding: '4px 8px',
+            fontSize: 12,
+          }}
+        />
+        <select
+          value={coalitionFilter}
+          onChange={(e) => setCoalitionFilter(e.target.value)}
+          style={{
+            background: '#0f1a28',
+            border: '1px solid #1a2a3a',
+            borderRadius: 4,
+            color: '#ccdae8',
+            fontSize: 12,
+            padding: '4px',
+          }}
+        >
+          <option value="all">All</option>
+          <option value="blue">Blue</option>
+          <option value="red">Red</option>
+          <option value="neutrals">Neutral</option>
+        </select>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 8px' }}>
+        {filtered.map((g) => (
+          <GroupItem
+            key={g.groupId}
+            group={g}
+            selected={g.groupId === selectedGroupId}
+            onSelect={() => selectGroup(g.groupId === selectedGroupId ? null : g.groupId)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GroupItem({
+  group,
+  selected,
+  onSelect,
+}: {
+  group: MissionGroup;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const color = COALITION_COLORS[group.coalition] || '#888';
+  const icon = CATEGORY_ICONS[group.category] || '';
+  const wpCount = group.waypoints.length;
+  const airframe = getAircraftType(group);
+  const player = isPlayerGroup(group);
+
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        padding: '6px 10px',
+        marginBottom: 2,
+        borderRadius: 4,
+        cursor: 'pointer',
+        background: selected ? 'rgba(74, 143, 212, 0.15)' : 'transparent',
+        borderLeft: `3px solid ${color}`,
+        fontSize: 12,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <span style={{ marginRight: 6 }}>{icon}</span>
+        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400 }}>
+          {group.groupName}
+        </span>
+        {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 9, fontWeight: 600 }}>PLAYER</span>}
+        <div style={{ fontSize: 10, color: '#5a7a8a', marginTop: 1, marginLeft: 20 }}>
+          {airframe} | {group.task}
+        </div>
+      </div>
+      <span style={{ color: '#5a7a8a', fontSize: 11, whiteSpace: 'nowrap' }}>
+        {wpCount} wp
+      </span>
+    </div>
+  );
+}
