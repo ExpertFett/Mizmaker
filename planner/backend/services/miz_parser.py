@@ -21,6 +21,20 @@ _data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 with open(os.path.join(_data_dir, "sam_threat_ranges.json")) as f:
     SAM_THREAT_RANGES: Dict[str, int] = json.load(f)
 
+# Static airbase data per theater (from dcs-web-editor)
+_airbases_path = os.path.join(_data_dir, "airbases.json")
+_THEATER_AIRBASES = {}
+if os.path.exists(_airbases_path):
+    with open(_airbases_path) as f:
+        _THEATER_AIRBASES = json.load(f)
+
+
+def _load_theater_airbases(theater: str) -> list:
+    """Load airbase positions from static data for this theater."""
+    raw = _THEATER_AIRBASES.get(theater, [])
+    return [{"name": ab["name"], "lat": ab.get("lat"), "lon": ab.get("lon"), "coalition": "neutral"} for ab in raw]
+
+
 CATEGORIES = ["plane", "helicopter", "vehicle", "ship", "static"]
 COALITIONS = ["blue", "red", "neutrals"]
 
@@ -55,24 +69,12 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
     threats = []
     airbases = []
 
+    # Load static airbase data for this theater
+    airbases = _load_theater_airbases(theater)
+
     coalition_data = mission_dict.get("coalition", {})
     for side in COALITIONS:
         side_data = coalition_data.get(side, {})
-
-        # Extract airbases
-        for ab_id, ab in (side_data.get("nav_points") or {}).items():
-            if isinstance(ab, dict) and "callsignStr" in ab:
-                ab_entry = {
-                    "name": ab.get("callsignStr", ""),
-                    "coalition": side,
-                    "x": ab.get("x", 0),
-                    "y": ab.get("y", 0),
-                }
-                if has_projection and ab_entry["x"] and ab_entry["y"]:
-                    lat, lon = dcs_to_latlon(ab_entry["x"], ab_entry["y"], theater)
-                    ab_entry["lat"] = lat
-                    ab_entry["lon"] = lon
-                airbases.append(ab_entry)
 
         countries = side_data.get("country", {})
         if isinstance(countries, dict):

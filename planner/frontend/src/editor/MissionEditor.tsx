@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { useMapStore } from '../store/mapStore';
+import { useMissionStore } from '../store/missionStore';
+import { MapContainer } from '../map/MapContainer';
+import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
+import { ExportPanel } from '../panels/ExportPanel';
+import { PlayerGroupsButton } from '../panels/PlayerGroupsModal';
 import { DatalinkTab } from './tabs/DatalinkTab';
 import { LoadoutTab } from './tabs/LoadoutTab';
 import { LaserTab } from './tabs/LaserTab';
@@ -10,21 +14,26 @@ import { RenamerTab } from './tabs/RenamerTab';
 import { BatchEditTab } from './tabs/BatchEditTab';
 
 const TABS = [
+  { id: 'map', label: 'Map', icon: '🗺' },
   { id: 'datalink', label: 'Datalink', icon: '📡' },
   { id: 'loadouts', label: 'Loadouts', icon: '💣' },
   { id: 'laser', label: 'Laser', icon: '🎯' },
   { id: 'livery', label: 'Livery', icon: '🎨' },
   { id: 'weather', label: 'Weather', icon: '🌤' },
   { id: 'rename', label: 'Rename', icon: '✏' },
+  { id: 'batch', label: 'Batch', icon: '⚡' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
-  { id: 'batch', label: 'Batch Edit', icon: '⚡' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 export function MissionEditor() {
-  const [activeTab, setActiveTab] = useState<TabId>('datalink');
-  const setEditorMode = useMapStore((s) => s.setEditorMode);
+  const [activeTab, setActiveTab] = useState<TabId>('map');
+  const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
+  const filename = useMissionStore((s) => s.filename);
+  const theater = useMissionStore((s) => s.theater);
+
+  const isMap = activeTab === 'map';
 
   return (
     <div style={{
@@ -32,54 +41,30 @@ export function MissionEditor() {
       inset: 0,
       background: '#080f1c',
       display: 'flex',
-      flexDirection: 'column',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
       color: '#ccdae8',
-      zIndex: 500,
+      overflow: 'hidden',
     }}>
-      {/* Top bar */}
+      {/* Left sidebar — always visible */}
       <div style={{
-        height: 48,
-        background: '#0a1520',
-        borderBottom: '1px solid #1a2a3a',
+        width: isMap ? 280 : 140,
+        minWidth: isMap ? 280 : 140,
         display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        gap: 16,
+        flexDirection: 'column',
+        background: '#0a1520',
+        borderRight: '1px solid #1a2a3a',
         flexShrink: 0,
+        overflow: 'hidden',
+        transition: 'width 0.15s',
       }}>
-        <button
-          onClick={() => setEditorMode(false)}
-          style={{
-            background: 'transparent',
-            border: '1px solid #1a2a3a',
-            borderRadius: 4,
-            color: '#8fa8c0',
-            cursor: 'pointer',
-            fontSize: 13,
-            padding: '5px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          ← Back to Map
-        </button>
-        <span style={{ fontWeight: 600, fontSize: 16, color: '#ccdae8' }}>Mission Editor</span>
-      </div>
+        {/* Header */}
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid #1a2a3a' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>{theater}</div>
+          {isMap && <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 2 }}>{filename}</div>}
+        </div>
 
-      {/* Body: sidebar + content */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Left sidebar tabs */}
-        <div style={{
-          width: 140,
-          background: '#0a1520',
-          borderRight: '1px solid #1a2a3a',
-          display: 'flex',
-          flexDirection: 'column',
-          paddingTop: 8,
-          flexShrink: 0,
-        }}>
+        {/* Tab buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #1a2a3a' }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -95,34 +80,62 @@ export function MissionEditor() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  padding: '10px 14px',
+                  padding: isMap ? '8px 14px' : '10px 14px',
                   fontSize: 13,
                   fontFamily: 'inherit',
                   textAlign: 'left',
                   width: '100%',
-                  transition: 'background 0.15s, color 0.15s',
                 }}
               >
-                <span style={{ fontSize: 16 }}>{tab.icon}</span>
+                <span style={{ fontSize: 15 }}>{tab.icon}</span>
                 {tab.label}
               </button>
             );
           })}
         </div>
 
-        {/* Main content */}
-        <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
-          {activeTab === 'datalink' && <DatalinkTab />}
-          {activeTab === 'loadouts' && <LoadoutTab />}
-          {activeTab === 'laser' && <LaserTab />}
-          {activeTab === 'livery' && <LiveryTab />}
-          {activeTab === 'weather' && <WeatherTab />}
-          {activeTab === 'rename' && <RenamerTab />}
-          {activeTab === 'dtc' && <DtcTab />}
-          {activeTab === 'batch' && <BatchEditTab />}
-        </div>
+        {/* Flights + export (only on map tab) */}
+        {isMap && (
+          <>
+            <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
+              <PlayerGroupsButton />
+            </div>
+            <ExportPanel />
+          </>
+        )}
+
+        {/* Export at bottom for non-map tabs */}
+        {!isMap && (
+          <div style={{ marginTop: 'auto' }}>
+            <ExportPanel />
+          </div>
+        )}
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {/* Map tab — map + floating panel */}
+        {isMap && (
+          <>
+            <MapContainer />
+            {selectedGroupId && <FloatingFlightPanel />}
+          </>
+        )}
+
+        {/* Editor tabs — scrollable content */}
+        {!isMap && (
+          <div style={{ height: '100%', overflow: 'auto', padding: 20 }}>
+            {activeTab === 'datalink' && <DatalinkTab />}
+            {activeTab === 'loadouts' && <LoadoutTab />}
+            {activeTab === 'laser' && <LaserTab />}
+            {activeTab === 'livery' && <LiveryTab />}
+            {activeTab === 'weather' && <WeatherTab />}
+            {activeTab === 'rename' && <RenamerTab />}
+            {activeTab === 'batch' && <BatchEditTab />}
+            {activeTab === 'dtc' && <DtcTab />}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
