@@ -199,7 +199,8 @@ def elevation(lat, lon):
     try:
         elev = _srtm_data.get_elevation(lat, lon)
         return jsonify({"elevation": elev})
-    except Exception:
+    except Exception as e:
+        print(f"SRTM elevation error for ({lat},{lon}): {e}")
         return jsonify({"elevation": None})
 
 
