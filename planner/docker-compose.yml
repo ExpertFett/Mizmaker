@@ -7,11 +7,12 @@ services:
       - srtm-cache:/root/.cache/srtm
     restart: unless-stopped
     networks:
-      - proxy
+      - traefik-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.planner.rule=Host(`planner.v224.org`)"
       - "traefik.http.routers.planner.entrypoints=websecure"
+      - "traefik.http.routers.planner.tls=true"
       - "traefik.http.routers.planner.tls.certresolver=letsencrypt"
       - "traefik.http.services.planner.loadbalancer.server.port=8080"
 
@@ -19,5 +20,5 @@ volumes:
   srtm-cache:
 
 networks:
-  proxy:
+  traefik-net:
     external: true
