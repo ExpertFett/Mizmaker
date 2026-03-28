@@ -126,6 +126,67 @@ export interface UploadResponse {
   threats: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
+  clientUnits: ClientUnit[];
+  allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
+  pylonOptions: Record<string, Record<string, PylonInfo[]>>;
+  suggestions: UnitEdit[];
+  allGroupsRenamer: GroupRenamerData[];
+  liveryData: unknown[];
+  laserClsids: string[];
+  dtcFlights: string[];
+  statistics: unknown;
+  countries: unknown[];
+  taskLists: { air: string[]; ground: string[]; ship: string[] };
+}
+
+export interface ClientUnit {
+  unitId: number;
+  name: string;
+  type: string;
+  groupName: string;
+  coalition: string;
+  voiceCallsignLabel: string;
+  voiceCallsignNumber: string;
+  stnL16: string;
+  donors: DonorInfo[];
+  teamMembers: DonorInfo[];
+  hasDatalinks: boolean;
+  pylons: PylonInfo[];
+  laserCode: number | null;
+  fuel: number;
+  flare: number;
+  chaff: number;
+  gun: number;
+}
+
+export interface DonorInfo {
+  missionUnitId: number;
+  name: string;
+  type: string;
+}
+
+export interface PylonInfo {
+  number: number;
+  clsid: string;
+  name: string;
+  shortName: string;
+  category: string;
+}
+
+export interface GroupRenamerData {
+  groupId: number;
+  groupName: string;
+  coalition: string;
+  category: string;
+  unitCount: number;
+  units: { unitId: number; name: string; type: string }[];
+}
+
+export interface UnitEdit {
+  unitId?: number;
+  groupId?: number;
+  field: string;
+  value: unknown;
 }
 
 export interface WaypointEdit {

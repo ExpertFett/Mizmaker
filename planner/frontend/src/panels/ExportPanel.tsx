@@ -1,6 +1,7 @@
 import { useMissionStore } from '../store/missionStore';
 import { useEditStore } from '../store/editStore';
 import { downloadMiz, exportJson, closeSession } from '../api/client';
+import type { WaypointEdit } from '../types/mission';
 
 export function ExportPanel() {
   const { sessionId, filename, clear, groups } = useMissionStore();
@@ -9,11 +10,17 @@ export function ExportPanel() {
   const handleDownload = async () => {
     if (!sessionId) return;
     try {
+      // Separate waypoint edits from unit edits
+      const isWaypointEdit = (e: any): e is WaypointEdit =>
+        'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
+
+      const waypointEdits = edits.filter(isWaypointEdit);
+      const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+
       // Build modifiedGroups: send final waypoint state for any group that was edited
       const editedGroupIds = new Set<number>();
-      for (const e of edits) {
-        const gid = (e as any).groupId;
-        if (gid != null) editedGroupIds.add(gid);
+      for (const e of waypointEdits) {
+        if (e.groupId != null) editedGroupIds.add(e.groupId);
       }
 
       const modifiedGroups: Record<string, { waypoints: unknown[] }> = {};
@@ -26,7 +33,7 @@ export function ExportPanel() {
         }
       }
 
-      const blob = await downloadMiz(sessionId, edits, modifiedGroups);
+      const blob = await downloadMiz(sessionId, waypointEdits, modifiedGroups, unitEdits);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

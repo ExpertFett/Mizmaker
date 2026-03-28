@@ -24,11 +24,12 @@ export async function downloadMiz(
   sessionId: string,
   edits: unknown[],
   modifiedGroups: Record<string, unknown>,
+  unitEdits?: unknown[],
 ): Promise<Blob> {
   const res = await fetch(`${BASE}/api/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, edits, modifiedGroups }),
+    body: JSON.stringify({ sessionId, edits, modifiedGroups, unitEdits: unitEdits || [] }),
   });
   if (!res.ok) throw new Error('Download failed');
   return res.blob();

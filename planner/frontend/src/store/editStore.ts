@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import type { WaypointEdit } from '../types/mission';
+import type { WaypointEdit, UnitEdit } from '../types/mission';
 
 interface EditState {
-  edits: WaypointEdit[];
+  edits: (WaypointEdit | UnitEdit)[];
   isDirty: boolean;
-  addEdit: (edit: WaypointEdit) => void;
+  addEdit: (edit: WaypointEdit | UnitEdit) => void;
   clearEdits: () => void;
 }
 

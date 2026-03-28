@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing,
-  MissionOverviewData, UploadResponse,
+  MissionOverviewData, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
 } from '../types/mission';
 
 interface MissionState {
@@ -14,6 +14,15 @@ interface MissionState {
   threats: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
+  clientUnits: ClientUnit[];
+  allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
+  pylonOptions: Record<string, any>;
+  suggestions: UnitEdit[];
+  allGroupsRenamer: GroupRenamerData[];
+  liveryData: unknown[];
+  laserClsids: string[];
+  dtcFlights: string[];
+  taskLists: { air: string[]; ground: string[]; ship: string[] };
   selectedGroupId: number | null;
 
   loadMission: (data: UploadResponse) => void;
@@ -33,6 +42,15 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   threats: [],
   airbases: [],
   drawings: [],
+  clientUnits: [],
+  allUnitsDonor: [],
+  pylonOptions: {},
+  suggestions: [],
+  allGroupsRenamer: [],
+  liveryData: [],
+  laserClsids: [],
+  dtcFlights: [],
+  taskLists: { air: [], ground: [], ship: [] },
   selectedGroupId: null,
 
   loadMission: (data) =>
@@ -46,6 +64,15 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       threats: data.threats,
       airbases: data.airbases,
       drawings: data.drawings || [],
+      clientUnits: data.clientUnits || [],
+      allUnitsDonor: data.allUnitsDonor || [],
+      pylonOptions: data.pylonOptions || {},
+      suggestions: data.suggestions || [],
+      allGroupsRenamer: data.allGroupsRenamer || [],
+      liveryData: data.liveryData || [],
+      laserClsids: data.laserClsids || [],
+      dtcFlights: data.dtcFlights || [],
+      taskLists: data.taskLists || { air: [], ground: [], ship: [] },
       selectedGroupId: null,
     }),
 
@@ -58,6 +85,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     set({
       sessionId: null, filename: null, theater: null, overview: null,
       groups: [], units: [], threats: [], airbases: [], drawings: [],
+      clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
+      allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
+      taskLists: { air: [], ground: [], ship: [] },
       selectedGroupId: null,
     }),
 

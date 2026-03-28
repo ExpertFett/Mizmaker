@@ -11,6 +11,7 @@ interface MapState {
   speedMode: SpeedMode;
   addWaypointMode: boolean;
   measureMode: boolean;
+  editorMode: boolean;
   floatingPanelPos: { x: number; y: number };
 
   toggleLayer: (id: string) => void;
@@ -20,6 +21,7 @@ interface MapState {
   setSpeedMode: (mode: SpeedMode) => void;
   setAddWaypointMode: (on: boolean) => void;
   setMeasureMode: (on: boolean) => void;
+  setEditorMode: (on: boolean) => void;
   setFloatingPanelPos: (pos: { x: number; y: number }) => void;
 }
 
@@ -38,6 +40,7 @@ export const useMapStore = create<MapState>((set) => ({
   speedMode: 'gs' as SpeedMode,
   addWaypointMode: false,
   measureMode: false,
+  editorMode: false,
   floatingPanelPos: { x: -1, y: -1 }, // -1 = use default
 
   toggleLayer: (id) =>
@@ -57,5 +60,6 @@ export const useMapStore = create<MapState>((set) => ({
   setSpeedMode: (mode) => set({ speedMode: mode }),
   setAddWaypointMode: (on) => set({ addWaypointMode: on, measureMode: false }),
   setMeasureMode: (on) => set({ measureMode: on, addWaypointMode: false }),
+  setEditorMode: (on) => set({ editorMode: on }),
   setFloatingPanelPos: (pos) => set({ floatingPanelPos: pos }),
 }));
