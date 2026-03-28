@@ -451,7 +451,7 @@ function Section({ title, changed, children }: { title: string; changed: boolean
   return (
     <div style={{
       marginBottom: 20,
-      border: '1px solid #1a2a3a',
+      border: `1px solid ${changed ? '#3fb950' : '#1a2a3a'}`,
       borderRadius: 4,
       background: '#0a1520',
     }}>

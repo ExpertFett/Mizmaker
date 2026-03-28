@@ -1,15 +1,12 @@
 import { useCallback, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
-import { useMapStore } from '../store/mapStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 
 export function UploadPanel() {
   const loadMission = useMissionStore((s) => s.loadMission);
-  const setEditorMode = useMapStore((s) => s.setEditorMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [standaloneDtc, setStandaloneDtc] = useState(false);
 
   const handleFile = useCallback(
     async (file: File) => {

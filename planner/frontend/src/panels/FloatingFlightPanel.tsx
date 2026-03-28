@@ -7,7 +7,7 @@ import { haversineDistance, bearing } from '../utils/navmath';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
 import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
-import type { Waypoint, MissionWeather, ClientUnit, PylonInfo } from '../types/mission';
+import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
 
 
 export function FloatingFlightPanel() {

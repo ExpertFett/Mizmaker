@@ -126,17 +126,3 @@ export function MissionEditor() {
   );
 }
 
-function PlaceholderTab({ label }: { label: string }) {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      color: '#5a7a8a',
-      fontSize: 15,
-    }}>
-      {label} — coming soon
-    </div>
-  );
-}
