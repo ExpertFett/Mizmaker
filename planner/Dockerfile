@@ -20,10 +20,10 @@ COPY backend/ ./
 # Copy built frontend into static directory
 COPY --from=frontend-build /app/frontend/dist ./static
 
-# Pre-fetch SRTM elevation data for all DCS theaters
-COPY backend/scripts/prefetch_srtm.py ./scripts/
-RUN python scripts/prefetch_srtm.py
+# Copy entrypoint (handles SRTM prefetch on first run only)
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120"]
+ENTRYPOINT ["./entrypoint.sh"]
