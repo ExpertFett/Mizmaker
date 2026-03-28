@@ -214,7 +214,7 @@ function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCar
         <span style={{ color: '#8fa8c0', fontWeight: 600, fontSize: 13 }}>{unit.name}</span>
         <span style={{ color: '#5a7a8a', fontSize: 12 }}>{unit.type}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <Badge label="Fuel" value={`${Math.round(unit.fuel * 100)}%`} />
+          <Badge label="Fuel" value={`${Math.round(unit.fuel)} lbs`} />
           <Badge label="FL" value={String(unit.flare)} />
           <Badge label="CH" value={String(unit.chaff)} />
           <Badge label="Gun" value={`${unit.gun}%`} />

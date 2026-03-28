@@ -6,7 +6,8 @@ import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
-import type { Waypoint, MissionWeather } from '../types/mission';
+import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
+import type { Waypoint, MissionWeather, ClientUnit, PylonInfo } from '../types/mission';
 
 
 export function FloatingFlightPanel() {
@@ -21,6 +22,7 @@ export function FloatingFlightPanel() {
   const minimized = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const [panelTab, setPanelTab] = useState<'route' | 'datalink' | 'loadout'>('route');
 
   // All hooks MUST be above this early return
   const groupId = group?.groupId ?? 0;
@@ -196,8 +198,37 @@ export function FloatingFlightPanel() {
             {player && <span style={{ color: '#3fb950', marginLeft: 8 }}>FLYABLE</span>}
           </div>
 
-          {/* Waypoint table */}
+          {/* Tab bar */}
+          <div style={{ display: 'flex', borderBottom: '1px solid #1a2a3a', background: '#0a1520' }}>
+            {(['route', 'datalink', 'loadout'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setPanelTab(tab)}
+                style={{
+                  flex: 1, padding: '7px 0', fontSize: 12, fontWeight: panelTab === tab ? 600 : 400,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: panelTab === tab ? '#ccdae8' : '#5a7a8a',
+                  borderBottom: panelTab === tab ? '2px solid #4a8fd4' : '2px solid transparent',
+                }}
+              >
+                {tab === 'route' ? 'Route' : tab === 'datalink' ? 'Datalink' : 'Loadout'}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
           <div style={{ flex: 1, overflow: 'auto' }}>
+
+          {panelTab === 'datalink' && (
+            <FlightDatalinkContent groupName={group.groupName} locked={locked} />
+          )}
+
+          {panelTab === 'loadout' && (
+            <FlightLoadoutContent groupName={group.groupName} locked={locked} />
+          )}
+
+          {panelTab === 'route' && (
+          <div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
               <thead>
                 <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a', background: '#080f1c', position: 'sticky', top: 0 }}>
@@ -247,6 +278,8 @@ export function FloatingFlightPanel() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+          )}
           </div>
 
           {/* Footer */}
@@ -471,6 +504,187 @@ function SpeedBlock({ gs_ms, alt_m, heading, weather, excludeRef }: {
           {it.value}<span style={{ fontSize: 9, color: '#4a5a6a', marginLeft: 1 }}>{it.label}</span>
         </span>
       ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Inline Datalink + Loadout panels for the flight                    */
+/* ------------------------------------------------------------------ */
+
+function FlightDatalinkContent({ groupName, locked }: { groupName: string; locked: boolean }) {
+  const clientUnits = useMissionStore((s) => s.clientUnits);
+  const addEdit = useEditStore((s) => s.addEdit);
+  const units = clientUnits.filter((u) => u.groupName === groupName);
+
+  if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
+
+  const handleChange = (unitId: number, field: string, value: string) => {
+    addEdit({ unitId, field, value } as any);
+    const { clientUnits: all } = useMissionStore.getState();
+    const updated = all.map((u) => {
+      if (u.unitId !== unitId) return u;
+      const copy = { ...u };
+      if (field === 'voiceCallsignLabel') copy.voiceCallsignLabel = value;
+      else if (field === 'voiceCallsignNumber') copy.voiceCallsignNumber = value;
+      else if (field === 'stnL16') copy.stnL16 = value;
+      return copy;
+    });
+    useMissionStore.setState({ clientUnits: updated });
+  };
+
+  const inputSt: React.CSSProperties = {
+    background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 3,
+    color: '#ccdae8', fontSize: 12, fontFamily: 'monospace', padding: '3px 6px', width: '100%',
+  };
+
+  return (
+    <div style={{ padding: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccdae8' }}>
+        <thead>
+          <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a' }}>
+            <th style={{ ...thStyle, textAlign: 'left' }}>Unit</th>
+            <th style={{ ...thStyle, width: 55 }}>Label</th>
+            <th style={{ ...thStyle, width: 40 }}>#</th>
+            <th style={{ ...thStyle, width: 65 }}>STN</th>
+          </tr>
+        </thead>
+        <tbody>
+          {units.map((u) => (
+            <tr key={u.unitId} style={{ borderBottom: '1px solid #0f1a28' }}>
+              <td style={tdStyle}>
+                <div style={{ fontSize: 12, color: '#8fa8c0' }}>{u.name}</div>
+                <div style={{ fontSize: 10, color: '#5a7a8a' }}>{u.type}</div>
+              </td>
+              <td style={tdStyle}>
+                {locked ? <span style={{ fontFamily: 'monospace' }}>{u.voiceCallsignLabel}</span> : (
+                  <input defaultValue={u.voiceCallsignLabel} maxLength={3}
+                    onBlur={(e) => handleChange(u.unitId, 'voiceCallsignLabel', e.target.value)}
+                    style={inputSt} />
+                )}
+              </td>
+              <td style={tdStyle}>
+                {locked ? <span style={{ fontFamily: 'monospace' }}>{u.voiceCallsignNumber}</span> : (
+                  <input defaultValue={u.voiceCallsignNumber} maxLength={3}
+                    onBlur={(e) => handleChange(u.unitId, 'voiceCallsignNumber', e.target.value)}
+                    style={inputSt} />
+                )}
+              </td>
+              <td style={tdStyle}>
+                {locked ? <span style={{ fontFamily: 'monospace' }}>{u.stnL16}</span> : (
+                  <input defaultValue={u.stnL16} maxLength={5}
+                    onBlur={(e) => handleChange(u.unitId, 'stnL16', e.target.value)}
+                    style={inputSt} />
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked: boolean }) {
+  const clientUnits = useMissionStore((s) => s.clientUnits);
+  const pylonOptions = useMissionStore((s) => s.pylonOptions);
+  const addEdit = useEditStore((s) => s.addEdit);
+  const units = clientUnits.filter((u) => u.groupName === groupName);
+  const [expandedPylon, setExpandedPylon] = useState<string | null>(null);
+  const [pylonSettings, setPylonSettings] = useState<Record<string, Record<string, any>>>({});
+
+  if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
+
+  const handlePylonChange = (unitId: number, pylonNum: number, clsid: string) => {
+    const opts = pylonOptions[units[0]?.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
+    const selected = opts?.find((o) => o.clsid === clsid);
+    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
+
+    const { clientUnits: all } = useMissionStore.getState();
+    const updated = all.map((u) => {
+      if (u.unitId !== unitId) return u;
+      return { ...u, pylons: u.pylons.map((p) => {
+        if (p.number !== pylonNum) return p;
+        if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+        return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
+      })};
+    });
+    useMissionStore.setState({ clientUnits: updated });
+    if (clsid) setExpandedPylon(`${unitId}-${pylonNum}`);
+  };
+
+  const handleSettings = (unitId: number, pylonNum: number, settings: Record<string, any>) => {
+    const key = `${unitId}-${pylonNum}`;
+    setPylonSettings((prev) => ({ ...prev, [key]: settings }));
+    const pylon = units.find((u) => u.unitId === unitId)?.pylons.find((p) => p.number === pylonNum);
+    if (pylon) addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid: pylon.clsid, settings } } as any);
+  };
+
+  const selSt: React.CSSProperties = {
+    background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 3,
+    color: '#ccdae8', fontSize: 11, padding: '3px 5px', flex: 1,
+  };
+
+  return (
+    <div style={{ padding: 8 }}>
+      {units.map((unit) => {
+        const typeOpts = pylonOptions[unit.type] as Record<string, PylonInfo[]> | undefined;
+        return (
+          <div key={unit.unitId} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#8fa8c0', marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
+              <span>{unit.name}</span>
+              <span style={{ fontSize: 10, color: '#5a7a8a', fontFamily: 'monospace' }}>
+                Fuel:{Math.round(unit.fuel)}lbs FL:{unit.flare} CH:{unit.chaff}
+              </span>
+            </div>
+            {unit.pylons.map((pylon) => {
+              const opts = typeOpts?.[String(pylon.number)] as PylonInfo[] | undefined;
+              const byCategory = new Map<string, PylonInfo[]>();
+              if (opts) for (const o of opts) {
+                const arr = byCategory.get(o.category || 'Other') || [];
+                arr.push(o); byCategory.set(o.category || 'Other', arr);
+              }
+              const key = `${unit.unitId}-${pylon.number}`;
+              const isExp = expandedPylon === key;
+
+              return (
+                <div key={pylon.number} style={{ marginBottom: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#5a7a8a', fontSize: 10, fontFamily: 'monospace', minWidth: 28 }}>S{pylon.number}</span>
+                    {locked ? (
+                      <span style={{ fontSize: 11, color: '#8fa8c0' }}>{pylon.shortName}</span>
+                    ) : (
+                      <select value={pylon.clsid} onChange={(e) => handlePylonChange(unit.unitId, pylon.number, e.target.value)} style={selSt}>
+                        <option value="">&lt;Empty&gt;</option>
+                        {Array.from(byCategory.entries()).map(([cat, items]) => (
+                          <optgroup key={cat} label={cat}>
+                            {items.map((o) => <option key={o.clsid} value={o.clsid}>{o.shortName}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    )}
+                    {pylon.clsid && !locked && (
+                      <button onClick={() => setExpandedPylon(isExp ? null : key)}
+                        style={{ background: 'transparent', border: 'none', color: isExp ? '#4a8fd4' : '#3a4a5a', cursor: 'pointer', fontSize: 10 }}>
+                        {isExp ? '\u25B2' : '\u2699'}
+                      </button>
+                    )}
+                  </div>
+                  {isExp && pylon.clsid && (
+                    <div style={{ marginLeft: 34 }}>
+                      <LauncherSettingsPanel
+                        clsid={pylon.clsid}
+                        currentSettings={pylonSettings[key] || {}}
+                        onChange={(s) => handleSettings(unit.unitId, pylon.number, s)}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
