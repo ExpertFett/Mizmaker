@@ -71,12 +71,11 @@ export function LauncherSettingsPanel({
 
   const handleChange = useCallback((settingId: string, value: any) => {
     const key = schemaIdToKey(settingId);
-    setValues((prev) => {
-      const next = { ...prev, [key]: value };
-      onChange(next);
-      return next;
-    });
-  }, [onChange]);
+    const next = { ...values, [key]: value };
+    setValues(next);
+    // Defer onChange to avoid setState-during-render
+    setTimeout(() => onChange(next), 0);
+  }, [onChange, values]);
 
   if (loading) return <div style={{ color: '#5a7a8a', fontSize: 11, padding: '4px 0' }}>Loading settings...</div>;
   if (!schema || !schema.settings || schema.settings.length === 0) return null;
