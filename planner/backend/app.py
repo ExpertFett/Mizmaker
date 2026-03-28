@@ -2,12 +2,19 @@
 DCS Mission Map Planner — Flask backend.
 
 Routes:
-  POST /api/upload       — Upload .miz, parse, return full mission JSON
-  POST /api/edit/waypoints — Apply waypoint edits to session
-  POST /api/download     — Apply edits, repack .miz, stream file
-  POST /api/export/json  — Export planning data as airboss-compatible JSON
-  GET  /api/sam-ranges   — Return SAM/AAA threat range data
-  GET  /api/projections  — Return theater projection parameters
+  POST /api/upload              — Upload .miz, parse, return full mission JSON
+  POST /api/download            — Apply edits, repack .miz, stream file
+  POST /api/export/json         — Export planning data as JSON
+  GET  /api/sam-ranges          — SAM/AAA threat range data
+  GET  /api/projections         — Theater projection parameters
+  GET  /api/elevation/{lat}/{lon} — SRTM terrain elevation
+  GET  /api/launcher-settings/{clsid} — Weapon settings schema
+  GET  /api/weather/presets     — Weather presets
+  POST /api/dtc/generate        — Generate F/A-18C DTC file
+  POST /api/dtc/preview         — Preview DTC data
+  GET  /api/dtc/blank           — Blank DTC template
+  POST /api/dtc/export-raw      — Export DTC from raw data
+  POST /api/close               — Close session
 """
 
 import json
@@ -26,6 +33,28 @@ from services.miz_parser import (
     SAM_THREAT_RANGES,
 )
 from services.miz_editor import replace_group_waypoints, repack_miz
+from services.unit_editor import apply_unit_edits
+from services.unit_extractor import (
+    find_client_units,
+    get_all_units_for_donor_selection,
+    extract_all_groups,
+    extract_livery_data,
+    extract_statistics,
+    extract_countries,
+    generate_datalink_suggestions,
+    get_pylon_options,
+    get_launcher_settings,
+    LASER_CLSIDS,
+    WEATHER_PRESETS,
+    AIR_TASKS, GROUND_TASKS, SHIP_TASKS,
+)
+from services.dtc_builder import (
+    extract_flight_for_dtc,
+    build_dtc_from_flight,
+    build_dtc_from_edits,
+    serialize_dtc,
+    FA18_DEFAULTS,
+)
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
 import srtm
@@ -43,9 +72,9 @@ else:
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
-# In-memory session store (same pattern as 856)
+# In-memory session store
 sessions = {}
-SESSION_TTL = 600  # 10 minutes
+SESSION_TTL = 600
 MAX_SESSIONS = 50
 _lock = threading.Lock()
 
@@ -58,13 +87,11 @@ def _cleanup_sessions():
             del sessions[k]
 
 
-def _create_session(miz_bytes: bytes, mission_text: str, theater: str, filename: str) -> str:
+def _create_session(miz_bytes, mission_text, theater, filename):
     _cleanup_sessions()
     if len(sessions) >= MAX_SESSIONS:
-        # Evict oldest
         oldest = min(sessions, key=lambda k: sessions[k]["created_at"])
         del sessions[oldest]
-
     sid = str(uuid.uuid4())
     with _lock:
         sessions[sid] = {
@@ -76,6 +103,10 @@ def _create_session(miz_bytes: bytes, mission_text: str, theater: str, filename:
         }
     return sid
 
+
+# --------------------------------------------------------------------------
+# Upload — returns full mission data including 856-equivalent extraction
+# --------------------------------------------------------------------------
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
@@ -97,26 +128,65 @@ def upload():
     theater = mission_dict.get("theatre", "Unknown")
 
     try:
+        # Planner map data (groups with waypoints, units, threats, airbases, drawings)
         data = extract_full_mission_data(mission_dict, theater)
+        for group in data["groups"]:
+            if group["waypoints"]:
+                group["waypoints"] = recompute_route(group["waypoints"])
+
+        # 856-equivalent extraction (client units, loadouts, datalink, liveries, etc.)
+        client_units = find_client_units(mission_dict)
+        all_units_donor = get_all_units_for_donor_selection(mission_dict)
+        all_groups_renamer = extract_all_groups(mission_dict)
+        livery_data = extract_livery_data(mission_dict)
+        statistics = extract_statistics(mission_dict)
+        countries = extract_countries(mission_dict)
+        suggestions = generate_datalink_suggestions(client_units)
+
+        # Pylon options for all aircraft types found in client units
+        aircraft_types = list(set(u["type"] for u in client_units))
+        pylon_options = {}
+        for at in aircraft_types:
+            opts = get_pylon_options(at)
+            if opts:
+                pylon_options[at] = opts
+
+        # DTC-capable flight groups (unique group names with client units)
+        dtc_flights = list(set(u["groupName"] for u in client_units))
+
     except Exception as e:
         return jsonify({"error": f"Failed to extract mission data: {str(e)}"}), 400
 
-    # Recompute route leg data for all groups
-    for group in data["groups"]:
-        if group["waypoints"]:
-            group["waypoints"] = recompute_route(group["waypoints"])
-
-    # Store session (discard parsed dict to save memory)
     sid = _create_session(miz_bytes, mission_text, theater, f.filename)
 
     return jsonify({
         "sessionId": sid,
         "filename": f.filename,
         "theater": theater,
+        # Planner map data
         **data,
+        # 856-equivalent data
+        "clientUnits": client_units,
+        "allUnitsDonor": all_units_donor,
+        "pylonOptions": pylon_options,
+        "suggestions": suggestions,
+        "allGroupsRenamer": all_groups_renamer,
+        "liveryData": livery_data,
+        "laserClsids": sorted(LASER_CLSIDS),
+        "dtcFlights": dtc_flights,
+        "statistics": statistics,
+        "countries": countries,
+        "taskLists": {
+            "air": AIR_TASKS,
+            "ground": GROUND_TASKS,
+            "ship": SHIP_TASKS,
+        },
     })
 
 
+# --------------------------------------------------------------------------
+# Download — apply waypoint + unit edits, repack .miz
+# --------------------------------------------------------------------------
 
 @app.route("/api/download", methods=["POST"])
 def download():
@@ -125,8 +195,8 @@ def download():
         return jsonify({"error": "No JSON body"}), 400
 
     sid = body.get("sessionId")
-    edits = body.get("edits", [])
     modified_groups = body.get("modifiedGroups", {})
+    unit_edits = body.get("unitEdits", [])
 
     with _lock:
         session = sessions.get(sid)
@@ -136,10 +206,14 @@ def download():
     try:
         mission_text = session["mission_text"]
 
-        # Replace waypoints for each modified group — identified by name
+        # 1. Replace waypoints for modified groups (hierarchy-based, by name)
         for group_name, group_data in modified_groups.items():
             waypoints = group_data.get("waypoints", []) if isinstance(group_data, dict) else group_data
             mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
+
+        # 2. Apply unit-level surgical edits (856's edit engine)
+        if unit_edits:
+            mission_text = apply_unit_edits(mission_text, unit_edits)
 
         miz_bytes = repack_miz(session["miz_bytes"], mission_text)
 
@@ -153,6 +227,10 @@ def download():
         return jsonify({"error": f"Download failed: {str(e)}"}), 400
 
 
+# --------------------------------------------------------------------------
+# Export
+# --------------------------------------------------------------------------
+
 @app.route("/api/export/json", methods=["POST"])
 def export_json():
     body = request.get_json()
@@ -160,7 +238,6 @@ def export_json():
         return jsonify({"error": "No JSON body"}), 400
 
     sid = body.get("sessionId")
-
     with _lock:
         session = sessions.get(sid)
     if not session:
@@ -173,7 +250,6 @@ def export_json():
             if group["waypoints"]:
                 group["waypoints"] = recompute_route(group["waypoints"])
 
-        # Shape matches airboss DcsWaypoint/DcsGroup columns
         return jsonify({
             "theater": session["theater"],
             "filename": session["filename"],
@@ -182,6 +258,136 @@ def export_json():
     except Exception as e:
         return jsonify({"error": f"Export failed: {str(e)}"}), 400
 
+
+# --------------------------------------------------------------------------
+# Weapon / Launcher settings
+# --------------------------------------------------------------------------
+
+@app.route("/api/launcher-settings/<path:clsid>", methods=["GET"])
+def launcher_settings(clsid):
+    settings = get_launcher_settings(clsid)
+    if settings is None:
+        return jsonify({"error": "CLSID not found"}), 404
+    return jsonify(settings)
+
+
+# --------------------------------------------------------------------------
+# Weather presets
+# --------------------------------------------------------------------------
+
+@app.route("/api/weather/presets", methods=["GET"])
+def weather_presets():
+    return jsonify(WEATHER_PRESETS)
+
+
+# --------------------------------------------------------------------------
+# DTC endpoints
+# --------------------------------------------------------------------------
+
+@app.route("/api/dtc/generate", methods=["POST"])
+def dtc_generate():
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    sid = body.get("sessionId")
+    group_name = body.get("groupName")
+    dtc_name = body.get("dtcName", group_name)
+    edits = body.get("edits")
+
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    try:
+        mission_dict = parse_mission_text(session["mission_text"])
+        flight_data = extract_flight_for_dtc(mission_dict, group_name)
+        if not flight_data:
+            return jsonify({"error": f"Flight '{group_name}' not found"}), 404
+
+        flight_data["theatre"] = session["theater"]
+        dtc = build_dtc_from_flight(flight_data, dtc_name)
+
+        if edits:
+            dtc = build_dtc_from_edits(dtc, edits)
+
+        dtc_bytes = serialize_dtc(dtc)
+        filename = f"{dtc_name or group_name}.dtc"
+
+        return send_file(
+            io.BytesIO(dtc_bytes),
+            mimetype="application/json",
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        return jsonify({"error": f"DTC generation failed: {str(e)}"}), 400
+
+
+@app.route("/api/dtc/preview", methods=["POST"])
+def dtc_preview():
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    sid = body.get("sessionId")
+    group_name = body.get("groupName")
+
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    try:
+        mission_dict = parse_mission_text(session["mission_text"])
+        flight_data = extract_flight_for_dtc(mission_dict, group_name)
+        if not flight_data:
+            return jsonify({"error": f"Flight '{group_name}' not found"}), 404
+
+        flight_data["theatre"] = session["theater"]
+        dtc = build_dtc_from_flight(flight_data, group_name)
+
+        return jsonify({
+            "groupName": group_name,
+            "aircraftType": flight_data.get("aircraft_type", ""),
+            "theatre": session["theater"],
+            "dtc": dtc,
+        })
+    except Exception as e:
+        return jsonify({"error": f"DTC preview failed: {str(e)}"}), 400
+
+
+@app.route("/api/dtc/blank", methods=["GET"])
+def dtc_blank():
+    import copy
+    return jsonify(copy.deepcopy(FA18_DEFAULTS))
+
+
+@app.route("/api/dtc/export-raw", methods=["POST"])
+def dtc_export_raw():
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    dtc_data = body.get("dtc")
+    filename = body.get("filename", "export.dtc")
+
+    if not dtc_data:
+        return jsonify({"error": "No DTC data provided"}), 400
+
+    dtc_bytes = json.dumps(dtc_data, indent=4).encode("utf-8")
+    return send_file(
+        io.BytesIO(dtc_bytes),
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+# --------------------------------------------------------------------------
+# Static data endpoints
+# --------------------------------------------------------------------------
 
 @app.route("/api/sam-ranges", methods=["GET"])
 def sam_ranges():
@@ -195,7 +401,6 @@ def projections():
 
 @app.route("/api/elevation/<float:lat>/<float:lon>", methods=["GET"])
 def elevation(lat, lon):
-    """Get terrain elevation at lat/lon using local SRTM data. No API key needed."""
     try:
         elev = _srtm_data.get_elevation(lat, lon)
         return jsonify({"elevation": elev})
@@ -214,7 +419,10 @@ def close_session():
     return jsonify({"ok": True})
 
 
-# Serve frontend SPA — catch-all for non-API routes
+# --------------------------------------------------------------------------
+# Frontend SPA catch-all
+# --------------------------------------------------------------------------
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_frontend(path):
