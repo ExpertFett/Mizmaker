@@ -3,4 +3,5 @@ flask-cors>=4.0
 slpp>=1.2
 pyproj>=3.6
 mgrs>=1.4
+srtm.py>=0.3.7
 gunicorn>=22.0
