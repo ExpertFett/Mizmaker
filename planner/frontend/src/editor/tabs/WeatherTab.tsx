@@ -92,10 +92,33 @@ export function WeatherTab() {
       const next = { ...prev, ...partial };
       setHasChanges(true);
       addEdit({ field: 'weather', value: next } as any);
+
+      // Sync back to store so WeatherPanel on map view stays current
+      const { overview } = useMissionStore.getState();
+      if (overview) {
+        useMissionStore.setState({
+          overview: {
+            ...overview,
+            weather: {
+              ...overview.weather,
+              wind: next.wind,
+              temperature_c: next.temperature_c,
+              qnh_mmhg: next.qnh_mmhg,
+              qnh_inhg: Math.round(next.qnh_mmhg * 0.03937 * 100) / 100,
+              qnh_hpa: Math.round(next.qnh_mmhg * 1.33322 * 10) / 10,
+              clouds_base_m: next.clouds_base_m,
+              visibility_m: next.visibility_m,
+            },
+            start_time: next.start_time,
+          },
+        });
+      }
+
       return next;
     });
   }, [addEdit]);
 
+  // Wind updates also sync to store (same pattern)
   const updateWind = useCallback((layer: 'atGround' | 'at2000' | 'at8000', field: 'speed' | 'dir', value: number) => {
     setWeather((prev) => {
       if (!prev) return prev;
@@ -108,6 +131,18 @@ export function WeatherTab() {
       };
       setHasChanges(true);
       addEdit({ field: 'weather', value: next } as any);
+
+      // Sync wind changes to store too
+      const { overview } = useMissionStore.getState();
+      if (overview) {
+        useMissionStore.setState({
+          overview: {
+            ...overview,
+            weather: { ...overview.weather, wind: next.wind },
+          },
+        });
+      }
+
       return next;
     });
   }, [addEdit]);
