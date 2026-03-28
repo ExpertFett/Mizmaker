@@ -20,7 +20,8 @@ def compute_leg(prev: Dict, curr: Dict) -> Dict:
     dist = _haversine(lat1, lon1, lat2, lon2)
     brg = _bearing(lat1, lon1, lat2, lon2)
 
-    speed = curr.get("speed_ms", 0)
+    # ETE uses the PREVIOUS (departure) waypoint's speed — you fly the leg at that speed
+    speed = prev.get("speed_ms", 0) or curr.get("speed_ms", 0)
     eta = dist / speed if speed > 0 else 0
 
     return {

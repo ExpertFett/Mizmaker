@@ -15,7 +15,7 @@ import os
 import time
 import uuid
 import threading
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import io
 
@@ -25,7 +25,7 @@ from services.miz_parser import (
     extract_full_mission_data,
     SAM_THREAT_RANGES,
 )
-from services.miz_editor import apply_edits, repack_miz
+from services.miz_editor import replace_group_waypoints, repack_miz
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
 import srtm
@@ -33,7 +33,13 @@ import srtm
 # Initialize SRTM elevation data (downloads HGT tiles on first use, caches locally)
 _srtm_data = srtm.get_data()
 
-app = Flask(__name__)
+# Serve built frontend from /static in production, or run with Vite proxy in dev
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app = Flask(__name__, static_folder=static_dir, static_url_path="")
+else:
+    app = Flask(__name__)
+
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
@@ -111,36 +117,6 @@ def upload():
     })
 
 
-@app.route("/api/edit/waypoints", methods=["POST"])
-def edit_waypoints():
-    body = request.get_json()
-    if not body:
-        return jsonify({"error": "No JSON body"}), 400
-
-    sid = body.get("sessionId")
-    edits = body.get("edits", [])
-
-    with _lock:
-        session = sessions.get(sid)
-    if not session:
-        return jsonify({"error": "Session not found or expired"}), 404
-
-    try:
-        new_text = apply_edits(session["mission_text"], edits)
-        with _lock:
-            sessions[sid]["mission_text"] = new_text
-
-        # Re-parse to return updated data
-        mission_dict = parse_mission_text(new_text)
-        data = extract_full_mission_data(mission_dict, session["theater"])
-        for group in data["groups"]:
-            if group["waypoints"]:
-                group["waypoints"] = recompute_route(group["waypoints"])
-
-        return jsonify({"ok": True, **data})
-    except Exception as e:
-        return jsonify({"error": f"Edit failed: {str(e)}"}), 400
-
 
 @app.route("/api/download", methods=["POST"])
 def download():
@@ -150,6 +126,7 @@ def download():
 
     sid = body.get("sessionId")
     edits = body.get("edits", [])
+    modified_groups = body.get("modifiedGroups", {})
 
     with _lock:
         session = sessions.get(sid)
@@ -158,8 +135,11 @@ def download():
 
     try:
         mission_text = session["mission_text"]
-        if edits:
-            mission_text = apply_edits(mission_text, edits)
+
+        # Replace waypoints for each modified group — identified by name
+        for group_name, group_data in modified_groups.items():
+            waypoints = group_data.get("waypoints", []) if isinstance(group_data, dict) else group_data
+            mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
 
         miz_bytes = repack_miz(session["miz_bytes"], mission_text)
 
@@ -231,6 +211,15 @@ def close_session():
         with _lock:
             sessions.pop(sid, None)
     return jsonify({"ok": True})
+
+
+# Serve frontend SPA — catch-all for non-API routes
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    if path and os.path.exists(os.path.join(app.static_folder or "", path)):
+        return send_from_directory(app.static_folder or "static", path)
+    return send_from_directory(app.static_folder or "static", "index.html")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,485 @@
+import { useRef, useCallback, useReducer } from 'react';
+import { useMissionStore } from '../store/missionStore';
+import { useMapStore } from '../store/mapStore';
+import { useEditStore } from '../store/editStore';
+import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
+import { haversineDistance, bearing } from '../utils/navmath';
+import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
+import { getAircraftType, isPlayerGroup } from '../utils/groups';
+import type { Waypoint, MissionWeather } from '../types/mission';
+
+
+export function FloatingFlightPanel() {
+  const { groups, selectedGroupId, selectGroup } = useMissionStore();
+  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode } = useMapStore();
+  const overview = useMissionStore((s) => s.overview);
+  const wx = overview?.weather;
+  const { addEdit } = useEditStore();
+
+  const group = groups.find((g) => g.groupId === selectedGroupId);
+  const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const minimized = useRef(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+
+  // All hooks MUST be above this early return
+  const groupId = group?.groupId ?? 0;
+  const wpLen = group?.waypoints.length ?? 0;
+  const player = group ? isPlayerGroup(group) : false;
+  const locked = adminMode && !player;
+
+  // All edits are client-side — queued for .miz export on download
+  const handlePropChange = useCallback((wpIndex: number, field: string, value: string | number | boolean) => {
+    if (locked) return;
+    addEdit({ type: 'waypointProp' as const, groupId, wpIndex, field, value });
+
+    // Update store directly
+    const { groups } = useMissionStore.getState();
+    const updatedGroups = groups.map((g) => {
+      if (g.groupId !== groupId) return g;
+      return {
+        ...g,
+        waypoints: g.waypoints.map((wp) => {
+          if (wp.waypoint_number !== wpIndex) return wp;
+          const updated = { ...wp };
+          if (field === 'name') updated.waypoint_name = value as string;
+          else if (field === 'alt') updated.altitude_m = value as number;
+          else if (field === 'speed') updated.speed_ms = value as number;
+          else if (field === 'speed_ref') updated.speed_ref = value as any;
+          else if (field === 'speed_input') updated.speed_input = value as number;
+          else if (field === 'alt_type') updated.altitude_type = value as 'BARO' | 'RADIO';
+          return updated;
+        }),
+      };
+    });
+    useMissionStore.setState({ groups: updatedGroups });
+  }, [groupId, locked, addEdit]);
+
+  const handleDelete = useCallback((wpIndex: number) => {
+    if (locked || wpLen <= 1 || wpIndex === 0) return;
+    addEdit({ type: 'waypointDelete' as const, groupId, wpIndex });
+
+    const { groups } = useMissionStore.getState();
+    const updatedGroups = groups.map((g) => {
+      if (g.groupId !== groupId) return g;
+      const newWps = g.waypoints.filter((wp) => wp.waypoint_number !== wpIndex);
+      // Renumber
+      for (let i = 0; i < newWps.length; i++) {
+        newWps[i] = { ...newWps[i], waypoint_number: i };
+      }
+      return { ...g, waypoints: newWps };
+    });
+    useMissionStore.setState({ groups: updatedGroups });
+  }, [groupId, wpLen, locked, addEdit]);
+
+  const handleReorder = useCallback((wpIndex: number, direction: 'up' | 'down') => {
+    if (!groupId) return;
+    const { groups } = useMissionStore.getState();
+    const g = groups.find((gr) => gr.groupId === groupId);
+    if (!g) return;
+
+    const wps = [...g.waypoints];
+    const fromIdx = wps.findIndex((w) => w.waypoint_number === wpIndex);
+    const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1;
+
+    // Can't move WP0, can't move before WP0, can't move past end
+    if (fromIdx <= 0 || toIdx <= 0 || toIdx >= wps.length) return;
+
+    // Swap
+    [wps[fromIdx], wps[toIdx]] = [wps[toIdx], wps[fromIdx]];
+
+    // Renumber and recompute
+    for (let i = 0; i < wps.length; i++) {
+      wps[i] = { ...wps[i], waypoint_number: i };
+      if (i === 0) {
+        wps[i].leg_distance_nm = 0;
+        wps[i].leg_bearing_deg = 0;
+        wps[i].cumulative_eta = 0;
+      } else if (wps[i - 1].lat && wps[i - 1].lon && wps[i].lat && wps[i].lon) {
+        const dist = haversineDistance(wps[i - 1].lat!, wps[i - 1].lon!, wps[i].lat!, wps[i].lon!);
+        const brg = bearing(wps[i - 1].lat!, wps[i - 1].lon!, wps[i].lat!, wps[i].lon!);
+        wps[i].leg_distance_nm = dist / 1852;
+        wps[i].leg_bearing_deg = brg;
+        wps[i].cumulative_eta = (wps[i - 1].cumulative_eta || 0) + (wps[i].speed_ms > 0 ? dist / wps[i].speed_ms : 0);
+      }
+    }
+
+    const updatedGroups = groups.map((gr) =>
+      gr.groupId === groupId ? { ...gr, waypoints: wps } : gr,
+    );
+    useMissionStore.setState({ groups: updatedGroups });
+
+    // Mark group as modified so download knows to write its waypoints
+    addEdit({ type: 'waypointProp', groupId, wpIndex: 0, field: '_reorder', value: true });
+  }, [groupId, addEdit]);
+
+  if (!group) return null;
+
+  const airframe = getAircraftType(group);
+  const pos = floatingPanelPos.x < 0
+    ? { x: Math.max(50, (window.innerWidth - 480) / 2), y: Math.max(40, (window.innerHeight - 500) / 2) }
+    : floatingPanelPos;
+
+  const onDragStart = (e: React.PointerEvent) => {
+    dragState.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onDragMove = (e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    setFloatingPanelPos({
+      x: dragState.current.origX + (e.clientX - dragState.current.startX),
+      y: dragState.current.origY + (e.clientY - dragState.current.startY),
+    });
+  };
+  const onDragEnd = () => { dragState.current = null; };
+
+  return (
+    <div
+      ref={panelRef}
+      style={{
+        position: 'absolute',
+        left: pos.x,
+        top: pos.y,
+        width: 520,
+        maxHeight: '80vh',
+        background: 'rgba(8, 15, 28, 0.96)',
+        border: '1px solid #1a3a5a',
+        borderRadius: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        zIndex: 300,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+        fontSize: 14,
+      }}
+    >
+      {/* Title bar — drag handle */}
+      <div
+        onPointerDown={onDragStart}
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+        style={{
+          padding: '10px 14px',
+          background: '#0a1a2a',
+          borderBottom: '1px solid #1a2a3a',
+          cursor: 'grab',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {locked && <span style={{ color: '#d29922', fontSize: 14 }} title="Admin locked">&#128274;</span>}
+          <span style={{ fontWeight: 600, color: '#ccdae8', fontSize: 14 }}>{group.groupName}</span>
+          <span style={{ color: '#5a7a8a', fontSize: 12 }}>{airframe}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => { minimized.current = !minimized.current; forceUpdate(); }}
+            style={titleBtnStyle}
+            title={minimized.current ? 'Expand' : 'Minimize'}
+          >
+            {minimized.current ? '\u25B2' : '\u25BC'}
+          </button>
+          <button onClick={() => selectGroup(null)} style={titleBtnStyle} title="Close">X</button>
+        </div>
+      </div>
+
+      {/* Body */}
+      {!minimized.current && (
+        <>
+          {/* Group info */}
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid #1a2a3a', fontSize: 12, color: '#5a7a8a' }}>
+            {group.task} &middot; {group.frequency ? `${group.frequency.toFixed(1)} MHz` : 'No freq'}
+            &middot; {group.coalition} &middot; {group.units.length} units
+            {player && <span style={{ color: '#3fb950', marginLeft: 8 }}>FLYABLE</span>}
+          </div>
+
+          {/* Waypoint table */}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
+              <thead>
+                <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a', background: '#080f1c', position: 'sticky', top: 0 }}>
+                  {!locked && <th style={{ ...thStyle, width: 32 }}></th>}
+                  <th style={thStyle}>WP</th>
+                  <th style={thStyle}>Name</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Alt (ft)</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Speed</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Dist</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Brg</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>ETE</th>
+                  {!locked && <th style={{ ...thStyle, width: 28 }}></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {group.waypoints.map((wp, idx) => (
+                  <WpRow
+                    key={`${wp.waypoint_number}-${wp.waypoint_name}-${wp.x}-${wp.y}`}
+                    wp={wp}
+                    prevWp={idx > 0 ? group.waypoints[idx - 1] : undefined}
+                    locked={locked || wp.waypoint_number === 0}
+                    canDelete={!locked && group.waypoints.length > 1 && wp.waypoint_number !== 0}
+                    canMoveUp={!locked && wp.waypoint_number > 1}
+                    canMoveDown={!locked && wp.waypoint_number > 0 && idx < group.waypoints.length - 1}
+                    showControls={!locked}
+                    weather={wx}
+                    onPropChange={handlePropChange}
+                    onDelete={handleDelete}
+                    onReorder={handleReorder}
+                  />
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '1px solid #1a2a3a', color: '#5a7a8a' }}>
+                  <td colSpan={locked ? 4 : 5} style={{ padding: '6px 10px', fontSize: 12 }}>Total</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>
+                    {group.waypoints.reduce((s, w) => s + (w.leg_distance_nm || 0), 0).toFixed(1)} nm
+                  </td>
+                  <td></td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#6a8a9a' }}>
+                    {(() => {
+                      const totalEte = group.waypoints.reduce((s, w) => s + ((w.leg_distance_nm || 0) * 1852 / (w.speed_ms || 1)), 0);
+                      return formatEte(totalEte);
+                    })()}
+                  </td>
+                  {!locked && <td></td>}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Footer */}
+          {!locked && (
+            <div style={{ padding: '8px 14px', borderTop: '1px solid #1a2a3a', display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setAddWaypointMode(!addWaypointMode)}
+                style={{
+                  flex: 1, padding: '7px 12px', fontSize: 12, fontWeight: 500,
+                  background: addWaypointMode ? '#1a4a2a' : '#0f2a4a',
+                  border: `1px solid ${addWaypointMode ? '#3fb950' : '#1a3a5a'}`,
+                  borderRadius: 4,
+                  color: addWaypointMode ? '#3fb950' : '#ccdae8',
+                  cursor: 'pointer',
+                }}
+              >
+                {addWaypointMode ? 'Click map to place...' : '+ Add Waypoint'}
+              </button>
+              <span style={{ color: '#5a7a8a', fontSize: 11, alignSelf: 'center' }}>
+                or right-click map
+              </span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showControls, weather, onPropChange, onDelete, onReorder }: {
+  wp: Waypoint; prevWp?: Waypoint; locked: boolean; canDelete: boolean;
+  canMoveUp?: boolean; canMoveDown?: boolean; showControls: boolean;
+  weather?: MissionWeather;
+  onPropChange: (i: number, f: string, v: string | number | boolean) => void;
+  onDelete: (i: number) => void;
+  onReorder: (i: number, dir: 'up' | 'down') => void;
+}) {
+  const altFt = Math.round(metersToFeet(wp.altitude_m));
+  const distNm = wp.leg_distance_nm?.toFixed(1) || '-';
+  const brg = wp.leg_bearing_deg ? `${Math.round(wp.leg_bearing_deg)}\u00B0` : '-';
+
+  const heading = wp.leg_bearing_deg || 0;
+
+  // ETE for this leg — use the PREVIOUS waypoint's speed (you fly the leg at departure speed)
+  const legDist = (wp.leg_distance_nm || 0) * 1852;
+  const legSpeed = prevWp ? prevWp.speed_ms : wp.speed_ms;
+  const ete = legSpeed > 0 ? computeEte(legDist, legSpeed) : 0;
+  const eteStr = ete > 0 ? formatEte(ete) : '-';
+
+  const isWp0 = wp.waypoint_number === 0;
+
+  const inputStyle: React.CSSProperties = {
+    background: 'transparent', border: 'none', color: '#ccdae8',
+    fontSize: 13, fontFamily: 'monospace', padding: 0,
+  };
+
+  const arrowBtn: React.CSSProperties = {
+    background: 'transparent', border: 'none', color: '#5a7a8a',
+    cursor: 'pointer', fontSize: 10, padding: '0 1px', lineHeight: 1,
+  };
+
+  return (
+    <tr style={{ borderBottom: '1px solid #0f1a28', opacity: isWp0 ? 0.45 : 1 }}>
+      {showControls && (
+        <td style={{ ...tdStyle, padding: '2px 4px', width: 32 }}>
+          {!isWp0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              {canMoveUp && (
+                <button onClick={() => onReorder(wp.waypoint_number, 'up')} style={arrowBtn} title="Move up">{'\u25B2'}</button>
+              )}
+              {canMoveDown && (
+                <button onClick={() => onReorder(wp.waypoint_number, 'down')} style={arrowBtn} title="Move down">{'\u25BC'}</button>
+              )}
+            </div>
+          )}
+        </td>
+      )}
+      <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#5a7a8a' }}>{wp.waypoint_number}</td>
+      <td style={tdStyle}>
+        {locked ? (
+          <span style={{ color: '#8fa8c0' }}>{wp.waypoint_name}</span>
+        ) : (
+          <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
+            style={{ ...inputStyle, width: 80, color: '#ccdae8' }} />
+        )}
+      </td>
+      <td style={{ ...tdStyle, textAlign: 'right' }}>
+        {locked ? (
+          <span style={{ fontFamily: 'monospace', color: '#8fa8c0' }}>{altFt}</span>
+        ) : (
+          <input type="number" defaultValue={altFt}
+            onBlur={(e) => onPropChange(wp.waypoint_number, 'alt', feetToMeters(parseFloat(e.target.value)))}
+            style={{ ...inputStyle, width: 55, textAlign: 'right' }} />
+        )}
+        {locked ? (
+          <span style={{ fontSize: 10, color: '#5a7a8a', marginLeft: 2 }}>
+            {wp.altitude_type === 'RADIO' ? 'AGL' : ''}
+          </span>
+        ) : (
+          <button
+            onClick={() => onPropChange(wp.waypoint_number, 'alt_type', wp.altitude_type === 'BARO' ? 'RADIO' : 'BARO')}
+            title={wp.altitude_type === 'BARO' ? 'MSL — click for AGL' : 'AGL — click for MSL'}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: 9, color: wp.altitude_type === 'RADIO' ? '#d29922' : '#5a7a8a',
+              marginLeft: 1, padding: '0 2px', fontWeight: 600,
+            }}
+          >
+            {wp.altitude_type === 'RADIO' ? 'AGL' : 'MSL'}
+          </button>
+        )}
+      </td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', lineHeight: 1.3 }}>
+        {isWp0 ? (
+          <span style={{ color: '#5a7a8a' }}>-</span>
+        ) : locked ? (
+          <SpeedBlock gs_ms={wp.speed_ms} alt_m={wp.altitude_m} heading={heading} weather={weather} />
+        ) : (
+          <SpeedEditor wp={wp} heading={heading} weather={weather} onPropChange={onPropChange} />
+        )}
+      </td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#5a7a8a' }}>{distNm}</td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#5a7a8a' }}>{brg}</td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#6a8a9a', fontSize: 11 }}>{eteStr}</td>
+      {showControls && (
+        <td style={{ ...tdStyle, textAlign: 'center' }}>
+          {canDelete && (
+            <button onClick={() => onDelete(wp.waypoint_number)} title="Delete waypoint"
+              style={{ background: 'transparent', border: '1px solid transparent', color: '#5a7a8a', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 5px', borderRadius: 3 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#d95050'; e.currentTarget.style.borderColor = '#d95050'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#5a7a8a'; e.currentTarget.style.borderColor = 'transparent'; }}>
+              X
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
+  );
+}
+
+const thStyle: React.CSSProperties = { padding: '6px 10px', textAlign: 'left', fontWeight: 600, fontSize: 12 };
+const tdStyle: React.CSSProperties = { padding: '6px 10px' };
+const titleBtnStyle: React.CSSProperties = {
+  background: 'transparent', border: '1px solid #1a2a3a', borderRadius: 3,
+  color: '#5a7a8a', cursor: 'pointer', fontSize: 12, padding: '2px 8px',
+};
+
+function SpeedEditor({ wp, heading, weather, onPropChange }: {
+  wp: Waypoint; heading: number; weather?: MissionWeather;
+  onPropChange: (i: number, f: string, v: string | number | boolean) => void;
+}) {
+  const ref = wp.speed_ref || 'gs';
+  const currentDisplay = weather && wp.speed_ms > 0
+    ? convertSpeed(wp.speed_ms, wp.altitude_m, heading, weather, ref)
+    : (ref === 'mach' ? 0 : Math.round(msToKnots(wp.speed_ms)));
+
+  const defaultVal = ref === 'mach' ? currentDisplay.toFixed(2) : Math.round(currentDisplay).toString();
+
+  const handleRefChange = (newRef: string) => {
+    // Switching reference — recalculate the display value from current GS
+    onPropChange(wp.waypoint_number, 'speed_ref', newRef);
+    if (weather) {
+      const newDisplay = convertSpeed(wp.speed_ms, wp.altitude_m, heading, weather, newRef as SpeedMode);
+      onPropChange(wp.waypoint_number, 'speed_input', newDisplay);
+    }
+  };
+
+  const handleValueChange = (val: string) => {
+    const num = parseFloat(val);
+    if (isNaN(num) || !weather) return;
+    // Convert entered value in chosen reference to DCS ground speed
+    const gs_ms = speedRefToGs(num, ref as SpeedMode, wp.altitude_m, heading, weather);
+    onPropChange(wp.waypoint_number, 'speed', gs_ms);
+    onPropChange(wp.waypoint_number, 'speed_input', num);
+  };
+
+  const selectStyle: React.CSSProperties = {
+    background: '#0f1a28', border: '1px solid #1a2a3a', color: '#4a8fd4',
+    fontSize: 11, borderRadius: 3, padding: '2px 4px', cursor: 'pointer',
+  };
+  const inputStyle: React.CSSProperties = {
+    background: 'transparent', border: 'none', color: '#ccdae8',
+    fontSize: 13, fontFamily: 'monospace', padding: 0, width: 50, textAlign: 'right' as const,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <input
+          type={ref === 'mach' ? 'text' : 'number'}
+          defaultValue={defaultVal}
+          onBlur={(e) => handleValueChange(e.target.value)}
+          style={inputStyle}
+        />
+        <select value={ref} onChange={(e) => handleRefChange(e.target.value)} style={selectStyle}>
+          <option value="gs">GS</option>
+          <option value="cas">CAS</option>
+          <option value="tas">TAS</option>
+          <option value="mach">M</option>
+        </select>
+      </div>
+      <SpeedBlock gs_ms={wp.speed_ms} alt_m={wp.altitude_m} heading={heading} weather={weather} excludeRef={ref} />
+    </div>
+  );
+}
+
+function SpeedBlock({ gs_ms, alt_m, heading, weather, excludeRef }: {
+  gs_ms: number; alt_m: number; heading: number; weather?: MissionWeather; excludeRef?: string;
+}) {
+  if (!weather || gs_ms <= 0) return null;
+
+  const items: { label: string; value: string; ref: string }[] = [];
+  if (excludeRef !== 'gs') items.push({ label: 'GS', value: Math.round(convertSpeed(gs_ms, alt_m, heading, weather, 'gs')).toString(), ref: 'gs' });
+  if (excludeRef !== 'cas') items.push({ label: 'CAS', value: Math.round(convertSpeed(gs_ms, alt_m, heading, weather, 'cas')).toString(), ref: 'cas' });
+  if (excludeRef !== 'tas') items.push({ label: 'TAS', value: Math.round(convertSpeed(gs_ms, alt_m, heading, weather, 'tas')).toString(), ref: 'tas' });
+  if (excludeRef !== 'mach') items.push({ label: 'M', value: convertSpeed(gs_ms, alt_m, heading, weather, 'mach').toFixed(2), ref: 'mach' });
+
+  return (
+    <div style={{ display: 'flex', gap: 6, fontSize: 11, color: '#6a8a9a' }}>
+      {items.map((it) => (
+        <span key={it.ref} style={{ fontFamily: 'monospace' }}>
+          {it.value}<span style={{ fontSize: 9, color: '#4a5a6a', marginLeft: 1 }}>{it.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function formatEte(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m < 60) return `${m}:${s.toString().padStart(2, '0')}`;
+  const h = Math.floor(m / 60);
+  return `${h}:${(m % 60).toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}

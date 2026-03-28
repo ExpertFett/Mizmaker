@@ -12,7 +12,7 @@ interface AddCallbacks {
   onAdd: (lat: number, lon: number) => void;
 }
 
-export function createWaypointAdd(map: Map, callbacks: AddCallbacks): Draw {
+export function createWaypointAdd(_map: Map, callbacks: AddCallbacks): Draw {
   const draw = new Draw({
     source: new VectorSource(), // temporary, features not kept
     type: 'Point',

@@ -1,15 +1,29 @@
-/** Group utilities — aircraft type, player detection, per-flight colors */
+/** Group utilities — aircraft type, player detection, per-flight colors, role detection */
 
 import type { MissionGroup } from '../types/mission';
 
 export function getAircraftType(group: MissionGroup): string {
   if (group.units.length === 0) return group.category;
-  // Use the first unit's type — all units in a flight are the same airframe
   return group.units[0].type || group.category;
 }
 
 export function isPlayerGroup(group: MissionGroup): boolean {
   return group.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
+}
+
+/** Check if this is a carrier group (CVN, LHA, etc) */
+export function isCarrierGroup(group: MissionGroup): boolean {
+  return group.category === 'ship' &&
+    group.units.some((u) => /CVN|LHA|LHD|Stennis|Kuznetsov|Admiral|Vinson/i.test(u.type));
+}
+
+/** Get the role label for AI air groups (Refuel, AWACS, etc) */
+export function getAirRoleLabel(group: MissionGroup): string | null {
+  if (isPlayerGroup(group)) return null;
+  const task = (group.task || '').toLowerCase();
+  if (task === 'refueling') return 'REFUEL';
+  if (task === 'awacs') return 'AWACS';
+  return null;
 }
 
 // Distinct colors for per-flight route lines
@@ -20,7 +34,7 @@ const FLIGHT_COLORS = [
   '#f0883e', '#8b949e', '#da3633', '#1f6feb',
 ];
 
-const AI_COLOR = '#6e40aa'; // Purple for AI/non-flyable routes
+const AI_COLOR = '#6e40aa';
 
 export function getFlightColor(group: MissionGroup, index: number): string {
   if (!isPlayerGroup(group)) return AI_COLOR;

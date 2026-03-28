@@ -6,14 +6,6 @@ import { fromLonLat } from 'ol/proj';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text } from 'ol/style';
 import type { Airbase } from '../../types/mission';
 
-const airbaseStyle = new Style({
-  image: new CircleStyle({
-    radius: 5,
-    fill: new Fill({ color: 'rgba(200, 164, 24, 0.8)' }),
-    stroke: new Stroke({ color: 'rgba(200, 164, 24, 1)', width: 1.5 }),
-  }),
-});
-
 function createAirbaseStyle(name: string): Style {
   return new Style({
     image: new CircleStyle({

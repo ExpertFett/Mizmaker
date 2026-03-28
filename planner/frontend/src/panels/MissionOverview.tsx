@@ -16,11 +16,11 @@ export function MissionOverview() {
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a2a3a' }}>
-      <div style={{ fontSize: 11, color: '#5a7a8a', marginBottom: 4 }}>{filename}</div>
+      <div style={{ fontSize: 12, color: '#6a8a9a', marginBottom: 4 }}>{filename}</div>
       <div style={{ fontSize: 15, fontWeight: 600, color: '#ccdae8', marginBottom: 8 }}>
         {overview.sortie || overview.theater}
       </div>
-      <div style={{ fontSize: 12, color: '#8fa8c0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+      <div style={{ fontSize: 13, color: '#8fa8c0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
         <span>Theater: {overview.theater}</span>
         <span>Date: {overview.date}</span>
         <span>Start: {formatTime(overview.start_time)}</span>

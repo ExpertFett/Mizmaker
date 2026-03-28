@@ -25,12 +25,14 @@ import { getElevation } from '../utils/elevation';
 import { forward as toMGRS } from 'mgrs';
 // Terrain-rgb tile layers removed — elevation is fully self-hosted via backend SRTM
 import { setupWaypointDrag } from './interactions/waypointDrag';
+import { isPlayerGroup } from '../utils/groups';
 import { createWaypointAdd } from './interactions/waypointAdd';
 import { createMeasureTool } from './interactions/measureTool';
-import { editWaypoints } from '../api/client';
+
 import { WaypointEditPopup } from './controls/WaypointEditPopup';
 import { LayerSwitcher } from './controls/LayerSwitcher';
 import { CoordinateDisplay } from './controls/CoordinateDisplay';
+import { WeatherPanel } from './controls/WeatherPanel';
 
 const THEATER_CENTERS: Record<string, [number, number]> = {
   Caucasus: [43.5, 41.0],
@@ -112,7 +114,7 @@ export function MapContainer() {
 
   const { theater, units, groups, threats, airbases, selectedGroupId, selectGroup, sessionId, updateGroupData } =
     useMissionStore();
-  const { layers, viewMode, addWaypointMode, measureMode } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
   const addEdit = useEditStore((s) => s.addEdit);
 
   // Handle waypoint drag end — client-side store update, queues edit for download
@@ -139,7 +141,9 @@ export function MapContainer() {
             const brg = bearing(prev.lat, prev.lon, curr.lat, curr.lon);
             curr.leg_distance_nm = dist / 1852;
             curr.leg_bearing_deg = brg;
-            curr.cumulative_eta = (newWps[i - 1].cumulative_eta || 0) + (curr.speed_ms > 0 ? dist / curr.speed_ms : 0);
+            // ETE uses previous WP's speed (you fly the leg at departure speed)
+            const legSpeed = newWps[i - 1].speed_ms || curr.speed_ms;
+            curr.cumulative_eta = (newWps[i - 1].cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
           }
         }
         return { ...g, waypoints: newWps };
@@ -151,35 +155,66 @@ export function MapContainer() {
 
   // Handle waypoint add
   const handleAddWaypoint = useCallback(
-    async (lat: number, lon: number) => {
-      if (!sessionId || !selectedGroupId) return;
+    (lat: number, lon: number) => {
+      if (!selectedGroupId) return;
       const { x, y } = latLonToDcs(lat, lon);
-      const group = useMissionStore.getState().groups.find((g) => g.groupId === selectedGroupId);
+      const { groups } = useMissionStore.getState();
+      const group = groups.find((g) => g.groupId === selectedGroupId);
       if (!group) return;
-      const afterIndex = group.waypoints.length; // append at end
-      const edit = {
-        type: 'waypointInsert' as const,
+
+      const newWpNum = group.waypoints.length;
+      const prevWp = group.waypoints[group.waypoints.length - 1];
+
+      // Build new waypoint client-side
+      const newWp = {
+        waypoint_number: newWpNum,
+        waypoint_name: `WP${newWpNum}`,
+        waypoint_type: 'Turning Point',
+        waypoint_action: 'Turning Point',
+        x, y, lat, lon,
+        altitude_m: 6096,
+        altitude_type: 'BARO' as const,
+        speed_ms: prevWp?.speed_ms || 200,
+        eta_seconds: 0,
+        eta_locked: false,
+        speed_locked: true,
+        leg_distance_nm: 0,
+        leg_bearing_deg: 0,
+        cumulative_eta: 0,
+      };
+
+      // Recompute leg from previous waypoint
+      if (prevWp?.lat && prevWp?.lon) {
+        const dist = haversineDistance(prevWp.lat, prevWp.lon, lat, lon);
+        const brg = bearing(prevWp.lat, prevWp.lon, lat, lon);
+        newWp.leg_distance_nm = dist / 1852;
+        newWp.leg_bearing_deg = brg;
+        const legSpeed = prevWp.speed_ms || newWp.speed_ms;
+        newWp.cumulative_eta = (prevWp.cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
+      }
+
+      // Queue the edit for .miz download
+      addEdit({
+        type: 'waypointInsert',
         groupId: selectedGroupId,
-        afterIndex,
+        afterIndex: group.waypoints.length - 1,
         waypointData: {
           x, y,
-          waypoint_name: `WP${afterIndex + 1}`,
-          altitude_m: 6096, // 20000 ft default
-          altitude_type: 'BARO' as const,
-          speed_ms: 200,
-          waypoint_type: 'Turning Point',
-          waypoint_action: 'Turning Point',
+          waypoint_name: newWp.waypoint_name,
+          altitude_m: newWp.altitude_m,
+          altitude_type: newWp.altitude_type,
+          speed_ms: newWp.speed_ms,
+          waypoint_type: newWp.waypoint_type,
+          waypoint_action: newWp.waypoint_action,
         },
-      };
-      addEdit(edit);
-      try {
-        const result = await editWaypoints(sessionId, [edit]);
-        if (result.ok) {
-          updateGroupData(result.groups, result.units, result.threats, result.airbases);
-        }
-      } catch (e) {
-        console.error('Add waypoint failed:', e);
-      }
+      });
+
+      // Update store client-side (no backend round-trip)
+      const updatedGroups = groups.map((g) => {
+        if (g.groupId !== selectedGroupId) return g;
+        return { ...g, waypoints: [...g.waypoints, newWp] };
+      });
+      useMissionStore.setState({ groups: updatedGroups });
     },
     [sessionId, selectedGroupId, addEdit, updateGroupData],
   );
@@ -316,7 +351,22 @@ export function MapContainer() {
           tooltip.innerHTML = header + '<br/>' + meta + roster;
           tooltip.style.display = 'block';
         } else if (wp) {
-          tooltip.innerHTML = `<b>WP${wp.waypoint_number} ${wp.waypoint_name}</b><br/>${groupName || ''}`;
+          const altFt = Math.round(metersToFeet(wp.altitude_m || 0));
+          const spdKts = Math.round((wp.speed_ms || 0) * 1.94384);
+          const altType = wp.altitude_type === 'RADIO' ? 'AGL' : 'MSL';
+          const dist = wp.leg_distance_nm ? `${wp.leg_distance_nm.toFixed(1)} nm` : '';
+          const brg = wp.leg_bearing_deg ? `${Math.round(wp.leg_bearing_deg)}\u00B0` : '';
+          const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
+
+          tooltip.innerHTML =
+            `<b>WP${wp.waypoint_number} ${wp.waypoint_name}</b>` +
+            `<br/><span style="color:#6a8a9a">${groupName || ''}</span>` +
+            `<div style="margin-top:4px;border-top:1px solid #1a2a3a;padding-top:4px;font-family:monospace;font-size:11px">` +
+            (pos ? `<div>${pos}</div>` : '') +
+            `<div>Alt: ${altFt} ft ${altType}</div>` +
+            `<div>Spd: ${spdKts} kts</div>` +
+            (dist ? `<div>Leg: ${dist} ${brg}</div>` : '') +
+            `</div>`;
           tooltip.style.display = 'block';
         } else if (groupName && hit.get('featureType') === 'route') {
           tooltip.innerHTML = `<b>${groupName}</b>`;
@@ -326,7 +376,7 @@ export function MapContainer() {
         }
 
         if (tooltip.style.display === 'block') {
-          const rect = map.getTargetElement().getBoundingClientRect();
+          
           tooltip.style.left = `${e.pixel[0] + 14}px`;
           tooltip.style.top = `${e.pixel[1] - 8}px`;
         }
@@ -335,11 +385,38 @@ export function MapContainer() {
       }
     });
 
+    // Right-click to add waypoint (no mode toggle needed)
+    map.getViewport().addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const { selectedGroupId: gid } = useMissionStore.getState();
+      const { adminMode: am } = useMapStore.getState();
+      if (!gid) return;
+      const group = useMissionStore.getState().groups.find((g) => g.groupId === gid);
+      if (!group) return;
+      if (am && !isPlayerGroup(group)) return;
+
+      const pixel = map.getEventPixel(e);
+      const coord = map.getCoordinateFromPixel(pixel);
+      const [lon, lat] = toLonLat(coord);
+      handleAddWaypoint(lat, lon);
+    });
+
+    // Esc key to cancel modes
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        useMapStore.getState().setAddWaypointMode(false);
+        useMapStore.getState().setMeasureMode(false);
+        setEditPopup(null);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+
     mapInstance.current = map;
 
     return () => {
       map.setTarget(undefined);
       mapInstance.current = null;
+      document.removeEventListener('keydown', onKeyDown);
     };
   }, []);
 
@@ -358,7 +435,13 @@ export function MapContainer() {
     // Don't enable drag in add-waypoint or measure modes
     if (addWaypointMode || measureMode) return;
 
-    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd });
+    const isEditLocked = (groupId: number): boolean => {
+      const { adminMode: am } = useMapStore.getState();
+      if (!am) return false;
+      const g = useMissionStore.getState().groups.find((gr) => gr.groupId === groupId);
+      return g ? !isPlayerGroup(g) : false;
+    };
+    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, isEditLocked });
 
     return () => {
       if (dragCleanup.current) {
@@ -419,12 +502,12 @@ export function MapContainer() {
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
-    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, units, groups, viewMode);
-  }, [units, groups, viewMode]);
+    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, units, groups, viewMode, hiddenGroupIds, !!layers.statics);
+  }, [units, groups, viewMode, hiddenGroupIds, layers.statics]);
 
   useEffect(() => {
-    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, groups, selectedGroupId, viewMode);
-  }, [groups, selectedGroupId, viewMode]);
+    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, groups, selectedGroupId, viewMode, hiddenGroupIds);
+  }, [groups, selectedGroupId, viewMode, hiddenGroupIds]);
 
   useEffect(() => {
     if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, threats, viewMode);
@@ -478,22 +561,46 @@ export function MapContainer() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+      <WeatherPanel />
       <LayerSwitcher />
       <CoordinateDisplay coordRef={coordRef} />
+
+      {/* Instructional overlays */}
+      {addWaypointMode && (
+        <div style={{
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(63, 185, 80, 0.15)', border: '1px solid #3fb950', borderRadius: 6,
+          padding: '8px 20px', color: '#3fb950', fontSize: 13, fontWeight: 500, zIndex: 200,
+          pointerEvents: 'none',
+        }}>
+          Click map to place waypoint &middot; Right-click anytime &middot; Esc to cancel
+        </div>
+      )}
+      {measureMode && (
+        <div style={{
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(210, 153, 34, 0.15)', border: '1px solid #d29922', borderRadius: 6,
+          padding: '8px 20px', color: '#d29922', fontSize: 13, fontWeight: 500, zIndex: 200,
+          pointerEvents: 'none',
+        }}>
+          Click to measure &middot; Double-click to finish &middot; Esc to cancel
+        </div>
+      )}
+
       <div
         id="map-tooltip"
         style={{
           display: 'none',
           position: 'absolute',
-          background: 'rgba(10, 20, 35, 0.92)',
+          background: 'rgba(10, 20, 35, 0.95)',
           border: '1px solid #1a3a5a',
-          borderRadius: 4,
-          padding: '6px 10px',
-          fontSize: 11,
+          borderRadius: 5,
+          padding: '8px 12px',
+          fontSize: 12,
           color: '#ccdae8',
           pointerEvents: 'none',
           zIndex: 150,
-          maxWidth: 350,
+          maxWidth: 380,
           whiteSpace: 'nowrap',
         }}
       />

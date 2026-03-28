@@ -1,7 +1,6 @@
 /**
  * Waypoint drag — raw pointer-based implementation.
- * Avoids Translate/Modify which can grab wrong features.
- * Directly tracks pointerdown→pointermove→pointerup on waypoint features.
+ * Checks admin lock before allowing drag on non-player groups.
  */
 
 import type Map from 'ol/Map';
@@ -12,6 +11,7 @@ import type { Point } from 'ol/geom';
 
 interface DragCallbacks {
   onDragEnd: (groupId: number, wpIndex: number, lat: number, lon: number) => void;
+  isEditLocked?: (groupId: number) => boolean;
 }
 
 export function setupWaypointDrag(
@@ -20,30 +20,32 @@ export function setupWaypointDrag(
   callbacks: DragCallbacks,
 ): () => void {
   let dragging: Feature | null = null;
-  let startPixel: [number, number] | null = null;
+
+  function isWaypointHit(feature: any, layer: any): boolean {
+    return (
+      layer === routeLayer &&
+      feature.get('featureType') === 'waypoint' &&
+      feature.get('wpIndex') > 0
+    );
+  }
 
   function onPointerDown(e: any) {
-    // Only start drag on waypoint features from the route layer
     const hit = map.forEachFeatureAtPixel(
       e.pixel,
-      (feature, layer) => {
-        if (
-          layer === routeLayer &&
-          feature.get('featureType') === 'waypoint' &&
-          feature.get('wpIndex') > 0
-        ) {
-          return feature as Feature;
-        }
-        return undefined;
-      },
-      { hitTolerance: 10 },
+      (feature, layer) => isWaypointHit(feature, layer) ? feature as Feature : undefined,
+      { hitTolerance: 12 },
     );
 
     if (hit) {
+      const gid = hit.get('groupId');
+      // Check admin lock
+      if (callbacks.isEditLocked?.(gid)) {
+        map.getTargetElement().style.cursor = 'not-allowed';
+        setTimeout(() => { map.getTargetElement().style.cursor = ''; }, 300);
+        return;
+      }
       dragging = hit;
-      startPixel = e.pixel;
       map.getTargetElement().style.cursor = 'grabbing';
-      // Prevent map pan while dragging
       e.preventDefault();
       e.stopPropagation();
     }
@@ -51,32 +53,26 @@ export function setupWaypointDrag(
 
   function onPointerMove(e: any) {
     if (!dragging) {
-      // Show grab cursor on hover over draggable waypoints
       const hit = map.forEachFeatureAtPixel(
         e.pixel,
-        (feature, layer) => {
-          if (
-            layer === routeLayer &&
-            feature.get('featureType') === 'waypoint' &&
-            feature.get('wpIndex') > 0
-          ) {
-            return true;
-          }
-          return undefined;
-        },
-        { hitTolerance: 10 },
+        (feature, layer) => isWaypointHit(feature, layer) ? feature : undefined,
+        { hitTolerance: 12 },
       );
-      map.getTargetElement().style.cursor = hit ? 'grab' : '';
+      if (hit) {
+        const gid = (hit as any).get('groupId');
+        map.getTargetElement().style.cursor = callbacks.isEditLocked?.(gid) ? 'not-allowed' : 'grab';
+      } else {
+        map.getTargetElement().style.cursor = '';
+      }
       return;
     }
 
-    // Move the feature geometry to follow the pointer
     const coord = map.getCoordinateFromPixel(e.pixel);
     const geom = dragging.getGeometry() as Point;
     geom.setCoordinates(coord);
   }
 
-  function onPointerUp(e: any) {
+  function onPointerUp() {
     if (!dragging) return;
 
     const geom = dragging.getGeometry() as Point;
@@ -86,7 +82,6 @@ export function setupWaypointDrag(
     const wpIndex = dragging.get('wpIndex');
 
     dragging = null;
-    startPixel = null;
     map.getTargetElement().style.cursor = '';
 
     if (groupId != null && wpIndex != null) {
@@ -94,18 +89,13 @@ export function setupWaypointDrag(
     }
   }
 
-  // Use native DOM events for reliable capture
-  const target = map.getTargetElement();
-  const viewport = map.getViewport();
+  map.on('pointerdown' as any, onPointerDown);
+  map.on('pointermove' as any, onPointerMove);
+  map.on('pointerup' as any, onPointerUp);
 
-  map.on('pointerdown', onPointerDown);
-  map.on('pointermove', onPointerMove);
-  map.on('pointerup', onPointerUp);
-
-  // Return cleanup function
   return () => {
-    map.un('pointerdown', onPointerDown);
-    map.un('pointermove', onPointerMove);
-    map.un('pointerup', onPointerUp);
+    map.un('pointerdown' as any, onPointerDown);
+    map.un('pointermove' as any, onPointerMove);
+    map.un('pointerup' as any, onPointerUp);
   };
 }

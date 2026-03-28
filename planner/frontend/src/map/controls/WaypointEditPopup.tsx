@@ -1,15 +1,11 @@
 import { useRef, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useMapStore } from '../../store/mapStore';
 import { useEditStore } from '../../store/editStore';
 import { editWaypoints } from '../../api/client';
 import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../../utils/conversions';
-import type { Waypoint } from '../../types/mission';
+import { isPlayerGroup } from '../../utils/groups';
 
-const ACTION_TYPES = [
-  'Turning Point', 'Fly Over Point', 'From Parking Area',
-  'From Parking Area Hot', 'From Runway', 'Landing',
-  'Off Road', 'On Road', 'Custom',
-];
 
 export function WaypointEditPopup({
   groupId,
@@ -26,6 +22,7 @@ export function WaypointEditPopup({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { groups, sessionId, updateGroupData } = useMissionStore();
+  const adminMode = useMapStore((s) => s.adminMode);
   const addEdit = useEditStore((s) => s.addEdit);
 
   const group = groups.find((g) => g.groupId === groupId);
@@ -42,8 +39,10 @@ export function WaypointEditPopup({
 
   if (!wp || !group) return null;
 
+  const locked = adminMode && !isPlayerGroup(group);
+
   const save = async (field: string, value: string | number | boolean) => {
-    if (!sessionId) return;
+    if (!sessionId || locked) return;
     const edit = { type: 'waypointProp' as const, groupId, wpIndex, field, value };
     addEdit(edit);
     try {
@@ -101,14 +100,6 @@ export function WaypointEditPopup({
             <input type="number" defaultValue={spdKts} onBlur={(e) => save('speed', knotsToMs(parseFloat(e.target.value)))} style={inputStyle} />
           </label>
         </div>
-
-        <label>
-          <span style={{ color: '#5a7a8a', fontSize: 10 }}>Action</span>
-          <select defaultValue={wp.waypoint_action} onChange={(e) => save('action', e.target.value)}
-            style={{ ...inputStyle, padding: '3px 4px' }}>
-            {ACTION_TYPES.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </label>
 
         <label>
           <span style={{ color: '#5a7a8a', fontSize: 10 }}>Alt Type</span>

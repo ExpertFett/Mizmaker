@@ -1,0 +1,20 @@
+services:
+  planner:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - FLASK_ENV=production
+    volumes:
+      # Persist SRTM cache across rebuilds
+      - srtm-cache:/root/.cache/srtm
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.planner.rule=Host(`planner.v224.org`)"
+      - "traefik.http.routers.planner.entrypoints=websecure"
+      - "traefik.http.routers.planner.tls.certresolver=letsencrypt"
+      - "traefik.http.services.planner.loadbalancer.server.port=8080"
+
+volumes:
+  srtm-cache:

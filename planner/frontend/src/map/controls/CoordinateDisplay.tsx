@@ -16,7 +16,7 @@ export function CoordinateDisplay({
         color: '#8fa8c0',
         padding: '6px 12px',
         borderRadius: 4,
-        fontSize: 11,
+        fontSize: 12,
         fontFamily: 'monospace',
         zIndex: 100,
         pointerEvents: 'none',

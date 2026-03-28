@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   MissionGroup, MissionUnit, ThreatRing, Airbase,
-  MissionOverviewData, UploadResponse, Waypoint,
+  MissionOverviewData, UploadResponse,
 } from '../types/mission';
 
 interface MissionState {

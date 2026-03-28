@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
-import type { MissionGroup, Coalition, UnitCategory } from '../types/mission';
+import type { MissionGroup } from '../types/mission';
 import { filterGroups } from '../map/layers/routeLayer';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
 
@@ -25,7 +25,6 @@ export function GroupList() {
   const [filter, setFilter] = useState('');
   const [coalitionFilter, setCoalitionFilter] = useState<string>('all');
 
-  // Apply global view mode first, then local filters
   const viewFiltered = filterGroups(groups, viewMode);
   const filtered = viewFiltered.filter((g) => {
     if (coalitionFilter !== 'all' && g.coalition !== coalitionFilter) return false;
@@ -47,8 +46,8 @@ export function GroupList() {
             border: '1px solid #1a2a3a',
             borderRadius: 4,
             color: '#ccdae8',
-            padding: '4px 8px',
-            fontSize: 12,
+            padding: '5px 8px',
+            fontSize: 13,
           }}
         />
         <select
@@ -59,7 +58,7 @@ export function GroupList() {
             border: '1px solid #1a2a3a',
             borderRadius: 4,
             color: '#ccdae8',
-            fontSize: 12,
+            fontSize: 13,
             padding: '4px',
           }}
         >
@@ -83,50 +82,67 @@ export function GroupList() {
   );
 }
 
-function GroupItem({
-  group,
-  selected,
-  onSelect,
-}: {
-  group: MissionGroup;
-  selected: boolean;
-  onSelect: () => void;
+function GroupItem({ group, selected, onSelect }: {
+  group: MissionGroup; selected: boolean; onSelect: () => void;
 }) {
+  const { hiddenGroupIds, toggleGroupVisibility } = useMapStore();
+  const hidden = hiddenGroupIds.has(group.groupId);
   const color = COALITION_COLORS[group.coalition] || '#888';
   const icon = CATEGORY_ICONS[group.category] || '';
   const wpCount = group.waypoints.length;
   const airframe = getAircraftType(group);
   const player = isPlayerGroup(group);
 
+  const handleEye = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleGroupVisibility(group.groupId);
+  };
+
   return (
     <div
       onClick={onSelect}
       style={{
-        padding: '6px 10px',
+        padding: '7px 10px',
         marginBottom: 2,
         borderRadius: 4,
         cursor: 'pointer',
         background: selected ? 'rgba(74, 143, 212, 0.15)' : 'transparent',
         borderLeft: `3px solid ${color}`,
-        fontSize: 12,
+        fontSize: 13,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        opacity: hidden ? 0.4 : 1,
       }}
     >
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
         <span style={{ marginRight: 6 }}>{icon}</span>
-        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400 }}>
+        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400, fontSize: 13 }}>
           {group.groupName}
         </span>
-        {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 9, fontWeight: 600 }}>PLAYER</span>}
-        <div style={{ fontSize: 10, color: '#5a7a8a', marginTop: 1, marginLeft: 20 }}>
+        {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>PLAYER</span>}
+        <div style={{ fontSize: 11, color: '#6a8a9a', marginTop: 2, marginLeft: 22 }}>
           {airframe} | {group.task}
         </div>
       </div>
-      <span style={{ color: '#5a7a8a', fontSize: 11, whiteSpace: 'nowrap' }}>
-        {wpCount} wp
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <span style={{ color: '#5a7a8a', fontSize: 11 }}>{wpCount} wp</span>
+        <button
+          onClick={handleEye}
+          title={hidden ? 'Show route' : 'Hide route'}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 14,
+            color: hidden ? '#3a4a5a' : '#6a8a9a',
+            padding: '0 2px',
+            lineHeight: 1,
+          }}
+        >
+          {hidden ? '\u25CB' : '\u25C9'}
+        </button>
+      </div>
     </div>
   );
 }

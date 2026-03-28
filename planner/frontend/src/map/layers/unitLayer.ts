@@ -6,7 +6,7 @@ import { fromLonLat } from 'ol/proj';
 import { Style, Fill, Stroke, RegularShape, Text } from 'ol/style';
 import type { MissionUnit, MissionGroup } from '../../types/mission';
 import type { ViewMode } from '../../store/mapStore';
-import { isPlayerGroup } from '../../utils/groups';
+import { isPlayerGroup, isCarrierGroup } from '../../utils/groups';
 
 const COALITION_COLORS: Record<string, string> = {
   blue: '#4a8fd4',
@@ -29,6 +29,8 @@ export function populateUnitLayer(
   _units: MissionUnit[],
   groups: MissionGroup[],
   viewMode: ViewMode = 'all',
+  hiddenGroupIds: Set<number> = new Set(),
+  showStatics: boolean = false,
 ): void {
   const source = layer.getSource()!;
   source.clear();
@@ -37,6 +39,9 @@ export function populateUnitLayer(
   if (viewMode === 'blue') filteredGroups = groups.filter((g) => g.coalition === 'blue');
   else if (viewMode === 'red') filteredGroups = groups.filter((g) => g.coalition === 'red');
   else if (viewMode === 'players') filteredGroups = groups.filter((g) => isPlayerGroup(g));
+  filteredGroups = filteredGroups.filter((g) => !hiddenGroupIds.has(g.groupId));
+  if (!showStatics) filteredGroups = filteredGroups.filter((g) => g.category !== 'static');
+
 
   for (const group of filteredGroups) {
     const firstUnit = group.units.find((u) => u.lat && u.lon);
@@ -68,13 +73,19 @@ export function populateUnitLayer(
       featureType: 'unit',
     });
 
-    const label = new Text({
-      text: group.groupName.slice(0, 22),
-      offsetY: -18,
-      font: `${player ? 'bold 11px' : '10px'} sans-serif`,
-      fill: new Fill({ color: player ? '#fff' : 'rgba(255,255,255,0.7)' }),
-      stroke: new Stroke({ color: '#000', width: 2.5 }),
-    });
+    // Only label player groups and carrier groups
+    const carrier = isCarrierGroup(group);
+    const showLabel = player || carrier;
+
+    const label = showLabel
+      ? new Text({
+          text: group.groupName.slice(0, 22),
+          offsetY: -18,
+          font: `${player ? 'bold 13px' : '12px'} sans-serif`,
+          fill: new Fill({ color: player ? '#fff' : 'rgba(255,255,255,0.8)' }),
+          stroke: new Stroke({ color: '#000', width: 2.5 }),
+        })
+      : undefined;
 
     if (isAir) {
       // Air groups: upward triangle (like a plane silhouette)

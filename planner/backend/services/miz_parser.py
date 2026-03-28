@@ -123,12 +123,33 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
 
 def _extract_overview(d: dict, theater: str) -> dict:
     date = d.get("date", {})
+    wx = d.get("weather", {})
+    wind = wx.get("wind", {})
+    qnh_mmhg = wx.get("qnh", 760)
+
     return {
         "theater": theater,
         "sortie": d.get("sortie", ""),
         "date": f"{date.get('Year', 2000)}-{date.get('Month', 1):02d}-{date.get('Day', 1):02d}",
         "start_time": d.get("start_time", 0),
         "description": d.get("descriptionText", ""),
+        "weather": {
+            "wind": {
+                "atGround": {"speed": _num(wind.get("atGround", {}).get("speed")), "dir": _num(wind.get("atGround", {}).get("dir"))},
+                "at2000": {"speed": _num(wind.get("at2000", {}).get("speed")), "dir": _num(wind.get("at2000", {}).get("dir"))},
+                "at8000": {"speed": _num(wind.get("at8000", {}).get("speed")), "dir": _num(wind.get("at8000", {}).get("dir"))},
+            },
+            "temperature_c": _num(wx.get("season", {}).get("temperature", 15)),
+            "qnh_mmhg": qnh_mmhg,
+            "qnh_inhg": round(qnh_mmhg * 0.03937, 2),
+            "qnh_hpa": round(qnh_mmhg * 1.33322, 1),
+            "clouds_base_m": _num(wx.get("clouds", {}).get("base", 0)),
+            "clouds_preset": wx.get("clouds", {}).get("preset", ""),
+            "visibility_m": _num(wx.get("visibility", {}).get("distance", 80000)),
+            "fog_enabled": wx.get("enable_fog", False),
+            "dust_enabled": wx.get("enable_dust", False),
+            "turbulence": _num(wx.get("groundTurbulence", 0)),
+        },
     }
 
 
@@ -197,6 +218,7 @@ def _extract_group(
             "eta_locked": pt.get("ETA_locked", True),
             "speed_locked": pt.get("speed_locked", True),
             "airdrome_id": pt.get("airdromeId"),
+            "task": pt.get("task"),  # preserve original task data for round-trip
         }
         if has_projection and wp["x"] and wp["y"]:
             lat, lon = dcs_to_latlon(wp["x"], wp["y"], theater)
