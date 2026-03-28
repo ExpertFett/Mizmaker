@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { LauncherSettingsPanel } from '../components/LauncherSettings';
 import type { ClientUnit, PylonInfo } from '../../types/mission';
 
 export function LoadoutTab() {
@@ -57,7 +58,7 @@ export function LoadoutTab() {
     const selected = opts?.find((o) => o.clsid === clsid);
     if (!selected && clsid !== '') return;
 
-    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } });
+    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
 
     // Optimistic update
     const updated = units.map((u) => {
@@ -189,7 +190,18 @@ interface UnitCardProps {
 }
 
 function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCardProps) {
+  const addEdit = useEditStore((s) => s.addEdit);
   const typeOptions = pylonOptions[unit.type] as Record<string, PylonInfo[]> | undefined;
+  const [pylonSettings, setPylonSettings] = useState<Record<number, Record<string, any>>>({});
+  const [expandedPylon, setExpandedPylon] = useState<number | null>(null);
+
+  const handleSettingsChange = useCallback((pylonNum: number, settings: Record<string, any>) => {
+    setPylonSettings((prev) => ({ ...prev, [pylonNum]: settings }));
+    const pylon = unit.pylons.find((p) => p.number === pylonNum);
+    if (pylon) {
+      addEdit({ unitId: unit.unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid: pylon.clsid, settings } } as any);
+    }
+  }, [unit.unitId, unit.pylons, addEdit]);
 
   return (
     <div style={{
@@ -209,11 +221,12 @@ function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCar
         </div>
       </div>
 
-      {/* Pylon grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '4px 10px', alignItems: 'center' }}>
+      {/* Pylon list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {unit.pylons.map((pylon) => {
           const options = typeOptions?.[String(pylon.number)] as PylonInfo[] | undefined;
           const changed = isPylonChanged(unit.unitId, pylon.number);
+          const isExpanded = expandedPylon === pylon.number;
 
           // Group options by category
           const byCategory = new Map<string, PylonInfo[]>();
@@ -221,55 +234,59 @@ function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCar
             for (const opt of options) {
               const cat = opt.category || 'Other';
               let arr = byCategory.get(cat);
-              if (!arr) {
-                arr = [];
-                byCategory.set(cat, arr);
-              }
+              if (!arr) { arr = []; byCategory.set(cat, arr); }
               arr.push(opt);
             }
           }
 
-          return [
-            <span key={`stn-${pylon.number}`} style={{
-              color: '#5a7a8a',
-              fontSize: 11,
-              fontFamily: 'monospace',
-              textAlign: 'right',
-              minWidth: 30,
-            }}>
-              Stn {pylon.number}
-            </span>,
-            <select
-              key={`sel-${pylon.number}`}
-              value={pylon.clsid}
-              onChange={(e) => onPylonChange(unit.unitId, pylon.number, e.target.value)}
-              style={{
-                ...selectStyle,
-                width: '100%',
-                ...(changed ? { borderLeft: '3px solid #3fb950' } : {}),
-              }}
-            >
-              <option value="">&lt;Empty&gt;</option>
-              {Array.from(byCategory.entries()).map(([cat, opts]) => (
-                <optgroup key={cat} label={cat}>
-                  {opts.map((opt) => (
-                    <option key={opt.clsid} value={opt.clsid}>{opt.shortName}</option>
+          return (
+            <div key={pylon.number}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#5a7a8a', fontSize: 11, fontFamily: 'monospace', minWidth: 36, textAlign: 'right' }}>
+                  Stn {pylon.number}
+                </span>
+                <select
+                  value={pylon.clsid}
+                  onChange={(e) => {
+                    onPylonChange(unit.unitId, pylon.number, e.target.value);
+                    if (e.target.value) setExpandedPylon(pylon.number);
+                    else setExpandedPylon(null);
+                  }}
+                  style={{ ...selectStyle, flex: 1, ...(changed ? { borderLeft: '3px solid #3fb950' } : {}) }}
+                >
+                  <option value="">&lt;Empty&gt;</option>
+                  {Array.from(byCategory.entries()).map(([cat, opts]) => (
+                    <optgroup key={cat} label={cat}>
+                      {opts.map((opt) => (
+                        <option key={opt.clsid} value={opt.clsid}>{opt.shortName}</option>
+                      ))}
+                    </optgroup>
                   ))}
-                </optgroup>
-              ))}
-            </select>,
-            <span key={`cur-${pylon.number}`} style={{
-              color: '#8fa8c0',
-              fontSize: 11,
-              fontFamily: 'monospace',
-              maxWidth: 200,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {pylon.shortName}
-            </span>,
-          ];
+                </select>
+                <span style={{ color: '#8fa8c0', fontSize: 11, fontFamily: 'monospace', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pylon.shortName}
+                </span>
+                {pylon.clsid && (
+                  <button
+                    onClick={() => setExpandedPylon(isExpanded ? null : pylon.number)}
+                    style={{ background: 'transparent', border: 'none', color: isExpanded ? '#4a8fd4' : '#3a4a5a', cursor: 'pointer', fontSize: 10, padding: '2px 4px' }}
+                    title="Weapon settings"
+                  >
+                    {isExpanded ? '\u25B2' : '\u2699'}
+                  </button>
+                )}
+              </div>
+              {isExpanded && pylon.clsid && (
+                <div style={{ marginLeft: 44 }}>
+                  <LauncherSettingsPanel
+                    clsid={pylon.clsid}
+                    currentSettings={pylonSettings[pylon.number] || {}}
+                    onChange={(settings) => handleSettingsChange(pylon.number, settings)}
+                  />
+                </div>
+              )}
+            </div>
+          );
         })}
       </div>
     </div>
