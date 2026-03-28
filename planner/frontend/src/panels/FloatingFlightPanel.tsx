@@ -544,9 +544,9 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
         <thead>
           <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a' }}>
             <th style={{ ...thStyle, textAlign: 'left' }}>Unit</th>
-            <th style={{ ...thStyle, width: 55 }}>Label</th>
-            <th style={{ ...thStyle, width: 40 }}>#</th>
-            <th style={{ ...thStyle, width: 65 }}>STN</th>
+            <th style={{ ...thStyle, width: 80 }}>Label</th>
+            <th style={{ ...thStyle, width: 55 }}>#</th>
+            <th style={{ ...thStyle, width: 90 }}>STN L16</th>
           </tr>
         </thead>
         <tbody>
