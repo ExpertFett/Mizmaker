@@ -11,8 +11,20 @@ style.textContent = `
   ::-webkit-scrollbar-track { background: #0a1520; }
   ::-webkit-scrollbar-thumb { background: #1a3a5a; border-radius: 3px; }
   input:focus, select:focus { outline: 1px solid #4a8fd4; }
+  /* Hide number input spinners (the up/down arrows) */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 `;
 document.head.appendChild(style);
+
+// Prevent scroll-to-change on number inputs
+document.addEventListener('wheel', (e) => {
+  const target = e.target as HTMLElement;
+  if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number') {
+    target.blur();
+  }
+}, { passive: true });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

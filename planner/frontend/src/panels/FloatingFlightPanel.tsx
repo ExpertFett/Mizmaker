@@ -119,7 +119,7 @@ export function FloatingFlightPanel() {
 
   const airframe = getAircraftType(group);
   const pos = floatingPanelPos.x < 0
-    ? { x: Math.max(50, (window.innerWidth - 480) / 2), y: Math.max(40, (window.innerHeight - 500) / 2) }
+    ? { x: Math.max(50, (window.innerWidth - 640) / 2), y: Math.max(30, (window.innerHeight - 600) / 2) }
     : floatingPanelPos;
 
   const onDragStart = (e: React.PointerEvent) => {
@@ -142,8 +142,8 @@ export function FloatingFlightPanel() {
         position: 'absolute',
         left: pos.x,
         top: pos.y,
-        width: 520,
-        maxHeight: '80vh',
+        width: 620,
+        maxHeight: '85vh',
         background: 'rgba(8, 15, 28, 0.96)',
         border: '1px solid #1a3a5a',
         borderRadius: 8,
