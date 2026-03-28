@@ -159,9 +159,8 @@ export function LauncherSettingsPanel({
 
 /** Strip "NN_prfx_" from schema IDs — same as 856's _schema_id_to_mission_key */
 function schemaIdToKey(id: string): string {
-  // Strip numeric prefix like "01_prfx_"
+  if (!id) return '';
   let key = id.replace(/^\d+_prfx_/, '');
-  // Preserve NFP_ prefix if present
   if (id.startsWith('NFP_')) {
     key = 'NFP_' + id.replace(/^NFP_\d+_prfx_/, '');
   }
@@ -176,6 +175,7 @@ function checkVisibility(
 ): boolean {
   for (let i = 0; i < conditions.length; i++) {
     const cond = conditions[i];
+    if (!cond || !cond.id) continue;
     const key = schemaIdToKey(cond.id);
     const setting = allSettings.find((s) => schemaIdToKey(s.id) === key);
     const currentVal = values[key] ?? setting?.defValue;
