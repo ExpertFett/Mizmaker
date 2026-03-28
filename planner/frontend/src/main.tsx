@@ -18,10 +18,10 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-// Prevent scroll-to-change on number inputs
+// Prevent scroll from interacting with any focused input or select
 document.addEventListener('wheel', (e) => {
   const target = e.target as HTMLElement;
-  if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number') {
+  if (target.tagName === 'INPUT' || target.tagName === 'SELECT') {
     target.blur();
   }
 }, { passive: true });
