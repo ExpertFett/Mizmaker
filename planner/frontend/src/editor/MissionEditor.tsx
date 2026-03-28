@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useMapStore } from '../store/mapStore';
 import { DatalinkTab } from './tabs/DatalinkTab';
+import { LoadoutTab } from './tabs/LoadoutTab';
+import { LaserTab } from './tabs/LaserTab';
+import { DtcTab } from './tabs/DtcTab';
+import { LiveryTab } from './tabs/LiveryTab';
+import { WeatherTab } from './tabs/WeatherTab';
+import { RenamerTab } from './tabs/RenamerTab';
 
 const TABS = [
   { id: 'datalink', label: 'Datalink', icon: '📡' },
@@ -105,12 +111,12 @@ export function MissionEditor() {
         {/* Main content */}
         <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
           {activeTab === 'datalink' && <DatalinkTab />}
-          {activeTab === 'loadouts' && <PlaceholderTab label="Loadouts" />}
-          {activeTab === 'laser' && <PlaceholderTab label="Laser Codes" />}
-          {activeTab === 'livery' && <PlaceholderTab label="Livery" />}
-          {activeTab === 'weather' && <PlaceholderTab label="Weather" />}
-          {activeTab === 'rename' && <PlaceholderTab label="Rename Groups" />}
-          {activeTab === 'dtc' && <PlaceholderTab label="DTC Export" />}
+          {activeTab === 'loadouts' && <LoadoutTab />}
+          {activeTab === 'laser' && <LaserTab />}
+          {activeTab === 'livery' && <LiveryTab />}
+          {activeTab === 'weather' && <WeatherTab />}
+          {activeTab === 'rename' && <RenamerTab />}
+          {activeTab === 'dtc' && <DtcTab />}
         </div>
       </div>
     </div>

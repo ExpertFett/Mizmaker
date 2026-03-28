@@ -57,3 +57,23 @@ export async function closeSession(sessionId: string) {
     body: JSON.stringify({ sessionId }),
   });
 }
+
+export async function dtcPreview(sessionId: string, groupName: string) {
+  const res = await fetch(`${BASE}/api/dtc/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, groupName }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'DTC preview failed');
+  return res.json();
+}
+
+export async function dtcGenerate(sessionId: string, groupName: string, edits: unknown): Promise<Blob> {
+  const res = await fetch(`${BASE}/api/dtc/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, groupName, edits }),
+  });
+  if (!res.ok) throw new Error('DTC generation failed');
+  return res.blob();
+}
