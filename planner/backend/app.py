@@ -281,6 +281,30 @@ def weather_presets():
 
 
 # --------------------------------------------------------------------------
+# Liveries (from baked livery_db.json)
+# --------------------------------------------------------------------------
+
+_livery_db_path = os.path.join(os.path.dirname(__file__), "data", "livery_db.json")
+_LIVERY_DB = {}
+if os.path.exists(_livery_db_path):
+    with open(_livery_db_path) as f:
+        _LIVERY_DB = json.load(f)
+
+
+@app.route("/api/liveries", methods=["GET"])
+def liveries_list():
+    """List all aircraft types with available liveries."""
+    return jsonify({t: len(livs) for t, livs in _LIVERY_DB.items()})
+
+
+@app.route("/api/liveries/<path:unit_type>", methods=["GET"])
+def liveries_for_type(unit_type):
+    """List available liveries for a specific aircraft type."""
+    livs = _LIVERY_DB.get(unit_type, [])
+    return jsonify(livs)
+
+
+# --------------------------------------------------------------------------
 # DTC endpoints
 # --------------------------------------------------------------------------
 
@@ -382,6 +406,37 @@ def dtc_export_raw():
         mimetype="application/json",
         as_attachment=True,
         download_name=filename,
+    )
+
+
+@app.route("/api/dtc/export-standalone", methods=["POST"])
+def dtc_export_standalone():
+    """Build a DTC from scratch (no mission needed) with user edits."""
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    import copy
+    dtc_name = body.get("dtcName", "Standalone")
+    edits = body.get("edits")
+
+    dtc = {
+        "data": copy.deepcopy(FA18_DEFAULTS.get("data", {})),
+        "name": dtc_name,
+        "type": "FA-18C_hornet",
+    }
+    dtc["data"]["name"] = dtc_name
+    dtc["data"]["type"] = "FA-18C_hornet"
+
+    if edits:
+        dtc = build_dtc_from_edits(dtc, edits)
+
+    dtc_bytes = json.dumps(dtc, indent=4).encode("utf-8")
+    return send_file(
+        io.BytesIO(dtc_bytes),
+        mimetype="application/json",
+        as_attachment=True,
+        download_name=f"{dtc_name}.dtc",
     )
 
 

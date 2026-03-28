@@ -135,7 +135,7 @@ export interface UploadResponse {
   laserClsids: string[];
   dtcFlights: string[];
   statistics: unknown;
-  countries: unknown[];
+  countries: CountryInfo[];
   taskLists: { air: string[]; ground: string[]; ship: string[] };
 }
 
@@ -199,6 +199,13 @@ export interface WaypointEdit {
   value?: unknown;
   afterIndex?: number;
   waypointData?: Partial<Waypoint>;
+}
+
+export interface CountryInfo {
+  name: string;
+  coalition: string;
+  unitCount: number;
+  unitTypes: string[];
 }
 
 export type Coalition = 'blue' | 'red' | 'neutrals';

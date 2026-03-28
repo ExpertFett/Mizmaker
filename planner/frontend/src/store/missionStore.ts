@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing,
   MissionOverviewData, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
+  CountryInfo,
 } from '../types/mission';
 
 interface MissionState {
@@ -22,6 +23,7 @@ interface MissionState {
   liveryData: unknown[];
   laserClsids: string[];
   dtcFlights: string[];
+  countries: CountryInfo[];
   taskLists: { air: string[]; ground: string[]; ship: string[] };
   selectedGroupId: number | null;
 
@@ -50,6 +52,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   liveryData: [],
   laserClsids: [],
   dtcFlights: [],
+  countries: [],
   taskLists: { air: [], ground: [], ship: [] },
   selectedGroupId: null,
 
@@ -72,6 +75,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       liveryData: data.liveryData || [],
       laserClsids: data.laserClsids || [],
       dtcFlights: data.dtcFlights || [],
+      countries: data.countries || [],
       taskLists: data.taskLists || { air: [], ground: [], ship: [] },
       selectedGroupId: null,
     }),
@@ -87,6 +91,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       groups: [], units: [], threats: [], airbases: [], drawings: [],
       clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
+      countries: [],
       taskLists: { air: [], ground: [], ship: [] },
       selectedGroupId: null,
     }),
