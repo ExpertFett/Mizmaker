@@ -98,6 +98,24 @@ export interface MissionOverviewData {
   weather: MissionWeather;
 }
 
+export interface MissionDrawing {
+  type: string;
+  name: string;
+  layer: string;
+  color: string;
+  fillColor?: string;
+  thickness: number;
+  text?: string;
+  fontSize?: number;
+  lat?: number;
+  lon?: number;
+  coords?: [number, number][];
+  closed?: boolean;
+  style?: string;
+  polygonMode?: string;
+  radius?: number;
+}
+
 export interface UploadResponse {
   sessionId: string;
   filename: string;
@@ -107,6 +125,7 @@ export interface UploadResponse {
   units: MissionUnit[];
   threats: ThreatRing[];
   airbases: Airbase[];
+  drawings: MissionDrawing[];
 }
 
 export interface WaypointEdit {

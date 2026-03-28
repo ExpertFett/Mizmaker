@@ -18,6 +18,7 @@ import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
+import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
 import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
@@ -102,7 +103,8 @@ export function MapContainer() {
     route: ReturnType<typeof createRouteLayer> | null;
     threat: ReturnType<typeof createThreatLayer> | null;
     airbase: ReturnType<typeof createAirbaseLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null });
+    drawing: ReturnType<typeof createDrawingLayer> | null;
+  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const interactionRefs = useRef<{
     addDraw: Draw | null;
@@ -112,7 +114,7 @@ export function MapContainer() {
   const coordRef = useRef<HTMLDivElement>(null);
   const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
 
-  const { theater, units, groups, threats, airbases, selectedGroupId, selectGroup, sessionId, updateGroupData } =
+  const { theater, units, groups, threats, airbases, drawings, selectedGroupId, selectGroup, sessionId, updateGroupData } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
   const addEdit = useEditStore((s) => s.addEdit);
@@ -233,13 +235,14 @@ export function MapContainer() {
     const routeLayer = createRouteLayer();
     const threatLayer = createThreatLayer();
     const airbaseLayer = createAirbaseLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer };
+    const drawingLayer = createDrawingLayer();
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer };
 
     const map = new Map({
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        threatLayer, airbaseLayer, routeLayer, unitLayer,
+        drawingLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
       ],
       view: new View({
         center: fromLonLat([44, 41]),
@@ -517,12 +520,17 @@ export function MapContainer() {
     if (layerRefs.current.airbase) populateAirbaseLayer(layerRefs.current.airbase, airbases);
   }, [airbases]);
 
+  useEffect(() => {
+    if (layerRefs.current.drawing) populateDrawingLayer(layerRefs.current.drawing, drawings);
+  }, [drawings]);
+
   // Toggle overlay layer visibility
   useEffect(() => {
     if (layerRefs.current.unit) layerRefs.current.unit.setVisible(layers.units);
     if (layerRefs.current.route) layerRefs.current.route.setVisible(layers.routes);
     if (layerRefs.current.threat) layerRefs.current.threat.setVisible(layers.threats);
     if (layerRefs.current.airbase) layerRefs.current.airbase.setVisible(layers.airbases);
+    if (layerRefs.current.drawing) layerRefs.current.drawing.setVisible(layers.drawings !== false);
   }, [layers]);
 
   // Toggle base map

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  MissionGroup, MissionUnit, ThreatRing, Airbase,
+  MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing,
   MissionOverviewData, UploadResponse,
 } from '../types/mission';
 
@@ -13,14 +13,13 @@ interface MissionState {
   units: MissionUnit[];
   threats: ThreatRing[];
   airbases: Airbase[];
+  drawings: MissionDrawing[];
   selectedGroupId: number | null;
 
   loadMission: (data: UploadResponse) => void;
   selectGroup: (groupId: number | null) => void;
   updateGroupData: (groups: MissionGroup[], units: MissionUnit[], threats: ThreatRing[], airbases: Airbase[]) => void;
   clear: () => void;
-
-  // Convenience getters
   selectedGroup: () => MissionGroup | undefined;
 }
 
@@ -33,6 +32,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   units: [],
   threats: [],
   airbases: [],
+  drawings: [],
   selectedGroupId: null,
 
   loadMission: (data) =>
@@ -45,6 +45,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       units: data.units,
       threats: data.threats,
       airbases: data.airbases,
+      drawings: data.drawings || [],
       selectedGroupId: null,
     }),
 
@@ -55,14 +56,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   clear: () =>
     set({
-      sessionId: null,
-      filename: null,
-      theater: null,
-      overview: null,
-      groups: [],
-      units: [],
-      threats: [],
-      airbases: [],
+      sessionId: null, filename: null, theater: null, overview: null,
+      groups: [], units: [], threats: [], airbases: [], drawings: [],
       selectedGroupId: null,
     }),
 

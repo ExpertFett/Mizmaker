@@ -112,13 +112,124 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
                                 "coalition": side,
                             })
 
+    drawings = _extract_drawings(mission_dict, theater, has_projection)
+
     return {
         "overview": overview,
         "groups": groups,
         "units": units,
         "threats": threats,
         "airbases": airbases,
+        "drawings": drawings,
     }
+
+
+def _parse_dcs_color(color_str: str) -> str:
+    """Convert DCS color '0xRRGGBBAA' to CSS 'rgba(R,G,B,A)'."""
+    if not color_str or not color_str.startswith("0x"):
+        return "rgba(255,255,255,1)"
+    try:
+        hex_val = color_str[2:]
+        r = int(hex_val[0:2], 16)
+        g = int(hex_val[2:4], 16)
+        b = int(hex_val[4:6], 16)
+        a = int(hex_val[6:8], 16) / 255 if len(hex_val) >= 8 else 1
+        return f"rgba({r},{g},{b},{a:.2f})"
+    except (ValueError, IndexError):
+        return "rgba(255,255,255,1)"
+
+
+def _extract_drawings(d: dict, theater: str, has_projection: bool) -> list:
+    """Extract map drawings from mission data."""
+    drawings_data = d.get("drawings", {})
+    layers = drawings_data.get("layers", {})
+    if isinstance(layers, dict):
+        layers = list(layers.values())
+
+    result = []
+    for layer in layers:
+        if not isinstance(layer, dict):
+            continue
+        layer_name = layer.get("name", "")
+        objects = layer.get("objects", {})
+        if isinstance(objects, dict):
+            objects = list(objects.values())
+
+        for obj in objects:
+            if not isinstance(obj, dict):
+                continue
+            if not obj.get("visible", True):
+                continue
+
+            ptype = obj.get("primitiveType", "")
+            base_x = _num(obj.get("mapX"))
+            base_y = _num(obj.get("mapY"))
+
+            drawing = {
+                "type": ptype,
+                "name": obj.get("name", ""),
+                "layer": layer_name,
+                "color": _parse_dcs_color(obj.get("colorString", "")),
+                "fillColor": _parse_dcs_color(obj.get("fillColorString", "")) if obj.get("fillColorString") else None,
+                "thickness": _num(obj.get("thickness", 2)),
+            }
+
+            if ptype == "TextBox":
+                drawing["text"] = obj.get("name", "")
+                drawing["fontSize"] = _num(obj.get("fontSize", 12))
+                if has_projection:
+                    lat, lon = dcs_to_latlon(base_x, base_y, theater)
+                    drawing["lat"] = lat
+                    drawing["lon"] = lon
+
+            elif ptype == "Line":
+                raw_pts = obj.get("points", {})
+                if isinstance(raw_pts, dict):
+                    raw_pts = [raw_pts[k] for k in sorted(raw_pts.keys(), key=lambda k: int(k) if str(k).isdigit() else 0)]
+                coords = []
+                for pt in raw_pts:
+                    if isinstance(pt, dict):
+                        px = base_x + _num(pt.get("x"))
+                        py = base_y + _num(pt.get("y"))
+                        if has_projection:
+                            lat, lon = dcs_to_latlon(px, py, theater)
+                            coords.append([lon, lat])
+                if coords:
+                    drawing["coords"] = coords
+                    drawing["closed"] = obj.get("closed", False)
+                    drawing["style"] = obj.get("style", "solid")
+
+            elif ptype == "Polygon":
+                mode = obj.get("polygonMode", "")
+                drawing["polygonMode"] = mode
+
+                if mode == "circle":
+                    drawing["radius"] = _num(obj.get("radius", 0))
+                    if has_projection:
+                        lat, lon = dcs_to_latlon(base_x, base_y, theater)
+                        drawing["lat"] = lat
+                        drawing["lon"] = lon
+
+                else:
+                    # rect, oval, free, arrow — all have pre-calculated points
+                    raw_pts = obj.get("points", {})
+                    if isinstance(raw_pts, dict):
+                        raw_pts = [raw_pts[k] for k in sorted(raw_pts.keys(), key=lambda k: int(k) if str(k).isdigit() else 0)]
+                    coords = []
+                    for pt in raw_pts:
+                        if isinstance(pt, dict):
+                            px = base_x + _num(pt.get("x"))
+                            py = base_y + _num(pt.get("y"))
+                            if has_projection:
+                                lat, lon = dcs_to_latlon(px, py, theater)
+                                coords.append([lon, lat])
+                    if coords:
+                        drawing["coords"] = coords
+
+            if drawing.get("coords") or drawing.get("lat") is not None or drawing.get("text"):
+                result.append(drawing)
+
+    return result
 
 
 def _extract_overview(d: dict, theater: str) -> dict:

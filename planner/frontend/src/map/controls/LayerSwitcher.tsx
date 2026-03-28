@@ -6,6 +6,7 @@ const OVERLAY_LAYERS = [
   { id: 'routes', label: 'Routes' },
   { id: 'threats', label: 'Threats' },
   { id: 'airbases', label: 'Airbases' },
+  { id: 'drawings', label: 'Drawings' },
   { id: 'statics', label: 'Statics' },
 ];
 
