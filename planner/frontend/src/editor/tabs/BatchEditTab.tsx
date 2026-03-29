@@ -1,414 +1,274 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import type { MissionUnit } from '../../types/mission';
+import type { CountryInfo } from '../../types/mission';
 
-const SKILL_LEVELS = ['Client', 'Excellent', 'High', 'Good', 'Average', 'Low'];
+const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
+const CAT_ICONS: Record<string, string> = { plane: '✈', helicopter: '🚁', vehicle: '🚗', ship: '⚓', static: '●' };
 
 export function BatchEditTab() {
   const countries = useMissionStore((s) => s.countries);
   const units = useMissionStore((s) => s.units);
   const addEdit = useEditStore((s) => s.addEdit);
 
-  const [selectedCountry, setSelectedCountry] = useState<string>('');
-  const [selectedType, setSelectedType] = useState<string>('');
-  const [selectedUnitIds, setSelectedUnitIds] = useState<Set<number>>(new Set());
+  const [country, setCountry] = useState('');
+  const [checkedTypes, setCheckedTypes] = useState<Set<string>>(new Set());
+  const [skill, setSkill] = useState('');
+  const [radioMhz, setRadioMhz] = useState('');
+  const [livery, setLivery] = useState('');
+  const [result, setResult] = useState('');
+  const [availableLiveries, setAvailableLiveries] = useState<{ id: string; name: string }[]>([]);
 
-  // Bulk edit values
-  const [skillValue, setSkillValue] = useState<string>('');
-  const [freqMhz, setFreqMhz] = useState<string>('');
-  const [liveryValue, setLiveryValue] = useState<string>('');
+  // Build type list for selected country with counts and categories
+  const typeMeta = useMemo(() => {
+    if (!country) return [];
+    const meta = new Map<string, { count: number; category: string }>();
+    for (const u of units) {
+      if (u.country !== country) continue;
+      const existing = meta.get(u.type);
+      if (existing) existing.count++;
+      else meta.set(u.type, { count: 1, category: u.category });
+    }
+    return Array.from(meta.entries())
+      .map(([type, m]) => ({ type, count: m.count, category: m.category }))
+      .sort((a, b) => b.count - a.count);
+  }, [units, country]);
 
-  // Applied tracking for green border
-  const [appliedUnitIds, setAppliedUnitIds] = useState<Set<number>>(new Set());
+  // Affected unit count
+  const affected = useMemo(() => {
+    if (!country) return 0;
+    return units.filter((u) =>
+      u.country === country && (checkedTypes.size === 0 || checkedTypes.has(u.type))
+    ).length;
+  }, [units, country, checkedTypes]);
 
-  // Get unit types for selected country
-  const countryInfo = useMemo(
-    () => countries.find((c) => c.name === selectedCountry),
-    [countries, selectedCountry],
-  );
+  // Fetch liveries for checked types
+  useEffect(() => {
+    if (checkedTypes.size === 0) { setAvailableLiveries([]); return; }
+    const firstType = Array.from(checkedTypes)[0];
+    fetch(`/api/liveries/${encodeURIComponent(firstType)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAvailableLiveries(data);
+        else setAvailableLiveries([]);
+      })
+      .catch(() => setAvailableLiveries([]));
+  }, [checkedTypes]);
 
-  // Filter units by country and optionally type
-  const matchingUnits = useMemo(() => {
-    if (!selectedCountry) return [];
-    return units.filter((u) => {
-      if (u.country !== selectedCountry) return false;
-      if (selectedType && u.type !== selectedType) return false;
-      return true;
-    });
-  }, [units, selectedCountry, selectedType]);
-
-  const handleCountryChange = useCallback((country: string) => {
-    setSelectedCountry(country);
-    setSelectedType('');
-    setSelectedUnitIds(new Set());
-    setAppliedUnitIds(new Set());
-  }, []);
-
-  const handleTypeChange = useCallback((type: string) => {
-    setSelectedType(type);
-    setSelectedUnitIds(new Set());
-    setAppliedUnitIds(new Set());
-  }, []);
-
-  const toggleUnit = useCallback((unitId: number) => {
-    setSelectedUnitIds((prev) => {
+  const toggleType = (type: string) => {
+    setCheckedTypes((prev) => {
       const next = new Set(prev);
-      if (next.has(unitId)) next.delete(unitId);
-      else next.add(unitId);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
-  }, []);
+  };
 
-  const selectAll = useCallback(() => {
-    setSelectedUnitIds(new Set(matchingUnits.map((u) => u.unitId)));
-  }, [matchingUnits]);
+  const selectCategory = (cat: string) => {
+    setCheckedTypes(new Set(typeMeta.filter((t) => t.category === cat).map((t) => t.type)));
+  };
 
-  const deselectAll = useCallback(() => {
-    setSelectedUnitIds(new Set());
-  }, []);
+  const selectAllTypes = (on: boolean) => {
+    setCheckedTypes(on ? new Set(typeMeta.map((t) => t.type)) : new Set());
+  };
 
-  const applySkill = useCallback(() => {
-    if (!skillValue) return;
-    for (const unitId of selectedUnitIds) {
-      addEdit({ unitId, field: 'skill', value: skillValue });
-    }
-    // Optimistic update
-    const { units: storeUnits } = useMissionStore.getState();
-    const updated = storeUnits.map((u) =>
-      selectedUnitIds.has(u.unitId) ? { ...u, skill: skillValue } : u,
+  const handleApply = useCallback(() => {
+    if (!country) return;
+    if (!skill && !radioMhz && !livery) { setResult('No changes entered'); return; }
+
+    const targets = units.filter((u) =>
+      u.country === country && (checkedTypes.size === 0 || checkedTypes.has(u.type))
     );
-    useMissionStore.setState({ units: updated });
-    setAppliedUnitIds((prev) => new Set([...prev, ...selectedUnitIds]));
-  }, [skillValue, selectedUnitIds, addEdit]);
 
-  const applyRadio = useCallback(() => {
-    const mhz = parseFloat(freqMhz);
-    if (isNaN(mhz)) return;
-    const freqHz = mhz * 1e6;
-    for (const unitId of selectedUnitIds) {
-      addEdit({ unitId, field: 'radioFrequency', value: freqHz });
+    for (const u of targets) {
+      if (skill) addEdit({ unitId: u.unitId, field: 'skill', value: skill } as any);
+      if (livery) addEdit({ unitId: u.unitId, field: 'livery', value: livery } as any);
+      if (radioMhz && (u.category === 'plane' || u.category === 'helicopter')) {
+        addEdit({ unitId: u.unitId, field: 'radioFrequency', value: Math.round(parseFloat(radioMhz) * 1e6) } as any);
+      }
     }
-    setAppliedUnitIds((prev) => new Set([...prev, ...selectedUnitIds]));
-  }, [freqMhz, selectedUnitIds, addEdit]);
 
-  const applyLivery = useCallback(() => {
-    if (!liveryValue) return;
-    for (const unitId of selectedUnitIds) {
-      addEdit({ unitId, field: 'livery', value: liveryValue });
-    }
-    setAppliedUnitIds((prev) => new Set([...prev, ...selectedUnitIds]));
-  }, [liveryValue, selectedUnitIds, addEdit]);
-
-  if (countries.length === 0) {
-    return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 20 }}>
-        No country data available in this mission.
-      </div>
-    );
-  }
+    setResult(`Applied to ${targets.length} unit${targets.length !== 1 ? 's' : ''}`);
+  }, [country, checkedTypes, skill, radioMhz, livery, units, addEdit]);
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>
-          Batch Edit
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#5a7a8a' }}>
-          Bulk edit skill, radio frequency, and livery for multiple units at once.
-        </p>
-      </div>
+      <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>Batch Edit</h2>
+      <p style={{ margin: '0 0 16px', fontSize: 12, color: '#5a7a8a' }}>
+        Apply changes to multiple units at once by country and type.
+      </p>
 
-      {/* Step 1: Select scope */}
-      <div style={sectionStyle}>
-        <h3 style={sectionHeadingStyle}>1. Select Scope</h3>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={labelStyle}>
-            Country
-            <select
-              value={selectedCountry}
-              onChange={(e) => handleCountryChange(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">-- Select country --</option>
-              {countries.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name} ({c.coalition}, {c.unitCount} units)
-                </option>
-              ))}
-            </select>
-          </label>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        {/* Left column — selection */}
+        <div style={{ flex: '1 1 300px', minWidth: 280 }}>
+          {/* Step 1: Country */}
+          <StepHeader num={1} title="Select Country" />
+          <select
+            value={country}
+            onChange={(e) => { setCountry(e.target.value); setCheckedTypes(new Set()); setResult(''); }}
+            style={selectStyle}
+          >
+            <option value="">— choose country —</option>
+            {countries.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name} ({c.unitCount} units) — {c.coalition}
+              </option>
+            ))}
+          </select>
 
-          {countryInfo && countryInfo.unitTypes.length > 0 && (
-            <label style={labelStyle}>
-              Unit Type
-              <select
-                value={selectedType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">All types</option>
-                {countryInfo.unitTypes.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-      </div>
-
-      {/* Step 2: Select targets */}
-      {selectedCountry && (
-        <div style={sectionStyle}>
-          <h3 style={sectionHeadingStyle}>2. Select Units</h3>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-            <button onClick={selectAll} style={btnStyle}>Select All</button>
-            <button onClick={deselectAll} style={btnStyle}>Deselect All</button>
-            <span style={{ color: '#5a7a8a', fontSize: 12, marginLeft: 8 }}>
-              {selectedUnitIds.size} of {matchingUnits.length} selected
-            </span>
-          </div>
-
-          {matchingUnits.length === 0 ? (
-            <div style={{ color: '#5a7a8a', fontSize: 12, padding: '8px 0' }}>
-              No units match the current filter.
-            </div>
+          {/* Step 2: Unit Types */}
+          <StepHeader num={2} title="Unit Types" subtitle="empty = all" />
+          {!country ? (
+            <div style={{ color: '#5a7a8a', fontSize: 12, padding: '8px 0' }}>Select a country first</div>
           ) : (
-            <div style={{ maxHeight: 300, overflow: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
-                <thead>
-                  <tr style={{
-                    color: '#5a7a8a',
-                    borderBottom: '1px solid #1a2a3a',
-                    background: '#080f1c',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 1,
-                  }}>
-                    <th style={thStyle}></th>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Type</th>
-                    <th style={thStyle}>Group</th>
-                    <th style={thStyle}>Skill</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matchingUnits.map((unit) => (
-                    <UnitRow
-                      key={unit.unitId}
-                      unit={unit}
-                      selected={selectedUnitIds.has(unit.unitId)}
-                      applied={appliedUnitIds.has(unit.unitId)}
-                      onToggle={toggleUnit}
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                <SmallBtn label="All" onClick={() => selectAllTypes(true)} />
+                <SmallBtn label="None" onClick={() => selectAllTypes(false)} />
+                <SmallBtn label="✈ Planes" onClick={() => selectCategory('plane')} accent />
+                <SmallBtn label="🚁 Helis" onClick={() => selectCategory('helicopter')} accent />
+                <SmallBtn label="🚗 Vehicles" onClick={() => selectCategory('vehicle')} accent />
+                <SmallBtn label="⚓ Ships" onClick={() => selectCategory('ship')} accent />
+              </div>
+              <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #1a2a3a', borderRadius: 4, background: '#0a1520' }}>
+                {typeMeta.map((t) => (
+                  <label
+                    key={t.type}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
+                      borderBottom: '1px solid #0f1a28', cursor: 'pointer', fontSize: 12,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedTypes.has(t.type)}
+                      onChange={() => toggleType(t.type)}
+                      style={{ accentColor: '#4a8fd4' }}
                     />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    <span style={{ color: '#5a7a8a' }}>{CAT_ICONS[t.category] || ''}</span>
+                    <span style={{ color: '#ccdae8', flex: 1 }}>{t.type}</span>
+                    <span style={{ color: '#5a7a8a', fontFamily: 'monospace', fontSize: 11 }}>{t.count}</span>
+                  </label>
+                ))}
+              </div>
+            </>
           )}
         </div>
-      )}
 
-      {/* Step 3: Apply changes */}
-      {selectedUnitIds.size > 0 && (
-        <div style={sectionStyle}>
-          <h3 style={sectionHeadingStyle}>3. Apply Changes</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Skill */}
-            <div style={actionRowStyle}>
-              <label style={labelStyle}>
-                Skill
-                <select
-                  value={skillValue}
-                  onChange={(e) => setSkillValue(e.target.value)}
-                  style={selectStyle}
-                >
-                  <option value="">-- Select --</option>
-                  {SKILL_LEVELS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+        {/* Right column — changes */}
+        <div style={{ flex: '1 1 300px', minWidth: 280 }}>
+          <StepHeader num={3} title="Changes to Apply" />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            {/* Livery */}
+            <div>
+              <label style={labelStyle}>Paint Scheme</label>
+              {availableLiveries.length > 0 ? (
+                <select value={livery} onChange={(e) => setLivery(e.target.value)} style={selectStyle}>
+                  <option value="">— no change —</option>
+                  {availableLiveries.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name || l.id}</option>
                   ))}
                 </select>
-              </label>
-              <button
-                onClick={applySkill}
-                disabled={!skillValue}
-                style={applyBtnStyle}
-              >
-                Apply to Selected
-              </button>
-            </div>
-
-            {/* Radio frequency */}
-            <div style={actionRowStyle}>
-              <label style={labelStyle}>
-                Radio Frequency (MHz)
+              ) : (
                 <input
-                  type="number"
-                  step="0.001"
-                  value={freqMhz}
-                  onChange={(e) => setFreqMhz(e.target.value)}
-                  placeholder="e.g. 251.000"
+                  value={livery}
+                  onChange={(e) => setLivery(e.target.value)}
+                  placeholder="livery_id"
                   style={inputStyle}
                 />
-              </label>
-              <button
-                onClick={applyRadio}
-                disabled={!freqMhz || isNaN(parseFloat(freqMhz))}
-                style={applyBtnStyle}
-              >
-                Apply to Selected
-              </button>
+              )}
             </div>
 
-            {/* Livery */}
-            <div style={actionRowStyle}>
-              <label style={labelStyle}>
-                Livery
-                <input
-                  type="text"
-                  value={liveryValue}
-                  onChange={(e) => setLiveryValue(e.target.value)}
-                  placeholder="Livery ID"
-                  style={inputStyle}
-                />
-              </label>
-              <button
-                onClick={applyLivery}
-                disabled={!liveryValue}
-                style={applyBtnStyle}
-              >
-                Apply to Selected
-              </button>
+            {/* Skill */}
+            <div>
+              <label style={labelStyle}>Skill Level</label>
+              <select value={skill} onChange={(e) => setSkill(e.target.value)} style={selectStyle}>
+                <option value="">— no change —</option>
+                {SKILL_OPTIONS.filter(Boolean).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Radio */}
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={labelStyle}>Radio Freq MHz (aircraft only)</label>
+              <input
+                type="number"
+                value={radioMhz}
+                onChange={(e) => setRadioMhz(e.target.value)}
+                placeholder="305.000"
+                step={0.025}
+                min={100}
+                max={400}
+                style={{ ...inputStyle, width: 160 }}
+              />
             </div>
           </div>
+
+          {/* Preview + Apply */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #1a2a3a' }}>
+            <span style={{ color: '#8fa8c0', fontSize: 13 }}>
+              <strong style={{ color: '#ccdae8' }}>{affected}</strong> unit{affected !== 1 ? 's' : ''} will be affected
+            </span>
+            <button
+              onClick={handleApply}
+              disabled={!country || affected === 0}
+              style={{
+                background: country && affected > 0 ? '#d29922' : '#1a2a3a',
+                border: 'none', borderRadius: 4, color: '#080f1c',
+                cursor: country && affected > 0 ? 'pointer' : 'not-allowed',
+                fontSize: 13, fontWeight: 600, padding: '8px 16px',
+              }}
+            >
+              ⚡ Apply
+            </button>
+          </div>
+          {result && (
+            <div style={{ padding: '8px 12px', background: 'rgba(63, 185, 80, 0.1)', border: '1px solid #3fb950', borderRadius: 4, color: '#3fb950', fontSize: 12, marginTop: 8 }}>
+              ✓ {result}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-
-interface UnitRowProps {
-  unit: MissionUnit;
-  selected: boolean;
-  applied: boolean;
-  onToggle: (unitId: number) => void;
-}
-
-function UnitRow({ unit, selected, applied, onToggle }: UnitRowProps) {
+function StepHeader({ num, title, subtitle }: { num: number; title: string; subtitle?: string }) {
   return (
-    <tr
-      style={{
-        borderBottom: '1px solid #0f1a28',
-        borderLeft: applied ? '3px solid #3fb950' : '3px solid transparent',
-      }}
-    >
-      <td style={tdStyle}>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggle(unit.unitId)}
-          style={{ cursor: 'pointer' }}
-        />
-      </td>
-      <td style={tdStyle}>
-        <span style={{ color: '#8fa8c0' }}>{unit.name}</span>
-      </td>
-      <td style={{ ...tdStyle, color: '#5a7a8a', fontSize: 12 }}>{unit.type}</td>
-      <td style={{ ...tdStyle, color: '#5a7a8a', fontSize: 12 }}>{unit.groupName}</td>
-      <td style={{ ...tdStyle, color: '#5a7a8a', fontSize: 12 }}>{unit.skill}</td>
-    </tr>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: num > 1 ? 16 : 0 }}>
+      <span style={{
+        width: 24, height: 24, borderRadius: '50%', background: '#1a3a5a',
+        color: '#4a8fd4', fontWeight: 700, fontSize: 13,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{num}</span>
+      <span style={{ color: '#ccdae8', fontWeight: 600, fontSize: 13 }}>{title}</span>
+      {subtitle && <span style={{ color: '#5a7a8a', fontSize: 11 }}>({subtitle})</span>}
+    </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Styles                                                             */
-/* ------------------------------------------------------------------ */
-
-const sectionStyle: React.CSSProperties = {
-  marginBottom: 20,
-  padding: 16,
-  background: '#0a1520',
-  border: '1px solid #1a2a3a',
-  borderRadius: 6,
-};
-
-const sectionHeadingStyle: React.CSSProperties = {
-  margin: '0 0 12px',
-  fontSize: 14,
-  fontWeight: 600,
-  color: '#8fa8c0',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-  fontSize: 12,
-  color: '#5a7a8a',
-};
+function SmallBtn({ label, onClick, accent }: { label: string; onClick: () => void; accent?: boolean }) {
+  return (
+    <button onClick={onClick} style={{
+      background: 'transparent',
+      border: `1px solid ${accent ? '#1a3a5a' : '#1a2a3a'}`,
+      borderRadius: 3, color: accent ? '#4a8fd4' : '#5a7a8a',
+      cursor: 'pointer', fontSize: 11, padding: '3px 8px',
+    }}>{label}</button>
+  );
+}
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
-  borderRadius: 3,
-  color: '#ccdae8',
-  fontSize: 13,
-  padding: '5px 8px',
-  fontFamily: 'inherit',
-  minWidth: 180,
+  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+  color: '#ccdae8', fontSize: 12, padding: '6px 10px', width: '100%',
 };
-
 const inputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
-  borderRadius: 3,
-  color: '#ccdae8',
-  fontSize: 13,
-  padding: '5px 8px',
-  fontFamily: 'inherit',
-  minWidth: 180,
+  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+  color: '#ccdae8', fontSize: 12, padding: '6px 10px', fontFamily: 'monospace',
 };
-
-const btnStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid #1a2a3a',
-  borderRadius: 3,
-  color: '#4a8fd4',
-  cursor: 'pointer',
-  fontSize: 12,
-  padding: '4px 10px',
-  fontFamily: 'inherit',
-};
-
-const applyBtnStyle: React.CSSProperties = {
-  background: '#1a3a5a',
-  border: '1px solid #2a5a8a',
-  borderRadius: 3,
-  color: '#ccdae8',
-  cursor: 'pointer',
-  fontSize: 12,
-  padding: '6px 14px',
-  fontFamily: 'inherit',
-  alignSelf: 'flex-end',
-};
-
-const actionRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 12,
-  alignItems: 'flex-end',
-};
-
-const thStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  textAlign: 'left',
-  fontWeight: 600,
-  fontSize: 12,
-  whiteSpace: 'nowrap',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  verticalAlign: 'middle',
+const labelStyle: React.CSSProperties = {
+  display: 'block', color: '#5a7a8a', fontSize: 11, marginBottom: 4, fontWeight: 500,
 };
