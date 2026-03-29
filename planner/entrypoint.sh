@@ -18,4 +18,4 @@ else
     echo "SRTM tiles will download on-demand as needed. Set PREFETCH_SRTM=1 to pre-fetch."
 fi
 
-exec gunicorn app:app --bind 0.0.0.0:8080 --workers 2 --threads 4 --timeout 120
+exec gunicorn app:app --bind 0.0.0.0:8080 --worker-class gevent --workers 4 --timeout 300

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useSessionStream } from '../session/useSessionStream';
 import { MapContainer } from '../map/MapContainer';
 import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
 import { ExportPanel } from '../panels/ExportPanel';
@@ -29,9 +30,13 @@ type TabId = (typeof TABS)[number]['id'];
 
 export function MissionEditor() {
   const [activeTab, setActiveTab] = useState<TabId>('map');
+  const sessionId = useMissionStore((s) => s.sessionId);
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
   const theater = useMissionStore((s) => s.theater);
+
+  // Connect to SSE stream for real-time updates from other clients
+  useSessionStream(sessionId);
 
   const isMap = activeTab === 'map';
 

@@ -15,6 +15,10 @@ Routes:
   GET  /api/dtc/blank           — Blank DTC template
   POST /api/dtc/export-raw      — Export DTC from raw data
   POST /api/close               — Close session
+  POST /api/sessions/{id}/invite — Generate invite link for a flight lead
+  GET  /api/sessions/{id}/join   — Join session via invite token
+  GET  /api/sessions/{id}/stream — SSE event stream for real-time updates
+  GET  /api/sessions/{id}/state  — Get current session state (for reconnection)
 """
 
 import json
@@ -22,9 +26,11 @@ import os
 import time
 import uuid
 import threading
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 from flask_cors import CORS
 import io
+import hmac
+import hashlib
 
 from services.miz_parser import (
     extract_mission_from_miz,
@@ -273,13 +279,222 @@ def session_edit(sid):
         session["group_waypoints"][group_name] = wps
         session["last_activity"] = time.time()
 
-        # TODO Phase 2: broadcast SSE to all clients
-        # broadcast(session, "route_update", {"groupName": group_name, "waypoints": wps})
+        # Broadcast route update to all connected clients
+        _broadcast(session, "route_update", {"groupName": group_name, "waypoints": wps})
 
         return jsonify({"ok": True, "groupName": group_name, "waypoints": wps})
 
     except Exception as e:
         return jsonify({"error": f"Edit failed: {str(e)}"}), 400
+
+
+# --------------------------------------------------------------------------
+# SSE broadcast — push events to all connected clients
+# --------------------------------------------------------------------------
+
+def _broadcast(session, event_type, data):
+    """Push event to all SSE clients in a session."""
+    event = {"type": event_type, "data": data}
+    for q in list(session.get("sse_clients", [])):
+        try:
+            q.append(event)
+        except Exception:
+            pass
+
+
+# --------------------------------------------------------------------------
+# Collaborative session management
+# --------------------------------------------------------------------------
+
+def _make_invite_token(session_id, group_name):
+    """Generate an HMAC token for a session+group invite."""
+    secret = session_id  # session ID is the secret — not guessable, not persistent
+    msg = f"{session_id}:{group_name}".encode()
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()[:16]
+
+
+@app.route("/api/sessions/<sid>/invite", methods=["POST"])
+def session_invite(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    # Verify host token
+    host_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if host_token != session.get("host_token"):
+        return jsonify({"error": "Not authorized — host only"}), 403
+
+    group_name = body.get("groupName")
+    participant_name = body.get("participantName", "Flight Lead")
+
+    if not group_name or group_name not in session["group_waypoints"]:
+        return jsonify({"error": f"Group '{group_name}' not found"}), 404
+
+    invite_token = _make_invite_token(sid, group_name)
+
+    # Register participant
+    with _lock:
+        session["participants"][invite_token] = {
+            "name": participant_name,
+            "group": group_name,
+            "connected": False,
+            "ready": False,
+        }
+
+    return jsonify({
+        "inviteToken": invite_token,
+        "joinUrl": f"/join/{sid}?token={invite_token}",
+        "groupName": group_name,
+    })
+
+
+@app.route("/api/sessions/<sid>/join", methods=["GET"])
+def session_join(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    token = request.args.get("token")
+    if not token:
+        return jsonify({"error": "No token provided"}), 400
+
+    # Check if it's the host
+    is_host = token == session.get("host_token")
+
+    # Check if it's an invited participant
+    participant = session["participants"].get(token)
+
+    if not is_host and not participant:
+        return jsonify({"error": "Invalid invite token"}), 403
+
+    with _lock:
+        if participant:
+            participant["connected"] = True
+        session["last_activity"] = time.time()
+
+    # Build response — filtered by role
+    assigned_group = participant["group"] if participant else None
+    role = "flight_lead" if participant else "mission_maker"
+
+    # Return mission data + role info
+    theater = session["theater"]
+    try:
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        data = extract_full_mission_data(mission_dict, theater)
+
+        # Apply current server waypoint state to groups
+        for group in data["groups"]:
+            if group["groupName"] in session["group_waypoints"]:
+                group["waypoints"] = session["group_waypoints"][group["groupName"]]
+                group["waypoints"] = recompute_route(group["waypoints"])
+
+        return jsonify({
+            "sessionId": sid,
+            "token": token,
+            "role": role,
+            "assignedGroup": assigned_group,
+            "filename": session["filename"],
+            "theater": theater,
+            "participants": {
+                t: {"name": p["name"], "group": p["group"], "connected": p["connected"]}
+                for t, p in session["participants"].items()
+            },
+            **data,
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to load session: {str(e)}"}), 500
+
+
+@app.route("/api/sessions/<sid>/state", methods=["GET"])
+def session_state(sid):
+    """Get current session state — for reconnection."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    # Return just the current waypoint state for all groups
+    return jsonify({
+        "group_waypoints": session["group_waypoints"],
+        "participants": {
+            t: {"name": p["name"], "group": p["group"], "connected": p["connected"]}
+            for t, p in session["participants"].items()
+        },
+        "status": session["status"],
+    })
+
+
+@app.route("/api/sessions/<sid>/stream")
+def session_stream(sid):
+    """SSE event stream — pushes real-time updates to connected clients."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    # Each client gets its own event queue (a simple list + polling)
+    client_queue = []
+    session["sse_clients"].append(client_queue)
+
+    # Mark participant as connected
+    token = request.args.get("token")
+    participant = session["participants"].get(token)
+    if participant:
+        participant["connected"] = True
+        _broadcast(session, "participant_joined", {
+            "name": participant["name"],
+            "group": participant["group"],
+        })
+
+    def generate():
+        try:
+            import time as _time
+            while True:
+                # Check for events
+                while client_queue:
+                    event = client_queue.pop(0)
+                    yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
+
+                # Heartbeat every 15s to keep connection alive
+                yield ": heartbeat\n\n"
+
+                # Use gevent-friendly sleep if available, else regular
+                try:
+                    import gevent
+                    gevent.sleep(0.5)
+                except ImportError:
+                    _time.sleep(0.5)
+
+                # Check if session still exists
+                if sid not in sessions:
+                    yield f"event: session_ended\ndata: {{}}\n\n"
+                    break
+        except GeneratorExit:
+            pass
+        finally:
+            # Cleanup
+            try:
+                session["sse_clients"].remove(client_queue)
+            except (ValueError, KeyError):
+                pass
+            if participant:
+                participant["connected"] = False
+                _broadcast(session, "participant_left", {
+                    "name": participant["name"],
+                    "group": participant["group"],
+                })
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # --------------------------------------------------------------------------
