@@ -107,6 +107,8 @@ export function MapContainer() {
     drawing: ReturnType<typeof createDrawingLayer> | null;
   }>({ unit: null, route: null, threat: null, airbase: null, drawing: null });
   const dragCleanup = useRef<(() => void) | null>(null);
+  const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
+  const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
   const interactionRefs = useRef<{
     addDraw: Draw | null;
     measureDraw: Draw | null;
@@ -128,9 +130,16 @@ export function MapContainer() {
     useMissionStore.setState({ groups: updated });
   }, []);
 
+  // Handle waypoint drag start — block route layer redraws during drag
+  const handleDragStart = useCallback(() => {
+    isInteracting.current = true;
+    pendingRedraw.current = false;
+  }, []);
+
   // Handle waypoint drag end — server-authoritative
   const handleDragEnd = useCallback(
     async (groupId: number, wpIndex: number, lat: number, lon: number) => {
+      isInteracting.current = false;
       const { x, y } = latLonToDcs(lat, lon);
       const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
       const group = groups.find((g) => g.groupId === groupId);
@@ -456,7 +465,7 @@ export function MapContainer() {
       if (assignedGroup && g.groupName !== assignedGroup) return true;
       return false;
     };
-    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, isEditLocked });
+    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, onDragStart: handleDragStart, isEditLocked });
 
     return () => {
       if (dragCleanup.current) {
@@ -464,7 +473,7 @@ export function MapContainer() {
         dragCleanup.current = null;
       }
     };
-  }, [handleDragEnd, addWaypointMode, measureMode, groups, selectedGroupId, viewMode]);
+  }, [handleDragEnd, handleDragStart, addWaypointMode, measureMode, groups, selectedGroupId, viewMode]);
 
   // Add waypoint mode toggle
   useEffect(() => {
@@ -554,7 +563,14 @@ export function MapContainer() {
   }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, layers.statics]);
 
   useEffect(() => {
-    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds);
+    if (!layerRefs.current.route) return;
+    // Skip route layer rebuild during active drag/add — would destroy the feature being interacted with
+    if (isInteracting.current) {
+      pendingRedraw.current = true;
+      return;
+    }
+    populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds);
+    pendingRedraw.current = false;
   }, [visibleGroups, selectedGroupId, viewMode, hiddenGroupIds]);
 
   useEffect(() => {
