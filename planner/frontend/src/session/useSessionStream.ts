@@ -6,11 +6,11 @@
 import { useEffect, useRef } from 'react';
 import { useMissionStore } from '../store/missionStore';
 
-export function useSessionStream(sessionId: string | null) {
+export function useSessionStream(sessionId: string | null, enabled: boolean = false) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !enabled) return;
 
     const es = new EventSource(`/api/sessions/${sessionId}/stream`);
     esRef.current = es;
