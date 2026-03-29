@@ -6,13 +6,14 @@
 import { useEffect, useRef } from 'react';
 import { useMissionStore } from '../store/missionStore';
 
-export function useSessionStream(sessionId: string | null, enabled: boolean = false) {
+export function useSessionStream(sessionId: string | null, enabled: boolean = true) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!sessionId || !enabled) return;
 
-    const es = new EventSource(`/api/sessions/${sessionId}/stream`);
+    const token = useMissionStore.getState().sessionToken || '';
+    const es = new EventSource(`/api/sessions/${sessionId}/stream?token=${encodeURIComponent(token)}`);
     esRef.current = es;
 
     es.addEventListener('route_update', (e) => {
@@ -80,5 +81,5 @@ export function useSessionStream(sessionId: string | null, enabled: boolean = fa
       es.close();
       esRef.current = null;
     };
-  }, [sessionId]);
+  }, [sessionId, enabled]);
 }

@@ -31,6 +31,8 @@ from flask_cors import CORS
 import io
 import hmac
 import hashlib
+from gevent.queue import Queue
+from gevent import sleep as gsleep
 
 from services.miz_parser import (
     extract_mission_from_miz,
@@ -110,6 +112,7 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             "last_activity": time.time(),
             # Server-authoritative waypoint state
             "group_waypoints": group_waypoints,  # { group_name: [wp, wp, ...] }
+            "dirty_groups": set(),  # groups that were actually edited
             # Collaborative session fields
             "host_token": host_token,
             "participants": {},  # { token: { name, group, connected, ready } }
@@ -284,6 +287,7 @@ def session_edit(sid):
         # Recompute route leg data
         wps = recompute_route(wps)
         session["group_waypoints"][group_name] = wps
+        session["dirty_groups"].add(group_name)
         session["last_activity"] = time.time()
 
         # Broadcast route update to all connected clients
@@ -299,13 +303,21 @@ def session_edit(sid):
 # SSE broadcast — push events to all connected clients
 # --------------------------------------------------------------------------
 
-def _broadcast(session, event_type, data):
+def _broadcast(session, event_type, data, exclude_token=None):
     """Push event to all SSE clients in a session."""
     event = {"type": event_type, "data": data}
-    for q in list(session.get("sse_clients", [])):
+    dead = []
+    for client in list(session.get("sse_clients", [])):
+        if exclude_token and client.get("token") == exclude_token:
+            continue
         try:
-            q.append(event)
+            client["queue"].put_nowait(event)
         except Exception:
+            dead.append(client)
+    for d in dead:
+        try:
+            session["sse_clients"].remove(d)
+        except ValueError:
             pass
 
 
@@ -387,7 +399,7 @@ def session_join(sid):
     assigned_group = participant["group"] if participant else None
     role = "flight_lead" if participant else "mission_maker"
 
-    # Return mission data + role info
+    # Return mission data + role info (same shape as upload response)
     theater = session["theater"]
     try:
         mission_dict = parse_mission_text(session["original_mission_text"])
@@ -398,6 +410,24 @@ def session_join(sid):
             if group["groupName"] in session["group_waypoints"]:
                 group["waypoints"] = session["group_waypoints"][group["groupName"]]
                 group["waypoints"] = recompute_route(group["waypoints"])
+
+        # 856-equivalent extraction (same as upload)
+        client_units = find_client_units(mission_dict)
+        all_units_donor = get_all_units_for_donor_selection(mission_dict)
+        all_groups_renamer = extract_all_groups(mission_dict)
+        livery_data = extract_livery_data(mission_dict)
+        statistics = extract_statistics(mission_dict)
+        countries = extract_countries(mission_dict)
+        suggestions = generate_datalink_suggestions(client_units)
+
+        aircraft_types = list(set(u["type"] for u in client_units))
+        pylon_options = {}
+        for at in aircraft_types:
+            opts = get_pylon_options(at)
+            if opts:
+                pylon_options[at] = opts
+
+        dtc_flights = list(set(u["groupName"] for u in client_units))
 
         return jsonify({
             "sessionId": sid,
@@ -411,6 +441,21 @@ def session_join(sid):
                 for t, p in session["participants"].items()
             },
             **data,
+            "clientUnits": client_units,
+            "allUnitsDonor": all_units_donor,
+            "pylonOptions": pylon_options,
+            "suggestions": suggestions,
+            "allGroupsRenamer": all_groups_renamer,
+            "liveryData": livery_data,
+            "laserClsids": sorted(LASER_CLSIDS),
+            "dtcFlights": dtc_flights,
+            "statistics": statistics,
+            "countries": countries,
+            "taskLists": {
+                "air": AIR_TASKS,
+                "ground": GROUND_TASKS,
+                "ship": SHIP_TASKS,
+            },
         })
     except Exception as e:
         return jsonify({"error": f"Failed to load session: {str(e)}"}), 500
@@ -434,10 +479,47 @@ def session_state(sid):
     })
 
 
+HEARTBEAT_INTERVAL = 30  # seconds — Cloudflare kills idle connections at 100s
+
+
 @app.route("/api/sessions/<sid>/stream")
 def session_stream(sid):
-    """SSE disabled — will be re-enabled with WebSocket approach for Cloudflare compat."""
-    return jsonify({"error": "SSE disabled — use polling or WebSocket"}), 503
+    """SSE event stream with heartbeat keepalives for Cloudflare compatibility."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    token = request.args.get("token", "")
+    q = Queue()
+    client = {"queue": q, "token": token}
+    session["sse_clients"].append(client)
+
+    def generate():
+        try:
+            while True:
+                try:
+                    event = q.get(timeout=HEARTBEAT_INTERVAL)
+                    yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
+                except Exception:
+                    # Timeout — send heartbeat to keep Cloudflare alive
+                    yield ": heartbeat\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            try:
+                session["sse_clients"].remove(client)
+            except (ValueError, KeyError):
+                pass
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # --------------------------------------------------------------------------
@@ -549,8 +631,10 @@ def download():
     try:
         mission_text = session["original_mission_text"]
 
-        # 1. Replace waypoints from server-authoritative state
-        for group_name, waypoints in session["group_waypoints"].items():
+        # 1. Replace waypoints only for groups that were actually edited
+        dirty = session.get("dirty_groups", set())
+        for group_name in dirty:
+            waypoints = session["group_waypoints"].get(group_name)
             if not waypoints:
                 continue
             mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
@@ -588,9 +672,14 @@ def export_json():
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_dict = parse_mission_text(session["mission_text"])
+        mission_dict = parse_mission_text(session["original_mission_text"])
         data = extract_full_mission_data(mission_dict, session["theater"])
+
+        # Apply server-authoritative waypoint state
         for group in data["groups"]:
+            server_wps = session["group_waypoints"].get(group["groupName"])
+            if server_wps:
+                group["waypoints"] = server_wps
             if group["waypoints"]:
                 group["waypoints"] = recompute_route(group["waypoints"])
 
@@ -669,10 +758,15 @@ def dtc_generate():
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_dict = parse_mission_text(session["mission_text"])
+        mission_dict = parse_mission_text(session["original_mission_text"])
         flight_data = extract_flight_for_dtc(mission_dict, group_name)
         if not flight_data:
             return jsonify({"error": f"Flight '{group_name}' not found"}), 404
+
+        # Overlay server-authoritative waypoints if the group was edited
+        server_wps = session["group_waypoints"].get(group_name)
+        if server_wps and group_name in session.get("dirty_groups", set()):
+            flight_data["waypoints"] = server_wps
 
         flight_data["theatre"] = session["theater"]
         dtc = build_dtc_from_flight(flight_data, dtc_name)
@@ -708,10 +802,15 @@ def dtc_preview():
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_dict = parse_mission_text(session["mission_text"])
+        mission_dict = parse_mission_text(session["original_mission_text"])
         flight_data = extract_flight_for_dtc(mission_dict, group_name)
         if not flight_data:
             return jsonify({"error": f"Flight '{group_name}' not found"}), 404
+
+        # Overlay server-authoritative waypoints if the group was edited
+        server_wps = session["group_waypoints"].get(group_name)
+        if server_wps and group_name in session.get("dirty_groups", set()):
+            flight_data["waypoints"] = server_wps
 
         flight_data["theatre"] = session["theater"]
         dtc = build_dtc_from_flight(flight_data, group_name)
@@ -804,7 +903,7 @@ def elevation(lat, lon):
         elev = _srtm_data.get_elevation(lat, lon)
         return jsonify({"elevation": elev})
     except Exception as e:
-        print(f"SRTM elevation error for ({lat},{lon}): {e}")
+        # SRTM tile download may have failed or timed out
         return jsonify({"elevation": None})
 
 

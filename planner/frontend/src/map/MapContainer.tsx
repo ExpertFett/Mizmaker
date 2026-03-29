@@ -13,7 +13,6 @@ import 'ol/ol.css';
 
 import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
-import { useEditStore } from '../store/editStore';
 import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
@@ -118,7 +117,6 @@ export function MapContainer() {
   const { theater, units, groups, threats, airbases, drawings, selectedGroupId, selectGroup, sessionId, updateGroupData } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
-  const addEdit = useEditStore((s) => s.addEdit);
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -224,7 +222,7 @@ export function MapContainer() {
         console.error('Server add failed:', e);
       }
     },
-    [sessionId, selectedGroupId, addEdit, updateGroupData],
+    [_updateGroupWaypoints],
   );
 
   // Initialize map

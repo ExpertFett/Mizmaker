@@ -37,9 +37,8 @@ export function MissionEditor() {
   const filename = useMissionStore((s) => s.filename);
   const theater = useMissionStore((s) => s.theater);
 
-  // Only connect SSE for collaborative sessions (when invites exist)
-  // SSE holds a connection open which can cause Cloudflare 524 timeouts in solo mode
-  useSessionStream(sessionId, false); // TODO: set to true when collaborative mode is active
+  // Connect SSE for real-time sync (heartbeat keepalives prevent Cloudflare 524)
+  useSessionStream(sessionId, true);
 
   const isMap = activeTab === 'map';
 
