@@ -133,6 +133,7 @@ export async function captureRouteImage(
     source: new XYZ({
       url: 'https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
       attributions: '',
+      crossOrigin: 'anonymous',
     }),
   });
 
