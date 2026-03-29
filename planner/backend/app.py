@@ -436,72 +436,8 @@ def session_state(sid):
 
 @app.route("/api/sessions/<sid>/stream")
 def session_stream(sid):
-    """SSE event stream — pushes real-time updates to connected clients."""
-    session = _get_session(sid)
-    if not session:
-        return jsonify({"error": "Session not found"}), 404
-
-    # Each client gets its own event queue (a simple list + polling)
-    client_queue = []
-    session["sse_clients"].append(client_queue)
-
-    # Mark participant as connected
-    token = request.args.get("token")
-    participant = session["participants"].get(token)
-    if participant:
-        participant["connected"] = True
-        _broadcast(session, "participant_joined", {
-            "name": participant["name"],
-            "group": participant["group"],
-        })
-
-    def generate():
-        try:
-            import time as _time
-            while True:
-                # Check for events
-                while client_queue:
-                    event = client_queue.pop(0)
-                    yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
-
-                # Heartbeat every 15s to keep connection alive
-                yield ": heartbeat\n\n"
-
-                # Use gevent-friendly sleep if available, else regular
-                try:
-                    import gevent
-                    gevent.sleep(0.5)
-                except ImportError:
-                    _time.sleep(0.5)
-
-                # Check if session still exists
-                if sid not in sessions:
-                    yield f"event: session_ended\ndata: {{}}\n\n"
-                    break
-        except GeneratorExit:
-            pass
-        finally:
-            # Cleanup
-            try:
-                session["sse_clients"].remove(client_queue)
-            except (ValueError, KeyError):
-                pass
-            if participant:
-                participant["connected"] = False
-                _broadcast(session, "participant_left", {
-                    "name": participant["name"],
-                    "group": participant["group"],
-                })
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
+    """SSE disabled — will be re-enabled with WebSocket approach for Cloudflare compat."""
+    return jsonify({"error": "SSE disabled — use polling or WebSocket"}), 503
 
 
 # --------------------------------------------------------------------------
