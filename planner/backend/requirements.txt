@@ -5,3 +5,4 @@ pyproj>=3.6
 mgrs>=1.4
 srtm.py>=0.3.7
 gunicorn>=22.0
+gevent>=24.0

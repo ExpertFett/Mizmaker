@@ -10,26 +10,47 @@ export async function uploadMission(file: File) {
   return res.json();
 }
 
-export async function editWaypoints(sessionId: string, edits: unknown[]) {
-  const res = await fetch(`${BASE}/api/edit/waypoints`, {
+// --------------------------------------------------------------------------
+// Server-authoritative waypoint editing
+// --------------------------------------------------------------------------
+
+export interface WaypointEditAction {
+  groupName: string;
+  action: 'move' | 'add' | 'delete' | 'reorder' | 'update';
+  wpIndex?: number;
+  fromIndex?: number;
+  toIndex?: number;
+  data?: Record<string, unknown>;
+}
+
+export async function sessionEdit(sessionId: string, edit: WaypointEditAction, token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/edit`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, edits }),
+    headers,
+    body: JSON.stringify(edit),
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'Edit failed');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Edit failed' }));
+    throw new Error(err.error || 'Edit failed');
+  }
   return res.json();
 }
 
+// --------------------------------------------------------------------------
+// Download — server applies all edits from its authoritative state
+// --------------------------------------------------------------------------
+
 export async function downloadMiz(
   sessionId: string,
-  edits: unknown[],
-  modifiedGroups: Record<string, unknown>,
   unitEdits?: unknown[],
 ): Promise<Blob> {
   const res = await fetch(`${BASE}/api/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, edits, modifiedGroups, unitEdits: unitEdits || [] }),
+    body: JSON.stringify({ sessionId, unitEdits: unitEdits || [] }),
   });
   if (!res.ok) throw new Error('Download failed');
   return res.blob();

@@ -5,6 +5,7 @@ import TileLayer from 'ol/layer/Tile';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat, toLonLat } from 'ol/proj';
+import { boundingExtent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
 import ScaleLine from 'ol/control/ScaleLine';
 import type { Draw } from 'ol/interaction';
@@ -13,7 +14,6 @@ import 'ol/ol.css';
 
 import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
-import { useEditStore } from '../store/editStore';
 import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
@@ -24,6 +24,7 @@ import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
 import { getElevation } from '../utils/elevation';
+import { sessionEdit } from '../api/client';
 import { forward as toMGRS } from 'mgrs';
 // Terrain-rgb tile layers removed — elevation is fully self-hosted via backend SRTM
 import { setupWaypointDrag } from './interactions/waypointDrag';
@@ -108,6 +109,8 @@ export function MapContainer() {
     triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
   }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null });
   const dragCleanup = useRef<(() => void) | null>(null);
+  const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
+  const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
   const interactionRefs = useRef<{
     addDraw: Draw | null;
     measureDraw: Draw | null;
@@ -116,27 +119,41 @@ export function MapContainer() {
   const coordRef = useRef<HTMLDivElement>(null);
   const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
 
-  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, sessionId, updateGroupData } =
+  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
-  const addEdit = useEditStore((s) => s.addEdit);
 
-  // Handle waypoint drag end — client-side store update, queues edit for download
+  // Helper: update a specific group's waypoints from server response
+  const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
+    const { groups } = useMissionStore.getState();
+    const updated = groups.map((g) =>
+      g.groupName === groupName ? { ...g, waypoints } : g,
+    );
+    useMissionStore.setState({ groups: updated });
+  }, []);
+
+  // Handle waypoint drag start — block route layer redraws during drag
+  const handleDragStart = useCallback(() => {
+    isInteracting.current = true;
+    pendingRedraw.current = false;
+  }, []);
+
+  // Handle waypoint drag end — server-authoritative
   const handleDragEnd = useCallback(
-    (groupId: number, wpIndex: number, lat: number, lon: number) => {
+    async (groupId: number, wpIndex: number, lat: number, lon: number) => {
+      isInteracting.current = false;
       const { x, y } = latLonToDcs(lat, lon);
-      const edit = { type: 'waypointMove' as const, groupId, wpIndex, x, y };
-      addEdit(edit);
+      const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
+      const group = groups.find((g) => g.groupId === groupId);
+      if (!group || !sid) return;
 
-      // Update store client-side with recomputed distances/bearings
-      const { groups } = useMissionStore.getState();
+      // Optimistic local update for instant feedback
       const updatedGroups = groups.map((g) => {
         if (g.groupId !== groupId) return g;
         const newWps = g.waypoints.map((wp) => {
           if (wp.waypoint_number !== wpIndex) return wp;
           return { ...wp, x, y, lat, lon };
         });
-        // Recompute leg distances and bearings
         for (let i = 1; i < newWps.length; i++) {
           const prev = newWps[i - 1];
           const curr = newWps[i];
@@ -145,7 +162,6 @@ export function MapContainer() {
             const brg = bearing(prev.lat, prev.lon, curr.lat, curr.lon);
             curr.leg_distance_nm = dist / 1852;
             curr.leg_bearing_deg = brg;
-            // ETE uses previous WP's speed (you fly the leg at departure speed)
             const legSpeed = newWps[i - 1].speed_ms || curr.speed_ms;
             curr.cumulative_eta = (newWps[i - 1].cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
           }
@@ -153,26 +169,41 @@ export function MapContainer() {
         return { ...g, waypoints: newWps };
       });
       useMissionStore.setState({ groups: updatedGroups });
+
+      // POST to server — server is source of truth
+      try {
+        const result = await sessionEdit(sid, {
+          groupName: group.groupName,
+          action: 'move',
+          wpIndex,
+          data: { x, y, lat, lon },
+        }, sessionToken || undefined);
+        // Update store from server response (authoritative)
+        if (result.ok) {
+          _updateGroupWaypoints(result.groupName, result.waypoints);
+        }
+      } catch (e) {
+        console.error('Server edit failed:', e);
+      }
     },
-    [addEdit],
+    [],
   );
 
-  // Handle waypoint add
+  // Handle waypoint add — server-authoritative
   const handleAddWaypoint = useCallback(
-    (lat: number, lon: number) => {
-      if (!selectedGroupId) return;
+    async (lat: number, lon: number) => {
+      const { groups, sessionId: sid, sessionToken, selectedGroupId: selId, assignedGroup } = useMissionStore.getState();
+      if (!selId) return;
       const { x, y } = latLonToDcs(lat, lon);
-      const { groups } = useMissionStore.getState();
-      const group = groups.find((g) => g.groupId === selectedGroupId);
-      if (!group) return;
+      const group = groups.find((g) => g.groupId === selId);
+      if (!group || !sid) return;
+      // Flight leads can only add waypoints to their assigned group
+      if (assignedGroup && group.groupName !== assignedGroup) return;
 
-      const newWpNum = group.waypoints.length;
       const prevWp = group.waypoints[group.waypoints.length - 1];
-
-      // Build new waypoint client-side
       const newWp = {
-        waypoint_number: newWpNum,
-        waypoint_name: `WP${newWpNum}`,
+        waypoint_number: group.waypoints.length,
+        waypoint_name: `WP${group.waypoints.length}`,
         waypoint_type: 'Turning Point',
         waypoint_action: 'Turning Point',
         x, y, lat, lon,
@@ -182,45 +213,30 @@ export function MapContainer() {
         eta_seconds: 0,
         eta_locked: false,
         speed_locked: true,
-        leg_distance_nm: 0,
-        leg_bearing_deg: 0,
-        cumulative_eta: 0,
       };
 
-      // Recompute leg from previous waypoint
-      if (prevWp?.lat && prevWp?.lon) {
-        const dist = haversineDistance(prevWp.lat, prevWp.lon, lat, lon);
-        const brg = bearing(prevWp.lat, prevWp.lon, lat, lon);
-        newWp.leg_distance_nm = dist / 1852;
-        newWp.leg_bearing_deg = brg;
-        const legSpeed = prevWp.speed_ms || newWp.speed_ms;
-        newWp.cumulative_eta = (prevWp.cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
-      }
-
-      // Queue the edit for .miz download
-      addEdit({
-        type: 'waypointInsert',
-        groupId: selectedGroupId,
-        afterIndex: group.waypoints.length - 1,
-        waypointData: {
-          x, y,
-          waypoint_name: newWp.waypoint_name,
-          altitude_m: newWp.altitude_m,
-          altitude_type: newWp.altitude_type,
-          speed_ms: newWp.speed_ms,
-          waypoint_type: newWp.waypoint_type,
-          waypoint_action: newWp.waypoint_action,
-        },
-      });
-
-      // Update store client-side (no backend round-trip)
+      // Optimistic local update
       const updatedGroups = groups.map((g) => {
-        if (g.groupId !== selectedGroupId) return g;
+        if (g.groupId !== selId) return g;
         return { ...g, waypoints: [...g.waypoints, newWp] };
       });
       useMissionStore.setState({ groups: updatedGroups });
+
+      // POST to server
+      try {
+        const result = await sessionEdit(sid, {
+          groupName: group.groupName,
+          action: 'add',
+          data: { waypoint: newWp },
+        }, sessionToken || undefined);
+        if (result.ok) {
+          _updateGroupWaypoints(result.groupName, result.waypoints);
+        }
+      } catch (e) {
+        console.error('Server add failed:', e);
+      }
     },
-    [sessionId, selectedGroupId, addEdit, updateGroupData],
+    [_updateGroupWaypoints],
   );
 
   // Initialize map
@@ -443,11 +459,16 @@ export function MapContainer() {
 
     const isEditLocked = (groupId: number): boolean => {
       const { adminMode: am } = useMapStore.getState();
-      if (!am) return false;
-      const g = useMissionStore.getState().groups.find((gr) => gr.groupId === groupId);
-      return g ? !isPlayerGroup(g) : false;
+      const { assignedGroup, groups } = useMissionStore.getState();
+      const g = groups.find((gr) => gr.groupId === groupId);
+      if (!g) return true;
+      // Admin lock for non-player AI groups
+      if (am && !isPlayerGroup(g)) return true;
+      // Collaborative: if assigned to a specific group, lock all others
+      if (assignedGroup && g.groupName !== assignedGroup) return true;
+      return false;
     };
-    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, isEditLocked });
+    dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, onDragStart: handleDragStart, isEditLocked });
 
     return () => {
       if (dragCleanup.current) {
@@ -455,7 +476,7 @@ export function MapContainer() {
         dragCleanup.current = null;
       }
     };
-  }, [handleDragEnd, addWaypointMode, measureMode, groups, selectedGroupId, viewMode]);
+  }, [handleDragEnd, handleDragStart, addWaypointMode, measureMode, groups, selectedGroupId, viewMode]);
 
   // Add waypoint mode toggle
   useEffect(() => {
@@ -497,27 +518,67 @@ export function MapContainer() {
     }
   }, [measureMode]);
 
-  // Center map on theater change
+  // Fit map to content on initial load only
+  const hasFitted = useRef(false);
   useEffect(() => {
-    if (!mapInstance.current || !theater) return;
-    const center = THEATER_CENTERS[theater];
-    if (center) {
-      mapInstance.current.getView().animate({ center: fromLonLat(center), zoom: 7, duration: 500 });
+    if (!mapInstance.current || !theater || hasFitted.current) return;
+    if (groups.length === 0) return; // wait for data
+
+    // Collect all waypoint coords from visible groups
+    const coords: [number, number][] = [];
+    const visibleGrps = role === 'flight_lead' ? groups.filter((g) => g.coalition === 'blue') : groups;
+    for (const g of visibleGrps) {
+      for (const wp of g.waypoints) {
+        if (wp.lat && wp.lon) coords.push([wp.lon, wp.lat]);
+      }
     }
-  }, [theater]);
+
+    if (coords.length > 1) {
+      // Fit to waypoint extent
+      const lons = coords.map((c) => c[0]);
+      const lats = coords.map((c) => c[1]);
+      const extent = boundingExtent([
+        fromLonLat([Math.min(...lons), Math.min(...lats)]),
+        fromLonLat([Math.max(...lons), Math.max(...lats)]),
+      ]);
+      mapInstance.current.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 12 });
+    } else {
+      // Fallback to theater center
+      const center = THEATER_CENTERS[theater];
+      if (center) {
+        mapInstance.current.getView().setCenter(fromLonLat(center));
+        mapInstance.current.getView().setZoom(7);
+      }
+    }
+    hasFitted.current = true;
+  }, [theater, groups, role]);
+
+  // Filter data for flight leads — blue only
+  const role = useMissionStore((s) => s.role);
+  const isFlightLead = role === 'flight_lead';
+  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
+  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
+  const visibleThreats = isFlightLead ? [] : threats;
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
-    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, units, groups, viewMode, hiddenGroupIds, !!layers.statics);
-  }, [units, groups, viewMode, hiddenGroupIds, layers.statics]);
+    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, visibleUnits, visibleGroups, viewMode, hiddenGroupIds, !!layers.statics);
+  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, layers.statics]);
 
   useEffect(() => {
-    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, groups, selectedGroupId, viewMode, hiddenGroupIds);
-  }, [groups, selectedGroupId, viewMode, hiddenGroupIds]);
+    if (!layerRefs.current.route) return;
+    // Skip route layer rebuild during active drag/add — would destroy the feature being interacted with
+    if (isInteracting.current) {
+      pendingRedraw.current = true;
+      return;
+    }
+    populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds);
+    pendingRedraw.current = false;
+  }, [visibleGroups, selectedGroupId, viewMode, hiddenGroupIds]);
 
   useEffect(() => {
-    if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, threats, viewMode);
-  }, [threats, viewMode]);
+    if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, visibleThreats, viewMode);
+  }, [visibleThreats, viewMode]);
 
   useEffect(() => {
     if (layerRefs.current.airbase) populateAirbaseLayer(layerRefs.current.airbase, airbases);

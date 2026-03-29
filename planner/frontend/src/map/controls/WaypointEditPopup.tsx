@@ -1,8 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useMapStore } from '../../store/mapStore';
-import { useEditStore } from '../../store/editStore';
-import { editWaypoints } from '../../api/client';
+import { sessionEdit } from '../../api/client';
 import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 
@@ -21,9 +20,8 @@ export function WaypointEditPopup({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { groups, sessionId, updateGroupData } = useMissionStore();
+  const { groups, sessionId } = useMissionStore();
   const adminMode = useMapStore((s) => s.adminMode);
-  const addEdit = useEditStore((s) => s.addEdit);
 
   const group = groups.find((g) => g.groupId === groupId);
   const wp = group?.waypoints.find((w) => w.waypoint_number === wpIndex);
@@ -43,11 +41,20 @@ export function WaypointEditPopup({
 
   const save = async (field: string, value: string | number | boolean) => {
     if (!sessionId || locked) return;
-    const edit = { type: 'waypointProp' as const, groupId, wpIndex, field, value };
-    addEdit(edit);
     try {
-      const result = await editWaypoints(sessionId, [edit]);
-      if (result.ok) updateGroupData(result.groups, result.units, result.threats, result.airbases);
+      const result = await sessionEdit(sessionId, {
+        groupName: group?.groupName || '',
+        action: 'update',
+        wpIndex,
+        data: { field, value },
+      });
+      if (result.ok && result.groupName && result.waypoints) {
+        const { groups: currentGroups } = useMissionStore.getState();
+        const updated = currentGroups.map((g) =>
+          g.groupName === result.groupName ? { ...g, waypoints: result.waypoints } : g,
+        );
+        useMissionStore.setState({ groups: updated });
+      }
     } catch (e) { console.error('Edit failed:', e); }
   };
 

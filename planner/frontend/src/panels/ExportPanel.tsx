@@ -1,48 +1,53 @@
 import { useMissionStore } from '../store/missionStore';
 import { useEditStore } from '../store/editStore';
-import { downloadMiz, exportJson, closeSession } from '../api/client';
+import { exportJson, closeSession } from '../api/client';
 import type { WaypointEdit } from '../types/mission';
 
 export function ExportPanel() {
-  const { sessionId, filename, clear, groups } = useMissionStore();
+  const { sessionId, filename, clear } = useMissionStore();
   const { edits, isDirty, clearEdits } = useEditStore();
 
   const handleDownload = async () => {
-    if (!sessionId) return;
+    if (!sessionId) { alert('No session'); return; }
+
+    const isWaypointEdit = (e: any): e is WaypointEdit =>
+      'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
+    const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+
+    console.log('Downloading:', { sessionId, unitEditsCount: unitEdits.length });
+
     try {
-      // Separate waypoint edits from unit edits
-      const isWaypointEdit = (e: any): e is WaypointEdit =>
-        'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
+      const res = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, unitEdits: unitEdits }),
+      });
 
-      const waypointEdits = edits.filter(isWaypointEdit);
-      const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+      console.log('Download response:', res.status, res.statusText);
 
-      // Build modifiedGroups: send final waypoint state for any group that was edited
-      const editedGroupIds = new Set<number>();
-      for (const e of waypointEdits) {
-        if (e.groupId != null) editedGroupIds.add(e.groupId);
+      if (!res.ok) {
+        const err = await res.text();
+        alert(`Download failed: ${res.status} ${err}`);
+        return;
       }
 
-      const modifiedGroups: Record<string, { waypoints: unknown[] }> = {};
-      for (const gid of editedGroupIds) {
-        const group = groups.find((g) => g.groupId === gid);
-        if (group) {
-          modifiedGroups[group.groupName] = {
-            waypoints: group.waypoints,
-          };
-        }
-      }
+      const blob = await res.blob();
+      console.log('Blob:', blob.size, 'bytes', blob.type);
 
-      const blob = await downloadMiz(sessionId, waypointEdits, modifiedGroups, unitEdits);
+      if (blob.size === 0) { alert('Empty file returned'); return; }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename || 'edited.miz';
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       clearEdits();
-    } catch (e) {
-      console.error('Download failed:', e);
+    } catch (e: any) {
+      console.error('Download error:', e);
+      alert(`Download error: ${e.message}`);
     }
   };
 

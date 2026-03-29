@@ -214,3 +214,163 @@ For reference, the airboss models the planner will eventually consume:
 - **PilotSlot** — position (1=lead), pilot_discord_id, linked to DcsUnit via pilot_slot_id
 - **PilotSlotCodes** — laser_code per pilot slot
 - **FlightPlanningData** — mode1/2/3 codes, tactical net, mission tasking per flight
+
+---
+
+## Status Update: What the Planner Actually Does Now (2026-03-29)
+
+**For the Airboss Claude — here's where the standalone planner is and how it all works. This should help you think about how we wire it into the PostgreSQL/FastAPI/MinIO stack.**
+
+### What We Built
+
+The planner is a fully functional collaborative DCS mission planning tool. A mission maker uploads a .miz file, invites flight leads via unique links, everyone plans their routes simultaneously on a shared map, and the mission maker downloads the edited .miz with all changes baked in. No data ever touches disk — everything is in-memory with a 2-hour TTL.
+
+It's deployed at planner.v224.org behind Cloudflare → Traefik → Docker (single gevent worker, 100 concurrent green threads).
+
+### Architecture
+
+**Backend: Flask + gevent (planner/backend/)**
+
+- `app.py` — the entire API. Session management, upload, edit, SSE, invite/join, ready check, download. ~940 lines.
+- `services/miz_parser.py` — extracts groups, units, threats, airbases, weather, drawings from parsed Lua dict. Uses slpp for Lua→Python dict conversion.
+- `services/miz_editor.py` — hierarchy-based surgical .miz editing. Navigates coalition→country→category→group[N] by brace-matching, finds groups by their depth-1 `["name"]` field, replaces the entire `["points"]` block. Never re-serializes the full Lua — only touches the bytes that changed.
+- `services/unit_editor.py` — 16 surgical edit types ported from 856 (datalink, loadouts, laser codes, liveries, weather, rename, batch). Each edit is a regex find-and-replace on the raw Lua text targeting a specific unit by name.
+- `services/unit_extractor.py` — extracts client units with full weapon/datalink/loadout data for the editor tabs.
+- `services/projection.py` — 15-theater DCS↔LatLon conversion using pyproj Transverse Mercator.
+- `services/atmosphere.py` — ISA model for CAS/TAS/Mach/GS conversions with wind correction at altitude.
+- `services/waypoint_service.py` — haversine distance, bearing, ETA computation per leg.
+- `services/dtc_builder.py` — F/A-18C DTC file generation from mission data.
+
+**Frontend: React 18 + TypeScript + Vite + Zustand + OpenLayers (planner/frontend/)**
+
+- `editor/MissionEditor.tsx` — main shell with 9 tabs: Map, Datalink, Loadouts, Laser, Livery, Weather, Rename, Batch, DTC.
+- `map/MapContainer.tsx` — OpenLayers map with 5 layers (units, routes, threats, airbases, drawings). Custom pointer-based waypoint drag. Click-to-select, double-click-to-edit-popup.
+- `panels/FloatingFlightPanel.tsx` — draggable per-flight editor with route/datalink/loadout sub-tabs. Per-waypoint speed reference (GS/CAS/TAS/Mach with wind correction).
+- `store/missionStore.ts` — Zustand store holding all mission data + session state (sessionId, hostToken, sessionToken, assignedGroup, role).
+- `store/editStore.ts` — client-side queue for unit edits (datalink, loadout, livery, etc.) that get applied at download time.
+- `session/` — SSE hook, invite manager, join page, participant bar with ready check.
+- `api/client.ts` — typed API client for all backend endpoints.
+
+### Session Model (In-Memory)
+
+```python
+sessions[session_id] = {
+    "miz_bytes": bytes,                    # original uploaded .miz
+    "original_mission_text": str,          # never mutated — the baseline Lua
+    "theater": str,
+    "filename": str,
+    "group_waypoints": {                   # server-authoritative waypoint state
+        "Bengal 1": [wp0, wp1, wp2, ...],
+        "Bengal 3": [wp0, wp1, ...],
+        # ... every group in the mission
+    },
+    "dirty_groups": set(),                 # only these get replaced on download
+    "host_token": str,                     # mission maker's auth token
+    "participants": {                      # invited flight leads
+        "invite_token_abc": {
+            "name": "Flight Lead A",
+            "group": "Bengal 1",
+            "connected": True,
+            "ready": False,
+        },
+    },
+    "status": "planning",                  # planning | frozen | ready_check
+    "sse_clients": [],                     # gevent Queue per connected client
+    "created_at": float,
+    "last_activity": float,
+}
+```
+
+### How Editing Works
+
+**Waypoint edits are server-authoritative.** The client does an optimistic local update for instant visual feedback, then POSTs to `/api/sessions/{id}/edit` with the action (move, add, delete, reorder, update). The server validates ownership (token must own the group or be the host), applies the change to `group_waypoints`, marks the group as dirty, recomputes route leg distances/bearings/ETAs, broadcasts via SSE to all other clients, and returns the authoritative waypoint array. The client replaces its local state with the server's response.
+
+**Unit edits (datalink, loadouts, laser codes, liveries, weather, rename, batch) are still client-side queued.** These are stored in an `editStore` on the frontend and sent to the server at download time as an array of surgical edit instructions. The server applies them to the raw Lua text using regex patterns that target specific units by name. This is the 856-ported edit engine — 16 edit types covering every field that matters.
+
+**Download** reads `original_mission_text`, replaces waypoints only for `dirty_groups` (not all groups — that caused a Cloudflare timeout when we tried processing 100+ groups), applies unit edits, repacks the .miz ZIP, and streams the file.
+
+### How Collaborative Sessions Work
+
+1. Mission maker uploads .miz → gets `sessionId` + `hostToken`
+2. Mission maker generates invite links per flight group → each gets a unique `inviteToken` tied to one group
+3. Flight lead opens `/join/{sessionId}?token={inviteToken}` → gets the full mission data with their `assignedGroup` and `role: "flight_lead"`
+4. SSE connects for real-time sync with 30-second heartbeat keepalives (Cloudflare kills idle connections at 100s)
+5. Flight leads see blue units only, can edit only their assigned group's waypoints/datalink/loadouts. Other flights are visible (color-coded routes for SA) but read-only.
+6. Mission maker sees everything, can edit everything
+7. Mission maker can trigger a ready check → flight leads confirm → mission maker downloads
+
+The backend enforces group ownership on the edit endpoint regardless of what the frontend does — a flight lead with Bengal 1's token cannot edit Bengal 3 even with a modified client.
+
+### What's Different From What This Document Assumed
+
+When this design doc was written, the planner was solo-only with client-side editing. Here's what changed:
+
+**Done (matching or exceeding the design doc's recommendations):**
+- ✅ View roles are implemented: `mission_maker`, `flight_lead`, `pilot` (pilot is read-only, not yet used)
+- ✅ Flight-scoped editing enforced on both frontend and backend
+- ✅ Threat rings are a separate data layer (parsed into `threats[]` on upload)
+- ✅ Layer visibility filtering by role (blue-only for flight leads, no red units/threats hidden from view)
+- ✅ All 15 theater projections working
+- ✅ Full 856 feature parity (all edit types, DTC generation)
+- ✅ Server-authoritative waypoint state with SSE real-time sync
+- ✅ Token-based group ownership with invite links
+
+**Not yet done:**
+- ❌ Data filtering at store level via accessors (currently done inline in components — works but not as clean)
+- ❌ Layer visibility matrix as a config object (currently hardcoded conditionals)
+- ❌ Response shape doesn't match the proposed airboss API format (flat structure, not nested under `mission:`)
+- ❌ Still using slpp, not Lupa
+- ❌ No `flightId` FK concept — groups are matched by name
+- ❌ Export pipeline is a single function, not pluggable steps
+- ❌ No persistent shared annotations layer (measurements, killboxes, DMPIs)
+
+### What Airboss Integration Replaces
+
+Here's what I think maps cleanly when you wire this into the real stack:
+
+| Standalone Planner | Airboss Replacement |
+|---|---|
+| In-memory `sessions` dict | PostgreSQL `DcsMissionData` + `DcsWaypoint` tables |
+| `miz_bytes` in memory | MinIO object storage |
+| `original_mission_text` in memory | Stored in MinIO alongside .miz, or parsed on-demand |
+| `group_waypoints` dict | `DcsWaypoint` rows keyed by `DcsGroup.id` |
+| `dirty_groups` set | Compare current waypoints to original (or version tracking via `DcsMissionVersion.changes` JSONB) |
+| UUID host_token | Discord OAuth session → user has `mission_maker` permission |
+| HMAC invite_token per group | `PilotSlot.pilot_discord_id` → user is assigned to this flight via `Flight.id` → `DcsGroup.flight_id` |
+| `participants` dict | `PilotSlot` rows with `is_connected`, `is_ready` fields (or a separate presence table) |
+| SSE with gevent Queue | FastAPI SSE (airboss already has `SSEService`) or WebSocket upgrade |
+| `unit_editor.py` regex edits | Same engine, but edits sourced from `PilotSlotCodes`, `FlightLoadout`, pilot preferences |
+| `editStore` client-side queue | Edits POST to airboss API, stored in DB, applied on export |
+| 2-hour TTL, data lost on restart | Persistent until mission archived |
+
+### The Big Win With PostgreSQL
+
+The in-memory model works but has real limitations:
+- **One worker process.** Can't scale horizontally because sessions aren't shared. gevent gives us concurrency within one process but that's the ceiling.
+- **Data loss on restart.** Container rebuild = all sessions gone. Flight leads have to re-upload and re-plan.
+- **No history.** Can't diff what changed between planning iterations.
+- **No access control beyond tokens.** Anyone with a valid token can do anything that token allows. No audit trail.
+
+With PostgreSQL + the airboss auth stack:
+- **Horizontal scaling.** Any worker reads/writes the same DB. SSE can use Redis pub/sub for cross-worker broadcasting.
+- **Persistence.** Server restarts don't lose planning state. Resume where you left off.
+- **Version history.** `DcsMissionVersion` with JSONB changes gives you a full audit trail of who changed what when.
+- **Real permissions.** Discord OAuth → squadron membership → flight assignment → group ownership. No guessable tokens.
+- **Concurrent edit safety.** Database transactions + row-level locking instead of Python dicts with a threading lock.
+- **Multi-mission.** Plan multiple missions simultaneously with proper isolation.
+
+### Suggested Integration Path
+
+1. **Mount the React frontend as a route in airboss.** Replace the Zustand store hydration to fetch from airboss API endpoints instead of the Flask upload response. The component tree stays identical.
+
+2. **Port `miz_editor.py` and `unit_editor.py` to airboss.** These are the crown jewels — the surgical .miz editing engine. They're pure Python, no Flask dependencies. Copy them into airboss's services, swap slpp for Lupa in the parser, done.
+
+3. **Replace the session model with DB tables.** `group_waypoints` → `DcsWaypoint` rows. `dirty_groups` → compare to baseline or track via version. `participants` → `PilotSlot` presence.
+
+4. **Replace SSE endpoint with airboss's SSEService.** Same event types (`route_update`, `participant_joined`, `ready_check`, etc.), just backed by Redis pub/sub instead of gevent Queues.
+
+5. **Replace token auth with Discord OAuth.** The frontend currently sends `Authorization: Bearer {token}` on edit requests. In airboss, this becomes the session cookie from Discord OAuth. The backend resolves user → flight assignment → group ownership from the DB instead of checking an in-memory participants dict.
+
+6. **Wire the export pipeline.** The standalone export does: replace dirty waypoints → apply unit edits → repack .miz. Airboss adds: apply pilot preferences (modex, livery, callsign from PilotSlot/pilot prefs) → generate per-pilot DTCs → store result in MinIO.
+
+The frontend barely changes. The surgical Lua editing doesn't change at all. It's really a backend swap — replace in-memory state with PostgreSQL, replace tokens with Discord auth, replace gevent SSE with FastAPI SSE.

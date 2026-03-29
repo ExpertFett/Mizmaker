@@ -13,6 +13,7 @@ import type { Point, LineString } from 'ol/geom';
 interface DragCallbacks {
   onDragEnd: (groupId: number, wpIndex: number, lat: number, lon: number) => void;
   isEditLocked?: (groupId: number) => boolean;
+  onDragStart?: () => void;
 }
 
 export function setupWaypointDrag(
@@ -106,6 +107,7 @@ export function setupWaypointDrag(
         return;
       }
       dragging = hit;
+      callbacks.onDragStart?.();
       findRouteAndIndex(gid, hit.get('wpIndex'));
       map.getTargetElement().style.cursor = 'grabbing';
       e.preventDefault();

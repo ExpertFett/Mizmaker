@@ -7,6 +7,10 @@ import type {
 
 interface MissionState {
   sessionId: string | null;
+  hostToken: string | null;
+  sessionToken: string | null;       // current client's token (host or invite)
+  assignedGroup: string | null;      // null = mission maker (can edit all)
+  role: 'mission_maker' | 'flight_lead' | 'pilot';
   filename: string | null;
   theater: string | null;
   overview: MissionOverviewData | null;
@@ -37,6 +41,10 @@ interface MissionState {
 
 export const useMissionStore = create<MissionState>((set, get) => ({
   sessionId: null,
+  hostToken: null,
+  sessionToken: null,
+  assignedGroup: null,
+  role: 'mission_maker' as const,
   filename: null,
   theater: null,
   overview: null,
@@ -58,9 +66,20 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   taskLists: { air: [], ground: [], ship: [] },
   selectedGroupId: null,
 
-  loadMission: (data) =>
+  loadMission: (data) => {
+    const assignedGroup = (data as any).assignedGroup || null;
+    // Auto-select the assigned group for flight leads
+    let autoSelectId: number | null = null;
+    if (assignedGroup) {
+      const g = data.groups.find((g: MissionGroup) => g.groupName === assignedGroup);
+      if (g) autoSelectId = g.groupId;
+    }
     set({
       sessionId: data.sessionId,
+      hostToken: (data as any).hostToken || null,
+      sessionToken: (data as any).token || (data as any).hostToken || null,
+      assignedGroup,
+      role: (data as any).role || 'mission_maker',
       filename: data.filename,
       theater: data.theater,
       overview: data.overview,
@@ -80,8 +99,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       dtcFlights: data.dtcFlights || [],
       countries: data.countries || [],
       taskLists: data.taskLists || { air: [], ground: [], ship: [] },
-      selectedGroupId: null,
-    }),
+      selectedGroupId: autoSelectId,
+    });
+  },
 
   selectGroup: (groupId) => set({ selectedGroupId: groupId }),
 
@@ -90,7 +110,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   clear: () =>
     set({
-      sessionId: null, filename: null, theater: null, overview: null,
+      sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
+      role: 'mission_maker' as const, filename: null, theater: null, overview: null,
       groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [],
       clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
