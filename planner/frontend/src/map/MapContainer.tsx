@@ -5,6 +5,7 @@ import TileLayer from 'ol/layer/Tile';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat, toLonLat } from 'ol/proj';
+import { boundingExtent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
 import ScaleLine from 'ol/control/ScaleLine';
 import type { Draw } from 'ol/interaction';
@@ -505,14 +506,40 @@ export function MapContainer() {
     }
   }, [measureMode]);
 
-  // Center map on theater change
+  // Fit map to content on initial load only
+  const hasFitted = useRef(false);
   useEffect(() => {
-    if (!mapInstance.current || !theater) return;
-    const center = THEATER_CENTERS[theater];
-    if (center) {
-      mapInstance.current.getView().animate({ center: fromLonLat(center), zoom: 7, duration: 500 });
+    if (!mapInstance.current || !theater || hasFitted.current) return;
+    if (groups.length === 0) return; // wait for data
+
+    // Collect all waypoint coords from visible groups
+    const coords: [number, number][] = [];
+    const visibleGrps = role === 'flight_lead' ? groups.filter((g) => g.coalition === 'blue') : groups;
+    for (const g of visibleGrps) {
+      for (const wp of g.waypoints) {
+        if (wp.lat && wp.lon) coords.push([wp.lon, wp.lat]);
+      }
     }
-  }, [theater]);
+
+    if (coords.length > 1) {
+      // Fit to waypoint extent
+      const lons = coords.map((c) => c[0]);
+      const lats = coords.map((c) => c[1]);
+      const extent = boundingExtent([
+        fromLonLat([Math.min(...lons), Math.min(...lats)]),
+        fromLonLat([Math.max(...lons), Math.max(...lats)]),
+      ]);
+      mapInstance.current.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 12 });
+    } else {
+      // Fallback to theater center
+      const center = THEATER_CENTERS[theater];
+      if (center) {
+        mapInstance.current.getView().setCenter(fromLonLat(center));
+        mapInstance.current.getView().setZoom(7);
+      }
+    }
+    hasFitted.current = true;
+  }, [theater, groups, role]);
 
   // Filter data for flight leads — blue only
   const role = useMissionStore((s) => s.role);
