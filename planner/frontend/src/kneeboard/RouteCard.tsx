@@ -14,11 +14,14 @@ import { convertSpeed, type Weather, type SpeedMode } from '../utils/atmosphere'
 import type { Waypoint, MissionGroup } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 
+export type KneeboardSpeedRef = SpeedMode | 'auto';
+
 interface RouteCardProps {
   group: MissionGroup;
   weather?: Weather | null;
   coordFormat?: 'mgrs' | 'latlon';
-  speedRef?: SpeedMode;
+  speedRef?: KneeboardSpeedRef;
+  machThreshold?: number; // ft — above this, show Mach; below, show CAS. Default 18000
 }
 
 const W = 600;
@@ -58,13 +61,25 @@ function fmtAlt(alt_m: number, alt_type: string): string {
   return `${ft}${suffix}`;
 }
 
-function fmtSpeed(wp: Waypoint, mode: SpeedMode, wx?: Weather | null): string {
+function resolveSpeedMode(wp: Waypoint, mode: KneeboardSpeedRef, machThreshold: number): SpeedMode {
+  if (mode !== 'auto') return mode;
+  const altFt = metersToFeet(wp.altitude_m);
+  return altFt >= machThreshold ? 'mach' : 'cas';
+}
+
+function fmtSpeed(wp: Waypoint, mode: KneeboardSpeedRef, wx?: Weather | null, machThreshold: number = 18000): string {
   if (!wp.speed_ms || wp.speed_ms <= 0) return '—';
+  const resolved = resolveSpeedMode(wp, mode, machThreshold);
   if (!wx) return `${Math.round(msToKnots(wp.speed_ms))}`;
   const hdg = wp.leg_bearing_deg || 0;
-  const val = convertSpeed(wp.speed_ms, wp.altitude_m, hdg, wx, mode);
-  if (mode === 'mach') return `M${val.toFixed(2)}`;
+  const val = convertSpeed(wp.speed_ms, wp.altitude_m, hdg, wx, resolved);
+  if (resolved === 'mach') return `M${val.toFixed(2)}`;
   return `${Math.round(val)}`;
+}
+
+function fmtSpeedLabel(wp: Waypoint, mode: KneeboardSpeedRef, machThreshold: number = 18000): string {
+  const resolved = resolveSpeedMode(wp, mode, machThreshold);
+  return speedLabel(resolved);
 }
 
 function fmtDist(nm?: number): string {
@@ -105,7 +120,7 @@ function speedLabel(mode: SpeedMode): string {
   }
 }
 
-export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'cas' }: RouteCardProps) {
+export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'auto', machThreshold = 18000 }: RouteCardProps) {
   const wps = group.waypoints;
   const airframe = getAircraftType(group);
   const fmtCoord = coordFormat === 'mgrs' ? fmtMgrs : fmtLatLon;
@@ -185,7 +200,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'ca
             <th style={th}>NAME</th>
             <th style={{ ...th, textAlign: 'left', paddingLeft: 6 }}>COORD</th>
             <th style={th}>ALT</th>
-            <th style={th}>{speedLabel(speedRef)}</th>
+            <th style={th}>{speedRef === 'auto' ? 'SPD' : speedLabel(speedRef)}</th>
             <th style={th}>HDG</th>
             <th style={th}>DIST</th>
             <th style={th}>ETE</th>
@@ -213,7 +228,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'ca
                   {fmtAlt(wp.altitude_m, wp.altitude_type)}
                 </td>
                 <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>
-                  {wp.waypoint_number === 0 ? '—' : fmtSpeed(wp, speedRef, weather)}
+                  {wp.waypoint_number === 0 ? '—' : fmtSpeed(wp, speedRef, weather, machThreshold)}
                 </td>
                 <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>
                   {wp.waypoint_number === 0 ? '—' : fmtBrg(wp.leg_bearing_deg)}

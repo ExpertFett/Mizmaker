@@ -7,10 +7,9 @@
 
 import { useState, useEffect, createElement } from 'react';
 import { useMissionStore } from '../../store/missionStore';
-import { RouteCard } from '../../kneeboard/RouteCard';
+import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { renderCardToDataUrl, renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
-import type { Weather, SpeedMode } from '../../utils/atmosphere';
-import type { MissionGroup } from '../../types/mission';
+import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
 
 export function KneeboardTab() {
@@ -23,7 +22,8 @@ export function KneeboardTab() {
     playerGroups[0]?.groupId ?? null,
   );
   const [coordFormat, setCoordFormat] = useState<'mgrs' | 'latlon'>('mgrs');
-  const [speedRef, setSpeedRef] = useState<SpeedMode>('cas');
+  const [speedRef, setSpeedRef] = useState<KneeboardSpeedRef>('auto');
+  const [machThreshold, setMachThreshold] = useState(18000); // ft
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
 
@@ -42,6 +42,7 @@ export function KneeboardTab() {
       weather: wx,
       coordFormat,
       speedRef,
+      machThreshold,
     });
 
     renderCardToDataUrl(el)
@@ -54,13 +55,13 @@ export function KneeboardTab() {
       });
 
     return () => { cancelled = true; };
-  }, [selectedGroup, wx, coordFormat, speedRef]);
+  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold]);
 
   const handleDownloadOne = async () => {
     if (!selectedGroup) return;
     setRendering(true);
     try {
-      const el = createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef });
+      const el = createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold });
       const blob = await renderCardToBlob(el);
       downloadBlob(blob, `${selectedGroup.groupName.replace(/\s+/g, '_')}_Route.png`);
     } catch (e) {
@@ -73,7 +74,7 @@ export function KneeboardTab() {
     setRendering(true);
     try {
       for (const g of playerGroups) {
-        const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef });
+        const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
         const blob = await renderCardToBlob(el);
         downloadBlob(blob, `${g.groupName.replace(/\s+/g, '_')}_Route.png`);
         // Small delay between downloads so browser doesn't block them
@@ -142,15 +143,34 @@ export function KneeboardTab() {
           Speed:
           <select
             value={speedRef}
-            onChange={(e) => setSpeedRef(e.target.value as SpeedMode)}
+            onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
             style={{ ...selectStyle, marginLeft: 6 }}
           >
+            <option value="auto">Auto (CAS/Mach)</option>
             <option value="cas">CAS</option>
             <option value="tas">TAS</option>
             <option value="gs">GS</option>
             <option value="mach">Mach</option>
           </select>
         </label>
+
+        {speedRef === 'auto' && (
+          <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+            Mach above:
+            <select
+              value={machThreshold}
+              onChange={(e) => setMachThreshold(Number(e.target.value))}
+              style={{ ...selectStyle, marginLeft: 6 }}
+            >
+              <option value={10000}>FL100</option>
+              <option value={15000}>FL150</option>
+              <option value={18000}>FL180</option>
+              <option value={20000}>FL200</option>
+              <option value={25000}>FL250</option>
+              <option value={30000}>FL300</option>
+            </select>
+          </label>
+        )}
 
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering} style={btnStyle}>
           {rendering ? 'Rendering...' : 'Download PNG'}
