@@ -485,8 +485,10 @@ HEARTBEAT_INTERVAL = 30  # seconds — Cloudflare kills idle connections at 100s
 @app.route("/api/sessions/<sid>/stream")
 def session_stream(sid):
     """SSE event stream with heartbeat keepalives for Cloudflare compatibility."""
+    print(f"SSE connect request: session={sid}, known_sessions={list(sessions.keys())}")
     session = _get_session(sid)
     if not session:
+        print(f"SSE 404: session {sid} not found")
         return jsonify({"error": "Session not found"}), 404
 
     token = request.args.get("token", "")
