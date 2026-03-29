@@ -518,6 +518,13 @@ export function MapContainer() {
     }
   }, [measureMode]);
 
+  // Filter data for flight leads — blue only
+  const role = useMissionStore((s) => s.role);
+  const isFlightLead = role === 'flight_lead';
+  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
+  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
+  const visibleThreats = isFlightLead ? [] : threats;
+
   // Fit map to content on initial load only
   const hasFitted = useRef(false);
   useEffect(() => {
@@ -552,13 +559,6 @@ export function MapContainer() {
     }
     hasFitted.current = true;
   }, [theater, groups, role]);
-
-  // Filter data for flight leads — blue only
-  const role = useMissionStore((s) => s.role);
-  const isFlightLead = role === 'flight_lead';
-  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
-  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
-  const visibleThreats = isFlightLead ? [] : threats;
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
