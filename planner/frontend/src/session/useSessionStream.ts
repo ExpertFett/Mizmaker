@@ -73,7 +73,12 @@ export function useSessionStream(sessionId: string | null, enabled: boolean = tr
     });
 
     es.onerror = () => {
-      // SSE will auto-reconnect
+      if (es.readyState === EventSource.CLOSED) {
+        // Server rejected the connection (404, 503, etc.) — don't retry
+        console.log('SSE connection closed by server');
+        return;
+      }
+      // Network blip — EventSource will auto-reconnect
       console.log('SSE connection error — will retry');
     };
 
