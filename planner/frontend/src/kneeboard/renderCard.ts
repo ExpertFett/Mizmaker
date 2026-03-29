@@ -1,50 +1,55 @@
 /**
- * Kneeboard card renderer — HTML → Canvas → PNG pipeline.
+ * Kneeboard card renderer — renders a React element to PNG via html2canvas.
  *
- * Takes a React element, renders it to a static HTML string,
- * draws it onto a canvas via SVG foreignObject, and exports as PNG blob.
+ * Mounts the element into a hidden container, captures with html2canvas,
+ * exports as PNG blob. No SVG foreignObject — avoids tainted canvas issues.
  */
 
-import ReactDOMServer from 'react-dom/server';
+import html2canvas from 'html2canvas';
+import { createRoot } from 'react-dom/client';
 import type { ReactElement } from 'react';
 
 const CARD_W = 600;
 const CARD_H = 850;
 
 export async function renderCardToBlob(element: ReactElement): Promise<Blob> {
-  const html = ReactDOMServer.renderToStaticMarkup(element);
+  // Create a hidden container
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = `${CARD_W}px`;
+  container.style.height = `${CARD_H}px`;
+  container.style.overflow = 'hidden';
+  document.body.appendChild(container);
 
-  // Wrap in SVG foreignObject for canvas rendering
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}">
-      <foreignObject width="100%" height="100%">
-        <div xmlns="http://www.w3.org/1999/xhtml">${html}</div>
-      </foreignObject>
-    </svg>`;
+  // Mount the React element
+  const root = createRoot(container);
+  root.render(element);
 
-  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
+  // Wait for render to flush
+  await new Promise((r) => setTimeout(r, 50));
 
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = CARD_W;
-      canvas.height = CARD_H;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
+  try {
+    const canvas = await html2canvas(container, {
+      width: CARD_W,
+      height: CARD_H,
+      backgroundColor: '#0a1520',
+      scale: 1,
+      logging: false,
+      useCORS: true,
+    });
+
+    return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
         else reject(new Error('Canvas toBlob failed'));
       }, 'image/png');
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('SVG image load failed'));
-    };
-    img.src = url;
-  });
+    });
+  } finally {
+    root.unmount();
+    document.body.removeChild(container);
+  }
 }
 
 export async function renderCardToDataUrl(element: ReactElement): Promise<string> {
