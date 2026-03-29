@@ -72,10 +72,9 @@ _srtm_data = srtm.get_data()
 
 # Serve built frontend from /static in production, or run with Vite proxy in dev
 static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app = Flask(__name__, static_folder=static_dir, static_url_path="")
-else:
-    app = Flask(__name__)
+# Disable Flask's built-in static serving — our catch-all handles everything.
+# static_url_path="" conflicts with the SPA catch-all (both match /<path:path>).
+app = Flask(__name__, static_folder=None)
 
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
@@ -930,9 +929,11 @@ def close_session():
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_frontend(path):
-    if path and os.path.exists(os.path.join(app.static_folder or "", path)):
-        return send_from_directory(app.static_folder or "static", path)
-    return send_from_directory(app.static_folder or "static", "index.html")
+    # Serve actual static files (JS, CSS, images) if they exist
+    if path and os.path.exists(os.path.join(static_dir, path)):
+        return send_from_directory(static_dir, path)
+    # Everything else gets index.html (SPA client-side routing)
+    return send_from_directory(static_dir, "index.html")
 
 
 if __name__ == "__main__":
