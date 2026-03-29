@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useSessionStream } from '../session/useSessionStream';
 import { ParticipantBar } from '../session/ParticipantBar';
+import { InviteManager } from '../session/InviteManager';
 import { MapContainer } from '../map/MapContainer';
 import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
 import { ExportPanel } from '../panels/ExportPanel';
@@ -105,6 +106,7 @@ export function MissionEditor() {
           <>
             <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
               <PlayerGroupsButton />
+              <InviteManager />
             </div>
             <ExportPanel />
           </>
