@@ -42,6 +42,30 @@ export function useSessionStream(sessionId: string | null) {
       } catch {}
     });
 
+    es.addEventListener('ready_check', () => {
+      // Dispatch custom event for UI components to listen to
+      window.dispatchEvent(new CustomEvent('session:ready_check'));
+    });
+
+    es.addEventListener('ready_response', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        window.dispatchEvent(new CustomEvent('session:ready_response', { detail: data }));
+      } catch {}
+    });
+
+    es.addEventListener('all_ready', () => {
+      window.dispatchEvent(new CustomEvent('session:all_ready'));
+    });
+
+    es.addEventListener('session_frozen', () => {
+      window.dispatchEvent(new CustomEvent('session:frozen'));
+    });
+
+    es.addEventListener('session_unfrozen', () => {
+      window.dispatchEvent(new CustomEvent('session:unfrozen'));
+    });
+
     es.addEventListener('session_ended', () => {
       console.log('Session ended');
       es.close();

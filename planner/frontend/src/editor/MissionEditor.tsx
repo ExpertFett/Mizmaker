@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useSessionStream } from '../session/useSessionStream';
+import { ParticipantBar } from '../session/ParticipantBar';
 import { MapContainer } from '../map/MapContainer';
 import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
 import { ExportPanel } from '../panels/ExportPanel';
@@ -122,6 +123,7 @@ export function MissionEditor() {
         {/* Map tab — map + floating panel */}
         {isMap && (
           <>
+            <ParticipantBar />
             <MapContainer />
             {selectedGroupId && <FloatingFlightPanel />}
           </>

@@ -232,6 +232,10 @@ def session_edit(sid):
     if not group_name or group_name not in session["group_waypoints"]:
         return jsonify({"error": f"Group '{group_name}' not found"}), 404
 
+    # Reject edits if session is frozen
+    if session.get("status") == "frozen":
+        return jsonify({"error": "Session is frozen — editing disabled"}), 423
+
     # Validate token owns this group (or is the host)
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if token and token != session.get("host_token"):
@@ -498,6 +502,95 @@ def session_stream(sid):
             "Connection": "keep-alive",
         },
     )
+
+
+# --------------------------------------------------------------------------
+# Ready check + session lifecycle
+# --------------------------------------------------------------------------
+
+@app.route("/api/sessions/<sid>/ready-check", methods=["POST"])
+def session_ready_check(sid):
+    """Mission maker requests all flight leads to confirm their routes are final."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    host_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if host_token != session.get("host_token"):
+        return jsonify({"error": "Host only"}), 403
+
+    with _lock:
+        session["status"] = "ready_check"
+        for p in session["participants"].values():
+            p["ready"] = False
+
+    _broadcast(session, "ready_check", {"requestedBy": "host"})
+    return jsonify({"ok": True, "status": "ready_check"})
+
+
+@app.route("/api/sessions/<sid>/ready", methods=["POST"])
+def session_ready(sid):
+    """Flight lead confirms their route is final."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    participant = session["participants"].get(token)
+    if not participant:
+        return jsonify({"error": "Not a participant"}), 403
+
+    with _lock:
+        participant["ready"] = True
+
+    _broadcast(session, "ready_response", {
+        "name": participant["name"],
+        "group": participant["group"],
+        "ready": True,
+    })
+
+    # Check if all participants are ready
+    all_ready = all(p["ready"] for p in session["participants"].values() if p["connected"])
+    if all_ready:
+        _broadcast(session, "all_ready", {})
+
+    return jsonify({"ok": True, "allReady": all_ready})
+
+
+@app.route("/api/sessions/<sid>/freeze", methods=["POST"])
+def session_freeze(sid):
+    """Mission maker freezes the session — no more edits allowed."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    host_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if host_token != session.get("host_token"):
+        return jsonify({"error": "Host only"}), 403
+
+    with _lock:
+        session["status"] = "frozen"
+
+    _broadcast(session, "session_frozen", {})
+    return jsonify({"ok": True, "status": "frozen"})
+
+
+@app.route("/api/sessions/<sid>/unfreeze", methods=["POST"])
+def session_unfreeze(sid):
+    """Mission maker unfreezes the session."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    host_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if host_token != session.get("host_token"):
+        return jsonify({"error": "Host only"}), 403
+
+    with _lock:
+        session["status"] = "planning"
+
+    _broadcast(session, "session_unfrozen", {})
+    return jsonify({"ok": True, "status": "planning"})
 
 
 # --------------------------------------------------------------------------
