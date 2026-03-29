@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import type { CountryInfo } from '../../types/mission';
 
 const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
 const CAT_ICONS: Record<string, string> = { plane: '✈', helicopter: '🚁', vehicle: '🚗', ship: '⚓', static: '●' };
