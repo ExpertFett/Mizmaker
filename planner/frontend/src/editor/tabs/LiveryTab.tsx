@@ -119,7 +119,25 @@ interface LiverySectionProps {
 
 function LiverySection({ entry, changes, isChanged, onLiveryChange, onBulkApply }: LiverySectionProps) {
   const [bulkLivery, setBulkLivery] = useState(entry.liveries[0] || '');
+  const [availableLiveries, setAvailableLiveries] = useState<{ id: string; name: string }[]>([]);
   const coalitionColor = entry.coalition === 'blue' ? '#4a8fd4' : entry.coalition === 'red' ? '#d95050' : '#8a8a5a';
+
+  // Fetch all available liveries for this aircraft type from the DB
+  useEffect(() => {
+    fetch(`/api/liveries/${encodeURIComponent(entry.type)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setAvailableLiveries(data);
+        } else {
+          // Fallback to mission liveries
+          setAvailableLiveries(entry.liveries.map((l) => ({ id: l, name: l })));
+        }
+      })
+      .catch(() => {
+        setAvailableLiveries(entry.liveries.map((l) => ({ id: l, name: l })));
+      });
+  }, [entry.type, entry.liveries]);
 
   return (
     <div style={{ marginBottom: 20, border: '1px solid #1a2a3a', borderRadius: 4, background: '#0a1520' }}>
@@ -147,8 +165,8 @@ function LiverySection({ entry, changes, isChanged, onLiveryChange, onBulkApply 
             onChange={(e) => setBulkLivery(e.target.value)}
             style={selectStyle}
           >
-            {entry.liveries.map((l) => (
-              <option key={l} value={l}>{l}</option>
+            {availableLiveries.map((l) => (
+              <option key={l.id} value={l.id}>{l.name || l.id}</option>
             ))}
           </select>
           <button
@@ -194,8 +212,11 @@ function LiverySection({ entry, changes, isChanged, onLiveryChange, onBulkApply 
                       ...(changed ? { borderLeft: '3px solid #3fb950' } : {}),
                     }}
                   >
-                    {entry.liveries.map((l) => (
-                      <option key={l} value={l}>{l}</option>
+                    {currentValue && !availableLiveries.find((l) => l.id === currentValue) && (
+                      <option value={currentValue}>{currentValue} (current)</option>
+                    )}
+                    {availableLiveries.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name || l.id}</option>
                     ))}
                   </select>
                 </td>
