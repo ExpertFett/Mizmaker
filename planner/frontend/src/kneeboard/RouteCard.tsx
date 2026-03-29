@@ -32,7 +32,6 @@ const W = 600;
 const H = 850;
 const FONT = "'Arial', sans-serif";
 const BG = '#1a1a1a';
-const BG_BODY = '#2a2a2a';
 const BG_NOTES = '#4a4a4a';
 const BORDER = '#444';
 const BORDER_MED = '#555';
