@@ -179,7 +179,7 @@ def _extract_drawings(d: dict, theater: str, has_projection: bool) -> list:
             }
 
             if ptype == "TextBox":
-                drawing["text"] = obj.get("name", "")
+                drawing["text"] = obj.get("text", "") or obj.get("name", "")
                 drawing["fontSize"] = _num(obj.get("fontSize", 12))
                 if has_projection:
                     lat, lon = dcs_to_latlon(base_x, base_y, theater)
