@@ -64,14 +64,14 @@ export function RouteDetailCard({ group, mapImageUrl, threats = [] }: RouteDetai
 
   // Nearby threats
   const nearbyThreats = threats.filter((t) => {
-    if (!t.lat || !t.lon) return false;
-    // Check if any waypoint is within 2x the threat range
+    if (t.lat == null || t.lon == null) return false;
+    const tLat = t.lat, tLon = t.lon;
     return wps.some((w) => {
       if (!w.lat || !w.lon) return false;
-      const dLat = (t.lat - w.lat) * 110540;
-      const dLon = (t.lon - w.lon) * 111320 * Math.cos(w.lat * Math.PI / 180);
+      const dLat = (tLat - w.lat) * 110540;
+      const dLon = (tLon - w.lon) * 111320 * Math.cos(w.lat * Math.PI / 180);
       const dist = Math.sqrt(dLat * dLat + dLon * dLon);
-      return dist < t.range_m * 2;
+      return dist < t.range * 2;
     });
   });
 
@@ -168,7 +168,7 @@ export function RouteDetailCard({ group, mapImageUrl, threats = [] }: RouteDetai
             <tr>
               <td style={{ ...tdStyle, fontWeight: 'bold', color: '#ff6666' }}>Threats</td>
               <td style={{ ...tdStyle, color: '#ff6666' }}>
-                {nearbyThreats.map((t) => `${t.name} (${Math.round(t.range_m / 1852)}nm)`).join(', ')}
+                {nearbyThreats.map((t) => `${t.name} (${Math.round(t.range / 1852)}nm)`).join(', ')}
               </td>
             </tr>
           )}

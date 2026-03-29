@@ -21,7 +21,6 @@ import type { MissionGroup, ThreatRing } from '../types/mission';
 
 const ROUTE_COLOR = '#4a8fd4';
 const WP_COLOR = '#ffa500';
-const THREAT_COLOR = 'rgba(255, 60, 60, 0.25)';
 const THREAT_STROKE = 'rgba(255, 60, 60, 0.6)';
 const LABEL_COLOR = '#fff';
 
@@ -105,16 +104,13 @@ export async function captureRouteImage(
 
   // Threat rings (circles approximated as 64-sided polygons)
   const threatFeatures = threats
-    .filter((t) => t.lat && t.lon && t.range_m)
+    .filter((t): t is ThreatRing & { lat: number; lon: number } => t.lat != null && t.lon != null && t.range > 0)
     .map((t) => {
-      const center = fromLonLat([t.lon, t.lat]);
-      // Approximate circle with polygon
       const points = 64;
-      const radius = t.range_m;
+      const radius = t.range;
       const coords: number[][] = [];
       for (let i = 0; i <= points; i++) {
         const angle = (i / points) * 2 * Math.PI;
-        // Rough meter-to-degree conversion at this latitude
         const dLon = (radius * Math.cos(angle)) / (111320 * Math.cos(t.lat * Math.PI / 180));
         const dLat = (radius * Math.sin(angle)) / 110540;
         coords.push(fromLonLat([t.lon + dLon, t.lat + dLat]));
