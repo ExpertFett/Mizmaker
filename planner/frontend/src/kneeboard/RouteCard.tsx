@@ -58,7 +58,7 @@ function fmtLatLon(lat?: number, lon?: number): string {
   const latM = ((la - latD) * 60).toFixed(1);
   const lonD = Math.floor(lo);
   const lonM = ((lo - lonD) * 60).toFixed(1);
-  return `${ns}${latD}\u00B0${latM}' ${ew}${lonD}\u00B0${lonM}'`;
+  return `${ns}${latD}°${latM}' ${ew}${lonD}°${lonM}'`;
 }
 
 function fmtAlt(alt_m: number, alt_type: string): string {
@@ -74,7 +74,7 @@ function resolveSpeedMode(wp: Waypoint, mode: KneeboardSpeedRef, machThreshold: 
 }
 
 function fmtSpeed(wp: Waypoint, mode: KneeboardSpeedRef, wx?: Weather | null, machThreshold: number = 18000): string {
-  if (!wp.speed_ms || wp.speed_ms <= 0) return '\u00A0';
+  if (!wp.speed_ms || wp.speed_ms <= 0) return '-';
   const resolved = resolveSpeedMode(wp, mode, machThreshold);
   if (!wx) return `${Math.round(msToKnots(wp.speed_ms))}`;
   const hdg = wp.leg_bearing_deg || 0;
@@ -84,12 +84,12 @@ function fmtSpeed(wp: Waypoint, mode: KneeboardSpeedRef, wx?: Weather | null, ma
 }
 
 function fmtDist(nm?: number): string {
-  if (nm == null || nm <= 0) return '\u00A0';
+  if (nm == null || nm <= 0) return '-';
   return nm.toFixed(1);
 }
 
 function fmtEte(seconds?: number): string {
-  if (seconds == null || seconds <= 0) return '\u00A0';
+  if (seconds == null || seconds <= 0) return '-';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   if (m >= 60) {
@@ -101,15 +101,15 @@ function fmtEte(seconds?: number): string {
 }
 
 function fmtBrg(deg?: number): string {
-  if (deg == null) return '\u00A0';
-  return `${Math.round(deg).toString().padStart(3, '0')}\u00B0`;
+  if (deg == null) return '-';
+  return `${Math.round(deg).toString().padStart(3, '0')}°`;
 }
 
 function fmtWind(wx: Weather): string {
   const w = wx.wind.atGround;
   const meteoDir = (w.dir + 180) % 360;
   const kts = Math.round(msToKnots(w.speed));
-  return `${Math.round(meteoDir).toString().padStart(3, '0')}\u00B0/${kts}kts`;
+  return `${Math.round(meteoDir).toString().padStart(3, '0')}° / ${kts} kts`;
 }
 
 function speedColLabel(mode: KneeboardSpeedRef): string {
@@ -239,7 +239,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
                   {wp.waypoint_number}
                 </td>
                 <td style={{ ...tdStyle, fontSize: 17 }}>
-                  {(wp.waypoint_name || '\u00A0').substring(0, 6)}
+                  {(wp.waypoint_name || '-').substring(0, 6)}
                 </td>
                 <td style={{ ...tdStyle, fontSize: coordFormat === 'mgrs' ? 16 : 14, textAlign: 'left' }}>
                   {fmtCoord(wp.lat, wp.lon)}
@@ -248,16 +248,16 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
                   {fmtAlt(wp.altitude_m, wp.altitude_type)}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'center' }}>
-                  {isWp0 ? '\u00A0' : fmtSpeed(wp, speedRef, weather, machThreshold)}
+                  {isWp0 ? '-' : fmtSpeed(wp, speedRef, weather, machThreshold)}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'center', color: TEXT_MUTED }}>
-                  {isWp0 ? '\u00A0' : fmtBrg(wp.leg_bearing_deg)}
+                  {isWp0 ? '-' : fmtBrg(wp.leg_bearing_deg)}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  {isWp0 ? '\u00A0' : fmtDist(wp.leg_distance_nm)}
+                  {isWp0 ? '-' : fmtDist(wp.leg_distance_nm)}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  {isWp0 ? '\u00A0' : fmtEte(legEta)}
+                  {isWp0 ? '-' : fmtEte(legEta)}
                 </td>
               </tr>
             );
@@ -267,7 +267,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
             <td colSpan={5} style={{ ...tdStyle, fontWeight: 'bold', backgroundColor: '#333' }}>
               TOTAL
             </td>
-            <td style={{ ...tdStyle, textAlign: 'center', backgroundColor: '#333', color: TEXT_MUTED }}>{'\u00A0'}</td>
+            <td style={{ ...tdStyle, textAlign: 'center', backgroundColor: '#333', color: TEXT_MUTED }}>-</td>
             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', backgroundColor: '#333' }}>
               {totalDist.toFixed(1)}
             </td>
@@ -305,11 +305,11 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
             <tbody>
               <tr>
                 <td style={{ ...tdStyle, fontWeight: 'bold' }}>QNH</td>
-                <td style={tdStyle}>{weather.qnh_inhg.toFixed(2)} inHg / {weather.qnh_hpa.toFixed(0)} hPa</td>
+                <td style={tdStyle}>{weather.qnh_inhg.toFixed(2)} inHg</td>
               </tr>
               <tr>
                 <td style={{ ...tdStyle, fontWeight: 'bold' }}>Temperature</td>
-                <td style={tdStyle}>{Math.round(weather.temperature_c)}\u00B0C</td>
+                <td style={tdStyle}>{Math.round(weather.temperature_c)}°C</td>
               </tr>
               <tr>
                 <td style={{ ...tdStyle, fontWeight: 'bold' }}>Surface Wind</td>
