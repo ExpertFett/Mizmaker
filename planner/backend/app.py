@@ -42,6 +42,14 @@ from services.miz_parser import (
 )
 from services.miz_editor import replace_group_waypoints, repack_miz
 from services.unit_editor import apply_unit_edits
+from services.trigger_editor import (
+    extract_triggers,
+    update_triggers_in_mission,
+    list_audio_files,
+    get_audio_bytes,
+    add_audio_to_miz,
+    remove_audio_from_miz,
+)
 from services.unit_extractor import (
     find_client_units,
     get_all_units_for_donor_selection,
@@ -114,6 +122,7 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             "dirty_groups": set(),  # groups that were actually edited
             # Server-authoritative unit edits (loadouts, datalink, etc.)
             "unit_edits": [],  # accumulated from all participants
+            "pending_triggers": None,  # trigger edits, applied at download
             # Collaborative session fields
             "host_token": host_token,
             "participants": {},  # { token: { name, group, connected, ready } }
@@ -692,6 +701,11 @@ def download():
         if all_edits:
             mission_text = apply_unit_edits(mission_text, all_edits)
 
+        # 3. Apply trigger edits if any
+        pending_triggers = session.get("pending_triggers")
+        if pending_triggers:
+            mission_text = update_triggers_in_mission(mission_text, pending_triggers)
+
         miz_bytes = repack_miz(session["miz_bytes"], mission_text)
 
         return send_file(
@@ -964,6 +978,137 @@ def close_session():
         with _lock:
             sessions.pop(sid, None)
     return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------------------
+# Triggers & Audio
+# --------------------------------------------------------------------------
+
+@app.route("/api/triggers", methods=["GET"])
+def get_triggers():
+    """Get parsed triggers from the loaded mission."""
+    sid = request.args.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    try:
+        # If triggers were edited, return the pending version
+        if session.get("pending_triggers"):
+            trigger_data = session["pending_triggers"]
+        else:
+            mission_dict = parse_mission_text(session["original_mission_text"])
+            trigger_data = extract_triggers(mission_dict)
+        audio_files = list_audio_files(session["miz_bytes"])
+        return jsonify({**trigger_data, "audioFiles": audio_files})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route("/api/triggers", methods=["POST"])
+def save_triggers():
+    """Store trigger edits — applied at download time."""
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    sid = body.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    trigger_data = body.get("triggers")
+    if not trigger_data:
+        return jsonify({"error": "No trigger data"}), 400
+
+    with _lock:
+        session["pending_triggers"] = trigger_data
+        session["last_activity"] = time.time()
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/audio/list", methods=["GET"])
+def audio_list():
+    """List audio files in the .miz archive."""
+    sid = request.args.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    audio_files = list_audio_files(session["miz_bytes"])
+    return jsonify({"audioFiles": audio_files})
+
+
+@app.route("/api/audio/upload", methods=["POST"])
+def audio_upload():
+    """Upload an audio file and embed it in the .miz archive."""
+    sid = request.form.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "No filename"}), 400
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in (".wav", ".ogg", ".mp3"):
+        return jsonify({"error": "File must be .wav, .ogg, or .mp3"}), 400
+
+    audio_data = f.read()
+    try:
+        new_miz = add_audio_to_miz(session["miz_bytes"], f.filename, audio_data)
+        with _lock:
+            session["miz_bytes"] = new_miz
+        return jsonify({
+            "ok": True,
+            "filename": f.filename,
+            "path": f"l10n/DEFAULT/{f.filename}",
+            "sizeBytes": len(audio_data),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/audio/<path:filepath>", methods=["DELETE"])
+def audio_delete(filepath):
+    """Remove an audio file from the .miz archive."""
+    sid = request.args.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    try:
+        new_miz = remove_audio_from_miz(session["miz_bytes"], filepath)
+        with _lock:
+            session["miz_bytes"] = new_miz
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/audio/stream/<path:filepath>", methods=["GET"])
+def audio_stream(filepath):
+    """Stream an audio file from the .miz for preview playback."""
+    sid = request.args.get("sessionId")
+    session = _get_session(sid) if sid else None
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    audio_bytes = get_audio_bytes(session["miz_bytes"], filepath)
+    if audio_bytes is None:
+        return jsonify({"error": "Audio file not found"}), 404
+
+    ext = os.path.splitext(filepath)[1].lower()
+    mime_map = {".wav": "audio/wav", ".ogg": "audio/ogg", ".mp3": "audio/mpeg"}
+    mimetype = mime_map.get(ext, "application/octet-stream")
+
+    return send_file(io.BytesIO(audio_bytes), mimetype=mimetype)
 
 
 # --------------------------------------------------------------------------
