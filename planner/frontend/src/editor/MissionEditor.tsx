@@ -16,6 +16,7 @@ import { WeatherTab } from './tabs/WeatherTab';
 import { RenamerTab } from './tabs/RenamerTab';
 import { BatchEditTab } from './tabs/BatchEditTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
+import { TriggerTab } from './tabs/TriggerTab';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'weather', label: 'Weather', icon: '🌤' },
   { id: 'rename', label: 'Rename', icon: '✏' },
   { id: 'batch', label: 'Batch', icon: '⚡' },
+  { id: 'triggers', label: 'Triggers', icon: '⚙' },
   { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
 ] as const;
@@ -143,6 +145,7 @@ export function MissionEditor() {
             {activeTab === 'weather' && <WeatherTab />}
             {activeTab === 'rename' && <RenamerTab />}
             {activeTab === 'batch' && <BatchEditTab />}
+            {activeTab === 'triggers' && <TriggerTab />}
             {activeTab === 'kneeboard' && <KneeboardTab />}
             {activeTab === 'dtc' && <DtcTab />}
           </div>

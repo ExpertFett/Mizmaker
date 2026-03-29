@@ -1,0 +1,132 @@
+import { create } from 'zustand';
+import type { TriggerRule, FlagInfo, AudioFile } from '../types/mission';
+
+interface TriggerState {
+  rules: TriggerRule[];
+  flags: FlagInfo[];
+  audioFiles: AudioFile[];
+  loaded: boolean;
+  isDirty: boolean;
+  selectedRuleId: number | null;
+
+  loadTriggers: (rules: TriggerRule[], flags: FlagInfo[], audioFiles: AudioFile[]) => void;
+  addRule: () => void;
+  updateRule: (id: number, updates: Partial<TriggerRule>) => void;
+  deleteRule: (id: number) => void;
+  duplicateRule: (id: number) => void;
+  selectRule: (id: number | null) => void;
+  setAudioFiles: (files: AudioFile[]) => void;
+  addAudioFile: (file: AudioFile) => void;
+  removeAudioFile: (path: string) => void;
+  markClean: () => void;
+  clear: () => void;
+}
+
+export const useTriggerStore = create<TriggerState>((set, get) => ({
+  rules: [],
+  flags: [],
+  audioFiles: [],
+  loaded: false,
+  isDirty: false,
+  selectedRuleId: null,
+
+  loadTriggers: (rules, flags, audioFiles) =>
+    set({ rules, flags, audioFiles, loaded: true, isDirty: false, selectedRuleId: null }),
+
+  addRule: () => {
+    const { rules } = get();
+    const maxId = rules.reduce((max, r) => Math.max(max, r.id), 0);
+    const newRule: TriggerRule = {
+      id: maxId + 1,
+      name: `New Trigger ${maxId + 1}`,
+      enabled: true,
+      oneTime: true,
+      eventType: 'once',
+      conditions: [],
+      actions: [],
+    };
+    set({ rules: [...rules, newRule], selectedRuleId: newRule.id, isDirty: true });
+  },
+
+  updateRule: (id, updates) => {
+    const { rules } = get();
+    set({
+      rules: rules.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+      isDirty: true,
+      flags: recomputeFlags(rules.map((r) => (r.id === id ? { ...r, ...updates } : r))),
+    });
+  },
+
+  deleteRule: (id) => {
+    const { rules, selectedRuleId } = get();
+    const newRules = rules.filter((r) => r.id !== id);
+    set({
+      rules: newRules,
+      selectedRuleId: selectedRuleId === id ? null : selectedRuleId,
+      isDirty: true,
+      flags: recomputeFlags(newRules),
+    });
+  },
+
+  duplicateRule: (id) => {
+    const { rules } = get();
+    const source = rules.find((r) => r.id === id);
+    if (!source) return;
+    const maxId = rules.reduce((max, r) => Math.max(max, r.id), 0);
+    const newRule: TriggerRule = {
+      ...structuredClone(source),
+      id: maxId + 1,
+      name: `${source.name} (copy)`,
+    };
+    set({ rules: [...rules, newRule], selectedRuleId: newRule.id, isDirty: true });
+  },
+
+  selectRule: (id) => set({ selectedRuleId: id }),
+
+  setAudioFiles: (files) => set({ audioFiles: files }),
+
+  addAudioFile: (file) =>
+    set((s) => ({ audioFiles: [...s.audioFiles, file] })),
+
+  removeAudioFile: (path) =>
+    set((s) => ({ audioFiles: s.audioFiles.filter((f) => f.path !== path) })),
+
+  markClean: () => set({ isDirty: false }),
+
+  clear: () =>
+    set({
+      rules: [], flags: [], audioFiles: [],
+      loaded: false, isDirty: false, selectedRuleId: null,
+    }),
+}));
+
+
+function recomputeFlags(rules: TriggerRule[]): FlagInfo[] {
+  const flagMap: Record<string, { setBy: string[]; readBy: string[] }> = {};
+
+  for (const rule of rules) {
+    for (const cond of rule.conditions) {
+      const f = cond.params?.flag as string | undefined;
+      if (f != null) {
+        if (!flagMap[f]) flagMap[f] = { setBy: [], readBy: [] };
+        if (!flagMap[f].readBy.includes(rule.name)) flagMap[f].readBy.push(rule.name);
+      }
+      const f2 = cond.params?.flag2 as string | undefined;
+      if (f2 != null) {
+        if (!flagMap[f2]) flagMap[f2] = { setBy: [], readBy: [] };
+        if (!flagMap[f2].readBy.includes(rule.name)) flagMap[f2].readBy.push(rule.name);
+      }
+    }
+    for (const act of rule.actions) {
+      const f = act.params?.flag as string | undefined;
+      if (f != null) {
+        if (!flagMap[f]) flagMap[f] = { setBy: [], readBy: [] };
+        if (!flagMap[f].setBy.includes(rule.name)) flagMap[f].setBy.push(rule.name);
+      }
+    }
+  }
+
+  return Object.entries(flagMap)
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([flagId, info]) => ({ flagId, ...info }));
+}

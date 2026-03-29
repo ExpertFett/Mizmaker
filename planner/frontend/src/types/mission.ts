@@ -85,8 +85,17 @@ export interface MissionWeather {
   qnh_inhg: number;
   qnh_hpa: number;
   clouds_base_m: number;
+  clouds_density: number;
+  clouds_thickness: number;
+  clouds_precipitation: number;
   clouds_preset: string;
   visibility_m: number;
+  fog_enabled: boolean;
+  fog_visibility: number;
+  fog_thickness: number;
+  dust_enabled: boolean;
+  dust_density: number;
+  turbulence: number;
 }
 
 export interface MissionOverviewData {
@@ -116,6 +125,20 @@ export interface MissionDrawing {
   radius?: number;
 }
 
+export interface TriggerZone {
+  zoneId: number;
+  name: string;
+  x: number;
+  y: number;
+  lat?: number;
+  lon?: number;
+  radius: number;
+  color: string;
+  hidden: boolean;
+  type: number;           // 0=circle, 2=polygon
+  vertices?: [number, number][];  // lat/lon pairs for polygon zones
+}
+
 export interface UploadResponse {
   sessionId: string;
   filename: string;
@@ -126,6 +149,7 @@ export interface UploadResponse {
   threats: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
+  triggerZones: TriggerZone[];
   clientUnits: ClientUnit[];
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   pylonOptions: Record<string, Record<string, PylonInfo[]>>;
@@ -210,3 +234,46 @@ export interface CountryInfo {
 
 export type Coalition = 'blue' | 'red' | 'neutrals';
 export type UnitCategory = 'plane' | 'helicopter' | 'vehicle' | 'ship' | 'static';
+
+// ── Trigger & Audio types ─────────────────────────────────────────────────
+
+export interface TriggerCondition {
+  type: string;
+  params: Record<string, unknown>;
+  rawLua?: string;
+}
+
+export interface TriggerAction {
+  type: string;
+  params: Record<string, unknown>;
+  rawLua?: string;
+}
+
+export interface TriggerRule {
+  id: number;
+  name: string;
+  enabled: boolean;
+  oneTime: boolean;
+  eventType: 'once' | 'continuous' | 'onMissionStart';
+  conditions: TriggerCondition[];
+  actions: TriggerAction[];
+  predicate?: string;
+}
+
+export interface FlagInfo {
+  flagId: string;
+  setBy: string[];
+  readBy: string[];
+}
+
+export interface AudioFile {
+  filename: string;
+  path: string;
+  sizeBytes: number;
+}
+
+export interface TriggerData {
+  rules: TriggerRule[];
+  flags: FlagInfo[];
+  audioFiles: AudioFile[];
+}
