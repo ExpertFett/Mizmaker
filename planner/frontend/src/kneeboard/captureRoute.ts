@@ -17,17 +17,15 @@ import LineString from 'ol/geom/LineString';
 import { fromLonLat } from 'ol/proj';
 import { boundingExtent } from 'ol/extent';
 import { Style, Fill, Stroke, Circle as CircleStyle, Text } from 'ol/style';
-import type { MissionGroup, ThreatRing } from '../types/mission';
+import type { MissionGroup } from '../types/mission';
 
 const ROUTE_COLOR = '#4a8fd4';
 const WP_COLOR = '#ffa500';
-const THREAT_STROKE = 'rgba(255, 60, 60, 0.6)';
 const LABEL_COLOR = '#fff';
 
 interface CaptureOptions {
   width?: number;
   height?: number;
-  threats?: ThreatRing[];
   padding?: number;
 }
 
@@ -102,28 +100,8 @@ export async function captureRouteImage(
     legLabels.push(label);
   }
 
-  // Threat rings (circles approximated as 64-sided polygons)
-  const threatFeatures = threats
-    .filter((t): t is ThreatRing & { lat: number; lon: number } => t.lat != null && t.lon != null && t.range > 0)
-    .map((t) => {
-      const points = 64;
-      const radius = t.range;
-      const coords: number[][] = [];
-      for (let i = 0; i <= points; i++) {
-        const angle = (i / points) * 2 * Math.PI;
-        const dLon = (radius * Math.cos(angle)) / (111320 * Math.cos(t.lat * Math.PI / 180));
-        const dLat = (radius * Math.sin(angle)) / 110540;
-        coords.push(fromLonLat([t.lon + dLon, t.lat + dLat]));
-      }
-      const f = new Feature(new LineString(coords));
-      f.setStyle(new Style({
-        stroke: new Stroke({ color: THREAT_STROKE, width: 1.5, lineDash: [6, 4] }),
-      }));
-      return f;
-    });
-
   const vectorSource = new VectorSource({
-    features: [routeFeature, ...wpFeatures, ...legLabels, ...threatFeatures],
+    features: [routeFeature, ...wpFeatures, ...legLabels],
   });
 
   const vectorLayer = new VectorLayer({ source: vectorSource });
@@ -151,23 +129,15 @@ export async function captureRouteImage(
 
   map.getView().fit(extent, { padding: [padding, padding, padding, padding], maxZoom: 12 });
 
-  // Wait for tiles to load
+  // Wait for tiles to load via rendercomplete event
   await new Promise<void>((resolve) => {
-    let attempts = 0;
-    const check = () => {
-      map.renderSync();
-      const loading = baseLayer.getSource()?.getState() === 'loading';
-      if (!loading || attempts > 30) {
-        resolve();
-      } else {
-        attempts++;
-        setTimeout(check, 100);
-      }
-    };
-    setTimeout(check, 200);
+    const timeout = setTimeout(() => resolve(), 5000); // max 5s
+    map.once('rendercomplete', () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    map.renderSync();
   });
-
-  map.renderSync();
 
   // Capture canvas
   const mapCanvas = container.querySelector('canvas');
