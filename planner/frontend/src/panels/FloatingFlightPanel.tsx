@@ -637,51 +637,56 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
                 Fuel:{Math.round(unit.fuel)}lbs FL:{unit.flare} CH:{unit.chaff}
               </span>
             </div>
-            {unit.pylons.map((pylon) => {
-              const opts = typeOpts?.[String(pylon.number)] as PylonInfo[] | undefined;
-              const byCategory = new Map<string, PylonInfo[]>();
-              if (opts) for (const o of opts) {
-                const arr = byCategory.get(o.category || 'Other') || [];
-                arr.push(o); byCategory.set(o.category || 'Other', arr);
-              }
-              const key = `${unit.unitId}-${pylon.number}`;
-              const isExp = expandedPylon === key;
+            {(() => {
+              const allStations = typeOpts ? Object.keys(typeOpts).map(Number).sort((a, b) => a - b) : unit.pylons.map((p) => p.number);
+              const pylonMap = new Map(unit.pylons.map((p) => [p.number, p]));
+              return allStations.map((stationNum) => {
+                const pylon = pylonMap.get(stationNum) || { number: stationNum, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+                const opts = typeOpts?.[String(stationNum)] as PylonInfo[] | undefined;
+                const byCategory = new Map<string, PylonInfo[]>();
+                if (opts) for (const o of opts) {
+                  const arr = byCategory.get(o.category || 'Other') || [];
+                  arr.push(o); byCategory.set(o.category || 'Other', arr);
+                }
+                const key = `${unit.unitId}-${stationNum}`;
+                const isExp = expandedPylon === key;
 
-              return (
-                <div key={pylon.number} style={{ marginBottom: 2 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ color: '#5a7a8a', fontSize: 10, fontFamily: 'monospace', minWidth: 28 }}>S{pylon.number}</span>
-                    {locked ? (
-                      <span style={{ fontSize: 11, color: '#8fa8c0' }}>{pylon.shortName}</span>
-                    ) : (
-                      <select value={pylon.clsid} onChange={(e) => handlePylonChange(unit.unitId, pylon.number, e.target.value)} style={selSt}>
-                        <option value="">&lt;Empty&gt;</option>
-                        {Array.from(byCategory.entries()).map(([cat, items]) => (
-                          <optgroup key={cat} label={cat}>
-                            {items.map((o) => <option key={o.clsid} value={o.clsid}>{o.shortName}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
-                    )}
-                    {pylon.clsid && !locked && (
-                      <button onClick={() => setExpandedPylon(isExp ? null : key)}
-                        style={{ background: 'transparent', border: 'none', color: isExp ? '#4a8fd4' : '#3a4a5a', cursor: 'pointer', fontSize: 10 }}>
-                        {isExp ? '\u25B2' : '\u2699'}
-                      </button>
+                return (
+                  <div key={stationNum} style={{ marginBottom: 2 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#5a7a8a', fontSize: 10, fontFamily: 'monospace', minWidth: 28 }}>S{stationNum}</span>
+                      {locked ? (
+                        <span style={{ fontSize: 11, color: '#8fa8c0' }}>{pylon.shortName}</span>
+                      ) : (
+                        <select value={pylon.clsid} onChange={(e) => handlePylonChange(unit.unitId, stationNum, e.target.value)} style={selSt}>
+                          <option value="">&lt;Empty&gt;</option>
+                          {Array.from(byCategory.entries()).map(([cat, items]) => (
+                            <optgroup key={cat} label={cat}>
+                              {items.map((o) => <option key={o.clsid} value={o.clsid}>{o.shortName}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      )}
+                      {pylon.clsid && !locked && (
+                        <button onClick={() => setExpandedPylon(isExp ? null : key)}
+                          style={{ background: 'transparent', border: 'none', color: isExp ? '#4a8fd4' : '#3a4a5a', cursor: 'pointer', fontSize: 10 }}>
+                          {isExp ? '\u25B2' : '\u2699'}
+                        </button>
+                      )}
+                    </div>
+                    {isExp && pylon.clsid && (
+                      <div style={{ marginLeft: 34 }}>
+                        <LauncherSettingsPanel
+                          clsid={pylon.clsid}
+                          currentSettings={pylonSettings[key] || {}}
+                          onChange={(s) => handleSettings(unit.unitId, stationNum, s)}
+                        />
+                      </div>
                     )}
                   </div>
-                  {isExp && pylon.clsid && (
-                    <div style={{ marginLeft: 34 }}>
-                      <LauncherSettingsPanel
-                        clsid={pylon.clsid}
-                        currentSettings={pylonSettings[key] || {}}
-                        onChange={(s) => handleSettings(unit.unitId, pylon.number, s)}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         );
       })}

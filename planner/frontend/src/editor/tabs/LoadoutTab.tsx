@@ -221,11 +221,17 @@ function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCar
         </div>
       </div>
 
-      {/* Pylon list */}
+      {/* Pylon list — merge loaded pylons with all available stations */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {unit.pylons.map((pylon) => {
-          const options = typeOptions?.[String(pylon.number)] as PylonInfo[] | undefined;
-          const changed = isPylonChanged(unit.unitId, pylon.number);
+        {(() => {
+          // Build complete station list from pylon options
+          const allStations = typeOptions ? Object.keys(typeOptions).map(Number).sort((a, b) => a - b) : unit.pylons.map((p) => p.number);
+          const pylonMap = new Map(unit.pylons.map((p) => [p.number, p]));
+
+          return allStations.map((stationNum) => {
+            const pylon = pylonMap.get(stationNum) || { number: stationNum, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+            const options = typeOptions?.[String(stationNum)] as PylonInfo[] | undefined;
+            const changed = isPylonChanged(unit.unitId, stationNum);
           const isExpanded = expandedPylon === pylon.number;
 
           // Group options by category
@@ -287,7 +293,8 @@ function UnitCard({ unit, pylonOptions, isPylonChanged, onPylonChange }: UnitCar
               )}
             </div>
           );
-        })}
+        });
+        })()}
       </div>
     </div>
   );
