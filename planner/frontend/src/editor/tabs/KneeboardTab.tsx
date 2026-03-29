@@ -1,19 +1,25 @@
 /**
  * Kneeboard tab — preview and download kneeboard cards.
  *
- * Shows a live preview of each card and a download button.
- * Cards are rendered to PNG via the HTML→Canvas pipeline.
+ * Card types:
+ * - Route Card: waypoint table with coords, alt, speed, ETE
+ * - Route Detail: map snapshot with waypoint markers + summary
  */
 
 import { useState, useEffect, createElement } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
+import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
+import { captureRouteImage } from '../../kneeboard/captureRoute';
 import { renderCardToDataUrl, renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
 
+type CardType = 'route' | 'routeDetail';
+
 export function KneeboardTab() {
   const groups = useMissionStore((s) => s.groups);
+  const threats = useMissionStore((s) => s.threats);
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather as Weather | undefined;
 
@@ -21,9 +27,10 @@ export function KneeboardTab() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
     playerGroups[0]?.groupId ?? null,
   );
+  const [cardType, setCardType] = useState<CardType>('route');
   const [coordFormat, setCoordFormat] = useState<'mgrs' | 'latlon'>('mgrs');
   const [speedRef, setSpeedRef] = useState<KneeboardSpeedRef>('auto');
-  const [machThreshold, setMachThreshold] = useState(18000); // ft
+  const [machThreshold, setMachThreshold] = useState(18000);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
 
@@ -37,33 +44,55 @@ export function KneeboardTab() {
     }
 
     let cancelled = false;
-    const el = createElement(RouteCard, {
-      group: selectedGroup,
-      weather: wx,
-      coordFormat,
-      speedRef,
-      machThreshold,
-    });
 
-    renderCardToDataUrl(el)
-      .then((url) => {
+    async function render() {
+      try {
+        let url: string;
+        if (cardType === 'routeDetail') {
+          const mapImg = await captureRouteImage(selectedGroup!, { threats });
+          const el = createElement(RouteDetailCard, {
+            group: selectedGroup!,
+            mapImageUrl: mapImg,
+            threats,
+          });
+          url = await renderCardToDataUrl(el);
+        } else {
+          const el = createElement(RouteCard, {
+            group: selectedGroup!,
+            weather: wx,
+            coordFormat,
+            speedRef,
+            machThreshold,
+          });
+          url = await renderCardToDataUrl(el);
+        }
         if (!cancelled) setPreviewUrl(url);
-      })
-      .catch((e) => {
+      } catch (e) {
         console.error('Kneeboard render failed:', e);
         if (!cancelled) setPreviewUrl(null);
-      });
+      }
+    }
 
+    render();
     return () => { cancelled = true; };
-  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold]);
+  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold, cardType, threats]);
 
   const handleDownloadOne = async () => {
     if (!selectedGroup) return;
     setRendering(true);
     try {
-      const el = createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold });
-      const blob = await renderCardToBlob(el);
-      downloadBlob(blob, `${selectedGroup.groupName.replace(/\s+/g, '_')}_Route.png`);
+      let blob: Blob;
+      const name = selectedGroup.groupName.replace(/\s+/g, '_');
+      if (cardType === 'routeDetail') {
+        const mapImg = await captureRouteImage(selectedGroup, { threats });
+        const el = createElement(RouteDetailCard, { group: selectedGroup, mapImageUrl: mapImg, threats });
+        blob = await renderCardToBlob(el);
+        downloadBlob(blob, `${name}_RouteDetail.png`);
+      } else {
+        const el = createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold });
+        blob = await renderCardToBlob(el);
+        downloadBlob(blob, `${name}_Route.png`);
+      }
     } catch (e) {
       console.error('Download failed:', e);
     }
@@ -74,11 +103,24 @@ export function KneeboardTab() {
     setRendering(true);
     try {
       for (const g of playerGroups) {
-        const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
-        const blob = await renderCardToBlob(el);
-        downloadBlob(blob, `${g.groupName.replace(/\s+/g, '_')}_Route.png`);
-        // Small delay between downloads so browser doesn't block them
+        const name = g.groupName.replace(/\s+/g, '_');
+
+        // Route card
+        const routeEl = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
+        const routeBlob = await renderCardToBlob(routeEl);
+        downloadBlob(routeBlob, `${name}_Route.png`);
         await new Promise((r) => setTimeout(r, 200));
+
+        // Route detail card
+        try {
+          const mapImg = await captureRouteImage(g, { threats });
+          const detailEl = createElement(RouteDetailCard, { group: g, mapImageUrl: mapImg, threats });
+          const detailBlob = await renderCardToBlob(detailEl);
+          downloadBlob(detailBlob, `${name}_RouteDetail.png`);
+          await new Promise((r) => setTimeout(r, 200));
+        } catch {
+          // Skip if no waypoints with coords
+        }
       }
     } catch (e) {
       console.error('Batch download failed:', e);
@@ -128,48 +170,64 @@ export function KneeboardTab() {
         </label>
 
         <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-          Coords:
+          Card:
           <select
-            value={coordFormat}
-            onChange={(e) => setCoordFormat(e.target.value as 'mgrs' | 'latlon')}
+            value={cardType}
+            onChange={(e) => setCardType(e.target.value as CardType)}
             style={{ ...selectStyle, marginLeft: 6 }}
           >
-            <option value="mgrs">MGRS</option>
-            <option value="latlon">Lat/Lon</option>
+            <option value="route">Route Card</option>
+            <option value="routeDetail">Route Detail (Map)</option>
           </select>
         </label>
 
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-          Speed:
-          <select
-            value={speedRef}
-            onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
-            style={{ ...selectStyle, marginLeft: 6 }}
-          >
-            <option value="auto">Auto (CAS/Mach)</option>
-            <option value="cas">CAS</option>
-            <option value="tas">TAS</option>
-            <option value="gs">GS</option>
-            <option value="mach">Mach</option>
-          </select>
-        </label>
+        {cardType === 'route' && (
+          <>
+            <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+              Coords:
+              <select
+                value={coordFormat}
+                onChange={(e) => setCoordFormat(e.target.value as 'mgrs' | 'latlon')}
+                style={{ ...selectStyle, marginLeft: 6 }}
+              >
+                <option value="mgrs">MGRS</option>
+                <option value="latlon">Lat/Lon</option>
+              </select>
+            </label>
 
-        {speedRef === 'auto' && (
-          <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-            Mach above:
-            <select
-              value={machThreshold}
-              onChange={(e) => setMachThreshold(Number(e.target.value))}
-              style={{ ...selectStyle, marginLeft: 6 }}
-            >
-              <option value={10000}>FL100</option>
-              <option value={15000}>FL150</option>
-              <option value={18000}>FL180</option>
-              <option value={20000}>FL200</option>
-              <option value={25000}>FL250</option>
-              <option value={30000}>FL300</option>
-            </select>
-          </label>
+            <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+              Speed:
+              <select
+                value={speedRef}
+                onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
+                style={{ ...selectStyle, marginLeft: 6 }}
+              >
+                <option value="auto">Auto (CAS/Mach)</option>
+                <option value="cas">CAS</option>
+                <option value="tas">TAS</option>
+                <option value="gs">GS</option>
+                <option value="mach">Mach</option>
+              </select>
+            </label>
+
+            {speedRef === 'auto' && (
+              <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+                Mach above:
+                <select
+                  value={machThreshold}
+                  onChange={(e) => setMachThreshold(Number(e.target.value))}
+                  style={{ ...selectStyle, marginLeft: 6 }}
+                >
+                  <option value={10000}>FL100</option>
+                  <option value={15000}>FL150</option>
+                  <option value={18000}>FL180</option>
+                  <option value={20000}>FL200</option>
+                  <option value={25000}>FL250</option>
+                  <option value={30000}>FL300</option>
+                </select>
+              </label>
+            )}
+          </>
         )}
 
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering} style={btnStyle}>
@@ -212,7 +270,7 @@ export function KneeboardTab() {
           color: '#5a7a8a',
           fontSize: 14,
         }}>
-          {playerGroups.length === 0 ? 'No player flights in this mission' : 'Select a flight to preview'}
+          {playerGroups.length === 0 ? 'No player flights in this mission' : rendering ? 'Rendering...' : 'Select a flight to preview'}
         </div>
       )}
     </div>
