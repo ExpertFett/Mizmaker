@@ -4,36 +4,18 @@ import { downloadMiz, exportJson, closeSession } from '../api/client';
 import type { WaypointEdit } from '../types/mission';
 
 export function ExportPanel() {
-  const { sessionId, filename, clear, groups } = useMissionStore();
+  const { sessionId, filename, clear } = useMissionStore();
   const { edits, isDirty, clearEdits } = useEditStore();
 
   const handleDownload = async () => {
     if (!sessionId) return;
     try {
-      // Separate waypoint edits from unit edits
+      // Server has authoritative waypoint state — just send unit edits
       const isWaypointEdit = (e: any): e is WaypointEdit =>
         'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
-
-      const waypointEdits = edits.filter(isWaypointEdit);
       const unitEdits = edits.filter((e) => !isWaypointEdit(e));
 
-      // Build modifiedGroups: send final waypoint state for any group that was edited
-      const editedGroupIds = new Set<number>();
-      for (const e of waypointEdits) {
-        if (e.groupId != null) editedGroupIds.add(e.groupId);
-      }
-
-      const modifiedGroups: Record<string, { waypoints: unknown[] }> = {};
-      for (const gid of editedGroupIds) {
-        const group = groups.find((g) => g.groupId === gid);
-        if (group) {
-          modifiedGroups[group.groupName] = {
-            waypoints: group.waypoints,
-          };
-        }
-      }
-
-      const blob = await downloadMiz(sessionId, waypointEdits, modifiedGroups, unitEdits);
+      const blob = await downloadMiz(sessionId, unitEdits);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

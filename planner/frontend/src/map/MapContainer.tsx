@@ -23,6 +23,7 @@ import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
 import { getElevation } from '../utils/elevation';
+import { sessionEdit } from '../api/client';
 import { forward as toMGRS } from 'mgrs';
 // Terrain-rgb tile layers removed — elevation is fully self-hosted via backend SRTM
 import { setupWaypointDrag } from './interactions/waypointDrag';
@@ -119,22 +120,30 @@ export function MapContainer() {
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
   const addEdit = useEditStore((s) => s.addEdit);
 
-  // Handle waypoint drag end — client-side store update, queues edit for download
-  const handleDragEnd = useCallback(
-    (groupId: number, wpIndex: number, lat: number, lon: number) => {
-      const { x, y } = latLonToDcs(lat, lon);
-      const edit = { type: 'waypointMove' as const, groupId, wpIndex, x, y };
-      addEdit(edit);
+  // Helper: update a specific group's waypoints from server response
+  const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
+    const { groups } = useMissionStore.getState();
+    const updated = groups.map((g) =>
+      g.groupName === groupName ? { ...g, waypoints } : g,
+    );
+    useMissionStore.setState({ groups: updated });
+  }, []);
 
-      // Update store client-side with recomputed distances/bearings
-      const { groups } = useMissionStore.getState();
+  // Handle waypoint drag end — server-authoritative
+  const handleDragEnd = useCallback(
+    async (groupId: number, wpIndex: number, lat: number, lon: number) => {
+      const { x, y } = latLonToDcs(lat, lon);
+      const { groups, sessionId: sid } = useMissionStore.getState();
+      const group = groups.find((g) => g.groupId === groupId);
+      if (!group || !sid) return;
+
+      // Optimistic local update for instant feedback
       const updatedGroups = groups.map((g) => {
         if (g.groupId !== groupId) return g;
         const newWps = g.waypoints.map((wp) => {
           if (wp.waypoint_number !== wpIndex) return wp;
           return { ...wp, x, y, lat, lon };
         });
-        // Recompute leg distances and bearings
         for (let i = 1; i < newWps.length; i++) {
           const prev = newWps[i - 1];
           const curr = newWps[i];
@@ -143,7 +152,6 @@ export function MapContainer() {
             const brg = bearing(prev.lat, prev.lon, curr.lat, curr.lon);
             curr.leg_distance_nm = dist / 1852;
             curr.leg_bearing_deg = brg;
-            // ETE uses previous WP's speed (you fly the leg at departure speed)
             const legSpeed = newWps[i - 1].speed_ms || curr.speed_ms;
             curr.cumulative_eta = (newWps[i - 1].cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
           }
@@ -151,72 +159,70 @@ export function MapContainer() {
         return { ...g, waypoints: newWps };
       });
       useMissionStore.setState({ groups: updatedGroups });
+
+      // POST to server — server is source of truth
+      try {
+        const result = await sessionEdit(sid, {
+          groupName: group.groupName,
+          action: 'move',
+          wpIndex,
+          data: { x, y, lat, lon },
+        });
+        // Update store from server response (authoritative)
+        if (result.ok) {
+          _updateGroupWaypoints(result.groupName, result.waypoints);
+        }
+      } catch (e) {
+        console.error('Server edit failed:', e);
+      }
     },
-    [addEdit],
+    [],
   );
 
-  // Handle waypoint add
+  // Handle waypoint add — server-authoritative
   const handleAddWaypoint = useCallback(
-    (lat: number, lon: number) => {
+    async (lat: number, lon: number) => {
       if (!selectedGroupId) return;
       const { x, y } = latLonToDcs(lat, lon);
-      const { groups } = useMissionStore.getState();
+      const { groups, sessionId: sid } = useMissionStore.getState();
       const group = groups.find((g) => g.groupId === selectedGroupId);
-      if (!group) return;
+      if (!group || !sid) return;
 
-      const newWpNum = group.waypoints.length;
       const prevWp = group.waypoints[group.waypoints.length - 1];
-
-      // Build new waypoint client-side
       const newWp = {
-        waypoint_number: newWpNum,
-        waypoint_name: `WP${newWpNum}`,
+        waypoint_number: group.waypoints.length,
+        waypoint_name: `WP${group.waypoints.length}`,
         waypoint_type: 'Turning Point',
         waypoint_action: 'Turning Point',
         x, y, lat, lon,
         altitude_m: 6096,
-        altitude_type: 'BARO' as const,
+        altitude_type: 'BARO',
         speed_ms: prevWp?.speed_ms || 200,
         eta_seconds: 0,
         eta_locked: false,
         speed_locked: true,
-        leg_distance_nm: 0,
-        leg_bearing_deg: 0,
-        cumulative_eta: 0,
       };
 
-      // Recompute leg from previous waypoint
-      if (prevWp?.lat && prevWp?.lon) {
-        const dist = haversineDistance(prevWp.lat, prevWp.lon, lat, lon);
-        const brg = bearing(prevWp.lat, prevWp.lon, lat, lon);
-        newWp.leg_distance_nm = dist / 1852;
-        newWp.leg_bearing_deg = brg;
-        const legSpeed = prevWp.speed_ms || newWp.speed_ms;
-        newWp.cumulative_eta = (prevWp.cumulative_eta || 0) + (legSpeed > 0 ? dist / legSpeed : 0);
-      }
-
-      // Queue the edit for .miz download
-      addEdit({
-        type: 'waypointInsert',
-        groupId: selectedGroupId,
-        afterIndex: group.waypoints.length - 1,
-        waypointData: {
-          x, y,
-          waypoint_name: newWp.waypoint_name,
-          altitude_m: newWp.altitude_m,
-          altitude_type: newWp.altitude_type,
-          speed_ms: newWp.speed_ms,
-          waypoint_type: newWp.waypoint_type,
-          waypoint_action: newWp.waypoint_action,
-        },
-      });
-
-      // Update store client-side (no backend round-trip)
+      // Optimistic local update
       const updatedGroups = groups.map((g) => {
         if (g.groupId !== selectedGroupId) return g;
         return { ...g, waypoints: [...g.waypoints, newWp] };
       });
       useMissionStore.setState({ groups: updatedGroups });
+
+      // POST to server
+      try {
+        const result = await sessionEdit(sid, {
+          groupName: group.groupName,
+          action: 'add',
+          data: { waypoint: newWp },
+        });
+        if (result.ok) {
+          _updateGroupWaypoints(result.groupName, result.waypoints);
+        }
+      } catch (e) {
+        console.error('Server add failed:', e);
+      }
     },
     [sessionId, selectedGroupId, addEdit, updateGroupData],
   );

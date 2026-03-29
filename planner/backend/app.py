@@ -72,36 +72,50 @@ else:
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
-# In-memory session store
+# In-memory session store — server is the source of truth for waypoint state
 sessions = {}
-SESSION_TTL = 600
-MAX_SESSIONS = 50
+SESSION_TTL = 7200  # 2 hours for collaborative planning
+MAX_SESSIONS = 20
 _lock = threading.Lock()
 
 
 def _cleanup_sessions():
     now = time.time()
     with _lock:
-        expired = [k for k, v in sessions.items() if now - v["created_at"] > SESSION_TTL]
+        expired = [k for k, v in sessions.items() if now - v.get("last_activity", v["created_at"]) > SESSION_TTL]
         for k in expired:
             del sessions[k]
 
 
-def _create_session(miz_bytes, mission_text, theater, filename):
+def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints):
     _cleanup_sessions()
     if len(sessions) >= MAX_SESSIONS:
         oldest = min(sessions, key=lambda k: sessions[k]["created_at"])
         del sessions[oldest]
     sid = str(uuid.uuid4())
+    host_token = str(uuid.uuid4())
     with _lock:
         sessions[sid] = {
             "miz_bytes": miz_bytes,
-            "mission_text": mission_text,
+            "original_mission_text": mission_text,  # never mutated
             "theater": theater,
             "filename": filename,
             "created_at": time.time(),
+            "last_activity": time.time(),
+            # Server-authoritative waypoint state
+            "group_waypoints": group_waypoints,  # { group_name: [wp, wp, ...] }
+            # Collaborative session fields
+            "host_token": host_token,
+            "participants": {},  # { token: { name, group, connected, ready } }
+            "status": "planning",
+            "sse_clients": [],
         }
-    return sid
+    return sid, host_token
+
+
+def _get_session(sid):
+    with _lock:
+        return sessions.get(sid)
 
 
 # --------------------------------------------------------------------------
@@ -157,10 +171,16 @@ def upload():
     except Exception as e:
         return jsonify({"error": f"Failed to extract mission data: {str(e)}"}), 400
 
-    sid = _create_session(miz_bytes, mission_text, theater, f.filename)
+    # Build server-authoritative waypoint state from parsed groups
+    group_waypoints = {}
+    for group in data["groups"]:
+        group_waypoints[group["groupName"]] = group["waypoints"]
+
+    sid, host_token = _create_session(miz_bytes, mission_text, theater, f.filename, group_waypoints)
 
     return jsonify({
         "sessionId": sid,
+        "hostToken": host_token,
         "filename": f.filename,
         "theater": theater,
         # Planner map data
@@ -185,6 +205,84 @@ def upload():
 
 
 # --------------------------------------------------------------------------
+# Waypoint editing — server is the source of truth
+# --------------------------------------------------------------------------
+
+@app.route("/api/sessions/<sid>/edit", methods=["POST"])
+def session_edit(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    group_name = body.get("groupName")
+    action = body.get("action")  # move, add, delete, reorder, update
+    wp_index = body.get("wpIndex")
+    data = body.get("data", {})
+
+    if not group_name or group_name not in session["group_waypoints"]:
+        return jsonify({"error": f"Group '{group_name}' not found"}), 404
+
+    # TODO Phase 3: validate token owns this group
+    # token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    # if not _can_edit_group(session, token, group_name): return 403
+
+    wps = session["group_waypoints"][group_name]
+
+    try:
+        if action == "move" and wp_index is not None:
+            if 0 <= wp_index < len(wps):
+                wps[wp_index] = {**wps[wp_index], **data}
+
+        elif action == "add":
+            new_wp = data.get("waypoint", data)
+            wps.append(new_wp)
+
+        elif action == "delete" and wp_index is not None:
+            if 0 < wp_index < len(wps):  # can't delete WP0
+                wps.pop(wp_index)
+                # Renumber
+                for i, wp in enumerate(wps):
+                    wp["waypoint_number"] = i
+
+        elif action == "reorder":
+            from_idx = body.get("fromIndex")
+            to_idx = body.get("toIndex")
+            if from_idx is not None and to_idx is not None and from_idx > 0 and to_idx > 0:
+                wp = wps.pop(from_idx)
+                wps.insert(to_idx, wp)
+                for i, w in enumerate(wps):
+                    w["waypoint_number"] = i
+
+        elif action == "update" and wp_index is not None:
+            field = data.get("field")
+            value = data.get("value")
+            if field and 0 <= wp_index < len(wps):
+                if field == "name": wps[wp_index]["waypoint_name"] = value
+                elif field == "alt": wps[wp_index]["altitude_m"] = value
+                elif field == "speed": wps[wp_index]["speed_ms"] = value
+                elif field == "alt_type": wps[wp_index]["altitude_type"] = value
+                elif field == "speed_ref": wps[wp_index]["speed_ref"] = value
+                elif field == "speed_input": wps[wp_index]["speed_input"] = value
+
+        # Recompute route leg data
+        wps = recompute_route(wps)
+        session["group_waypoints"][group_name] = wps
+        session["last_activity"] = time.time()
+
+        # TODO Phase 2: broadcast SSE to all clients
+        # broadcast(session, "route_update", {"groupName": group_name, "waypoints": wps})
+
+        return jsonify({"ok": True, "groupName": group_name, "waypoints": wps})
+
+    except Exception as e:
+        return jsonify({"error": f"Edit failed: {str(e)}"}), 400
+
+
+# --------------------------------------------------------------------------
 # Download — apply waypoint + unit edits, repack .miz
 # --------------------------------------------------------------------------
 
@@ -195,20 +293,19 @@ def download():
         return jsonify({"error": "No JSON body"}), 400
 
     sid = body.get("sessionId")
-    modified_groups = body.get("modifiedGroups", {})
     unit_edits = body.get("unitEdits", [])
 
-    with _lock:
-        session = sessions.get(sid)
+    session = _get_session(sid)
     if not session:
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_text = session["mission_text"]
+        mission_text = session["original_mission_text"]
 
-        # 1. Replace waypoints for modified groups (hierarchy-based, by name)
-        for group_name, group_data in modified_groups.items():
-            waypoints = group_data.get("waypoints", []) if isinstance(group_data, dict) else group_data
+        # 1. Replace waypoints from server-authoritative state
+        for group_name, waypoints in session["group_waypoints"].items():
+            if not waypoints:
+                continue
             mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
 
         # 2. Apply unit-level surgical edits (856's edit engine)

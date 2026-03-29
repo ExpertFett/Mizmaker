@@ -5,6 +5,7 @@ import { useEditStore } from '../store/editStore';
 import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
+import { sessionEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
 import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
 import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
@@ -30,90 +31,95 @@ export function FloatingFlightPanel() {
   const player = group ? isPlayerGroup(group) : false;
   const locked = adminMode && !player;
 
-  // All edits are client-side — queued for .miz export on download
-  const handlePropChange = useCallback((wpIndex: number, field: string, value: string | number | boolean) => {
+  // Helper: update group waypoints from server response
+  const _updateFromServer = useCallback((groupName: string, waypoints: any[]) => {
+    const { groups } = useMissionStore.getState();
+    useMissionStore.setState({
+      groups: groups.map((g) => g.groupName === groupName ? { ...g, waypoints } : g),
+    });
+  }, []);
+
+  // Server-authoritative edit handlers
+  const handlePropChange = useCallback(async (wpIndex: number, field: string, value: string | number | boolean) => {
     if (locked) return;
-    addEdit({ type: 'waypointProp' as const, groupId, wpIndex, field, value });
-
-    // Update store directly
-    const { groups } = useMissionStore.getState();
-    const updatedGroups = groups.map((g) => {
-      if (g.groupId !== groupId) return g;
-      return {
-        ...g,
-        waypoints: g.waypoints.map((wp) => {
-          if (wp.waypoint_number !== wpIndex) return wp;
-          const updated = { ...wp };
-          if (field === 'name') updated.waypoint_name = value as string;
-          else if (field === 'alt') updated.altitude_m = value as number;
-          else if (field === 'speed') updated.speed_ms = value as number;
-          else if (field === 'speed_ref') updated.speed_ref = value as any;
-          else if (field === 'speed_input') updated.speed_input = value as number;
-          else if (field === 'alt_type') updated.altitude_type = value as 'BARO' | 'RADIO';
-          return updated;
-        }),
-      };
-    });
-    useMissionStore.setState({ groups: updatedGroups });
-  }, [groupId, locked, addEdit]);
-
-  const handleDelete = useCallback((wpIndex: number) => {
-    if (locked || wpLen <= 1 || wpIndex === 0) return;
-    addEdit({ type: 'waypointDelete' as const, groupId, wpIndex });
-
-    const { groups } = useMissionStore.getState();
-    const updatedGroups = groups.map((g) => {
-      if (g.groupId !== groupId) return g;
-      const newWps = g.waypoints.filter((wp) => wp.waypoint_number !== wpIndex);
-      // Renumber
-      for (let i = 0; i < newWps.length; i++) {
-        newWps[i] = { ...newWps[i], waypoint_number: i };
-      }
-      return { ...g, waypoints: newWps };
-    });
-    useMissionStore.setState({ groups: updatedGroups });
-  }, [groupId, wpLen, locked, addEdit]);
-
-  const handleReorder = useCallback((wpIndex: number, direction: 'up' | 'down') => {
-    if (!groupId) return;
-    const { groups } = useMissionStore.getState();
+    const { groups, sessionId: sid } = useMissionStore.getState();
     const g = groups.find((gr) => gr.groupId === groupId);
-    if (!g) return;
+    if (!g || !sid) return;
+
+    // Optimistic local update
+    const updatedGroups = groups.map((gr) => {
+      if (gr.groupId !== groupId) return gr;
+      return { ...gr, waypoints: gr.waypoints.map((wp) => {
+        if (wp.waypoint_number !== wpIndex) return wp;
+        const updated = { ...wp };
+        if (field === 'name') updated.waypoint_name = value as string;
+        else if (field === 'alt') updated.altitude_m = value as number;
+        else if (field === 'speed') updated.speed_ms = value as number;
+        else if (field === 'speed_ref') updated.speed_ref = value as any;
+        else if (field === 'speed_input') updated.speed_input = value as number;
+        else if (field === 'alt_type') updated.altitude_type = value as 'BARO' | 'RADIO';
+        return updated;
+      })};
+    });
+    useMissionStore.setState({ groups: updatedGroups });
+
+    try {
+      const result = await sessionEdit(sid, {
+        groupName: g.groupName, action: 'update', wpIndex,
+        data: { field, value },
+      });
+      if (result.ok) _updateFromServer(result.groupName, result.waypoints);
+    } catch (e) { console.error('Edit failed:', e); }
+  }, [groupId, locked, _updateFromServer]);
+
+  const handleDelete = useCallback(async (wpIndex: number) => {
+    if (locked || wpLen <= 1 || wpIndex === 0) return;
+    const { groups, sessionId: sid } = useMissionStore.getState();
+    const g = groups.find((gr) => gr.groupId === groupId);
+    if (!g || !sid) return;
+
+    // Optimistic local update
+    const updatedGroups = groups.map((gr) => {
+      if (gr.groupId !== groupId) return gr;
+      const newWps = gr.waypoints.filter((wp) => wp.waypoint_number !== wpIndex);
+      for (let i = 0; i < newWps.length; i++) newWps[i] = { ...newWps[i], waypoint_number: i };
+      return { ...gr, waypoints: newWps };
+    });
+    useMissionStore.setState({ groups: updatedGroups });
+
+    try {
+      const result = await sessionEdit(sid, {
+        groupName: g.groupName, action: 'delete', wpIndex,
+      });
+      if (result.ok) _updateFromServer(result.groupName, result.waypoints);
+    } catch (e) { console.error('Delete failed:', e); }
+  }, [groupId, wpLen, locked, _updateFromServer]);
+
+  const handleReorder = useCallback(async (wpIndex: number, direction: 'up' | 'down') => {
+    if (!groupId) return;
+    const { groups, sessionId: sid } = useMissionStore.getState();
+    const g = groups.find((gr) => gr.groupId === groupId);
+    if (!g || !sid) return;
 
     const wps = [...g.waypoints];
     const fromIdx = wps.findIndex((w) => w.waypoint_number === wpIndex);
     const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1;
-
-    // Can't move WP0, can't move before WP0, can't move past end
     if (fromIdx <= 0 || toIdx <= 0 || toIdx >= wps.length) return;
 
-    // Swap
+    // Optimistic local swap
     [wps[fromIdx], wps[toIdx]] = [wps[toIdx], wps[fromIdx]];
+    for (let i = 0; i < wps.length; i++) wps[i] = { ...wps[i], waypoint_number: i };
+    useMissionStore.setState({
+      groups: groups.map((gr) => gr.groupId === groupId ? { ...gr, waypoints: wps } : gr),
+    });
 
-    // Renumber and recompute
-    for (let i = 0; i < wps.length; i++) {
-      wps[i] = { ...wps[i], waypoint_number: i };
-      if (i === 0) {
-        wps[i].leg_distance_nm = 0;
-        wps[i].leg_bearing_deg = 0;
-        wps[i].cumulative_eta = 0;
-      } else if (wps[i - 1].lat && wps[i - 1].lon && wps[i].lat && wps[i].lon) {
-        const dist = haversineDistance(wps[i - 1].lat!, wps[i - 1].lon!, wps[i].lat!, wps[i].lon!);
-        const brg = bearing(wps[i - 1].lat!, wps[i - 1].lon!, wps[i].lat!, wps[i].lon!);
-        wps[i].leg_distance_nm = dist / 1852;
-        wps[i].leg_bearing_deg = brg;
-        wps[i].cumulative_eta = (wps[i - 1].cumulative_eta || 0) + (wps[i].speed_ms > 0 ? dist / wps[i].speed_ms : 0);
-      }
-    }
-
-    const updatedGroups = groups.map((gr) =>
-      gr.groupId === groupId ? { ...gr, waypoints: wps } : gr,
-    );
-    useMissionStore.setState({ groups: updatedGroups });
-
-    // Mark group as modified so download knows to write its waypoints
-    addEdit({ type: 'waypointProp', groupId, wpIndex: 0, field: '_reorder', value: true });
-  }, [groupId, addEdit]);
+    try {
+      const result = await sessionEdit(sid, {
+        groupName: g.groupName, action: 'reorder', fromIndex: fromIdx, toIndex: toIdx,
+      });
+      if (result.ok) _updateFromServer(result.groupName, result.waypoints);
+    } catch (e) { console.error('Reorder failed:', e); }
+  }, [groupId, _updateFromServer]);
 
   if (!group) return null;
 
