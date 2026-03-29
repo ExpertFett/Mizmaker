@@ -232,9 +232,12 @@ def session_edit(sid):
     if not group_name or group_name not in session["group_waypoints"]:
         return jsonify({"error": f"Group '{group_name}' not found"}), 404
 
-    # TODO Phase 3: validate token owns this group
-    # token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    # if not _can_edit_group(session, token, group_name): return 403
+    # Validate token owns this group (or is the host)
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token and token != session.get("host_token"):
+        participant = session["participants"].get(token)
+        if not participant or participant["group"] != group_name:
+            return jsonify({"error": "Not authorized to edit this group"}), 403
 
     wps = session["group_waypoints"][group_name]
 

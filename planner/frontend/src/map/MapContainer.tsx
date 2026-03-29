@@ -133,7 +133,7 @@ export function MapContainer() {
   const handleDragEnd = useCallback(
     async (groupId: number, wpIndex: number, lat: number, lon: number) => {
       const { x, y } = latLonToDcs(lat, lon);
-      const { groups, sessionId: sid } = useMissionStore.getState();
+      const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
       const group = groups.find((g) => g.groupId === groupId);
       if (!group || !sid) return;
 
@@ -167,7 +167,7 @@ export function MapContainer() {
           action: 'move',
           wpIndex,
           data: { x, y, lat, lon },
-        });
+        }, sessionToken || undefined);
         // Update store from server response (authoritative)
         if (result.ok) {
           _updateGroupWaypoints(result.groupName, result.waypoints);
@@ -184,7 +184,7 @@ export function MapContainer() {
     async (lat: number, lon: number) => {
       if (!selectedGroupId) return;
       const { x, y } = latLonToDcs(lat, lon);
-      const { groups, sessionId: sid } = useMissionStore.getState();
+      const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
       const group = groups.find((g) => g.groupId === selectedGroupId);
       if (!group || !sid) return;
 
@@ -216,7 +216,7 @@ export function MapContainer() {
           groupName: group.groupName,
           action: 'add',
           data: { waypoint: newWp },
-        });
+        }, sessionToken || undefined);
         if (result.ok) {
           _updateGroupWaypoints(result.groupName, result.waypoints);
         }
@@ -446,9 +446,14 @@ export function MapContainer() {
 
     const isEditLocked = (groupId: number): boolean => {
       const { adminMode: am } = useMapStore.getState();
-      if (!am) return false;
-      const g = useMissionStore.getState().groups.find((gr) => gr.groupId === groupId);
-      return g ? !isPlayerGroup(g) : false;
+      const { assignedGroup, groups } = useMissionStore.getState();
+      const g = groups.find((gr) => gr.groupId === groupId);
+      if (!g) return true;
+      // Admin lock for non-player AI groups
+      if (am && !isPlayerGroup(g)) return true;
+      // Collaborative: if assigned to a specific group, lock all others
+      if (assignedGroup && g.groupName !== assignedGroup) return true;
+      return false;
     };
     dragCleanup.current = setupWaypointDrag(map, route, { onDragEnd: handleDragEnd, isEditLocked });
 

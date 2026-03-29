@@ -42,7 +42,7 @@ export function FloatingFlightPanel() {
   // Server-authoritative edit handlers
   const handlePropChange = useCallback(async (wpIndex: number, field: string, value: string | number | boolean) => {
     if (locked) return;
-    const { groups, sessionId: sid } = useMissionStore.getState();
+    const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
     const g = groups.find((gr) => gr.groupId === groupId);
     if (!g || !sid) return;
 
@@ -67,14 +67,14 @@ export function FloatingFlightPanel() {
       const result = await sessionEdit(sid, {
         groupName: g.groupName, action: 'update', wpIndex,
         data: { field, value },
-      });
+      }, sessionToken || undefined);
       if (result.ok) _updateFromServer(result.groupName, result.waypoints);
     } catch (e) { console.error('Edit failed:', e); }
   }, [groupId, locked, _updateFromServer]);
 
   const handleDelete = useCallback(async (wpIndex: number) => {
     if (locked || wpLen <= 1 || wpIndex === 0) return;
-    const { groups, sessionId: sid } = useMissionStore.getState();
+    const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
     const g = groups.find((gr) => gr.groupId === groupId);
     if (!g || !sid) return;
 
@@ -90,14 +90,14 @@ export function FloatingFlightPanel() {
     try {
       const result = await sessionEdit(sid, {
         groupName: g.groupName, action: 'delete', wpIndex,
-      });
+      }, sessionToken || undefined);
       if (result.ok) _updateFromServer(result.groupName, result.waypoints);
     } catch (e) { console.error('Delete failed:', e); }
   }, [groupId, wpLen, locked, _updateFromServer]);
 
   const handleReorder = useCallback(async (wpIndex: number, direction: 'up' | 'down') => {
     if (!groupId) return;
-    const { groups, sessionId: sid } = useMissionStore.getState();
+    const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
     const g = groups.find((gr) => gr.groupId === groupId);
     if (!g || !sid) return;
 
@@ -116,7 +116,7 @@ export function FloatingFlightPanel() {
     try {
       const result = await sessionEdit(sid, {
         groupName: g.groupName, action: 'reorder', fromIndex: fromIdx, toIndex: toIdx,
-      });
+      }, sessionToken || undefined);
       if (result.ok) _updateFromServer(result.groupName, result.waypoints);
     } catch (e) { console.error('Reorder failed:', e); }
   }, [groupId, _updateFromServer]);

@@ -23,10 +23,13 @@ export interface WaypointEditAction {
   data?: Record<string, unknown>;
 }
 
-export async function sessionEdit(sessionId: string, edit: WaypointEditAction) {
+export async function sessionEdit(sessionId: string, edit: WaypointEditAction, token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`${BASE}/api/sessions/${sessionId}/edit`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(edit),
   });
   if (!res.ok) {
