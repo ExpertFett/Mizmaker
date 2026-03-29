@@ -1,6 +1,6 @@
 import { useMissionStore } from '../store/missionStore';
 import { useEditStore } from '../store/editStore';
-import { downloadMiz, exportJson, closeSession } from '../api/client';
+import { exportJson, closeSession } from '../api/client';
 import type { WaypointEdit } from '../types/mission';
 
 export function ExportPanel() {
@@ -8,26 +8,46 @@ export function ExportPanel() {
   const { edits, isDirty, clearEdits } = useEditStore();
 
   const handleDownload = async () => {
-    if (!sessionId) return;
-    try {
-      // Server has authoritative waypoint state — just send unit edits
-      const isWaypointEdit = (e: any): e is WaypointEdit =>
-        'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
-      const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+    if (!sessionId) { alert('No session'); return; }
 
-      console.log('Downloading:', { sessionId, unitEditsCount: unitEdits.length });
-      const blob = await downloadMiz(sessionId, unitEdits);
-      console.log('Download blob:', blob.size, 'bytes');
+    const isWaypointEdit = (e: any): e is WaypointEdit =>
+      'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
+    const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+
+    console.log('Downloading:', { sessionId, unitEditsCount: unitEdits.length });
+
+    try {
+      const res = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, unitEdits: unitEdits }),
+      });
+
+      console.log('Download response:', res.status, res.statusText);
+
+      if (!res.ok) {
+        const err = await res.text();
+        alert(`Download failed: ${res.status} ${err}`);
+        return;
+      }
+
+      const blob = await res.blob();
+      console.log('Blob:', blob.size, 'bytes', blob.type);
+
+      if (blob.size === 0) { alert('Empty file returned'); return; }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename || 'edited.miz';
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       clearEdits();
     } catch (e: any) {
-      console.error('Download failed:', e);
-      alert(`Download failed: ${e.message || e}`);
+      console.error('Download error:', e);
+      alert(`Download error: ${e.message}`);
     }
   };
 
