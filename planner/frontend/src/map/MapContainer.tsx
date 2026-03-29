@@ -114,7 +114,7 @@ export function MapContainer() {
   const coordRef = useRef<HTMLDivElement>(null);
   const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
 
-  const { theater, units, groups, threats, airbases, drawings, selectedGroupId, selectGroup, sessionId, updateGroupData } =
+  const { theater, units, groups, threats, airbases, drawings, selectedGroupId, selectGroup } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
 
