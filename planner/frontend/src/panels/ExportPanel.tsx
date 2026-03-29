@@ -23,8 +23,9 @@ export function ExportPanel() {
       a.click();
       URL.revokeObjectURL(url);
       clearEdits();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Download failed:', e);
+      alert(`Download failed: ${e.message || e}`);
     }
   };
 
