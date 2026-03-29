@@ -24,10 +24,12 @@ export function FloatingFlightPanel() {
   const [panelTab, setPanelTab] = useState<'route' | 'datalink' | 'loadout'>('route');
 
   // All hooks MUST be above this early return
+  const assignedGroup = useMissionStore((s) => s.assignedGroup);
   const groupId = group?.groupId ?? 0;
   const wpLen = group?.waypoints.length ?? 0;
   const player = group ? isPlayerGroup(group) : false;
-  const locked = adminMode && !player;
+  const isOwnGroup = !assignedGroup || (group && group.groupName === assignedGroup);
+  const locked = (adminMode && !player) || !isOwnGroup;
 
   // Helper: update group waypoints from server response
   const _updateFromServer = useCallback((groupName: string, waypoints: any[]) => {
@@ -176,8 +178,9 @@ export function FloatingFlightPanel() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {locked && <span style={{ color: '#d29922', fontSize: 14 }} title="Admin locked">&#128274;</span>}
-          <span style={{ fontWeight: 600, color: '#ccdae8', fontSize: 14 }}>{group.groupName}</span>
+          {locked && !isOwnGroup && <span style={{ color: '#5a7a8a', fontSize: 11 }} title="View only — not your assigned flight">VIEW</span>}
+          {locked && isOwnGroup && <span style={{ color: '#d29922', fontSize: 14 }} title="Admin locked">&#128274;</span>}
+          <span style={{ fontWeight: 600, color: isOwnGroup ? '#ccdae8' : '#5a7a8a', fontSize: 14 }}>{group.groupName}</span>
           <span style={{ color: '#5a7a8a', fontSize: 12 }}>{airframe}</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>

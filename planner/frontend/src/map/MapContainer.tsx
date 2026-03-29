@@ -180,11 +180,13 @@ export function MapContainer() {
   // Handle waypoint add — server-authoritative
   const handleAddWaypoint = useCallback(
     async (lat: number, lon: number) => {
-      const { groups, sessionId: sid, sessionToken, selectedGroupId: selId } = useMissionStore.getState();
+      const { groups, sessionId: sid, sessionToken, selectedGroupId: selId, assignedGroup } = useMissionStore.getState();
       if (!selId) return;
       const { x, y } = latLonToDcs(lat, lon);
       const group = groups.find((g) => g.groupId === selId);
       if (!group || !sid) return;
+      // Flight leads can only add waypoints to their assigned group
+      if (assignedGroup && group.groupName !== assignedGroup) return;
 
       const prevWp = group.waypoints[group.waypoints.length - 1];
       const newWp = {
@@ -512,18 +514,25 @@ export function MapContainer() {
     }
   }, [theater]);
 
+  // Filter data for flight leads — blue only
+  const role = useMissionStore((s) => s.role);
+  const isFlightLead = role === 'flight_lead';
+  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
+  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
+  const visibleThreats = isFlightLead ? [] : threats;
+
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
-    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, units, groups, viewMode, hiddenGroupIds, !!layers.statics);
-  }, [units, groups, viewMode, hiddenGroupIds, layers.statics]);
+    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, visibleUnits, visibleGroups, viewMode, hiddenGroupIds, !!layers.statics);
+  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, layers.statics]);
 
   useEffect(() => {
-    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, groups, selectedGroupId, viewMode, hiddenGroupIds);
-  }, [groups, selectedGroupId, viewMode, hiddenGroupIds]);
+    if (layerRefs.current.route) populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds);
+  }, [visibleGroups, selectedGroupId, viewMode, hiddenGroupIds]);
 
   useEffect(() => {
-    if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, threats, viewMode);
-  }, [threats, viewMode]);
+    if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, visibleThreats, viewMode);
+  }, [visibleThreats, viewMode]);
 
   useEffect(() => {
     if (layerRefs.current.airbase) populateAirbaseLayer(layerRefs.current.airbase, airbases);

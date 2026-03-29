@@ -64,12 +64,19 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   taskLists: { air: [], ground: [], ship: [] },
   selectedGroupId: null,
 
-  loadMission: (data) =>
+  loadMission: (data) => {
+    const assignedGroup = (data as any).assignedGroup || null;
+    // Auto-select the assigned group for flight leads
+    let autoSelectId: number | null = null;
+    if (assignedGroup) {
+      const g = data.groups.find((g: MissionGroup) => g.groupName === assignedGroup);
+      if (g) autoSelectId = g.groupId;
+    }
     set({
       sessionId: data.sessionId,
       hostToken: (data as any).hostToken || null,
       sessionToken: (data as any).token || (data as any).hostToken || null,
-      assignedGroup: (data as any).assignedGroup || null,
+      assignedGroup,
       role: (data as any).role || 'mission_maker',
       filename: data.filename,
       theater: data.theater,
@@ -89,8 +96,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       dtcFlights: data.dtcFlights || [],
       countries: data.countries || [],
       taskLists: data.taskLists || { air: [], ground: [], ship: [] },
-      selectedGroupId: null,
-    }),
+      selectedGroupId: autoSelectId,
+    });
+  },
 
   selectGroup: (groupId) => set({ selectedGroupId: groupId }),
 
