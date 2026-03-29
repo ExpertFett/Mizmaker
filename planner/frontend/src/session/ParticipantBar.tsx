@@ -18,7 +18,7 @@ export function ParticipantBar() {
     const onJoin = () => refreshParticipants();
     const onLeave = () => refreshParticipants();
     const onReadyCheck = () => setShowReadyPrompt(true);
-    const onReadyResponse = (e: Event) => refreshParticipants();
+    const onReadyResponse = () => refreshParticipants();
     const onAllReady = () => { setSessionStatus('all_ready'); setShowReadyPrompt(false); };
     const onFrozen = () => setSessionStatus('frozen');
     const onUnfrozen = () => setSessionStatus('planning');

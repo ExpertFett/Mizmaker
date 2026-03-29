@@ -196,7 +196,7 @@ export function MapContainer() {
         waypoint_action: 'Turning Point',
         x, y, lat, lon,
         altitude_m: 6096,
-        altitude_type: 'BARO',
+        altitude_type: 'BARO' as const,
         speed_ms: prevWp?.speed_ms || 200,
         eta_seconds: 0,
         eta_locked: false,

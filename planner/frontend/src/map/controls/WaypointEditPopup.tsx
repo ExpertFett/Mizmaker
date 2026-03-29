@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useMapStore } from '../../store/mapStore';
 import { useEditStore } from '../../store/editStore';
-import { editWaypoints } from '../../api/client';
+import { sessionEdit } from '../../api/client';
 import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 
@@ -46,7 +46,12 @@ export function WaypointEditPopup({
     const edit = { type: 'waypointProp' as const, groupId, wpIndex, field, value };
     addEdit(edit);
     try {
-      const result = await editWaypoints(sessionId, [edit]);
+      const result = await sessionEdit(sessionId, {
+        groupName: group?.groupName || '',
+        action: 'update',
+        wpIndex,
+        data: { field, value },
+      });
       if (result.ok) updateGroupData(result.groups, result.units, result.threats, result.airbases);
     } catch (e) { console.error('Edit failed:', e); }
   };

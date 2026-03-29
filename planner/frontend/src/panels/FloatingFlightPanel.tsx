@@ -3,7 +3,6 @@ import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
 import { useEditStore } from '../store/editStore';
 import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
-import { haversineDistance, bearing } from '../utils/navmath';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
 import { sessionEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
@@ -16,7 +15,6 @@ export function FloatingFlightPanel() {
   const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode } = useMapStore();
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather;
-  const { addEdit } = useEditStore();
 
   const group = groups.find((g) => g.groupId === selectedGroupId);
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
