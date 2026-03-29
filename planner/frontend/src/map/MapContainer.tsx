@@ -612,10 +612,10 @@ export function MapContainer() {
     baseLayers.current.topo.setVisible(bm === 'topo');
   }, [layers]);
 
-  // Fit to selected group
+  // Fit to selected group — only on group selection change, not on every edit
   useEffect(() => {
     if (!mapInstance.current || !selectedGroupId) return;
-    const group = groups.find((g) => g.groupId === selectedGroupId);
+    const group = useMissionStore.getState().groups.find((g) => g.groupId === selectedGroupId);
     if (!group) return;
     const wps = group.waypoints.filter((w) => w.lat && w.lon);
     if (wps.length === 0) return;
@@ -633,7 +633,7 @@ export function MapContainer() {
       maxZoom: 12,
       duration: 500,
     });
-  }, [selectedGroupId, groups]);
+  }, [selectedGroupId]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
