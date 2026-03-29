@@ -180,10 +180,10 @@ export function MapContainer() {
   // Handle waypoint add — server-authoritative
   const handleAddWaypoint = useCallback(
     async (lat: number, lon: number) => {
-      if (!selectedGroupId) return;
+      const { groups, sessionId: sid, sessionToken, selectedGroupId: selId } = useMissionStore.getState();
+      if (!selId) return;
       const { x, y } = latLonToDcs(lat, lon);
-      const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
-      const group = groups.find((g) => g.groupId === selectedGroupId);
+      const group = groups.find((g) => g.groupId === selId);
       if (!group || !sid) return;
 
       const prevWp = group.waypoints[group.waypoints.length - 1];
@@ -203,7 +203,7 @@ export function MapContainer() {
 
       // Optimistic local update
       const updatedGroups = groups.map((g) => {
-        if (g.groupId !== selectedGroupId) return g;
+        if (g.groupId !== selId) return g;
         return { ...g, waypoints: [...g.waypoints, newWp] };
       });
       useMissionStore.setState({ groups: updatedGroups });
