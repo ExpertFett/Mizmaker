@@ -290,7 +290,7 @@ def session_edit(sid):
         session["last_activity"] = time.time()
 
         # Broadcast route update to all connected clients
-        _broadcast(session, "route_update", {"groupName": group_name, "waypoints": wps})
+        _broadcast(session, "route_update", {"groupName": group_name, "waypoints": wps}, exclude_token=token)
 
         return jsonify({"ok": True, "groupName": group_name, "waypoints": wps})
 
