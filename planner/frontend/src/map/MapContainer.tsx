@@ -19,6 +19,7 @@ import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
 import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
+import { createTriggerZoneLayer, populateTriggerZoneLayer } from './layers/triggerZoneLayer';
 import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
@@ -104,7 +105,8 @@ export function MapContainer() {
     threat: ReturnType<typeof createThreatLayer> | null;
     airbase: ReturnType<typeof createAirbaseLayer> | null;
     drawing: ReturnType<typeof createDrawingLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null });
+    triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
+  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const interactionRefs = useRef<{
     addDraw: Draw | null;
@@ -114,7 +116,7 @@ export function MapContainer() {
   const coordRef = useRef<HTMLDivElement>(null);
   const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
 
-  const { theater, units, groups, threats, airbases, drawings, selectedGroupId, selectGroup, sessionId, updateGroupData } =
+  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, sessionId, updateGroupData } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
   const addEdit = useEditStore((s) => s.addEdit);
@@ -236,13 +238,14 @@ export function MapContainer() {
     const threatLayer = createThreatLayer();
     const airbaseLayer = createAirbaseLayer();
     const drawingLayer = createDrawingLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer };
+    const triggerZoneLayer = createTriggerZoneLayer();
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer };
 
     const map = new Map({
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        drawingLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
+        drawingLayer, triggerZoneLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
       ],
       view: new View({
         center: fromLonLat([44, 41]),
@@ -523,6 +526,10 @@ export function MapContainer() {
   useEffect(() => {
     if (layerRefs.current.drawing) populateDrawingLayer(layerRefs.current.drawing, drawings);
   }, [drawings]);
+
+  useEffect(() => {
+    if (layerRefs.current.triggerZone) populateTriggerZoneLayer(layerRefs.current.triggerZone, triggerZones, !!layers.triggerZones);
+  }, [triggerZones, layers.triggerZones]);
 
   // Toggle overlay layer visibility
   useEffect(() => {

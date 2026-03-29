@@ -32,6 +32,7 @@ export const useMapStore = create<MapState>((set) => ({
     threats: true,
     airbases: true,
     statics: false,  // hidden by default — declutter
+    triggerZones: true,
     baseMap: 'dark',
   },
   viewMode: 'all',

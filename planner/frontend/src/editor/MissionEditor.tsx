@@ -12,6 +12,7 @@ import { LiveryTab } from './tabs/LiveryTab';
 import { WeatherTab } from './tabs/WeatherTab';
 import { RenamerTab } from './tabs/RenamerTab';
 import { BatchEditTab } from './tabs/BatchEditTab';
+import { TriggerTab } from './tabs/TriggerTab';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'rename', label: 'Rename', icon: '✏' },
   { id: 'batch', label: 'Batch', icon: '⚡' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
+  { id: 'triggers', label: 'Triggers', icon: '🔔' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -133,6 +135,7 @@ export function MissionEditor() {
             {activeTab === 'rename' && <RenamerTab />}
             {activeTab === 'batch' && <BatchEditTab />}
             {activeTab === 'dtc' && <DtcTab />}
+            {activeTab === 'triggers' && <TriggerTab />}
           </div>
         )}
       </div>

@@ -77,3 +77,49 @@ export async function dtcGenerate(sessionId: string, groupName: string, edits: u
   if (!res.ok) throw new Error('DTC generation failed');
   return res.blob();
 }
+
+// ── Triggers & Audio ──────────────────────────────────────────────────────
+
+import type { TriggerData, AudioFile, TriggerRule } from '../types/mission';
+
+export async function getTriggers(sessionId: string): Promise<TriggerData> {
+  const res = await fetch(`${BASE}/api/triggers?sessionId=${sessionId}`);
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to load triggers');
+  return res.json();
+}
+
+export async function saveTriggers(sessionId: string, triggers: { rules: TriggerRule[] }): Promise<void> {
+  const res = await fetch(`${BASE}/api/triggers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, triggers }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Failed to save triggers');
+}
+
+export async function listAudio(sessionId: string): Promise<AudioFile[]> {
+  const res = await fetch(`${BASE}/api/audio/list?sessionId=${sessionId}`);
+  if (!res.ok) throw new Error('Failed to list audio');
+  const data = await res.json();
+  return data.audioFiles;
+}
+
+export async function uploadAudio(sessionId: string, file: File): Promise<AudioFile> {
+  const form = new FormData();
+  form.append('sessionId', sessionId);
+  form.append('file', file);
+  const res = await fetch(`${BASE}/api/audio/upload`, { method: 'POST', body: form });
+  if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
+  return res.json();
+}
+
+export async function deleteAudio(sessionId: string, path: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/audio/${path}?sessionId=${sessionId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+}
+
+export function audioStreamUrl(sessionId: string, path: string): string {
+  return `${BASE}/api/audio/stream/${path}?sessionId=${sessionId}`;
+}

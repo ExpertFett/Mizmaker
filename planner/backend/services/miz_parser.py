@@ -115,6 +115,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
                             })
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)
+    trigger_zones = _extract_trigger_zones(mission_dict, theater, has_projection)
 
     return {
         "overview": overview,
@@ -123,6 +124,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
         "threats": threats,
         "airbases": airbases,
         "drawings": drawings,
+        "triggerZones": trigger_zones,
     }
 
 
@@ -257,10 +259,16 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "qnh_inhg": round(qnh_mmhg * 0.03937, 2),
             "qnh_hpa": round(qnh_mmhg * 1.33322, 1),
             "clouds_base_m": _num(wx.get("clouds", {}).get("base", 0)),
+            "clouds_density": int(_num(wx.get("clouds", {}).get("density", 0))),
+            "clouds_thickness": _num(wx.get("clouds", {}).get("thickness", 200)),
+            "clouds_precipitation": int(_num(wx.get("clouds", {}).get("iprecptns", 0))),
             "clouds_preset": wx.get("clouds", {}).get("preset", ""),
             "visibility_m": _num(wx.get("visibility", {}).get("distance", 80000)),
             "fog_enabled": wx.get("enable_fog", False),
+            "fog_visibility": _num(wx.get("fogVisibility", 0)),
+            "fog_thickness": _num(wx.get("fogThickness", 0)),
             "dust_enabled": wx.get("enable_dust", False),
+            "dust_density": _num(wx.get("dustDensity", 0)),
             "turbulence": _num(wx.get("groundTurbulence", 0)),
         },
     }
@@ -361,3 +369,80 @@ def _num(val) -> float:
         return float(val)
     except (ValueError, TypeError):
         return 0.0
+
+
+def _extract_trigger_zones(d: dict, theater: str, has_projection: bool) -> list:
+    """Extract trigger zones from the mission dict."""
+    triggers = d.get("triggers", {})
+    zones_data = triggers.get("zones", {})
+
+    if isinstance(zones_data, list):
+        zones_list = zones_data
+    elif isinstance(zones_data, dict):
+        zones_list = list(zones_data.values())
+    else:
+        return []
+
+    zones = []
+    for z in zones_list:
+        if not isinstance(z, dict):
+            continue
+
+        x = _num(z.get("x"))
+        y = _num(z.get("y"))
+        radius = _num(z.get("radius", 0))
+        name = z.get("name", "")
+        zone_id = z.get("zoneId", 0)
+        hidden = z.get("hidden", False)
+        zone_type = z.get("type", 0)  # 0=circle, 2=polygon
+
+        # Parse color
+        color_data = z.get("color", {})
+        if isinstance(color_data, dict):
+            r = int(_num(color_data.get(1, color_data.get("1", 1))) * 255)
+            g = int(_num(color_data.get(2, color_data.get("2", 1))) * 255)
+            b = int(_num(color_data.get(3, color_data.get("3", 1))) * 255)
+            a = _num(color_data.get(4, color_data.get("4", 0.15)))
+            color = f"rgba({r},{g},{b},{a})"
+        else:
+            color = "rgba(255,255,255,0.15)"
+
+        zone: Dict[str, Any] = {
+            "zoneId": zone_id,
+            "name": name,
+            "x": x,
+            "y": y,
+            "radius": radius,
+            "color": color,
+            "hidden": hidden,
+            "type": zone_type,
+        }
+
+        if has_projection and x and y:
+            lat, lon = dcs_to_latlon(x, y, theater)
+            zone["lat"] = lat
+            zone["lon"] = lon
+
+        # Polygon vertices (type 2)
+        vertices = z.get("verticies", z.get("vertices", {}))
+        if vertices:
+            if isinstance(vertices, dict):
+                verts_list = [vertices[k] for k in sorted(vertices.keys(), key=lambda k: int(k) if str(k).isdigit() else 0)]
+            else:
+                verts_list = vertices
+
+            coords = []
+            for v in verts_list:
+                if isinstance(v, dict):
+                    vx = _num(v.get("x"))
+                    vy = _num(v.get("y"))
+                    if has_projection and vx and vy:
+                        vlat, vlon = dcs_to_latlon(vx, vy, theater)
+                        coords.append([vlat, vlon])
+                    else:
+                        coords.append([vx, vy])
+            zone["vertices"] = coords
+
+        zones.append(zone)
+
+    return zones

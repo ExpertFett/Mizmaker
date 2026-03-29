@@ -559,6 +559,13 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
             m = re.search(pattern, text, re.DOTALL)
             if m:
                 text = text[:m.start(2)] + str(clouds[field]) + text[m.end(2):]
+    # Cloud preset (string value)
+    if "preset" in clouds:
+        preset_val = clouds["preset"]
+        pattern = r'(\["preset"\]\s*=\s*)("[^"]*")'
+        m = re.search(pattern, text)
+        if m:
+            text = text[:m.start(2)] + f'"{preset_val}"' + text[m.end(2):]
 
     # Simple top-level weather fields
     simple_fields = {
