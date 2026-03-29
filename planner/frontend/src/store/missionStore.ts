@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing,
+  MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing, TriggerZone,
   MissionOverviewData, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
   CountryInfo,
 } from '../types/mission';
@@ -19,6 +19,7 @@ interface MissionState {
   threats: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
+  triggerZones: TriggerZone[];
   clientUnits: ClientUnit[];
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   pylonOptions: Record<string, any>;
@@ -52,6 +53,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   threats: [],
   airbases: [],
   drawings: [],
+  triggerZones: [],
   clientUnits: [],
   allUnitsDonor: [],
   pylonOptions: {},
@@ -86,6 +88,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       threats: data.threats,
       airbases: data.airbases,
       drawings: data.drawings || [],
+      triggerZones: (data as any).triggerZones || [],
       clientUnits: data.clientUnits || [],
       allUnitsDonor: data.allUnitsDonor || [],
       pylonOptions: data.pylonOptions || {},
@@ -109,7 +112,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     set({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
       role: 'mission_maker' as const, filename: null, theater: null, overview: null,
-      groups: [], units: [], threats: [], airbases: [], drawings: [],
+      groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [],
       clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
       countries: [],
