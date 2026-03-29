@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, createElement } from 'react';
+import JSZip from 'jszip';
 import { useMissionStore } from '../../store/missionStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
@@ -100,26 +101,29 @@ export function KneeboardTab() {
   const handleDownloadAll = async () => {
     setRendering(true);
     try {
+      const zip = new JSZip();
+
       for (const g of playerGroups) {
         const name = g.groupName.replace(/\s+/g, '_');
 
         // Route card
         const routeEl = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
         const routeBlob = await renderCardToBlob(routeEl);
-        downloadBlob(routeBlob, `${name}_Route.png`);
-        await new Promise((r) => setTimeout(r, 200));
+        zip.file(`${name}_Route.png`, routeBlob);
 
         // Route detail card
         try {
           const mapImg = await captureRouteImage(g);
           const detailEl = createElement(RouteDetailCard, { group: g, mapImageUrl: mapImg });
           const detailBlob = await renderCardToBlob(detailEl);
-          downloadBlob(detailBlob, `${name}_RouteDetail.png`);
-          await new Promise((r) => setTimeout(r, 200));
+          zip.file(`${name}_RouteDetail.png`, detailBlob);
         } catch {
           // Skip if no waypoints with coords
         }
       }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, 'kneeboards.zip');
     } catch (e) {
       console.error('Batch download failed:', e);
     }
