@@ -19,6 +19,7 @@ export function InviteManager() {
     if (!sessionId || !hostToken || !selectedGroup) return;
 
     try {
+      console.log('Creating invite:', { sessionId, hostToken: hostToken?.slice(0, 8), selectedGroup });
       const res = await fetch(`/api/sessions/${sessionId}/invite`, {
         method: 'POST',
         headers: {
@@ -31,6 +32,7 @@ export function InviteManager() {
         }),
       });
       const data = await res.json();
+      console.log('Invite response:', res.status, data);
       if (data.joinUrl) {
         const fullUrl = `${window.location.origin}${data.joinUrl}`;
         setInvites((prev) => [...prev, {

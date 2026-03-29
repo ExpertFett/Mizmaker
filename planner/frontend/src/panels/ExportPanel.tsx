@@ -15,7 +15,9 @@ export function ExportPanel() {
         'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
       const unitEdits = edits.filter((e) => !isWaypointEdit(e));
 
+      console.log('Downloading:', { sessionId, unitEditsCount: unitEdits.length });
       const blob = await downloadMiz(sessionId, unitEdits);
+      console.log('Download blob:', blob.size, 'bytes');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
