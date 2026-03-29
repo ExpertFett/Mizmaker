@@ -112,6 +112,8 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             # Server-authoritative waypoint state
             "group_waypoints": group_waypoints,  # { group_name: [wp, wp, ...] }
             "dirty_groups": set(),  # groups that were actually edited
+            # Server-authoritative unit edits (loadouts, datalink, etc.)
+            "unit_edits": [],  # accumulated from all participants
             # Collaborative session fields
             "host_token": host_token,
             "participants": {},  # { token: { name, group, connected, ready } }
@@ -296,6 +298,46 @@ def session_edit(sid):
 
     except Exception as e:
         return jsonify({"error": f"Edit failed: {str(e)}"}), 400
+
+
+# --------------------------------------------------------------------------
+# Unit edits — loadouts, datalink, laser, livery, etc. (server-authoritative)
+# --------------------------------------------------------------------------
+
+@app.route("/api/sessions/<sid>/unit-edit", methods=["POST"])
+def session_unit_edit(sid):
+    """Store a unit edit on the server. Applied at download time."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+
+    edit = body.get("edit")
+    if not edit:
+        return jsonify({"error": "No edit data"}), 400
+
+    # Validate token owns this unit's group (or is the host)
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token and token != session.get("host_token"):
+        participant = session["participants"].get(token)
+        if participant:
+            # Check if the edit targets a unit in their assigned group
+            unit_id = edit.get("unitId")
+            group_name = edit.get("groupName")
+            if group_name and participant["group"] != group_name:
+                return jsonify({"error": "Not authorized to edit this group"}), 403
+
+    with _lock:
+        session["unit_edits"].append(edit)
+        session["last_activity"] = time.time()
+
+    # Broadcast to other clients so they see the change
+    _broadcast(session, "unit_edit", edit, exclude_token=token)
+
+    return jsonify({"ok": True, "editCount": len(session["unit_edits"])})
 
 
 # --------------------------------------------------------------------------
@@ -645,8 +687,10 @@ def download():
             mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
 
         # 2. Apply unit-level surgical edits (856's edit engine)
-        if unit_edits:
-            mission_text = apply_unit_edits(mission_text, unit_edits)
+        # Merge: server-stored edits from all participants + any client-local edits
+        all_edits = list(session.get("unit_edits", [])) + unit_edits
+        if all_edits:
+            mission_text = apply_unit_edits(mission_text, all_edits)
 
         miz_bytes = repack_miz(session["miz_bytes"], mission_text)
 

@@ -4,7 +4,7 @@ import { useMapStore } from '../store/mapStore';
 import { useEditStore } from '../store/editStore';
 import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
-import { sessionEdit } from '../api/client';
+import { sessionEdit, sessionUnitEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
 import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
 import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
@@ -527,7 +527,12 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
 
   const handleChange = (unitId: number, field: string, value: string) => {
-    addEdit({ unitId, field, value } as any);
+    const edit = { unitId, field, groupName, value };
+    addEdit(edit as any);
+    // Send to server so other participants + download get it
+    const { sessionId: sid, sessionToken } = useMissionStore.getState();
+    if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
+
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -605,7 +610,12 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
   const handlePylonChange = (unitId: number, pylonNum: number, clsid: string) => {
     const opts = pylonOptions[units[0]?.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
     const selected = opts?.find((o) => o.clsid === clsid);
-    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
+    const edit = { unitId, field: 'pylonChange', groupName, value: { pylon: pylonNum, clsid, settings: {} } };
+    addEdit(edit as any);
+
+    // Also send to server so other participants + download get it
+    const { sessionId: sid, sessionToken } = useMissionStore.getState();
+    if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
 
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
@@ -624,7 +634,12 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
     const key = `${unitId}-${pylonNum}`;
     setPylonSettings((prev) => ({ ...prev, [key]: settings }));
     const pylon = units.find((u) => u.unitId === unitId)?.pylons.find((p) => p.number === pylonNum);
-    if (pylon) addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid: pylon.clsid, settings } } as any);
+    if (pylon) {
+      const edit = { unitId, field: 'pylonChange', groupName, value: { pylon: pylonNum, clsid: pylon.clsid, settings } };
+      addEdit(edit as any);
+      const { sessionId: sid, sessionToken } = useMissionStore.getState();
+      if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
+    }
   };
 
   const selSt: React.CSSProperties = {

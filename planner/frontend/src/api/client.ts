@@ -40,6 +40,26 @@ export async function sessionEdit(sessionId: string, edit: WaypointEditAction, t
 }
 
 // --------------------------------------------------------------------------
+// Unit edits — loadouts, datalink, etc. (server-authoritative)
+// --------------------------------------------------------------------------
+
+export async function sessionUnitEdit(sessionId: string, edit: Record<string, unknown>, token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/unit-edit`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ edit }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unit edit failed' }));
+    throw new Error(err.error || 'Unit edit failed');
+  }
+  return res.json();
+}
+
+// --------------------------------------------------------------------------
 // Download — server applies all edits from its authoritative state
 // --------------------------------------------------------------------------
 
