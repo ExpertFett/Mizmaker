@@ -52,7 +52,6 @@ export function KneeboardTab() {
           const el = createElement(RouteDetailCard, {
             group: selectedGroup!,
             mapImageUrl: mapImg,
-            threats,
           });
           url = await renderCardToDataUrl(el);
         } else {
