@@ -33,7 +33,7 @@ export async function captureRouteImage(
   group: MissionGroup,
   options: CaptureOptions = {},
 ): Promise<string> {
-  const { width = 560, height = 400, threats = [], padding = 40 } = options;
+  const { width = 560, height = 400, padding = 40 } = options;
 
   const wps = group.waypoints.filter((w) => w.lat != null && w.lon != null);
   if (wps.length === 0) throw new Error('No waypoints with coordinates');

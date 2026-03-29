@@ -19,7 +19,6 @@ type CardType = 'route' | 'routeDetail';
 
 export function KneeboardTab() {
   const groups = useMissionStore((s) => s.groups);
-  const threats = useMissionStore((s) => s.threats);
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather as Weather | undefined;
 
@@ -49,7 +48,7 @@ export function KneeboardTab() {
       try {
         let url: string;
         if (cardType === 'routeDetail') {
-          const mapImg = await captureRouteImage(selectedGroup!, { threats });
+          const mapImg = await captureRouteImage(selectedGroup!);
           const el = createElement(RouteDetailCard, {
             group: selectedGroup!,
             mapImageUrl: mapImg,
@@ -75,7 +74,7 @@ export function KneeboardTab() {
 
     render();
     return () => { cancelled = true; };
-  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold, cardType, threats]);
+  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold, cardType]);
 
   const handleDownloadOne = async () => {
     if (!selectedGroup) return;
@@ -84,8 +83,8 @@ export function KneeboardTab() {
       let blob: Blob;
       const name = selectedGroup.groupName.replace(/\s+/g, '_');
       if (cardType === 'routeDetail') {
-        const mapImg = await captureRouteImage(selectedGroup, { threats });
-        const el = createElement(RouteDetailCard, { group: selectedGroup, mapImageUrl: mapImg, threats });
+        const mapImg = await captureRouteImage(selectedGroup);
+        const el = createElement(RouteDetailCard, { group: selectedGroup, mapImageUrl: mapImg });
         blob = await renderCardToBlob(el);
         downloadBlob(blob, `${name}_RouteDetail.png`);
       } else {
@@ -113,8 +112,8 @@ export function KneeboardTab() {
 
         // Route detail card
         try {
-          const mapImg = await captureRouteImage(g, { threats });
-          const detailEl = createElement(RouteDetailCard, { group: g, mapImageUrl: mapImg, threats });
+          const mapImg = await captureRouteImage(g);
+          const detailEl = createElement(RouteDetailCard, { group: g, mapImageUrl: mapImg });
           const detailBlob = await renderCardToBlob(detailEl);
           downloadBlob(detailBlob, `${name}_RouteDetail.png`);
           await new Promise((r) => setTimeout(r, 200));
