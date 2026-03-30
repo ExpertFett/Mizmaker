@@ -91,7 +91,7 @@ export function KneeboardTab() {
     border: '1px solid #1a2a3a',
     borderRadius: 4,
     color: '#ccdae8',
-    fontSize: 12,
+    fontSize: 13,
     padding: '4px 8px',
   };
 
@@ -102,7 +102,7 @@ export function KneeboardTab() {
     color: '#ccdae8',
     padding: '6px 14px',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 500,
   };
 
@@ -114,7 +114,7 @@ export function KneeboardTab() {
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
           Flight:
           <select
             value={selectedGroupId ?? ''}
@@ -127,7 +127,7 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
           Coords:
           <select
             value={coordFormat}
@@ -139,7 +139,7 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
           Speed:
           <select
             value={speedRef}
@@ -155,7 +155,7 @@ export function KneeboardTab() {
         </label>
 
         {speedRef === 'auto' && (
-          <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+          <label style={{ fontSize: 13, color: '#5a7a8a' }}>
             Mach above:
             <select
               value={machThreshold}
@@ -210,7 +210,7 @@ export function KneeboardTab() {
           alignItems: 'center',
           justifyContent: 'center',
           color: '#5a7a8a',
-          fontSize: 14,
+          fontSize: 15,
         }}>
           {playerGroups.length === 0 ? 'No player flights in this mission' : 'Select a flight to preview'}
         </div>

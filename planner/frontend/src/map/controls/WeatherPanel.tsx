@@ -28,27 +28,27 @@ export function WeatherPanel() {
         borderRadius: 6,
         padding: '10px 14px',
         zIndex: 100,
-        fontSize: 12,
+        fontSize: 13,
         color: '#ccdae8',
         minWidth: 170,
       }}
     >
       {/* Mission time */}
       <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
-        <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
           Mission
         </div>
-        <div style={{ fontFamily: 'monospace', fontSize: 13 }}>
+        <div style={{ fontFamily: 'monospace', fontSize: 14 }}>
           {overview.date} {formatTime(overview.start_time)}L
         </div>
       </div>
 
       {/* Weather */}
       <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
-        <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
           Weather
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', fontSize: 12, fontFamily: 'monospace' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', fontSize: 13, fontFamily: 'monospace' }}>
           <span style={{ color: '#5a7a8a' }}>QNH</span>
           <span>{wx.qnh_inhg} inHg / {wx.qnh_hpa} hPa</span>
 
@@ -99,7 +99,7 @@ export function WeatherPanel() {
 
       {/* Speed mode toggle */}
       <div>
-        <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
           Speed Display
         </div>
         <div style={{ display: 'flex', gap: 3 }}>
@@ -108,7 +108,7 @@ export function WeatherPanel() {
               key={sm.id}
               onClick={() => setSpeedMode(sm.id)}
               style={{
-                flex: 1, padding: '4px 6px', fontSize: 11,
+                flex: 1, padding: '4px 6px', fontSize: 12,
                 background: speedMode === sm.id ? '#1a3a5a' : '#0f1a28',
                 border: `1px solid ${speedMode === sm.id ? '#4a8fd4' : '#1a2a3a'}`,
                 borderRadius: 3,

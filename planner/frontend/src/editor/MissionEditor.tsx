@@ -69,9 +69,9 @@ export function MissionEditor() {
         transition: 'width 0.15s',
       }}>
         {/* Header */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid #1a2a3a' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>{theater}</div>
-          {isMap && <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 2 }}>{filename}</div>}
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #1a2a3a' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#ccdae8' }}>{theater}</div>
+          {isMap && <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 2 }}>{filename}</div>}
         </div>
 
         {/* Tab buttons */}
@@ -91,14 +91,14 @@ export function MissionEditor() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  padding: isMap ? '8px 14px' : '10px 14px',
-                  fontSize: 13,
+                  padding: isMap ? '9px 14px' : '11px 14px',
+                  fontSize: 14,
                   fontFamily: 'inherit',
                   textAlign: 'left',
                   width: '100%',
                 }}
               >
-                <span style={{ fontSize: 15 }}>{tab.icon}</span>
+                <span style={{ fontSize: 16 }}>{tab.icon}</span>
                 {tab.label}
               </button>
             );
@@ -137,7 +137,7 @@ export function MissionEditor() {
 
         {/* Editor tabs — scrollable content */}
         {!isMap && (
-          <div style={{ height: '100%', overflow: 'auto', padding: 20 }}>
+          <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
             {activeTab === 'datalink' && <DatalinkTab />}
             {activeTab === 'loadouts' && <LoadoutTab />}
             {activeTab === 'laser' && <LaserTab />}

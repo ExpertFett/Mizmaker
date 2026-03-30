@@ -92,8 +92,8 @@ export function BatchEditTab() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>Batch Edit</h2>
-      <p style={{ margin: '0 0 16px', fontSize: 12, color: '#5a7a8a' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>Batch Edit</h2>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5a7a8a' }}>
         Apply changes to multiple units at once by country and type.
       </p>
 
@@ -118,7 +118,7 @@ export function BatchEditTab() {
           {/* Step 2: Unit Types */}
           <StepHeader num={2} title="Unit Types" subtitle="empty = all" />
           {!country ? (
-            <div style={{ color: '#5a7a8a', fontSize: 12, padding: '8px 0' }}>Select a country first</div>
+            <div style={{ color: '#5a7a8a', fontSize: 13, padding: '8px 0' }}>Select a country first</div>
           ) : (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -135,7 +135,7 @@ export function BatchEditTab() {
                     key={t.type}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
-                      borderBottom: '1px solid #0f1a28', cursor: 'pointer', fontSize: 12,
+                      borderBottom: '1px solid #0f1a28', cursor: 'pointer', fontSize: 13,
                     }}
                   >
                     <input
@@ -146,7 +146,7 @@ export function BatchEditTab() {
                     />
                     <span style={{ color: '#5a7a8a' }}>{CAT_ICONS[t.category] || ''}</span>
                     <span style={{ color: '#ccdae8', flex: 1 }}>{t.type}</span>
-                    <span style={{ color: '#5a7a8a', fontFamily: 'monospace', fontSize: 11 }}>{t.count}</span>
+                    <span style={{ color: '#5a7a8a', fontFamily: 'monospace', fontSize: 12 }}>{t.count}</span>
                   </label>
                 ))}
               </div>
@@ -208,7 +208,7 @@ export function BatchEditTab() {
 
           {/* Preview + Apply */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #1a2a3a' }}>
-            <span style={{ color: '#8fa8c0', fontSize: 13 }}>
+            <span style={{ color: '#8fa8c0', fontSize: 14 }}>
               <strong style={{ color: '#ccdae8' }}>{affected}</strong> unit{affected !== 1 ? 's' : ''} will be affected
             </span>
             <button
@@ -218,14 +218,14 @@ export function BatchEditTab() {
                 background: country && affected > 0 ? '#d29922' : '#1a2a3a',
                 border: 'none', borderRadius: 4, color: '#080f1c',
                 cursor: country && affected > 0 ? 'pointer' : 'not-allowed',
-                fontSize: 13, fontWeight: 600, padding: '8px 16px',
+                fontSize: 14, fontWeight: 600, padding: '8px 16px',
               }}
             >
               ⚡ Apply
             </button>
           </div>
           {result && (
-            <div style={{ padding: '8px 12px', background: 'rgba(63, 185, 80, 0.1)', border: '1px solid #3fb950', borderRadius: 4, color: '#3fb950', fontSize: 12, marginTop: 8 }}>
+            <div style={{ padding: '8px 12px', background: 'rgba(63, 185, 80, 0.1)', border: '1px solid #3fb950', borderRadius: 4, color: '#3fb950', fontSize: 13, marginTop: 8 }}>
               ✓ {result}
             </div>
           )}
@@ -240,11 +240,11 @@ function StepHeader({ num, title, subtitle }: { num: number; title: string; subt
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: num > 1 ? 16 : 0 }}>
       <span style={{
         width: 24, height: 24, borderRadius: '50%', background: '#1a3a5a',
-        color: '#4a8fd4', fontWeight: 700, fontSize: 13,
+        color: '#4a8fd4', fontWeight: 700, fontSize: 14,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>{num}</span>
-      <span style={{ color: '#ccdae8', fontWeight: 600, fontSize: 13 }}>{title}</span>
-      {subtitle && <span style={{ color: '#5a7a8a', fontSize: 11 }}>({subtitle})</span>}
+      <span style={{ color: '#ccdae8', fontWeight: 600, fontSize: 14 }}>{title}</span>
+      {subtitle && <span style={{ color: '#5a7a8a', fontSize: 12 }}>({subtitle})</span>}
     </div>
   );
 }
@@ -255,19 +255,19 @@ function SmallBtn({ label, onClick, accent }: { label: string; onClick: () => vo
       background: 'transparent',
       border: `1px solid ${accent ? '#1a3a5a' : '#1a2a3a'}`,
       borderRadius: 3, color: accent ? '#4a8fd4' : '#5a7a8a',
-      cursor: 'pointer', fontSize: 11, padding: '3px 8px',
+      cursor: 'pointer', fontSize: 12, padding: '3px 8px',
     }}>{label}</button>
   );
 }
 
 const selectStyle: React.CSSProperties = {
   background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '6px 10px', width: '100%',
+  color: '#ccdae8', fontSize: 13, padding: '6px 10px', width: '100%',
 };
 const inputStyle: React.CSSProperties = {
   background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '6px 10px', fontFamily: 'monospace',
+  color: '#ccdae8', fontSize: 13, padding: '6px 10px', fontFamily: 'monospace',
 };
 const labelStyle: React.CSSProperties = {
-  display: 'block', color: '#5a7a8a', fontSize: 11, marginBottom: 4, fontWeight: 500,
+  display: 'block', color: '#5a7a8a', fontSize: 12, marginBottom: 4, fontWeight: 500,
 };

@@ -99,6 +99,6 @@ const btnStyle: React.CSSProperties = {
   color: '#ccdae8',
   padding: '7px 10px',
   cursor: 'pointer',
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 500,
 };

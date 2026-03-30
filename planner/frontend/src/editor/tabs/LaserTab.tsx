@@ -90,7 +90,7 @@ export function LaserTab() {
 
   if (laserUnits.length === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 20 }}>
+      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
         No client units with laser-guided weapons or laser codes found in this mission.
       </div>
     );
@@ -99,10 +99,10 @@ export function LaserTab() {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
           Laser Code Editor
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#5a7a8a' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
           Edit laser codes for units with laser-guided weapons. Changing the lead unit auto-increments wingmen codes.
         </p>
       </div>
@@ -114,7 +114,7 @@ export function LaserTab() {
             {/* Group header */}
             <div style={{
               padding: '8px 10px',
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 600,
               borderBottom: '1px solid #1a2a3a',
               borderLeft: `3px solid ${coalitionColor}`,
@@ -127,7 +127,7 @@ export function LaserTab() {
               </span>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#ccdae8' }}>
               <thead>
                 <tr style={{
                   color: '#5a7a8a',
@@ -152,7 +152,7 @@ export function LaserTab() {
                         {isLead && (
                           <span style={{
                             marginLeft: 6,
-                            fontSize: 10,
+                            fontSize: 11,
                             color: '#4a8fd4',
                             border: '1px solid #1a3a5a',
                             borderRadius: 3,
@@ -161,7 +161,7 @@ export function LaserTab() {
                             LEAD
                           </span>
                         )}
-                        <div style={{ color: '#5a7a8a', fontSize: 11 }}>{unit.type}</div>
+                        <div style={{ color: '#5a7a8a', fontSize: 12 }}>{unit.type}</div>
                       </td>
                       <td style={tdStyle}>
                         {weapons.length > 0 ? (
@@ -171,7 +171,7 @@ export function LaserTab() {
                             ))}
                           </div>
                         ) : (
-                          <span style={{ color: '#3a5a6a', fontSize: 11 }}>None loaded</span>
+                          <span style={{ color: '#3a5a6a', fontSize: 12 }}>None loaded</span>
                         )}
                       </td>
                       <td style={tdStyle}>
@@ -213,7 +213,7 @@ const thStyle: React.CSSProperties = {
   padding: '6px 10px',
   textAlign: 'left',
   fontWeight: 600,
-  fontSize: 12,
+  fontSize: 13,
   whiteSpace: 'nowrap',
 };
 
@@ -228,7 +228,7 @@ const monoInputStyle: React.CSSProperties = {
   borderRadius: 3,
   color: '#ccdae8',
   fontFamily: 'monospace',
-  fontSize: 13,
+  fontSize: 14,
   padding: '4px 6px',
 };
 
@@ -237,7 +237,7 @@ const weaponTagStyle: React.CSSProperties = {
   border: '1px solid #1a2a3a',
   borderRadius: 3,
   padding: '1px 6px',
-  fontSize: 11,
+  fontSize: 12,
   color: '#8fa8c0',
   fontFamily: 'monospace',
 };

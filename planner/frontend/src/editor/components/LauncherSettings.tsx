@@ -77,7 +77,7 @@ export function LauncherSettingsPanel({
     setTimeout(() => onChange(next), 0);
   }, [onChange, values]);
 
-  if (loading) return <div style={{ color: '#5a7a8a', fontSize: 11, padding: '4px 0' }}>Loading settings...</div>;
+  if (loading) return <div style={{ color: '#5a7a8a', fontSize: 12, padding: '4px 0' }}>Loading settings...</div>;
   if (!schema || !schema.settings || schema.settings.length === 0) return null;
 
   // Filter visible settings
@@ -95,7 +95,7 @@ export function LauncherSettingsPanel({
       borderRadius: 4,
       padding: '6px 8px',
       marginTop: 4,
-      fontSize: 11,
+      fontSize: 12,
     }}>
       {visible.map((s) => {
         const key = schemaIdToKey(s.id);
@@ -104,7 +104,7 @@ export function LauncherSettingsPanel({
         if (s.control === 'comboList' && s.values) {
           return (
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ color: '#5a7a8a', minWidth: 80, fontSize: 11 }}>{s.label}</span>
+              <span style={{ color: '#5a7a8a', minWidth: 80, fontSize: 12 }}>{s.label}</span>
               <select
                 value={val}
                 onChange={(e) => handleChange(s.id, isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
@@ -122,7 +122,7 @@ export function LauncherSettingsPanel({
         if (s.control === 'spinner') {
           return (
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ color: '#5a7a8a', minWidth: 80, fontSize: 11 }}>{s.label}</span>
+              <span style={{ color: '#5a7a8a', minWidth: 80, fontSize: 12 }}>{s.label}</span>
               <input
                 type="number"
                 value={val}
@@ -137,7 +137,7 @@ export function LauncherSettingsPanel({
         if (s.control === 'laserCode') {
           return (
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ color: '#d29922', minWidth: 80, fontSize: 11 }}>{s.label || 'Laser Code'}</span>
+              <span style={{ color: '#d29922', minWidth: 80, fontSize: 12 }}>{s.label || 'Laser Code'}</span>
               <input
                 type="number"
                 min={1111}
@@ -190,7 +190,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #1a2a3a',
   borderRadius: 3,
   color: '#ccdae8',
-  fontSize: 11,
+  fontSize: 12,
   padding: '3px 6px',
   fontFamily: 'monospace',
 };

@@ -297,7 +297,7 @@ export function WeatherTab() {
 
   if (!weather) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 20 }}>
+      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
         No weather data available for this mission.
       </div>
     );
@@ -308,10 +308,10 @@ export function WeatherTab() {
       {/* Header with mode toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
             Weather Editor
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#5a7a8a' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
             {mode === 'simple'
               ? 'Pick a preset or cloud layer. Switch to Advanced for full control.'
               : 'Full control over all weather parameters.'}
@@ -321,7 +321,7 @@ export function WeatherTab() {
           <button
             onClick={() => setMode('simple')}
             style={{
-              padding: '6px 14px', fontSize: 12, border: 'none', cursor: 'pointer',
+              padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
               background: mode === 'simple' ? '#1a3a5a' : 'transparent',
               color: mode === 'simple' ? '#ccdae8' : '#5a7a8a', fontWeight: mode === 'simple' ? 600 : 400,
             }}
@@ -331,7 +331,7 @@ export function WeatherTab() {
           <button
             onClick={() => setMode('advanced')}
             style={{
-              padding: '6px 14px', fontSize: 12, border: 'none', cursor: 'pointer',
+              padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
               background: mode === 'advanced' ? '#1a3a5a' : 'transparent',
               color: mode === 'advanced' ? '#ccdae8' : '#5a7a8a', fontWeight: mode === 'advanced' ? 600 : 400,
             }}
@@ -386,7 +386,7 @@ function SimpleMode({
 
       {/* DCS Cloud Preset dropdown */}
       <Section title="DCS Cloud Layer" changed={hasChanges}>
-        <p style={{ margin: '0 0 8px', fontSize: 11, color: '#5a7a8a' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#5a7a8a' }}>
           DCS uses named cloud presets that override manual density/thickness. Select a preset to set cloud layers automatically.
         </p>
         <select
@@ -428,7 +428,7 @@ function SimpleMode({
             ['at8000', '26,000 ft'],
           ] as const).map(([layer, label]) => (
             <div key={layer} style={cardStyle}>
-              <div style={{ fontSize: 12, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 13, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <label style={fieldLabelStyle}>
                   Speed (m/s)
@@ -545,7 +545,7 @@ function AdvancedMode({
             ['at8000', '8,000m / 26,000 ft'],
           ] as const).map(([layer, label]) => (
             <div key={layer} style={cardStyle}>
-              <div style={{ fontSize: 12, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 13, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabelStyle}>
                   Speed (m/s)
@@ -726,7 +726,7 @@ function Section({ title, changed, children }: { title: string; changed: boolean
       <div style={{
         padding: '8px 14px',
         borderBottom: '1px solid #1a2a3a',
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: 600,
         color: '#8fa8c0',
       }}>
@@ -751,7 +751,7 @@ const presetBtnStyle: React.CSSProperties = {
   borderRadius: 4,
   color: '#8fa8c0',
   cursor: 'pointer',
-  fontSize: 12,
+  fontSize: 13,
   padding: '6px 12px',
   fontFamily: 'inherit',
   transition: 'all 0.15s',
@@ -769,7 +769,7 @@ const fieldLabelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 4,
-  fontSize: 11,
+  fontSize: 12,
   color: '#5a7a8a',
   fontWeight: 600,
 };
@@ -779,7 +779,7 @@ const numInputStyle: React.CSSProperties = {
   border: '1px solid #1a2a3a',
   borderRadius: 3,
   color: '#ccdae8',
-  fontSize: 13,
+  fontSize: 14,
   padding: '4px 6px',
   width: 90,
   outline: 'none',
@@ -791,7 +791,7 @@ const selectStyle: React.CSSProperties = {
   border: '1px solid #1a2a3a',
   borderRadius: 3,
   color: '#ccdae8',
-  fontSize: 12,
+  fontSize: 13,
   padding: '6px 8px',
   width: '100%',
   maxWidth: 500,

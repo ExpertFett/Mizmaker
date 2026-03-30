@@ -62,7 +62,7 @@ export function InviteManager() {
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{
-        fontSize: 11, color: '#5a7a8a', fontWeight: 600,
+        fontSize: 12, color: '#5a7a8a', fontWeight: 600,
         textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
       }}>
         Share Session
@@ -95,7 +95,7 @@ export function InviteManager() {
             borderRadius: 4,
             color: selectedGroup ? '#4a8fd4' : '#3a4a5a',
             cursor: selectedGroup ? 'pointer' : 'not-allowed',
-            fontSize: 12, padding: '6px 10px',
+            fontSize: 13, padding: '6px 10px',
           }}
         >
           Generate Invite Link
@@ -108,7 +108,7 @@ export function InviteManager() {
           {invites.map((inv, i) => (
             <div key={i} style={{
               background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-              padding: '6px 8px', fontSize: 11,
+              padding: '6px 8px', fontSize: 12,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: '#ccdae8', fontWeight: 500 }}>{inv.groupName}</span>
@@ -118,7 +118,7 @@ export function InviteManager() {
                 <input
                   readOnly
                   value={inv.url}
-                  style={{ ...inputStyle, flex: 1, fontSize: 10, color: '#5a7a8a' }}
+                  style={{ ...inputStyle, flex: 1, fontSize: 11, color: '#5a7a8a' }}
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
                 <button
@@ -127,7 +127,7 @@ export function InviteManager() {
                     background: inv.copied ? '#1a4a2a' : '#1a2a3a',
                     border: 'none', borderRadius: 3,
                     color: inv.copied ? '#3fb950' : '#8fa8c0',
-                    cursor: 'pointer', fontSize: 10, padding: '3px 8px',
+                    cursor: 'pointer', fontSize: 11, padding: '3px 8px',
                   }}
                 >
                   {inv.copied ? '✓' : 'Copy'}
@@ -143,9 +143,9 @@ export function InviteManager() {
 
 const selectStyle: React.CSSProperties = {
   background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '5px 8px',
+  color: '#ccdae8', fontSize: 13, padding: '5px 8px',
 };
 const inputStyle: React.CSSProperties = {
   background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '5px 8px',
+  color: '#ccdae8', fontSize: 13, padding: '5px 8px',
 };

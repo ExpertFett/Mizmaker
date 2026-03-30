@@ -25,7 +25,7 @@ export function PlayerGroupsButton() {
           borderRadius: 6,
           color: '#3fb950',
           cursor: 'pointer',
-          fontSize: 14,
+          fontSize: 15,
           fontWeight: 600,
           width: '100%',
         }}
@@ -94,17 +94,17 @@ function FlightCard({ group, color, isSelected, onSelect }: {
         }}
       >
         <div>
-          <span style={{ fontWeight: 600, color: '#ccdae8', fontSize: 13 }}>{group.groupName}</span>
-          <span style={{ color: '#6a8a9a', fontSize: 11, marginLeft: 8 }}>{airframe}</span>
+          <span style={{ fontWeight: 600, color: '#ccdae8', fontSize: 14 }}>{group.groupName}</span>
+          <span style={{ color: '#6a8a9a', fontSize: 12, marginLeft: 8 }}>{airframe}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: '#5a7a8a', fontSize: 11 }}>{clientCount} slots</span>
+          <span style={{ color: '#5a7a8a', fontSize: 12 }}>{clientCount} slots</span>
           <button
             onClick={handleEye}
             title={hidden ? 'Show route' : 'Hide route'}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
-              fontSize: 14, color: hidden ? '#3a4a5a' : '#6a8a9a', padding: '0 2px', lineHeight: 1,
+              fontSize: 15, color: hidden ? '#3a4a5a' : '#6a8a9a', padding: '0 2px', lineHeight: 1,
             }}
           >
             {hidden ? '\u25CB' : '\u25C9'}
@@ -113,7 +113,7 @@ function FlightCard({ group, color, isSelected, onSelect }: {
             onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
             style={{
               background: 'transparent', border: 'none', color: '#5a7a8a',
-              cursor: 'pointer', fontSize: 11, padding: '2px 4px',
+              cursor: 'pointer', fontSize: 12, padding: '2px 4px',
             }}
           >
             {expanded ? '\u25B2' : '\u25BC'}
@@ -122,7 +122,7 @@ function FlightCard({ group, color, isSelected, onSelect }: {
       </div>
 
       {/* Compact route summary — always visible */}
-      <div style={{ padding: '0 10px 6px 13px', fontSize: 11, color: '#5a7a8a', display: 'flex', gap: 8 }}>
+      <div style={{ padding: '0 10px 6px 13px', fontSize: 12, color: '#5a7a8a', display: 'flex', gap: 8 }}>
         <span>{group.task}</span>
         <span>{group.waypoints.length} WPs</span>
         <span>{totalDist.toFixed(0)} nm</span>
@@ -132,7 +132,7 @@ function FlightCard({ group, color, isSelected, onSelect }: {
       {/* Expanded waypoint list */}
       {expanded && (
         <div style={{ borderTop: '1px solid #1a2a3a', maxHeight: 200, overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, color: '#ccdae8' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccdae8' }}>
             <tbody>
               {group.waypoints.map((wp) => (
                 <CompactWpRow key={wp.waypoint_number} wp={wp} />
