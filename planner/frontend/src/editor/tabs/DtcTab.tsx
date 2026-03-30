@@ -177,7 +177,7 @@ export function DtcTab() {
 
   if (dtcFlights.length === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 20 }}>
+      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
         No F/A-18C flights found in this mission for DTC generation.
       </div>
     );
@@ -187,17 +187,17 @@ export function DtcTab() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
           F/A-18C DTC Builder
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#5a7a8a' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
           Load, edit, and export Data Transfer Cartridge files for Hornet flights.
         </p>
       </div>
 
       {/* Flight selector + Load */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <label style={{ color: '#8fa8c0', fontSize: 13 }}>Flight:</label>
+        <label style={{ color: '#8fa8c0', fontSize: 14 }}>Flight:</label>
         <select
           value={selectedFlight}
           onChange={(e) => { setSelectedFlight(e.target.value); setDtcData(null); }}
@@ -218,11 +218,11 @@ export function DtcTab() {
       </div>
 
       {error && (
-        <div style={{ color: '#d95050', fontSize: 13, marginBottom: 12 }}>{error}</div>
+        <div style={{ color: '#d95050', fontSize: 14, marginBottom: 12 }}>{error}</div>
       )}
 
       {!dtcData && !loading && (
-        <div style={{ color: '#5a7a8a', fontSize: 13, padding: 20 }}>
+        <div style={{ color: '#5a7a8a', fontSize: 14, padding: 20 }}>
           Select a flight and click "Load DTC" to begin editing.
         </div>
       )}
@@ -241,7 +241,7 @@ export function DtcTab() {
                   borderBottom: subTab === t ? '2px solid #4a8fd4' : '2px solid transparent',
                   color: subTab === t ? '#ccdae8' : '#5a7a8a',
                   cursor: 'pointer',
-                  fontSize: 13,
+                  fontSize: 14,
                   fontFamily: 'inherit',
                   padding: '8px 16px',
                   fontWeight: subTab === t ? 600 : 400,
@@ -274,8 +274,8 @@ function CommSubTab({ data, onUpdate }: {
     <div style={{ display: 'flex', gap: 24 }}>
       {(['COMM1', 'COMM2'] as const).map((radio) => (
         <div key={radio} style={{ flex: 1 }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#8fa8c0' }}>{radio}</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccdae8' }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600, color: '#8fa8c0' }}>{radio}</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
             <thead>
               <tr style={{ color: '#5a7a8a', borderBottom: '1px solid #1a2a3a', background: '#080f1c' }}>
                 <th style={thStyle}>Ch</th>
@@ -310,7 +310,7 @@ function CommSubTab({ data, onUpdate }: {
                       <select
                         value={ch.modulation ?? 'AM'}
                         onChange={(e) => onUpdate(radio, chKey, 'modulation', e.target.value)}
-                        style={{ ...selectStyle, fontSize: 12, padding: '3px 4px' }}
+                        style={{ ...selectStyle, fontSize: 13, padding: '3px 4px' }}
                       >
                         <option value="AM">AM</option>
                         <option value="FM">FM</option>
@@ -336,7 +336,7 @@ function CmdsSubTab({ data, onUpdate }: {
   onUpdate: (program: string, field: keyof CmdsProgram, value: number) => void;
 }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccdae8', maxWidth: 700 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8', maxWidth: 700 }}>
       <thead>
         <tr style={{ color: '#5a7a8a', borderBottom: '1px solid #1a2a3a', background: '#080f1c' }}>
           <th style={thStyle}>Program</th>
@@ -400,11 +400,11 @@ function CmdsSubTab({ data, onUpdate }: {
 
 function WaypointsSubTab({ data }: { data: NavPoint[] }) {
   if (data.length === 0) {
-    return <div style={{ color: '#5a7a8a', fontSize: 13 }}>No waypoints in DTC data.</div>;
+    return <div style={{ color: '#5a7a8a', fontSize: 14 }}>No waypoints in DTC data.</div>;
   }
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccdae8', maxWidth: 800 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8', maxWidth: 800 }}>
       <thead>
         <tr style={{ color: '#5a7a8a', borderBottom: '1px solid #1a2a3a', background: '#080f1c' }}>
           <th style={{ ...thStyle, width: 40 }}>#</th>
@@ -463,7 +463,7 @@ function NavSubTab({ data, onUpdate }: {
             <select
               value={tacan.band}
               onChange={(e) => onUpdate('TACAN', 'band', e.target.value)}
-              style={{ ...selectStyle, fontSize: 12, padding: '3px 4px' }}
+              style={{ ...selectStyle, fontSize: 13, padding: '3px 4px' }}
             >
               <option value="X">X</option>
               <option value="Y">Y</option>
@@ -474,7 +474,7 @@ function NavSubTab({ data, onUpdate }: {
             <select
               value={tacan.mode}
               onChange={(e) => onUpdate('TACAN', 'mode', e.target.value)}
-              style={{ ...selectStyle, fontSize: 12, padding: '3px 4px' }}
+              style={{ ...selectStyle, fontSize: 13, padding: '3px 4px' }}
             >
               <option value="T-R">T-R</option>
               <option value="A-A">A-A</option>
@@ -554,7 +554,7 @@ const thStyle: React.CSSProperties = {
   padding: '6px 10px',
   textAlign: 'left',
   fontWeight: 600,
-  fontSize: 12,
+  fontSize: 13,
   whiteSpace: 'nowrap',
 };
 
@@ -569,7 +569,7 @@ const monoInputStyle: React.CSSProperties = {
   borderRadius: 3,
   color: '#ccdae8',
   fontFamily: 'monospace',
-  fontSize: 13,
+  fontSize: 14,
   padding: '4px 6px',
   boxSizing: 'border-box',
 };
@@ -579,7 +579,7 @@ const selectStyle: React.CSSProperties = {
   border: '1px solid #1a2a3a',
   borderRadius: 3,
   color: '#ccdae8',
-  fontSize: 13,
+  fontSize: 14,
   padding: '4px 8px',
   fontFamily: 'inherit',
 };
@@ -590,7 +590,7 @@ const btnStyle: React.CSSProperties = {
   borderRadius: 4,
   color: '#4a8fd4',
   cursor: 'pointer',
-  fontSize: 13,
+  fontSize: 14,
   padding: '6px 14px',
   fontFamily: 'inherit',
 };
@@ -604,7 +604,7 @@ const fieldsetStyle: React.CSSProperties = {
 
 const legendStyle: React.CSSProperties = {
   color: '#8fa8c0',
-  fontSize: 13,
+  fontSize: 14,
   fontWeight: 600,
   padding: '0 6px',
 };
@@ -614,5 +614,5 @@ const fieldLabelStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   color: '#8fa8c0',
-  fontSize: 12,
+  fontSize: 13,
 };

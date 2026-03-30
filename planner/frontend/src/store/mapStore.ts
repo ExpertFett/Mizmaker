@@ -34,6 +34,7 @@ export const useMapStore = create<MapState>((set) => ({
     statics: false,  // hidden by default — declutter
     triggerZones: true,
     baseMap: 'dark',
+    mapLang: 'en',
   },
   viewMode: 'all',
   hiddenGroupIds: new Set(),

@@ -135,7 +135,7 @@ export function KneeboardTab() {
     border: '1px solid #1a2a3a',
     borderRadius: 4,
     color: '#ccdae8',
-    fontSize: 12,
+    fontSize: 13,
     padding: '4px 8px',
   };
 

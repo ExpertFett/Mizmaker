@@ -82,7 +82,7 @@ export function UploadPanel() {
           <h1 style={{ color: '#ccdae8', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
             DCS Mission Planner
           </h1>
-          <p style={{ color: '#5a7a8a', fontSize: 13, margin: 0 }}>
+          <p style={{ color: '#5a7a8a', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks
           </p>
         </div>
@@ -103,7 +103,7 @@ export function UploadPanel() {
           <h2 style={{ color: '#ccdae8', margin: '0 0 8px', fontSize: 18 }}>
             Drop .miz file here or click to browse
           </h2>
-          <p style={{ color: '#5a7a8a', fontSize: 13, margin: 0 }}>
+          <p style={{ color: '#5a7a8a', fontSize: 14, margin: 0 }}>
             Upload a DCS mission file to start planning
           </p>
           <input
@@ -129,10 +129,10 @@ export function UploadPanel() {
           background: '#0a1520',
           borderRadius: 8,
           padding: '20px 24px',
-          fontSize: 13,
+          fontSize: 14,
           lineHeight: 1.7,
         }}>
-          <p style={{ color: '#ccdae8', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+          <p style={{ color: '#ccdae8', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
             What is this?
           </p>
           <p style={{ color: '#5a7a8a', marginBottom: 12 }}>
@@ -166,7 +166,7 @@ const toolBtnStyle: React.CSSProperties = {
   borderRadius: 6,
   color: '#4a8fd4',
   cursor: 'pointer',
-  fontSize: 13,
+  fontSize: 14,
   fontWeight: 500,
   padding: '10px 20px',
 };

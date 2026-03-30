@@ -6,10 +6,12 @@ import App from './App';
 const style = document.createElement('style');
 style.textContent = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; }
+  html { font-size: 15px; }
+  body { overflow: hidden; font-size: 15px; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: #0a1520; }
   ::-webkit-scrollbar-thumb { background: #1a3a5a; border-radius: 3px; }
+  input, select, button, textarea { font-size: inherit; }
   input:focus, select:focus { outline: 1px solid #4a8fd4; }
   /* Hide number input spinners (the up/down arrows) */
   input[type=number]::-webkit-inner-spin-button,

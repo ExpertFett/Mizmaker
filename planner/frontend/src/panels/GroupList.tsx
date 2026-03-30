@@ -47,7 +47,7 @@ export function GroupList() {
             borderRadius: 4,
             color: '#ccdae8',
             padding: '5px 8px',
-            fontSize: 13,
+            fontSize: 14,
           }}
         />
         <select
@@ -58,7 +58,7 @@ export function GroupList() {
             border: '1px solid #1a2a3a',
             borderRadius: 4,
             color: '#ccdae8',
-            fontSize: 13,
+            fontSize: 14,
             padding: '4px',
           }}
         >
@@ -108,7 +108,7 @@ function GroupItem({ group, selected, onSelect }: {
         cursor: 'pointer',
         background: selected ? 'rgba(74, 143, 212, 0.15)' : 'transparent',
         borderLeft: `3px solid ${color}`,
-        fontSize: 13,
+        fontSize: 14,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -117,16 +117,16 @@ function GroupItem({ group, selected, onSelect }: {
     >
       <div style={{ minWidth: 0, flex: 1 }}>
         <span style={{ marginRight: 6 }}>{icon}</span>
-        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400, fontSize: 13 }}>
+        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400, fontSize: 14 }}>
           {group.groupName}
         </span>
-        {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 10, fontWeight: 600 }}>PLAYER</span>}
-        <div style={{ fontSize: 11, color: '#6a8a9a', marginTop: 2, marginLeft: 22 }}>
+        {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 11, fontWeight: 600 }}>PLAYER</span>}
+        <div style={{ fontSize: 12, color: '#6a8a9a', marginTop: 2, marginLeft: 22 }}>
           {airframe} | {group.task}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span style={{ color: '#5a7a8a', fontSize: 11 }}>{wpCount} wp</span>
+        <span style={{ color: '#5a7a8a', fontSize: 12 }}>{wpCount} wp</span>
         <button
           onClick={handleEye}
           title={hidden ? 'Show route' : 'Hide route'}
@@ -134,7 +134,7 @@ function GroupItem({ group, selected, onSelect }: {
             background: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            fontSize: 14,
+            fontSize: 15,
             color: hidden ? '#3a4a5a' : '#6a8a9a',
             padding: '0 2px',
             lineHeight: 1,

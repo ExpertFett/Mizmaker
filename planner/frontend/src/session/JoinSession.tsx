@@ -37,7 +37,7 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
       <div style={containerStyle}>
         <div style={cardStyle}>
           <h2 style={{ color: '#4a8fd4', margin: '0 0 12px' }}>Joining Session...</h2>
-          <p style={{ color: '#5a7a8a', fontSize: 13 }}>Loading mission data</p>
+          <p style={{ color: '#5a7a8a', fontSize: 14 }}>Loading mission data</p>
         </div>
       </div>
     );
@@ -48,8 +48,8 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
       <div style={containerStyle}>
         <div style={cardStyle}>
           <h2 style={{ color: '#d95050', margin: '0 0 12px' }}>Failed to Join</h2>
-          <p style={{ color: '#8fa8c0', fontSize: 13 }}>{error}</p>
-          <p style={{ color: '#5a7a8a', fontSize: 12, marginTop: 12 }}>
+          <p style={{ color: '#8fa8c0', fontSize: 14 }}>{error}</p>
+          <p style={{ color: '#5a7a8a', fontSize: 13, marginTop: 12 }}>
             The session may have expired or the invite link is invalid.
           </p>
         </div>

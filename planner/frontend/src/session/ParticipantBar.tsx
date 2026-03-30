@@ -99,12 +99,12 @@ export function ParticipantBar() {
         position: 'absolute', top: 0, left: 0, right: 0, height: 36,
         background: 'rgba(10, 20, 35, 0.9)', borderBottom: '1px solid #1a2a3a',
         display: 'flex', alignItems: 'center', padding: '0 12px', gap: 12,
-        zIndex: 400, fontSize: 12,
+        zIndex: 400, fontSize: 13,
       }}>
         {/* Status */}
         <span style={{
           color: sessionStatus === 'frozen' ? '#d29922' : sessionStatus === 'all_ready' ? '#3fb950' : '#4a8fd4',
-          fontWeight: 600, fontSize: 11, textTransform: 'uppercase',
+          fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
         }}>
           {sessionStatus === 'frozen' ? '🔒 FROZEN' : sessionStatus === 'all_ready' ? '✓ ALL READY' : '● LIVE'}
         </span>
@@ -115,14 +115,14 @@ export function ParticipantBar() {
             <span key={i} style={{
               display: 'flex', alignItems: 'center', gap: 4,
               color: p.connected ? '#ccdae8' : '#3a4a5a',
-              fontSize: 11,
+              fontSize: 12,
             }}>
               <span style={{
                 width: 6, height: 6, borderRadius: '50%',
                 background: p.connected ? (p.ready ? '#3fb950' : '#4a8fd4') : '#3a4a5a',
               }} />
               {p.name}
-              <span style={{ color: '#5a7a8a', fontSize: 10 }}>({p.group})</span>
+              <span style={{ color: '#5a7a8a', fontSize: 11 }}>({p.group})</span>
             </span>
           ))}
         </div>
@@ -150,12 +150,12 @@ export function ParticipantBar() {
             padding: '24px 32px', textAlign: 'center', maxWidth: 400,
           }}>
             <h3 style={{ color: '#d29922', margin: '0 0 12px' }}>Ready Check</h3>
-            <p style={{ color: '#8fa8c0', fontSize: 13, margin: '0 0 20px' }}>
+            <p style={{ color: '#8fa8c0', fontSize: 14, margin: '0 0 20px' }}>
               Mission maker is requesting confirmation that your route is final.
             </p>
             <button onClick={handleReady} style={{
               background: '#3fb950', border: 'none', borderRadius: 6,
-              color: '#080f1c', fontSize: 14, fontWeight: 600, padding: '10px 24px', cursor: 'pointer',
+              color: '#080f1c', fontSize: 15, fontWeight: 600, padding: '10px 24px', cursor: 'pointer',
             }}>
               ✓ My Route is Final
             </button>
@@ -168,5 +168,5 @@ export function ParticipantBar() {
 
 const barBtnStyle: React.CSSProperties = {
   background: 'transparent', border: '1px solid #1a3a5a', borderRadius: 3,
-  color: '#8fa8c0', cursor: 'pointer', fontSize: 11, padding: '4px 10px',
+  color: '#8fa8c0', cursor: 'pointer', fontSize: 12, padding: '4px 10px',
 };

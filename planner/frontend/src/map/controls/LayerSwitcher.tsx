@@ -35,6 +35,10 @@ export function LayerSwitcher() {
     useMapStore.setState((s) => ({ layers: { ...s.layers, baseMap: id } }));
   };
 
+  const setMapLang = (lang: string) => {
+    useMapStore.setState((s) => ({ layers: { ...s.layers, mapLang: lang } }));
+  };
+
   return (
     <div
       style={{
@@ -48,7 +52,7 @@ export function LayerSwitcher() {
         flexDirection: 'column',
         gap: 8,
         zIndex: 100,
-        fontSize: 13,
+        fontSize: 14,
         color: '#ccc',
         minWidth: 150,
       }}
@@ -62,7 +66,7 @@ export function LayerSwitcher() {
               key={vm.id}
               onClick={() => setViewMode(vm.id)}
               style={{
-                flex: 1, padding: '4px 5px', fontSize: 11,
+                flex: 1, padding: '4px 5px', fontSize: 12,
                 background: viewMode === vm.id ? 'rgba(255,255,255,0.08)' : '#0f1a28',
                 border: `1px solid ${viewMode === vm.id ? vm.color : '#1a2a3a'}`,
                 borderRadius: 3,
@@ -85,7 +89,7 @@ export function LayerSwitcher() {
               key={bm.id}
               onClick={() => setBaseMap(bm.id)}
               style={{
-                flex: 1, padding: '4px 6px', fontSize: 11,
+                flex: 1, padding: '4px 6px', fontSize: 12,
                 background: (layers.baseMap || 'dark') === bm.id ? '#1a3a5a' : '#0f1a28',
                 border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#4a8fd4' : '#1a2a3a'}`,
                 borderRadius: 3,
@@ -99,11 +103,39 @@ export function LayerSwitcher() {
         </div>
       </div>
 
+      {/* Map Language (only relevant for Street map) */}
+      {(layers.baseMap || 'dark') === 'osm' && (
+        <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
+          <div style={sectionLabel}>Labels</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[
+              { id: 'en', label: 'English' },
+              { id: 'local', label: 'Local' },
+            ].map((l) => (
+              <button
+                key={l.id}
+                onClick={() => setMapLang(l.id)}
+                style={{
+                  flex: 1, padding: '4px 6px', fontSize: 12,
+                  background: (layers.mapLang || 'en') === l.id ? '#1a3a5a' : '#0f1a28',
+                  border: `1px solid ${(layers.mapLang || 'en') === l.id ? '#4a8fd4' : '#1a2a3a'}`,
+                  borderRadius: 3,
+                  color: (layers.mapLang || 'en') === l.id ? '#ccdae8' : '#5a7a8a',
+                  cursor: 'pointer',
+                }}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Layers */}
       <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
         <div style={sectionLabel}>Layers</div>
         {OVERLAY_LAYERS.map((l) => (
-          <label key={l.id} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 12 }}>
+          <label key={l.id} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 13 }}>
             <input type="checkbox" checked={layers[l.id] ?? true} onChange={() => toggleLayer(l.id)} style={{ accentColor: '#4a8fd4' }} />
             {l.label}
           </label>
@@ -117,7 +149,7 @@ export function LayerSwitcher() {
           <button
             onClick={() => setMeasureMode(!measureMode)}
             style={{
-              padding: '6px 10px', fontSize: 12,
+              padding: '6px 10px', fontSize: 13,
               background: measureMode ? '#3a3a1a' : '#0f1a28',
               border: `1px solid ${measureMode ? '#d29922' : '#1a2a3a'}`,
               borderRadius: 4, textAlign: 'left',
@@ -131,7 +163,7 @@ export function LayerSwitcher() {
             display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
             background: adminMode ? 'rgba(210, 153, 34, 0.1)' : '#0f1a28',
             border: `1px solid ${adminMode ? '#d29922' : '#1a2a3a'}`,
-            borderRadius: 4, cursor: 'pointer', fontSize: 12,
+            borderRadius: 4, cursor: 'pointer', fontSize: 13,
             color: adminMode ? '#d29922' : '#ccdae8',
           }}>
             <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)}
@@ -145,6 +177,6 @@ export function LayerSwitcher() {
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontSize: 10, color: '#5a7a8a', marginBottom: 4,
+  fontSize: 11, color: '#5a7a8a', marginBottom: 4,
   textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600,
 };

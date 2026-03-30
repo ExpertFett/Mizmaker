@@ -68,8 +68,15 @@ function createDarkLayer(): TileLayer {
   });
 }
 
-function createOsmLayer(): TileLayer {
-  return new TileLayer({ source: new OSM(), properties: { name: 'osm' }, visible: false });
+function createOsmLayer(lang: string = 'en'): TileLayer {
+  const source = lang === 'local'
+    ? new OSM()
+    : new XYZ({
+        url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        maxZoom: 20,
+        attributions: '&copy; OpenStreetMap &copy; CARTO',
+      });
+  return new TileLayer({ source, properties: { name: 'osm' }, visible: false });
 }
 
 function createSatelliteLayer(): TileLayer {
@@ -244,7 +251,8 @@ export function MapContainer() {
     if (!mapRef.current || mapInstance.current) return;
 
     const darkLayer = createDarkLayer();
-    const osmLayer = createOsmLayer();
+    const initLang = useMapStore.getState().layers.mapLang || 'en';
+    const osmLayer = createOsmLayer(initLang);
     const satLayer = createSatelliteLayer();
     const topoLayer = createTopoLayer();
     baseLayers.current = { dark: darkLayer, osm: osmLayer, satellite: satLayer, topo: topoLayer };
@@ -612,6 +620,18 @@ export function MapContainer() {
     baseLayers.current.topo.setVisible(bm === 'topo');
   }, [layers]);
 
+  // Switch street map language (swap OSM layer source)
+  useEffect(() => {
+    if (!baseLayers.current || !mapInstance.current) return;
+    const lang = layers.mapLang || 'en';
+    const oldOsm = baseLayers.current.osm;
+    const wasVisible = oldOsm.getVisible();
+    const newOsm = createOsmLayer(lang);
+    newOsm.setVisible(wasVisible);
+    mapInstance.current.getLayers().insertAt(1, newOsm);
+    mapInstance.current.removeLayer(oldOsm);
+    baseLayers.current.osm = newOsm;
+  }, [layers.mapLang]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
