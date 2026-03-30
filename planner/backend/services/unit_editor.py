@@ -378,7 +378,8 @@ def _replace_unit_name(text: str, unit_id: int, new_name: str) -> str:
 
 
 def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
-    """Replace the ["livery_id"] field for a specific unit."""
+    """Replace the ["livery_id"] field for a specific unit.
+    If the field doesn't exist, insert it near the unit block."""
     unit_pos = _find_unit_block_start(text, unit_id)
     search_start = max(0, unit_pos - 3000)
     search_end = min(len(text), unit_pos + 3000)
@@ -395,12 +396,30 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
             best_dist = dist
             best = m
 
-    if not best or best_dist > 2000:
-        raise ValueError(f"livery_id field not found near unit {unit_id}")
+    if best and best_dist <= 2000:
+        # Replace existing livery_id value
+        abs_start = search_start + best.start(1)
+        abs_end = search_start + best.end(1)
+        text = text[:abs_start] + new_livery + text[abs_end:]
+    else:
+        # No livery_id field — insert one after the ["type"] field for this unit
+        type_pattern = re.compile(r'\["type"\]\s*=\s*"[^"]*"\s*,')
+        type_match = None
+        type_dist = float('inf')
+        for m in type_pattern.finditer(region):
+            dist = abs(m.start() - rel_pos)
+            if dist < type_dist:
+                type_dist = dist
+                type_match = m
 
-    abs_start = search_start + best.start(1)
-    abs_end = search_start + best.end(1)
-    text = text[:abs_start] + new_livery + text[abs_end:]
+        if type_match and type_dist <= 2000:
+            insert_pos = search_start + type_match.end()
+            indent = "\n                "  # match typical DCS Lua indentation
+            text = text[:insert_pos] + f'{indent}["livery_id"] = "{new_livery}",' + text[insert_pos:]
+        else:
+            import logging
+            logging.warning(f"Cannot insert livery_id for unit {unit_id} — no anchor found")
+
     return text
 
 
@@ -674,62 +693,69 @@ def apply_unit_edits(text: str, edits: list) -> str:
     radioFrequency, findReplace
     """
     for edit in edits:
-        field = edit["field"]
-        value = edit["value"]
-
-        # Mission-level edits (no unitId needed)
-        if field == "weather":
-            text = _replace_weather_block(text, value)
-            continue
-        elif field == "findReplace":
-            text, _ = _find_replace_names(
-                text, value["find"], value["replace"],
-                value.get("regex", False),
-                value.get("inUnits", True), value.get("inGroups", True),
-            )
+        field = edit.get("field")
+        value = edit.get("value")
+        if not field:
             continue
 
-        # Group-level edits
-        if field in ("groupTask", "groupFrequency", "groupModulation"):
-            group_id = edit["groupId"]
-            lua_field = {
-                "groupTask": "task",
-                "groupFrequency": "frequency",
-                "groupModulation": "modulation",
-            }[field]
-            text = _replace_group_field(text, group_id, lua_field, value)
+        try:
+            # Mission-level edits (no unitId needed)
+            if field == "weather":
+                text = _replace_weather_block(text, value)
+                continue
+            elif field == "findReplace":
+                text, _ = _find_replace_names(
+                    text, value["find"], value["replace"],
+                    value.get("regex", False),
+                    value.get("inUnits", True), value.get("inGroups", True),
+                )
+                continue
+
+            # Group-level edits
+            if field in ("groupTask", "groupFrequency", "groupModulation"):
+                group_id = edit["groupId"]
+                lua_field = {
+                    "groupTask": "task",
+                    "groupFrequency": "frequency",
+                    "groupModulation": "modulation",
+                }[field]
+                text = _replace_group_field(text, group_id, lua_field, value)
+                continue
+
+            unit_id = edit.get("unitId")
+
+            if field == "voiceCallsignLabel":
+                text = _replace_prop_field(text, unit_id, "VoiceCallsignLabel", value)
+            elif field == "voiceCallsignNumber":
+                text = _replace_prop_field(text, unit_id, "VoiceCallsignNumber", value)
+            elif field == "stnL16":
+                text = _replace_prop_field(text, unit_id, "STN_L16", value)
+            elif field == "donors":
+                text = _replace_donors(text, unit_id, value)
+            elif field == "teamMembers":
+                text = _replace_team_members(text, unit_id, value)
+            elif field == "copyLoadout":
+                text = _copy_payload_block(text, source_uid=value, target_uid=unit_id)
+            elif field == "pylonChange":
+                text = _replace_pylon_clsid(text, unit_id, value["pylon"], value["clsid"],
+                                            value.get("settings"))
+            elif field == "laserCode":
+                text = _replace_laser_code(text, unit_id, int(value))
+            elif field == "groupRename":
+                text = _rename_group_and_units(text, value["groupId"],
+                                               value.get("newGroupName"),
+                                               value.get("unitNames", {}))
+            elif field == "unitRename":
+                text = _replace_unit_name(text, unit_id, value)
+            elif field == "livery":
+                text = _replace_livery(text, unit_id, value)
+            elif field == "skill":
+                text = _replace_skill(text, unit_id, value)
+            elif field == "radioFrequency":
+                text = _replace_radio_frequency(text, unit_id, int(value))
+        except Exception as e:
+            import logging
+            logging.warning(f"Skipping edit {field} (unit={edit.get('unitId')}, group={edit.get('groupId')}): {e}")
             continue
-
-        unit_id = edit.get("unitId")
-
-        if field == "voiceCallsignLabel":
-            text = _replace_prop_field(text, unit_id, "VoiceCallsignLabel", value)
-        elif field == "voiceCallsignNumber":
-            text = _replace_prop_field(text, unit_id, "VoiceCallsignNumber", value)
-        elif field == "stnL16":
-            text = _replace_prop_field(text, unit_id, "STN_L16", value)
-        elif field == "donors":
-            text = _replace_donors(text, unit_id, value)
-        elif field == "teamMembers":
-            text = _replace_team_members(text, unit_id, value)
-        elif field == "copyLoadout":
-            text = _copy_payload_block(text, source_uid=value, target_uid=unit_id)
-        elif field == "pylonChange":
-            text = _replace_pylon_clsid(text, unit_id, value["pylon"], value["clsid"],
-                                        value.get("settings"))
-        elif field == "laserCode":
-            text = _replace_laser_code(text, unit_id, int(value))
-        elif field == "groupRename":
-            text = _rename_group_and_units(text, value["groupId"],
-                                           value.get("newGroupName"),
-                                           value.get("unitNames", {}))
-        elif field == "unitRename":
-            text = _replace_unit_name(text, unit_id, value)
-        elif field == "livery":
-            text = _replace_livery(text, unit_id, value)
-        elif field == "skill":
-            text = _replace_skill(text, unit_id, value)
-        elif field == "radioFrequency":
-            text = _replace_radio_frequency(text, unit_id, int(value))
 
     return text

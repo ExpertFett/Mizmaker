@@ -77,7 +77,7 @@ export function TriggerTab() {
   const sessionId = useMissionStore((s) => s.sessionId);
   const {
     rules, flags, audioFiles, loaded, isDirty, selectedRuleId,
-    loadTriggers, addRule, updateRule, deleteRule, duplicateRule,
+    loadTriggers, addRule, updateRule, deleteRule, duplicateRule, moveRule,
     selectRule, addAudioFile, removeAudioFile, markClean,
   } = useTriggerStore();
 
@@ -127,7 +127,7 @@ export function TriggerTab() {
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {rules.map((rule) => (
+          {rules.map((rule, idx) => (
             <div
               key={rule.id}
               onClick={() => selectRule(rule.id)}
@@ -137,20 +137,46 @@ export function TriggerTab() {
                 cursor: 'pointer',
                 borderColor: rule.id === selectedRuleId ? '#4a8fd4' : '#1a2a3a',
                 opacity: rule.enabled ? 1 : 0.5,
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>{rule.name}</div>
-                <span style={{
-                  fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                  background: rule.eventType === 'once' ? '#1a2a3a' : rule.eventType === 'continuous' ? '#1a3a2a' : '#3a2a1a',
-                  color: rule.eventType === 'once' ? '#6a8aaa' : rule.eventType === 'continuous' ? '#60c080' : '#e0a040',
-                }}>
-                  {rule.eventType}
-                </span>
+              {/* Reorder buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); moveRule(rule.id, 'up'); }}
+                  disabled={idx === 0}
+                  style={{
+                    background: 'transparent', border: 'none', color: idx === 0 ? '#1a2a3a' : '#5a7a8a',
+                    cursor: idx === 0 ? 'default' : 'pointer', fontSize: 10, padding: '0 2px', lineHeight: 1,
+                  }}
+                  title="Move up"
+                >&#9650;</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); moveRule(rule.id, 'down'); }}
+                  disabled={idx === rules.length - 1}
+                  style={{
+                    background: 'transparent', border: 'none', color: idx === rules.length - 1 ? '#1a2a3a' : '#5a7a8a',
+                    cursor: idx === rules.length - 1 ? 'default' : 'pointer', fontSize: 10, padding: '0 2px', lineHeight: 1,
+                  }}
+                  title="Move down"
+                >&#9660;</button>
               </div>
-              <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 4 }}>
-                {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''} → {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>{rule.name}</div>
+                  <span style={{
+                    fontSize: 11, padding: '2px 6px', borderRadius: 3,
+                    background: rule.eventType === 'once' ? '#1a2a3a' : rule.eventType === 'continuous' ? '#1a3a2a' : '#3a2a1a',
+                    color: rule.eventType === 'once' ? '#6a8aaa' : rule.eventType === 'continuous' ? '#60c080' : '#e0a040',
+                  }}>
+                    {rule.eventType}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 4 }}>
+                  {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''} → {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+                </div>
               </div>
             </div>
           ))}
@@ -876,10 +902,127 @@ interface ScriptEntry {
 
 const SCRIPT_LIBRARY: ScriptEntry[] = [
   {
+    id: 'moose',
+    name: 'MOOSE Framework',
+    category: 'framework',
+    description: 'MOOSE scripting framework (116K lines). Add as DO_SCRIPT_FILE or paste full Moose_.lua content. Load order: trigger 1.',
+    url: 'https://flightcontrol-master.github.io/MOOSE_DOCS/',
+    lua: `-- MOOSE Framework — too large to embed (116K lines)
+-- Use DO_SCRIPT_FILE pointing to: Moose_03db4e8.lua
+-- Or paste the full Moose_.lua content here after adding this trigger.
+--
+-- Load order: This must run BEFORE any MOOSE-dependent scripts.
+-- Recommended: TIME MORE > 1 second
+
+env.info("[MOOSE] Placeholder — replace with full Moose_.lua content or use DO_SCRIPT_FILE")`,
+  },
+  {
+    id: 'aegis-iads',
+    name: 'AEGIS IADS',
+    category: 'framework',
+    description: 'AEGIS v0.8.4-beta — Event-driven IADS for DCS. EW activation, WEZ gating, HARM reaction, EMCON cycling, ECM jamming. Load BEFORE setup script.',
+    lua: `-- AEGIS IADS v0.8.4-beta — too large to embed (5K lines)
+-- Use DO_SCRIPT_FILE pointing to: aegis-iads-v0.8.4-beta.lua
+-- Or paste the full aegis-iads lua content here after adding this trigger.
+--
+-- Load order: TIME MORE > 1 (after MOOSE if used), BEFORE aegis-setup.
+-- Group naming: SAM-TYPE-SECTOR, EW-SECTOR, PD-TYPE-SECTOR, PWR-SECTOR, ECM-TYPE-SECTOR
+
+env.info("[AEGIS] Placeholder — replace with full aegis-iads-v0.8.4-beta.lua content or use DO_SCRIPT_FILE")`,
+  },
+  {
+    id: 'aegis-setup',
+    name: 'AEGIS Setup Example',
+    category: 'framework',
+    description: 'AEGIS IADS configuration — EW polling, EMCON timing, HARM reactions, alert frustration, ECM jammer settings. Load AFTER aegis-iads.lua.',
+    lua: `-- AEGIS IADS Setup Example
+-- Load order: TIME MORE > 2 (after aegis-iads.lua)
+-- NO MOOSE REQUIRED.
+--
+-- ME Group naming (zone override via name suffix):
+--   EW-NORTH                    1L13 or 55G6 EWR
+--   EW-NORTH-DET120             EWR with 120 NM detection cap
+--   SAM-SA10-NORTH-1            S-300 using default WEZ (40 NM)
+--   SAM-SA10-NORTH-2-NEZ        S-300 using NEZ (20 NM) — ambush
+--   SAM-SA6-SOUTH-1-NEZ25       SA-6 using NEZ at 25 NM
+--   SAM-SA6-SOUTH-2-WEZ10       SA-6 with reduced WEZ (10 NM)
+--   PD-SA15-NORTH-1             SA-15, place within 5 NM of parent SAM
+--   PWR-SOUTH-1                 External power (only for fixed sites)
+--   ECM-GROWLER-BENGAL-1        ECM aircraft (opposing coalition, requires ecmEnabled)
+
+local iads = AEGIS:New("red", {
+  ewPollInterval     = 10,
+  alertTimeout       = 60,
+  pdAssociateRange   = 5,
+  defaultZone        = "WEZ",
+  emconOnMin         = 30,
+  emconOnMax         = 120,
+  emconOffMin        = 15,
+  emconOffMax        = 45,
+  emconDetectDelay   = 5,
+  emconReengageMin     = 10,
+  emconReengageMax     = 30,
+  emconStartupJitter   = 60,
+  emconDoubleSweepPct  = 15,
+  emconEarlyTermPct    = 20,
+  emconThreatScale     = 0.5,
+  emconRelaxedScale    = 1.5,
+  emconSpookDuration   = 120,
+  emconSpookEnabled    = false,
+  harmReactionDelayMin = 8,
+  harmReactionDelayMax = 12,
+  harmCooldownMin      = 45,
+  harmCooldownMax      = 90,
+  harmStayHotDuration  = 30,
+  harmLastDitchMin     = 8,
+  harmLastDitchMax     = 12,
+  harmPanicPct         = 15,
+  harmMultiThreshold   = 2,
+  harmMultiWindow      = 15,
+  harmBraveryPct       = 5,
+  alertFrustrationMin  = 30,
+  alertFrustrationMax  = 60,
+  alertFrustrationStayPct = 10,
+  pbHarmCheckDelay     = 2,
+  pbHarmWarnRadius     = 5,
+  pbHarmCooldownMargin = 30,
+  ecmEnabled           = true,
+  debug              = true,
+})
+
+-- Optional: override a site to use NEZ (ambush setup)
+-- iads:SetEngagementZone("SAM-SA6-SOUTH-1", "NEZ")
+
+-- Optional: manually assign a SAM to a different sector
+-- iads:AssignToSector("SAM-SA10-SPECIAL-1", "NORTH")
+
+-- Optional: manually parent a PD to a specific SAM
+-- iads:AddPointDefense("PD-SA15-NORTH-1", "SAM-SA10-NORTH-1")
+
+iads:Activate()
+iads:AddF10Menu()
+iads:StartMapDebug(15)`,
+  },
+  {
+    id: 'tic',
+    name: 'TIC (Troops in Contact)',
+    category: 'ground',
+    description: 'TIC v1.1 — Dynamic ground combat script. Transforms ground battles into believable engagements with realistic fire exchanges.',
+    lua: `-- TIC (Troops in Contact) v1.1 — too large to embed (5K lines)
+-- Use DO_SCRIPT_FILE pointing to: TIC_v1.1.lua
+-- Or paste the full TIC lua content here after adding this trigger.
+--
+-- Designed to make ground fights look and feel like real combat,
+-- where both sides exchange fire and there is action for players.
+-- See included PDF for full configuration guide.
+
+env.info("[TIC] Placeholder — replace with full TIC_v1.1.lua content or use DO_SCRIPT_FILE")`,
+  },
+  {
     id: 'carrier-control',
     name: 'Carrier Control',
     category: 'carrier',
-    description: 'F10 menu for carrier ops: TIW, lights, TACAN/ICLS, recovery case presets, deck status, heading/speed control.',
+    description: 'F10 menu for carrier ops: Turn Into Wind, lights, TACAN/ICLS, recovery case presets, deck status, heading/speed control.',
     lua: [
       '-- CARRIER CONTROL — F10 Radio Menu',
       '-- Edit CFG below to match your carrier unit name, TACAN, ICLS, etc.',
@@ -964,151 +1107,12 @@ const SCRIPT_LIBRARY: ScriptEntry[] = [
       'timer.scheduleFunction(function() init() end,nil,timer.getTime()+3)',
     ].join('\n'),
   },
-  {
-    id: 'moose-loader',
-    name: 'MOOSE Framework',
-    category: 'framework',
-    description: 'Load the MOOSE scripting framework. Requires Moose_.lua in your Saved Games/DCS/Scripts/ folder.',
-    url: 'https://flightcontrol-master.github.io/MOOSE_DOCS/',
-    lua: `-- MOOSE Framework Loader
--- Place Moose_.lua in: Saved Games/DCS/Scripts/
-
-local moosePaths = {
-  lfs.writedir() .. "Scripts/Moose_.lua",
-  lfs.writedir() .. "Scripts/Moose.lua",
-  lfs.writedir() .. "Mods/Services/Moose/Moose_.lua",
-}
-local loaded = false
-for _, path in ipairs(moosePaths) do
-  local f = io.open(path, "r")
-  if f then f:close(); dofile(path); env.info("[MOOSE] Loaded: " .. path); trigger.action.outText("MOOSE loaded.", 10); loaded = true; break end
-end
-if not loaded then env.warning("[MOOSE] Not found!"); trigger.action.outText("WARNING: MOOSE not found!", 15) end`,
-  },
-  {
-    id: 'skynet-iads',
-    name: 'Skynet IADS',
-    category: 'framework',
-    description: 'Integrated Air Defense System. Realistic SAM behavior — EWR networking, emissions control, point defense.',
-    url: 'https://github.com/walder/Skynet-IADS',
-    lua: `-- Skynet IADS Loader
--- Requires skynet-iads-compiled.lua in Saved Games/DCS/Scripts/
-
-local path = lfs.writedir() .. "Scripts/skynet-iads-compiled.lua"
-local f = io.open(path, "r")
-if f then f:close(); dofile(path); env.info("[SKYNET] Loaded") else env.warning("[SKYNET] Not found!"); trigger.action.outText("WARNING: Skynet IADS not found!", 15); return end
-
--- Configure your IADS below:
---[[
-local redIADS = SkynetIADS:create("RED-IADS")
-redIADS:addEarlyWarningRadarsByPrefix("EWR")
-redIADS:addSAMSitesByPrefix("SAM")
-redIADS:activate()
-trigger.action.outText("Skynet IADS active.", 10)
-]]`,
-  },
-  {
-    id: 'mist',
-    name: 'MiST',
-    category: 'utility',
-    description: 'Mission Scripting Tools — core utility library. Load BEFORE other scripts that depend on it (CTLD, CSAR, etc.).',
-    url: 'https://github.com/mrSkortch/MissionScriptingTools',
-    lua: `-- MiST Loader (Mission Scripting Tools)
--- Load this BEFORE scripts that depend on it.
-
-local mistPaths = {
-  lfs.writedir() .. "Scripts/mist.lua",
-  lfs.writedir() .. "Scripts/mist_4_5_126.lua",
-}
-local loaded = false
-for _, path in ipairs(mistPaths) do
-  local f = io.open(path, "r")
-  if f then f:close(); dofile(path); env.info("[MiST] Loaded: " .. path); trigger.action.outText("MiST loaded.", 10); loaded = true; break end
-end
-if not loaded then env.warning("[MiST] Not found!"); trigger.action.outText("WARNING: MiST not found!", 15) end`,
-  },
-  {
-    id: 'ctld',
-    name: 'CTLD',
-    category: 'ground',
-    description: 'Combat Troop & Logistics Deployment. Helo sling-load, troop transport, FOB building.',
-    url: 'https://github.com/ciribob/DCS-CTLD',
-    lua: `-- CTLD Loader (Combat Troop & Logistics Deployment)
--- Requires ctld.lua in Saved Games/DCS/Scripts/
-
-local path = lfs.writedir() .. "Scripts/ctld.lua"
-local f = io.open(path, "r")
-if f then f:close(); dofile(path); env.info("[CTLD] Loaded"); trigger.action.outText("CTLD loaded — F10 for logistics.", 10)
-else env.warning("[CTLD] Not found!"); trigger.action.outText("WARNING: CTLD not found!", 15) end`,
-  },
-  {
-    id: 'csar',
-    name: 'CSAR',
-    category: 'ground',
-    description: 'Combat Search and Rescue. Downed pilots spawn smoke/beacons for helicopter pickup.',
-    url: 'https://github.com/ciribob/DCS-CSAR',
-    lua: `-- CSAR Loader (Combat Search and Rescue)
--- Requires csar.lua in Saved Games/DCS/Scripts/
-
-local path = lfs.writedir() .. "Scripts/csar.lua"
-local f = io.open(path, "r")
-if f then f:close(); dofile(path); env.info("[CSAR] Loaded"); trigger.action.outText("CSAR loaded — downed pilots will beacon.", 10)
-else env.warning("[CSAR] Not found!"); trigger.action.outText("WARNING: CSAR not found!", 15) end`,
-  },
-  {
-    id: 'jtac-autolase',
-    name: 'JTAC Autolase',
-    category: 'air',
-    description: 'Automatic JTAC laser designation with 9-line briefs via F10 menu.',
-    url: 'https://github.com/ciribob/DCS-JTACAutoLase',
-    lua: `-- JTAC Autolase Loader
--- Requires JTACAutoLase.lua in Saved Games/DCS/Scripts/
-
-local path = lfs.writedir() .. "Scripts/JTACAutoLase.lua"
-local f = io.open(path, "r")
-if f then f:close(); dofile(path); env.info("[JTAC] Loaded")
-else env.warning("[JTAC] Not found!"); trigger.action.outText("WARNING: JTACAutoLase not found!", 15); return end
-
--- Configure JTACs: JTACAutoLase(groupName, laserCode, smoke, lock, color)
---[[
-JTACAutoLase("JTAC-1", 1688, true, "all", "red")
-JTACAutoLase("JTAC-2", 1687, true, "vehicles", "green")
-trigger.action.outText("JTAC Autolase active.", 10)
-]]`,
-  },
-  {
-    id: 'splashdamage',
-    name: 'Splash Damage',
-    category: 'air',
-    description: 'Realistic blast/fragmentation. Bombs and missiles damage nearby units based on distance.',
-    url: 'https://github.com/spencershepard/DCS-Scripts',
-    lua: `-- Splash Damage Loader
--- Requires splash_damage.lua in Saved Games/DCS/Scripts/
-
-local path = lfs.writedir() .. "Scripts/splash_damage.lua"
-local f = io.open(path, "r")
-if f then f:close(); dofile(path); env.info("[SPLASH] Loaded"); trigger.action.outText("Splash Damage active.", 10)
-else env.warning("[SPLASH] Not found!"); trigger.action.outText("WARNING: Splash Damage not found!", 15) end`,
-  },
-  {
-    id: 'custom-script',
-    name: 'Custom Script',
-    category: 'utility',
-    description: 'Empty template — paste your own Lua code.',
-    lua: `-- Custom Script — runs at MISSION START
--- Add your Lua code below.
-
-env.info("[CUSTOM] Script loaded")
-trigger.action.outText("Custom script loaded.", 10)`,
-  },
 ];
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
-  carrier:   { label: 'Carrier',   color: '#4a8fd4' },
   framework: { label: 'Framework', color: '#b07ed8' },
+  carrier:   { label: 'Carrier',   color: '#4a8fd4' },
   ground:    { label: 'Ground',    color: '#60c080' },
-  air:       { label: 'Air',       color: '#e0a040' },
-  utility:   { label: 'Utility',   color: '#8aaabe' },
 };
 
 function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: string) => void }) {

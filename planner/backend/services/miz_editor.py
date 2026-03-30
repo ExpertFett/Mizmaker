@@ -127,7 +127,8 @@ def _serialize_lua_value(value: Any, indent: str = "") -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        return f'"{value}"'
+        escaped = value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+        return f'"{escaped}"'
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, dict):

@@ -112,6 +112,12 @@ export function RenamerTab() {
       addEdit({ unitId: u.unitId, field: 'unitRename', value: newName } as any);
     });
     setUnitNames(nextUnitNames);
+    // Auto-expand the group so user can see the renamed units
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.add(group.groupId);
+      return next;
+    });
   }, [addEdit, groupNames, unitNames]);
 
   const handleFindReplace = useCallback(() => {

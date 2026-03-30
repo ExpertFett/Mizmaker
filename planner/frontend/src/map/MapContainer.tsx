@@ -64,7 +64,7 @@ function createDarkLayer(): TileLayer {
       attributions: '&copy; CARTO',
     }),
     properties: { name: 'dark' },
-    visible: false,
+    visible: true, // default
   });
 }
 
@@ -76,7 +76,7 @@ function createOsmLayer(lang: string = 'en'): TileLayer {
         maxZoom: 20,
         attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       });
-  return new TileLayer({ source, properties: { name: 'osm' }, visible: true }); // default
+  return new TileLayer({ source, properties: { name: 'osm' }, visible: false });
 }
 
 function createSatelliteLayer(): TileLayer {
@@ -612,7 +612,7 @@ export function MapContainer() {
   // Toggle base map
   useEffect(() => {
     if (!baseLayers.current) return;
-    const bm = layers.baseMap || 'osm';
+    const bm = layers.baseMap || 'dark';
     baseLayers.current.dark.setVisible(bm === 'dark');
     baseLayers.current.osm.setVisible(bm === 'osm');
     baseLayers.current.satellite.setVisible(bm === 'satellite');

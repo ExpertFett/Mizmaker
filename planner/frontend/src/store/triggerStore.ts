@@ -14,6 +14,7 @@ interface TriggerState {
   updateRule: (id: number, updates: Partial<TriggerRule>) => void;
   deleteRule: (id: number) => void;
   duplicateRule: (id: number) => void;
+  moveRule: (id: number, direction: 'up' | 'down') => void;
   selectRule: (id: number | null) => void;
   setAudioFiles: (files: AudioFile[]) => void;
   addAudioFile: (file: AudioFile) => void;
@@ -79,6 +80,17 @@ export const useTriggerStore = create<TriggerState>((set, get) => ({
       name: `${source.name} (copy)`,
     };
     set({ rules: [...rules, newRule], selectedRuleId: newRule.id, isDirty: true });
+  },
+
+  moveRule: (id, direction) => {
+    const { rules } = get();
+    const idx = rules.findIndex((r) => r.id === id);
+    if (idx === -1) return;
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= rules.length) return;
+    const next = [...rules];
+    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+    set({ rules: next, isDirty: true });
   },
 
   selectRule: (id) => set({ selectedRuleId: id }),

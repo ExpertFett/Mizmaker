@@ -33,7 +33,7 @@ export const useMapStore = create<MapState>((set) => ({
     airbases: true,
     statics: false,  // hidden by default — declutter
     triggerZones: true,
-    baseMap: 'osm',
+    baseMap: 'dark',
     mapLang: 'en',
   },
   viewMode: 'all',

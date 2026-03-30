@@ -39,7 +39,9 @@ export function ExportPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename || 'edited.miz';
+      // Append _edited to filename so users don't confuse original and modified .miz
+      const baseName = (filename || 'mission.miz').replace(/\.miz$/i, '');
+      a.download = `${baseName}_edited.miz`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -77,16 +79,18 @@ export function ExportPanel() {
 
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid #1a2a3a' }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={handleDownload} style={{ ...btnStyle, flex: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
           {isDirty ? 'Download .miz *' : 'Download .miz'}
         </button>
-        <button onClick={handleExportJson} style={{ ...btnStyle, background: '#1a3a2a' }}>
-          JSON
-        </button>
-        <button onClick={handleNewFile} style={{ ...btnStyle, background: '#2a1a1a', color: '#d95050' }}>
-          New
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={handleExportJson} style={{ ...btnStyle, flex: 1, background: '#1a3a2a' }}>
+            JSON
+          </button>
+          <button onClick={handleNewFile} style={{ ...btnStyle, flex: 1, background: '#2a1a1a', color: '#d95050' }}>
+            New
+          </button>
+        </div>
       </div>
     </div>
   );

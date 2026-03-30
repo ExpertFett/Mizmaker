@@ -560,7 +560,12 @@ def _action_to_lua(act: Dict) -> str:
     if atype == "STOP_SOUND":
         return 'a_stop_last_sound()'
     if atype == "DO_SCRIPT":
-        lua = p.get("lua", "").replace('"', '\\"')
+        lua = p.get("lua", "")
+        # Escape special characters so the Lua string literal stays on one line
+        lua = lua.replace('\\', '\\\\')   # backslashes first
+        lua = lua.replace('"', '\\"')      # double quotes
+        lua = lua.replace('\n', '\\n')     # newlines
+        lua = lua.replace('\r', '\\r')     # carriage returns
         return f'a_do_script("{lua}")'
     if atype == "DO_SCRIPT_FILE":
         return f'a_do_script_file("{p.get("file", "")}")'

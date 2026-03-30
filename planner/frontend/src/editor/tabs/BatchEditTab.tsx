@@ -3,11 +3,20 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 
 const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
+
+/** Make a raw livery_id human-readable */
+function formatLiveryId(raw: string): string {
+  if (!raw) return '(default)';
+  return raw
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 const CAT_ICONS: Record<string, string> = { plane: '✈', helicopter: '🚁', vehicle: '🚗', ship: '⚓', static: '●' };
 
 export function BatchEditTab() {
   const countries = useMissionStore((s) => s.countries);
   const units = useMissionStore((s) => s.units);
+  const liveryData = useMissionStore((s) => s.liveryData) as { type: string; units: { livery_id: string }[]; liveries: string[] }[];
   const addEdit = useEditStore((s) => s.addEdit);
 
   const [country, setCountry] = useState('');
@@ -41,18 +50,55 @@ export function BatchEditTab() {
     ).length;
   }, [units, country, checkedTypes]);
 
-  // Fetch liveries for checked types
+  // Build livery dropdown from mission data + API fetch
   useEffect(() => {
     if (checkedTypes.size === 0) { setAvailableLiveries([]); return; }
+
+    // 1. Gather liveries already known from mission data for checked types
+    const missionLiveries = new Map<string, string>(); // id → display name
+    for (const entry of liveryData) {
+      if (!checkedTypes.has(entry.type)) continue;
+      // From the liveries array on the entry
+      for (const lid of (entry.liveries || [])) {
+        if (lid && !missionLiveries.has(lid)) {
+          missionLiveries.set(lid, formatLiveryId(lid));
+        }
+      }
+      // From livery_id on each unit (what's actually in use)
+      for (const u of (entry.units || [])) {
+        if (u.livery_id && !missionLiveries.has(u.livery_id)) {
+          missionLiveries.set(u.livery_id, formatLiveryId(u.livery_id));
+        }
+      }
+    }
+
+    // Start with mission data so dropdown is instant
+    const missionList = Array.from(missionLiveries.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setAvailableLiveries(missionList);
+
+    // 2. Try API for a richer list — merge in if it returns data
     const firstType = Array.from(checkedTypes)[0];
     fetch(`/api/liveries/${encodeURIComponent(firstType)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setAvailableLiveries(data);
-        else setAvailableLiveries([]);
+        if (Array.isArray(data) && data.length > 0) {
+          // Merge: API results take priority for display names, add mission-only entries
+          const merged = new Map<string, string>();
+          for (const l of data) merged.set(l.id, l.name || formatLiveryId(l.id));
+          for (const [id, name] of missionLiveries) {
+            if (!merged.has(id)) merged.set(id, name);
+          }
+          setAvailableLiveries(
+            Array.from(merged.entries())
+              .map(([id, name]) => ({ id, name }))
+              .sort((a, b) => a.name.localeCompare(b.name))
+          );
+        }
       })
-      .catch(() => setAvailableLiveries([]));
-  }, [checkedTypes]);
+      .catch(() => { /* keep mission data list */ });
+  }, [checkedTypes, liveryData]);
 
   const toggleType = (type: string) => {
     setCheckedTypes((prev) => {
@@ -162,20 +208,16 @@ export function BatchEditTab() {
             {/* Livery */}
             <div>
               <label style={labelStyle}>Paint Scheme</label>
-              {availableLiveries.length > 0 ? (
-                <select value={livery} onChange={(e) => setLivery(e.target.value)} style={selectStyle}>
-                  <option value="">— no change —</option>
-                  {availableLiveries.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name || l.id}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={livery}
-                  onChange={(e) => setLivery(e.target.value)}
-                  placeholder="livery_id"
-                  style={inputStyle}
-                />
+              <select value={livery} onChange={(e) => setLivery(e.target.value)} style={selectStyle}>
+                <option value="">— no change —</option>
+                {availableLiveries.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name || l.id}</option>
+                ))}
+              </select>
+              {checkedTypes.size > 0 && availableLiveries.length === 0 && (
+                <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+                  No liveries found for selected types
+                </div>
               )}
             </div>
 
