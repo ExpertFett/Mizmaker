@@ -19,7 +19,7 @@ export function WeatherPanel({
 }) {
   const overview = useMissionStore((s) => s.overview);
   const { speedMode, setSpeedMode } = useMapStore();
-  const { containerRef, handleProps } = useDraggable();
+  const { containerRef, handleProps, resetPosition } = useDraggable();
   const [collapsed, setCollapsed] = useState(false);
 
   if (!overview?.weather) return null;
@@ -35,10 +35,10 @@ export function WeatherPanel({
           position: 'absolute',
           top: 10,
           right: 0,
-          background: 'rgba(10, 20, 35, 0.92)',
+          background: 'rgba(10, 20, 35, 0.95)',
           borderRadius: '6px 0 0 6px',
           padding: '10px 6px 10px 8px',
-          zIndex: 100,
+          zIndex: 1000,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -90,7 +90,7 @@ export function WeatherPanel({
           userSelect: 'none',
         }}>⠿</div>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => { resetPosition(); setCollapsed(true); }}
           style={{
             background: 'none', border: 'none', color: '#3a5a6a',
             cursor: 'pointer', fontSize: 11, padding: '3px 8px',

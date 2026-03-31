@@ -32,7 +32,7 @@ export function LayerSwitcher() {
     layers, toggleLayer, viewMode, setViewMode, adminMode, setAdminMode,
     measureMode, setMeasureMode,
   } = useMapStore();
-  const { containerRef, handleProps } = useDraggable();
+  const { containerRef, handleProps, resetPosition } = useDraggable();
   const [collapsed, setCollapsed] = useState(false);
 
   const setBaseMap = (id: string) => {
@@ -50,12 +50,12 @@ export function LayerSwitcher() {
         onClick={() => setCollapsed(false)}
         style={{
           position: 'absolute',
-          top: 390,
+          top: 420,
           right: 0,
-          background: 'rgba(10, 20, 35, 0.94)',
+          background: 'rgba(10, 20, 35, 0.95)',
           borderRadius: '6px 0 0 6px',
           padding: '10px 6px 10px 8px',
-          zIndex: 100,
+          zIndex: 1000,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -81,7 +81,7 @@ export function LayerSwitcher() {
       ref={containerRef}
       style={{
         position: 'absolute',
-        top: 390,
+        top: 420,
         right: 10,
         background: 'rgba(10, 20, 35, 0.94)',
         borderRadius: 6,
@@ -103,7 +103,7 @@ export function LayerSwitcher() {
         borderBottom: '1px solid rgba(26, 42, 58, 0.5)',
       }}>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => { resetPosition(); setCollapsed(true); }}
           style={{
             background: 'none', border: 'none', color: '#3a5a6a',
             cursor: 'pointer', fontSize: 11, padding: '3px 8px',

@@ -44,6 +44,18 @@ export function useDraggable() {
     e.stopPropagation();
   }, []);
 
+  /** Reset inline drag styles so the element returns to its CSS-defined position */
+  const resetPosition = useCallback(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.style.left = '';
+      el.style.top = '';
+      el.style.right = '';
+      el.style.bottom = '';
+      el.style.transform = '';
+    }
+  }, []);
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging.current || !containerRef.current) return;
@@ -80,6 +92,7 @@ export function useDraggable() {
 
   return {
     containerRef,
+    resetPosition,
     handleProps: {
       onMouseDown,
       style: { cursor: 'grab' } as React.CSSProperties,

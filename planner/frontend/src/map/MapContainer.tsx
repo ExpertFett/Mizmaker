@@ -659,7 +659,7 @@ export function MapContainer() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
       <WeatherPanel coordRef={coordRef} />
       <LayerSwitcher />
 
