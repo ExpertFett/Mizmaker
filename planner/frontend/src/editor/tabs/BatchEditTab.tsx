@@ -167,34 +167,60 @@ export function BatchEditTab() {
             <div style={{ color: '#5a7a8a', fontSize: 13, padding: '8px 0' }}>Select a country first</div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                <SmallBtn label="All" onClick={() => selectAllTypes(true)} />
-                <SmallBtn label="None" onClick={() => selectAllTypes(false)} />
-                <SmallBtn label="✈ Planes" onClick={() => selectCategory('plane')} accent />
-                <SmallBtn label="🚁 Helis" onClick={() => selectCategory('helicopter')} accent />
-                <SmallBtn label="🚗 Vehicles" onClick={() => selectCategory('vehicle')} accent />
-                <SmallBtn label="⚓ Ships" onClick={() => selectCategory('ship')} accent />
+              {/* Filter pills */}
+              <div style={{
+                display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap',
+                padding: '6px 8px', background: '#0a1218', borderRadius: 6,
+                border: '1px solid #12202e',
+              }}>
+                <FilterPill label="All" active={checkedTypes.size === typeMeta.length && typeMeta.length > 0} onClick={() => selectAllTypes(true)} />
+                <FilterPill label="None" active={checkedTypes.size === 0} onClick={() => selectAllTypes(false)} />
+                <span style={{ width: 1, background: '#1a2a3a', margin: '2px 4px' }} />
+                <FilterPill label="✈ Planes" active={typeMeta.filter(t => t.category === 'plane').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'plane')} onClick={() => selectCategory('plane')} color="#4a8fd4" />
+                <FilterPill label="🚁 Helis" active={typeMeta.filter(t => t.category === 'helicopter').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'helicopter')} onClick={() => selectCategory('helicopter')} color="#60c080" />
+                <FilterPill label="🚗 Ground" active={typeMeta.filter(t => t.category === 'vehicle').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'vehicle')} onClick={() => selectCategory('vehicle')} color="#d29922" />
+                <FilterPill label="⚓ Ships" active={typeMeta.filter(t => t.category === 'ship').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'ship')} onClick={() => selectCategory('ship')} color="#b07ed8" />
               </div>
-              <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #1a2a3a', borderRadius: 4, background: '#0a1520' }}>
-                {typeMeta.map((t) => (
-                  <label
-                    key={t.type}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
-                      borderBottom: '1px solid #0f1a28', cursor: 'pointer', fontSize: 13,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checkedTypes.has(t.type)}
-                      onChange={() => toggleType(t.type)}
-                      style={{ accentColor: '#4a8fd4' }}
-                    />
-                    <span style={{ color: '#5a7a8a' }}>{CAT_ICONS[t.category] || ''}</span>
-                    <span style={{ color: '#ccdae8', flex: 1 }}>{t.type}</span>
-                    <span style={{ color: '#5a7a8a', fontFamily: 'monospace', fontSize: 12 }}>{t.count}</span>
-                  </label>
-                ))}
+              {/* Unit type list */}
+              <div style={{
+                maxHeight: 300, overflow: 'auto', borderRadius: 6,
+                border: '1px solid #12202e', background: '#0a1218',
+              }}>
+                {typeMeta.map((t, i) => {
+                  const checked = checkedTypes.has(t.type);
+                  const catColor = t.category === 'plane' ? '#4a8fd4' : t.category === 'helicopter' ? '#60c080' : t.category === 'vehicle' ? '#d29922' : t.category === 'ship' ? '#b07ed8' : '#5a7a8a';
+                  return (
+                    <label
+                      key={t.type}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
+                        borderBottom: i < typeMeta.length - 1 ? '1px solid #0f1a24' : 'none',
+                        cursor: 'pointer', fontSize: 13,
+                        background: checked ? 'rgba(74, 143, 212, 0.06)' : 'transparent',
+                        transition: 'background 0.15s',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleType(t.type)}
+                        style={{ accentColor: '#4a8fd4' }}
+                      />
+                      <span style={{
+                        fontSize: 10, padding: '1px 5px', borderRadius: 3,
+                        background: `${catColor}15`, color: catColor,
+                        border: `1px solid ${catColor}30`, fontWeight: 600,
+                        minWidth: 16, textAlign: 'center',
+                      }}>{CAT_ICONS[t.category] || '?'}</span>
+                      <span style={{ color: checked ? '#ccdae8' : '#8fa8c0', flex: 1, fontWeight: checked ? 500 : 400 }}>{t.type}</span>
+                      <span style={{
+                        color: '#5a7a8a', fontFamily: 'monospace', fontSize: 11,
+                        background: '#0f1a28', padding: '1px 6px', borderRadius: 3,
+                        border: '1px solid #1a2a3a',
+                      }}>{t.count}</span>
+                    </label>
+                  );
+                })}
               </div>
             </>
           )}
@@ -291,13 +317,16 @@ function StepHeader({ num, title, subtitle }: { num: number; title: string; subt
   );
 }
 
-function SmallBtn({ label, onClick, accent }: { label: string; onClick: () => void; accent?: boolean }) {
+function FilterPill({ label, active, onClick, color }: { label: string; active?: boolean; onClick: () => void; color?: string }) {
+  const c = color || '#8fa8c0';
   return (
     <button onClick={onClick} style={{
-      background: 'transparent',
-      border: `1px solid ${accent ? '#1a3a5a' : '#1a2a3a'}`,
-      borderRadius: 3, color: accent ? '#4a8fd4' : '#5a7a8a',
-      cursor: 'pointer', fontSize: 12, padding: '3px 8px',
+      background: active ? `${c}20` : 'transparent',
+      border: `1px solid ${active ? `${c}50` : '#1a2a3a'}`,
+      borderRadius: 12, color: active ? c : '#5a7a8a',
+      cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+      fontWeight: active ? 600 : 400,
+      transition: 'all 0.15s',
     }}>{label}</button>
   );
 }

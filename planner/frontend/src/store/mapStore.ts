@@ -13,6 +13,7 @@ interface MapState {
   measureMode: boolean;
   editorMode: boolean;
   floatingPanelPos: { x: number; y: number };
+  selectedWpIndex: number | null;
 
   toggleLayer: (id: string) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -23,6 +24,7 @@ interface MapState {
   setMeasureMode: (on: boolean) => void;
   setEditorMode: (on: boolean) => void;
   setFloatingPanelPos: (pos: { x: number; y: number }) => void;
+  setSelectedWpIndex: (idx: number | null) => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -44,6 +46,7 @@ export const useMapStore = create<MapState>((set) => ({
   measureMode: false,
   editorMode: false,
   floatingPanelPos: { x: -1, y: -1 }, // -1 = use default
+  selectedWpIndex: null,
 
   toggleLayer: (id) =>
     set((s) => ({ layers: { ...s.layers, [id]: !s.layers[id] } })),
@@ -64,4 +67,5 @@ export const useMapStore = create<MapState>((set) => ({
   setMeasureMode: (on) => set({ measureMode: on, addWaypointMode: false }),
   setEditorMode: (on) => set({ editorMode: on }),
   setFloatingPanelPos: (pos) => set({ floatingPanelPos: pos }),
+  setSelectedWpIndex: (idx) => set({ selectedWpIndex: idx }),
 }));

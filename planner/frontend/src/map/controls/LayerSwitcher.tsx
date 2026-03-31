@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useMapStore, type ViewMode } from '../../store/mapStore';
+import { useDraggable } from './useDraggable';
 
 
 const OVERLAY_LAYERS = [
@@ -30,6 +32,8 @@ export function LayerSwitcher() {
     layers, toggleLayer, viewMode, setViewMode, adminMode, setAdminMode,
     measureMode, setMeasureMode,
   } = useMapStore();
+  const { containerRef, handleProps } = useDraggable();
+  const [collapsed, setCollapsed] = useState(false);
 
   const setBaseMap = (id: string) => {
     useMapStore.setState((s) => ({ layers: { ...s.layers, baseMap: id } }));
@@ -39,24 +43,83 @@ export function LayerSwitcher() {
     useMapStore.setState((s) => ({ layers: { ...s.layers, mapLang: lang } }));
   };
 
+  // Collapsed tab
+  if (collapsed) {
+    return (
+      <div
+        onClick={() => setCollapsed(false)}
+        style={{
+          position: 'absolute',
+          top: 390,
+          right: 0,
+          background: 'rgba(10, 20, 35, 0.94)',
+          borderRadius: '6px 0 0 6px',
+          padding: '10px 6px 10px 8px',
+          zIndex: 100,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          border: '1px solid #1a3a5a',
+          borderRight: 'none',
+          transition: 'all 0.15s',
+        }}
+        title="Show layers"
+      >
+        <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
+        <span style={{
+          writingMode: 'vertical-lr',
+          color: '#5a7a8a', fontSize: 10, fontWeight: 600,
+          letterSpacing: 1, textTransform: 'uppercase',
+        }}>LAYERS</span>
+      </div>
+    );
+  }
+
   return (
     <div
+      ref={containerRef}
       style={{
         position: 'absolute',
-        top: 10,
+        top: 390,
         right: 10,
         background: 'rgba(10, 20, 35, 0.94)',
         borderRadius: 6,
-        padding: '10px 14px',
+        padding: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 0,
         zIndex: 100,
         fontSize: 14,
         color: '#ccc',
         minWidth: 150,
+        overflow: 'hidden',
       }}
     >
+      {/* Drag handle + collapse button */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: 'rgba(20, 40, 70, 0.4)',
+        borderBottom: '1px solid rgba(26, 42, 58, 0.5)',
+      }}>
+        <button
+          onClick={() => setCollapsed(true)}
+          style={{
+            background: 'none', border: 'none', color: '#3a5a6a',
+            cursor: 'pointer', fontSize: 11, padding: '3px 8px',
+            lineHeight: 1,
+          }}
+          title="Hide panel"
+        >▶</button>
+        <div {...handleProps} style={{
+          ...handleProps.style,
+          flex: 1,
+          padding: '4px 14px 2px',
+          fontSize: 9, color: '#3a5a6a', textAlign: 'center', letterSpacing: 2,
+          userSelect: 'none',
+        }}>⠿</div>
+      </div>
+      <div style={{ padding: '8px 14px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* View mode */}
       <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
         <div style={sectionLabel}>View</div>
@@ -171,6 +234,7 @@ export function LayerSwitcher() {
             {adminMode ? '\u{1F512} Admin Lock ON' : '\u{1F513} Admin Lock'}
           </label>
         </div>
+      </div>
       </div>
     </div>
   );

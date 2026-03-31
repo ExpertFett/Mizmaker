@@ -242,42 +242,60 @@ export function LiveryTab() {
       {/* Aircraft type filter pills */}
       {aircraftTypes.length > 1 && (
         <div style={{
-          display: 'flex', gap: 3, marginBottom: 16, flexWrap: 'wrap',
-          background: '#0a1520', borderRadius: 4, border: '1px solid #1a2a3a', padding: 3,
+          display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap',
+          background: '#0a1218', borderRadius: 8, border: '1px solid #12202e',
+          padding: '8px 10px', alignItems: 'center',
         }}>
           <button
             onClick={() => setTypeFilter('all')}
             style={{
-              background: typeFilter === 'all' ? '#1a2a3a' : 'transparent',
-              border: 'none', borderRadius: 3,
-              color: typeFilter === 'all' ? '#ccdae8' : '#5a7a8a',
-              cursor: 'pointer', fontSize: 12, fontWeight: typeFilter === 'all' ? 600 : 400,
-              padding: '5px 12px', whiteSpace: 'nowrap',
+              background: typeFilter === 'all' ? 'rgba(74, 143, 212, 0.15)' : 'transparent',
+              border: `1px solid ${typeFilter === 'all' ? 'rgba(74, 143, 212, 0.4)' : '#1a2a3a'}`,
+              borderRadius: 14,
+              color: typeFilter === 'all' ? '#4a8fd4' : '#5a7a8a',
+              cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              padding: '5px 14px', whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
             }}
           >
             All Types
           </button>
+          <span style={{ width: 1, height: 20, background: '#1a2a3a', margin: '0 2px' }} />
           {aircraftTypes
             .filter((t) => {
-              // If category filter active, only show types matching that category
               if (categoryFilter === 'all') return true;
               return liveryData.some((e) => e.type === t && e.category === categoryFilter);
             })
             .map((t) => {
+              const entry = liveryData.find((e) => e.type === t);
+              const cat = entry?.category || '';
+              const catColor = cat === 'plane' ? '#4a8fd4' : cat === 'helicopter' ? '#60c080' : cat === 'vehicle' ? '#d29922' : cat === 'ship' ? '#b07ed8' : '#8fa8c0';
               const count = liveryData.filter((e) => e.type === t).reduce((s, e) => s + e.units.length, 0);
+              const active = typeFilter === t;
               return (
                 <button
                   key={t}
-                  onClick={() => setTypeFilter(typeFilter === t ? 'all' : t)}
+                  onClick={() => setTypeFilter(active ? 'all' : t)}
                   style={{
-                    background: typeFilter === t ? '#1a2a3a' : 'transparent',
-                    border: 'none', borderRadius: 3,
-                    color: typeFilter === t ? '#ccdae8' : '#5a7a8a',
-                    cursor: 'pointer', fontSize: 12, fontWeight: typeFilter === t ? 600 : 400,
-                    padding: '5px 10px', whiteSpace: 'nowrap',
+                    background: active ? `${catColor}18` : 'transparent',
+                    border: `1px solid ${active ? `${catColor}50` : '#1a2a3a'}`,
+                    borderRadius: 14,
+                    color: active ? catColor : '#6a8a9a',
+                    cursor: 'pointer', fontSize: 12,
+                    fontWeight: active ? 600 : 400,
+                    padding: '5px 12px', whiteSpace: 'nowrap',
+                    transition: 'all 0.15s',
+                    display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
-                  {t} <span style={{ color: '#3a5a6a', fontSize: 11 }}>({count})</span>
+                  {t}
+                  <span style={{
+                    fontSize: 10, fontWeight: 600,
+                    background: active ? `${catColor}25` : '#0f1a28',
+                    color: active ? catColor : '#4a6a7a',
+                    padding: '1px 6px', borderRadius: 8,
+                    border: `1px solid ${active ? `${catColor}30` : '#1a2a3a'}`,
+                  }}>{count}</span>
                 </button>
               );
             })}

@@ -1,7 +1,9 @@
+import { useState, type RefObject } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useMapStore, type SpeedMode } from '../../store/mapStore';
 import { formatTime, metersToFeet } from '../../utils/conversions';
 import { formatWind } from '../../utils/atmosphere';
+import { useDraggable } from './useDraggable';
 
 const SPEED_MODES: { id: SpeedMode; label: string }[] = [
   { id: 'gs', label: 'GS' },
@@ -10,29 +12,94 @@ const SPEED_MODES: { id: SpeedMode; label: string }[] = [
   { id: 'mach', label: 'M' },
 ];
 
-export function WeatherPanel() {
+export function WeatherPanel({
+  coordRef,
+}: {
+  coordRef: RefObject<HTMLDivElement | null>;
+}) {
   const overview = useMissionStore((s) => s.overview);
   const { speedMode, setSpeedMode } = useMapStore();
+  const { containerRef, handleProps } = useDraggable();
+  const [collapsed, setCollapsed] = useState(false);
 
   if (!overview?.weather) return null;
   const wx = overview.weather;
   const windGnd = wx.wind.atGround;
 
+  // Collapsed tab
+  if (collapsed) {
+    return (
+      <div
+        onClick={() => setCollapsed(false)}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 0,
+          background: 'rgba(10, 20, 35, 0.92)',
+          borderRadius: '6px 0 0 6px',
+          padding: '10px 6px 10px 8px',
+          zIndex: 100,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          border: '1px solid #1a3a5a',
+          borderRight: 'none',
+          transition: 'all 0.15s',
+        }}
+        title="Show mission info"
+      >
+        <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
+        <span style={{
+          writingMode: 'vertical-lr',
+          color: '#5a7a8a', fontSize: 10, fontWeight: 600,
+          letterSpacing: 1, textTransform: 'uppercase',
+        }}>MISSION</span>
+      </div>
+    );
+  }
+
   return (
     <div
+      ref={containerRef}
       style={{
         position: 'absolute',
         top: 10,
-        left: 10,
+        right: 10,
         background: 'rgba(10, 20, 35, 0.92)',
         borderRadius: 6,
-        padding: '10px 14px',
+        padding: 0,
         zIndex: 100,
         fontSize: 13,
         color: '#ccdae8',
         minWidth: 170,
+        overflow: 'hidden',
       }}
     >
+      {/* Drag handle + collapse button */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: 'rgba(20, 40, 70, 0.4)',
+        borderBottom: '1px solid rgba(26, 42, 58, 0.5)',
+      }}>
+        <div {...handleProps} style={{
+          ...handleProps.style,
+          flex: 1,
+          padding: '4px 14px 2px',
+          fontSize: 9, color: '#3a5a6a', textAlign: 'center', letterSpacing: 2,
+          userSelect: 'none',
+        }}>⠿</div>
+        <button
+          onClick={() => setCollapsed(true)}
+          style={{
+            background: 'none', border: 'none', color: '#3a5a6a',
+            cursor: 'pointer', fontSize: 11, padding: '3px 8px',
+            lineHeight: 1,
+          }}
+          title="Hide panel"
+        >▶</button>
+      </div>
+      <div style={{ padding: '8px 14px 10px' }}>
       {/* Mission time */}
       <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
         <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
@@ -98,7 +165,7 @@ export function WeatherPanel() {
       </div>
 
       {/* Speed mode toggle */}
-      <div>
+      <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
         <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
           Speed Display
         </div>
@@ -120,6 +187,24 @@ export function WeatherPanel() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Cursor coordinates */}
+      <div>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+          Cursor
+        </div>
+        <div
+          ref={coordRef}
+          style={{
+            color: '#8fa8c0',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            lineHeight: 1.6,
+            minHeight: 20,
+          }}
+        />
+      </div>
       </div>
     </div>
   );

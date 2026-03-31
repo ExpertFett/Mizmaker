@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -32,9 +32,8 @@ import { isPlayerGroup } from '../utils/groups';
 import { createWaypointAdd } from './interactions/waypointAdd';
 import { createMeasureTool } from './interactions/measureTool';
 
-import { WaypointEditPopup } from './controls/WaypointEditPopup';
 import { LayerSwitcher } from './controls/LayerSwitcher';
-import { CoordinateDisplay } from './controls/CoordinateDisplay';
+
 import { WeatherPanel } from './controls/WeatherPanel';
 
 const THEATER_CENTERS: Record<string, [number, number]> = {
@@ -124,11 +123,9 @@ export function MapContainer() {
     measureLayer: VectorLayer | null;
   }>({ addDraw: null, measureDraw: null, measureLayer: null });
   const coordRef = useRef<HTMLDivElement>(null);
-  const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
-
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup } =
     useMissionStore();
-  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -282,22 +279,43 @@ export function MapContainer() {
       ]),
     });
 
-    // Click to select group (only when not in add/measure mode)
+    // Click to select group — or open waypoint popup if clicking a waypoint
     map.on('click', (e) => {
       const { addWaypointMode, measureMode } = useMapStore.getState();
       if (addWaypointMode || measureMode) return;
 
+      // Check for waypoint hit first (more specific)
+      const wpHit = map.forEachFeatureAtPixel(
+        e.pixel,
+        (f, layer) => {
+          if (layer === routeLayer && f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0) return f;
+          return undefined;
+        },
+        { hitTolerance: 10 },
+      );
+      if (wpHit) {
+        const gid = wpHit.get('groupId');
+        const wpi = wpHit.get('wpIndex');
+        selectGroup(gid);
+        setSelectedWpIndex(wpi);
+        return;
+      }
+
+      // Otherwise select group
       const feature = map.forEachFeatureAtPixel(e.pixel, (f) => f, { hitTolerance: 8 });
       if (feature) {
         const gid = feature.get('groupId');
         if (gid != null) {
           selectGroup(gid);
+          setSelectedWpIndex(null);
           return;
         }
       }
+      // Clicked empty space — close wp selection
+      setSelectedWpIndex(null);
     });
 
-    // Double-click to edit waypoint
+    // Double-click to edit waypoint (keep for compatibility)
     map.on('dblclick', (e) => {
       const hit = map.forEachFeatureAtPixel(
         e.pixel,
@@ -312,8 +330,7 @@ export function MapContainer() {
         e.stopPropagation();
         const gid = hit.get('groupId');
         const wpi = hit.get('wpIndex');
-        const pixel = map.getPixelFromCoordinate((hit.getGeometry() as any).getCoordinates());
-        setEditPopup({ groupId: gid, wpIndex: wpi, x: pixel[0], y: pixel[1] });
+        setSelectedWpIndex(wpi);
       }
     });
 
@@ -352,7 +369,7 @@ export function MapContainer() {
       }
       updateCoordDisplay();
 
-      // Tooltip
+      // Tooltip — only for units and route lines, NOT waypoints (waypoints use the edit popup)
       const tooltip = document.getElementById('map-tooltip');
       if (!tooltip) return;
 
@@ -381,23 +398,8 @@ export function MapContainer() {
           tooltip.innerHTML = header + '<br/>' + meta + roster;
           tooltip.style.display = 'block';
         } else if (wp) {
-          const altFt = Math.round(metersToFeet(wp.altitude_m || 0));
-          const spdKts = Math.round((wp.speed_ms || 0) * 1.94384);
-          const altType = wp.altitude_type === 'RADIO' ? 'AGL' : 'MSL';
-          const dist = wp.leg_distance_nm ? `${wp.leg_distance_nm.toFixed(1)} nm` : '';
-          const brg = wp.leg_bearing_deg ? `${Math.round(wp.leg_bearing_deg)}\u00B0` : '';
-          const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
-
-          tooltip.innerHTML =
-            `<b>WP${wp.waypoint_number} ${wp.waypoint_name}</b>` +
-            `<br/><span style="color:#6a8a9a">${groupName || ''}</span>` +
-            `<div style="margin-top:4px;border-top:1px solid #1a2a3a;padding-top:4px;font-family:monospace;font-size:11px">` +
-            (pos ? `<div>${pos}</div>` : '') +
-            `<div>Alt: ${altFt} ft ${altType}</div>` +
-            `<div>Spd: ${spdKts} kts</div>` +
-            (dist ? `<div>Leg: ${dist} ${brg}</div>` : '') +
-            `</div>`;
-          tooltip.style.display = 'block';
+          // Waypoints don't show a hover tooltip — click opens the edit popup instead
+          tooltip.style.display = 'none';
         } else if (groupName && hit.get('featureType') === 'route') {
           tooltip.innerHTML = `<b>${groupName}</b>`;
           tooltip.style.display = 'block';
@@ -406,7 +408,7 @@ export function MapContainer() {
         }
 
         if (tooltip.style.display === 'block') {
-          
+
           tooltip.style.left = `${e.pixel[0] + 14}px`;
           tooltip.style.top = `${e.pixel[1] - 8}px`;
         }
@@ -436,7 +438,7 @@ export function MapContainer() {
       if (e.key === 'Escape') {
         useMapStore.getState().setAddWaypointMode(false);
         useMapStore.getState().setMeasureMode(false);
-        setEditPopup(null);
+        useMapStore.getState().setSelectedWpIndex(null);
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -528,6 +530,7 @@ export function MapContainer() {
 
   // Fit map to content on initial load only
   const hasFitted = useRef(false);
+  const role = useMissionStore((s) => s.role);
   useEffect(() => {
     if (!mapInstance.current || !theater || hasFitted.current) return;
     if (groups.length === 0) return; // wait for data
@@ -562,7 +565,6 @@ export function MapContainer() {
   }, [theater, groups, role]);
 
   // Filter data for flight leads — blue only
-  const role = useMissionStore((s) => s.role);
   const isFlightLead = role === 'flight_lead';
   const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
   const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
@@ -658,9 +660,8 @@ export function MapContainer() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
-      <WeatherPanel />
+      <WeatherPanel coordRef={coordRef} />
       <LayerSwitcher />
-      <CoordinateDisplay coordRef={coordRef} />
 
       {/* Instructional overlays */}
       {addWaypointMode && (
@@ -701,15 +702,6 @@ export function MapContainer() {
           whiteSpace: 'nowrap',
         }}
       />
-      {editPopup && (
-        <WaypointEditPopup
-          groupId={editPopup.groupId}
-          wpIndex={editPopup.wpIndex}
-          pixelX={editPopup.x}
-          pixelY={editPopup.y}
-          onClose={() => setEditPopup(null)}
-        />
-      )}
     </div>
   );
 }

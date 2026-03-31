@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback, useReducer } from 'react';
+import { useState, useRef, useCallback, useReducer, useEffect } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
 import { useEditStore } from '../store/editStore';
-import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
+import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../utils/conversions';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
 import { sessionEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
@@ -10,9 +10,42 @@ import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
 import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
 
 
+/* ------------------------------------------------------------------ */
+/* 4-char waypoint abbreviation generator                              */
+/* ------------------------------------------------------------------ */
+
+function abbreviate(name: string): string {
+  if (!name || !name.trim()) return '';
+  const clean = name.trim().toUpperCase();
+  if (clean.length <= 4) return clean;
+  const words = clean.split(/[\s\-_/]+/).filter(Boolean);
+  if (words.length >= 2) {
+    const initials = words.map((w) => w[0]).join('').slice(0, 4);
+    if (initials.length >= 2) return initials.padEnd(4, words[words.length - 1].slice(1, 1 + (4 - initials.length))).slice(0, 4);
+  }
+  const vowels = /[AEIOU]/g;
+  const consonants = clean.replace(vowels, '');
+  if (consonants.length >= 4) return consonants.slice(0, 4);
+  return clean.slice(0, 4);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Persistent notes store (client-side, keyed by groupId + wpIndex)    */
+/* ------------------------------------------------------------------ */
+
+const wpNotesMap: Record<string, string> = {};
+function getWpNote(groupId: number, wpIndex: number): string {
+  return wpNotesMap[`${groupId}-${wpIndex}`] ?? '';
+}
+function setWpNote(groupId: number, wpIndex: number, note: string) {
+  wpNotesMap[`${groupId}-${wpIndex}`] = note;
+}
+
+
 export function FloatingFlightPanel() {
   const { groups, selectedGroupId, selectGroup } = useMissionStore();
-  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode } = useMapStore();
+  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode, selectedWpIndex, setSelectedWpIndex } = useMapStore();
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather;
 
@@ -191,7 +224,7 @@ export function FloatingFlightPanel() {
           >
             {minimized.current ? '\u25B2' : '\u25BC'}
           </button>
-          <button onClick={() => selectGroup(null)} style={titleBtnStyle} title="Close">X</button>
+          <button onClick={() => { setSelectedWpIndex(null); selectGroup(null); }} style={titleBtnStyle} title="Close">X</button>
         </div>
       </div>
 
@@ -262,6 +295,8 @@ export function FloatingFlightPanel() {
                     canMoveDown={!locked && wp.waypoint_number > 0 && idx < group.waypoints.length - 1}
                     showControls={!locked}
                     weather={wx}
+                    selected={selectedWpIndex === wp.waypoint_number}
+                    onSelect={() => setSelectedWpIndex(selectedWpIndex === wp.waypoint_number ? null : wp.waypoint_number)}
                     onPropChange={handlePropChange}
                     onDelete={handleDelete}
                     onReorder={handleReorder}
@@ -285,6 +320,20 @@ export function FloatingFlightPanel() {
                 </tr>
               </tfoot>
             </table>
+
+            {/* Waypoint detail panel */}
+            {selectedWpIndex != null && (
+              <WaypointDetail
+                groupId={group.groupId}
+                groupName={group.groupName}
+                waypoints={group.waypoints}
+                wpIndex={selectedWpIndex}
+                locked={locked}
+                onNavigate={(idx) => setSelectedWpIndex(idx)}
+                onClose={() => setSelectedWpIndex(null)}
+                onPropChange={handlePropChange}
+              />
+            )}
           </div>
           )}
           </div>
@@ -316,10 +365,11 @@ export function FloatingFlightPanel() {
   );
 }
 
-function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showControls, weather, onPropChange, onDelete, onReorder }: {
+function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showControls, weather, selected, onSelect, onPropChange, onDelete, onReorder }: {
   wp: Waypoint; prevWp?: Waypoint; locked: boolean; canDelete: boolean;
   canMoveUp?: boolean; canMoveDown?: boolean; showControls: boolean;
-  weather?: MissionWeather;
+  weather?: MissionWeather; selected?: boolean;
+  onSelect?: () => void;
   onPropChange: (i: number, f: string, v: string | number | boolean) => void;
   onDelete: (i: number) => void;
   onReorder: (i: number, dir: 'up' | 'down') => void;
@@ -349,7 +399,16 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
   };
 
   return (
-    <tr style={{ borderBottom: '1px solid #0f1a28', opacity: isWp0 ? 0.45 : 1 }}>
+    <tr
+      onClick={onSelect}
+      style={{
+        borderBottom: '1px solid #0f1a28',
+        opacity: isWp0 ? 0.45 : 1,
+        background: selected ? 'rgba(74, 143, 212, 0.12)' : 'transparent',
+        borderLeft: selected ? '2px solid #4a8fd4' : '2px solid transparent',
+        cursor: 'pointer',
+      }}
+    >
       {showControls && (
         <td style={{ ...tdStyle, padding: '2px 4px', width: 32 }}>
           {!isWp0 && (
@@ -366,12 +425,25 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
       )}
       <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#5a7a8a', fontSize: 13 }}>{wp.waypoint_number}</td>
       <td style={tdStyle}>
-        {locked ? (
-          <span style={{ color: '#8fa8c0', fontSize: 14 }}>{wp.waypoint_name}</span>
-        ) : (
-          <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
-            style={{ ...inputStyle, width: 100, color: '#ccdae8' }} />
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {locked ? (
+            <span style={{ color: '#8fa8c0', fontSize: 14 }}>{wp.waypoint_name}</span>
+          ) : (
+            <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
+              style={{ ...inputStyle, width: 100, color: '#ccdae8' }} />
+          )}
+          {abbreviate(wp.waypoint_name) && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+              color: '#d29922', background: '#d2992215',
+              padding: '1px 4px', borderRadius: 3,
+              border: '1px solid #d2992230',
+              letterSpacing: 1, whiteSpace: 'nowrap',
+            }}>
+              {abbreviate(wp.waypoint_name)}
+            </span>
+          )}
+        </div>
       </td>
       <td style={{ ...tdStyle, textAlign: 'right' }}>
         {locked ? (
@@ -701,6 +773,302 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Waypoint detail panel — shown below route table when a WP selected  */
+/* ------------------------------------------------------------------ */
+
+function WaypointDetail({
+  groupId,
+  groupName,
+  waypoints,
+  wpIndex,
+  locked,
+  onNavigate,
+  onClose,
+  onPropChange,
+}: {
+  groupId: number;
+  groupName: string;
+  waypoints: Waypoint[];
+  wpIndex: number;
+  locked: boolean;
+  onNavigate: (idx: number) => void;
+  onClose: () => void;
+  onPropChange: (i: number, f: string, v: string | number | boolean) => void;
+}) {
+  const wp = waypoints.find((w) => w.waypoint_number === wpIndex);
+  const [note, setNoteState] = useState(() => getWpNote(groupId, wpIndex));
+
+  // Sync notes when navigating
+  useEffect(() => {
+    setNoteState(getWpNote(groupId, wpIndex));
+  }, [groupId, wpIndex]);
+
+  const handleNoteChange = useCallback((val: string) => {
+    setNoteState(val);
+    setWpNote(groupId, wpIndex, val);
+  }, [groupId, wpIndex]);
+
+  // Keyboard nav
+  const wpNumbers = waypoints
+    .map((w) => w.waypoint_number)
+    .filter((n) => n > 0)
+    .sort((a, b) => a - b);
+  const currentIdx = wpNumbers.indexOf(wpIndex);
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx < wpNumbers.length - 1;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft' && hasPrev) onNavigate(wpNumbers[currentIdx - 1]);
+      if (e.key === 'ArrowRight' && hasNext) onNavigate(wpNumbers[currentIdx + 1]);
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onNavigate, hasPrev, hasNext, wpNumbers, currentIdx]);
+
+  if (!wp) return null;
+
+  const altFt = Math.round(metersToFeet(wp.altitude_m));
+  const spdKts = Math.round(msToKnots(wp.speed_ms));
+  const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
+  const legNm = wp.leg_distance_nm ? wp.leg_distance_nm.toFixed(1) : null;
+  const legBrg = wp.leg_bearing_deg ? Math.round(wp.leg_bearing_deg) : null;
+  const abbr = abbreviate(wp.waypoint_name);
+
+  // Cumulative distance
+  let cumulativeNm = 0;
+  for (let i = 0; i <= currentIdx; i++) {
+    const w = waypoints.find((ww) => ww.waypoint_number === wpNumbers[i]);
+    if (w?.leg_distance_nm) cumulativeNm += w.leg_distance_nm;
+  }
+
+  const etaMin = wp.eta_seconds ? Math.round(wp.eta_seconds / 60) : null;
+
+  const detailInputStyle: React.CSSProperties = {
+    background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+    color: '#ccdae8', fontSize: 13, padding: '5px 8px', width: '100%',
+    fontFamily: 'monospace', boxSizing: 'border-box' as const,
+  };
+
+  const detailLabel: React.CSSProperties = {
+    display: 'block', color: '#4a6a7a', fontSize: 10, marginBottom: 3,
+    fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' as const,
+  };
+
+  return (
+    <div style={{
+      borderTop: '1px solid #1a3a5a',
+      background: 'rgba(10, 20, 35, 0.6)',
+    }}>
+      {/* Nav header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', padding: '8px 14px',
+        borderBottom: '1px solid #1a2a3a',
+      }}>
+        <button
+          onClick={() => hasPrev && onNavigate(wpNumbers[currentIdx - 1])}
+          disabled={!hasPrev}
+          style={{
+            background: 'none', border: '1px solid #1a2a3a', borderRadius: 4,
+            color: hasPrev ? '#4a8fd4' : '#1a2a3a',
+            cursor: hasPrev ? 'pointer' : 'default',
+            fontSize: 14, padding: '2px 8px', lineHeight: 1,
+          }}
+          title="Previous waypoint (←)"
+        >◀</button>
+
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#ccdae8' }}>
+              WP{wpIndex}
+            </span>
+            {wp.waypoint_name && (
+              <span style={{ color: '#6a8a9a', fontSize: 12 }}>
+                {wp.waypoint_name}
+              </span>
+            )}
+            {abbr && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+                color: '#d29922', background: '#d2992215',
+                padding: '1px 5px', borderRadius: 3,
+                border: '1px solid #d2992230',
+                letterSpacing: 1,
+              }} title="4-char abbreviation">
+                {abbr}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: '#4a6a7a', marginTop: 1 }}>
+            {currentIdx + 1} of {wpNumbers.length}
+          </div>
+        </div>
+
+        <button
+          onClick={() => hasNext && onNavigate(wpNumbers[currentIdx + 1])}
+          disabled={!hasNext}
+          style={{
+            background: 'none', border: '1px solid #1a2a3a', borderRadius: 4,
+            color: hasNext ? '#4a8fd4' : '#1a2a3a',
+            cursor: hasNext ? 'pointer' : 'default',
+            fontSize: 14, padding: '2px 8px', lineHeight: 1,
+          }}
+          title="Next waypoint (→)"
+        >▶</button>
+
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none', color: '#5a7a8a',
+            cursor: 'pointer', fontSize: 13, marginLeft: 8, padding: '2px 4px',
+          }}
+          title="Close detail"
+        >✕</button>
+      </div>
+
+      {/* Info strip */}
+      <div style={{
+        display: 'flex', gap: 0, borderBottom: '1px solid #1a2a3a',
+        background: 'rgba(10, 18, 30, 0.5)',
+      }}>
+        <DetailInfoCell label="ALT" value={`${altFt.toLocaleString()} ft`} sub={wp.altitude_type === 'BARO' ? 'MSL' : 'AGL'} />
+        <DetailInfoCell label="SPD" value={`${spdKts} kts`} sub="GS" border />
+        {legNm && <DetailInfoCell label="LEG" value={`${legNm} nm`} sub={legBrg !== null ? `${String(legBrg).padStart(3, '0')}°` : ''} border />}
+        {cumulativeNm > 0 && <DetailInfoCell label="TOTAL" value={`${cumulativeNm.toFixed(1)} nm`} sub="" border />}
+        {etaMin !== null && <DetailInfoCell label="ETA" value={`${etaMin} min`} sub="" border />}
+      </div>
+
+      {/* Coordinates */}
+      {pos && (
+        <div style={{
+          padding: '4px 14px', borderBottom: '1px solid #1a2a3a',
+          fontFamily: 'monospace', fontSize: 11, color: '#6a8a9a',
+          background: 'rgba(10, 18, 30, 0.3)',
+        }}>
+          {pos}
+        </div>
+      )}
+
+      {/* Edit fields */}
+      <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Name</span>
+            <input
+              key={`detail-name-${groupId}-${wpIndex}`}
+              defaultValue={wp.waypoint_name}
+              onBlur={(e) => onPropChange(wpIndex, 'name', e.target.value)}
+              style={detailInputStyle}
+              disabled={locked}
+              placeholder="e.g. Target Alpha"
+            />
+          </label>
+          <div style={{ width: 52, textAlign: 'center', paddingBottom: 1 }}>
+            <span style={detailLabel}>ABBR</span>
+            <div style={{
+              background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+              padding: '5px 4px', fontSize: 13, fontFamily: 'monospace',
+              color: abbr ? '#d29922' : '#2a3a4a', fontWeight: 700,
+              letterSpacing: 1, textAlign: 'center',
+            }}>
+              {abbr || '----'}
+            </div>
+          </div>
+          <label style={{ width: 70 }}>
+            <span style={detailLabel}>Alt Type</span>
+            <select
+              key={`detail-alttype-${groupId}-${wpIndex}`}
+              defaultValue={wp.altitude_type}
+              onChange={(e) => onPropChange(wpIndex, 'alt_type', e.target.value)}
+              style={{ ...detailInputStyle, padding: '4px 4px' }}
+              disabled={locked}
+            >
+              <option value="BARO">MSL</option>
+              <option value="RADIO">AGL</option>
+            </select>
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Altitude (ft)</span>
+            <input
+              key={`detail-alt-${groupId}-${wpIndex}`}
+              type="number"
+              defaultValue={altFt}
+              onBlur={(e) => onPropChange(wpIndex, 'alt', feetToMeters(parseFloat(e.target.value)))}
+              style={detailInputStyle}
+              disabled={locked}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Speed (kts)</span>
+            <input
+              key={`detail-spd-${groupId}-${wpIndex}`}
+              type="number"
+              defaultValue={spdKts}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val)) onPropChange(wpIndex, 'speed', knotsToMs(val));
+              }}
+              style={detailInputStyle}
+              disabled={locked}
+            />
+          </label>
+        </div>
+
+        {locked && (
+          <div style={{ fontSize: 10, color: '#5a6a7a', textAlign: 'center', fontStyle: 'italic' }}>
+            Read-only
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
+      <div style={{ padding: '6px 14px 10px', borderTop: '1px solid #1a2a3a' }}>
+        <label>
+          <span style={detailLabel}>Notes</span>
+          <textarea
+            value={note}
+            onChange={(e) => handleNoteChange(e.target.value)}
+            placeholder="IP, fence in, push point, threats nearby..."
+            rows={2}
+            style={{
+              ...detailInputStyle,
+              fontFamily: 'inherit',
+              fontSize: 12,
+              resize: 'vertical',
+              minHeight: 32,
+              lineHeight: 1.4,
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function DetailInfoCell({ label, value, sub, border }: { label: string; value: string; sub?: string; border?: boolean }) {
+  return (
+    <div style={{
+      flex: 1, padding: '6px 8px', textAlign: 'center',
+      borderLeft: border ? '1px solid #1a2a3a' : 'none',
+    }}>
+      <div style={{ fontSize: 9, color: '#4a6a7a', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#ccdae8', fontFamily: 'monospace' }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 9, color: '#5a7a8a' }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
 
 function formatEte(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
