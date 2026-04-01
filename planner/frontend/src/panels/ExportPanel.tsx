@@ -14,16 +14,12 @@ export function ExportPanel() {
       'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
     const unitEdits = edits.filter((e) => !isWaypointEdit(e));
 
-    console.log('Downloading:', { sessionId, unitEditsCount: unitEdits.length });
-
     try {
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, unitEdits: unitEdits }),
       });
-
-      console.log('Download response:', res.status, res.statusText);
 
       if (!res.ok) {
         const err = await res.text();

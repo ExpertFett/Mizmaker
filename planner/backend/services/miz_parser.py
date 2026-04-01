@@ -265,10 +265,10 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "clouds_preset": wx.get("clouds", {}).get("preset", ""),
             "visibility_m": _num(wx.get("visibility", {}).get("distance", 80000)),
             "fog_enabled": wx.get("enable_fog", False),
-            "fog_visibility": _num(wx.get("fogVisibility", 0)),
-            "fog_thickness": _num(wx.get("fogThickness", 0)),
+            "fog_visibility": _num(wx.get("fog", {}).get("visibility", 0)),
+            "fog_thickness": _num(wx.get("fog", {}).get("thickness", 0)),
             "dust_enabled": wx.get("enable_dust", False),
-            "dust_density": _num(wx.get("dustDensity", 0)),
+            "dust_density": _num(wx.get("dust_density", 0)),
             "turbulence": _num(wx.get("groundTurbulence", 0)),
         },
     }

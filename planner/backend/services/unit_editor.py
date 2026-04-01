@@ -21,6 +21,67 @@ def _find_unit_block_start(text: str, unit_id: int) -> int:
     return match.start()
 
 
+def _find_unit_block_bounds(text: str, unit_id: int) -> tuple[int, int]:
+    """Find the start and end positions of the unit block containing ["unitId"] = N.
+
+    DCS Lua unit blocks look like:
+        [N] = {
+            ["livery_id"] = "...",
+            ["type"] = "FA-18C_hornet",
+            ["payload"] = { ["pylons"] = {...}, ... },
+            ...
+            ["unitId"] = 5,
+        }, -- end of [N]
+
+    Returns (block_start, block_end) where block_start is the position of the
+    opening '{' and block_end is after the closing '}'.
+    """
+    uid_pos = _find_unit_block_start(text, unit_id)
+
+    # Walk backward to find the unit's opening '{'.
+    # We need to track braces while skipping string contents.
+    depth = 0
+    i = uid_pos - 1
+    while i >= 0:
+        ch = text[i]
+        if ch == '"':
+            # Skip backward over string contents
+            i -= 1
+            while i >= 0 and text[i] != '"':
+                if text[i] == '\\' and i > 0:
+                    i -= 1  # skip escaped char
+                i -= 1
+            # i is now at the opening quote or -1
+        elif ch == '}':
+            depth += 1
+        elif ch == '{':
+            if depth == 0:
+                break  # This is our opening brace
+            depth -= 1
+        i -= 1
+    block_start = i
+
+    # Walk forward from opening brace to find closing brace
+    depth = 0
+    j = block_start
+    in_string = False
+    while j < len(text):
+        ch = text[j]
+        if ch == '"' and (j == 0 or text[j - 1] != '\\'):
+            in_string = not in_string
+        elif not in_string:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+        j += 1
+    block_end = j + 1
+
+    return block_start, block_end
+
+
 def _find_group_block_start(text: str, group_id: int) -> int:
     """Find the position of ["groupId"] = N in the mission text.
 
@@ -164,63 +225,140 @@ def _replace_pylon_clsid(text: str, unit_id: int, pylon_num: int, new_clsid: str
                           settings_overrides: dict | None = None) -> str:
     """Replace the CLSID for a specific pylon on a specific unit.
 
-    Finds the pylon block [N] = { ["CLSID"] = "...", ... } within the payload
-    and replaces the CLSID value.  Writes default settings from
-    launcher_settings.json, with optional overrides from the user.
+    Uses _find_unit_block_bounds to precisely scope to the correct unit block,
+    then finds payload→pylons within that block only.
     """
     from services.unit_extractor import build_default_settings
 
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_start = max(0, unit_pos - 5000)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[search_start:search_end]
+    # Step 1: Find the exact unit block boundaries
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
-    # Find the pylons section within this unit's payload
-    pylons_match = re.search(r'\["pylons"\]\s*=\s*\n?\s*\{', region)
+    # Step 2: Find ["payload"] within this unit block
+    payload_match = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', unit_block)
+    if not payload_match:
+        raise ValueError(f"Payload section not found in unit block for unitId {unit_id}")
+
+    # Step 3: Find ["pylons"] within the payload section
+    payload_region = unit_block[payload_match.start():]
+    pylons_match = re.search(r'\["pylons"\]\s*=\s*\n?\s*\{', payload_region)
     if not pylons_match:
-        raise ValueError(f"Pylons section not found near unit {unit_id}")
+        raise ValueError(f"Pylons section not found in payload for unitId {unit_id}")
 
-    # Find the specific pylon block: [N] = { ... }
-    pylons_region = region[pylons_match.start():]
+    # Step 4: Brace-match to find pylons section closing brace (skip string contents)
+    pylons_open = pylons_match.end() - 1  # position of '{' relative to payload_region
+    depth = 0
+    pi = pylons_open
+    in_str = False
+    while pi < len(payload_region):
+        ch = payload_region[pi]
+        if ch == '"' and (pi == 0 or payload_region[pi - 1] != '\\'):
+            in_str = not in_str
+        elif not in_str:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+        pi += 1
+    pylons_close = pi  # relative to payload_region
+
+    # Extract pylons section text (from ["pylons"] to its closing brace)
+    pylons_text = payload_region[pylons_match.start():pylons_close + 1]
+
+    # Absolute position of pylons section start in full text
+    pylons_abs = block_start + payload_match.start() + pylons_match.start()
+
+    # Step 5: Search for the specific pylon [N] = { within the pylons section
     pylon_pattern = rf'\[{pylon_num}\]\s*=\s*\n?\s*\{{'
-    pylon_match = re.search(pylon_pattern, pylons_region)
-    if not pylon_match:
-        raise ValueError(f"Pylon {pylon_num} not found near unit {unit_id}")
+    pylon_match = re.search(pylon_pattern, pylons_text)
 
-    # Brace-match to find the closing brace for this pylon
+    if not pylon_match:
+        # Pylon doesn't exist — insert new one before pylons closing brace
+        if not new_clsid:
+            return text
+
+        # Detect indent from existing pylon entries or use default
+        existing_pylon = re.search(r'(\s*)\[\d+\]\s*=\s*\n?\s*\{', pylons_text)
+        indent = existing_pylon.group(1) if existing_pylon else '\n\t\t\t\t\t\t\t\t\t\t'
+
+        settings = build_default_settings(new_clsid)
+        if settings_overrides:
+            settings.update(settings_overrides)
+
+        if settings:
+            settings_lines = []
+            for k, v in settings.items():
+                if isinstance(v, str):
+                    settings_lines.append(f'{indent}\t\t["{k}"] = "{v}",')
+                elif isinstance(v, bool):
+                    settings_lines.append(f'{indent}\t\t["{k}"] = {str(v).lower()},')
+                elif isinstance(v, (int, float)):
+                    settings_lines.append(f'{indent}\t\t["{k}"] = {v},')
+            settings_block = "\n".join(settings_lines)
+            new_pylon = (
+                f'{indent}[{pylon_num}] =\n'
+                f'{indent}{{\n'
+                f'{indent}\t["CLSID"] = "{new_clsid}",\n'
+                f'{indent}\t["settings"] =\n'
+                f'{indent}\t{{\n'
+                f'{settings_block}\n'
+                f'{indent}\t}}, -- end of ["settings"]\n'
+                f'{indent}}}, -- end of [{pylon_num}]\n'
+            )
+        else:
+            new_pylon = (
+                f'{indent}[{pylon_num}] =\n'
+                f'{indent}{{\n'
+                f'{indent}\t["CLSID"] = "{new_clsid}",\n'
+                f'{indent}}}, -- end of [{pylon_num}]\n'
+            )
+
+        # Insert before the closing brace of pylons section
+        # pylons_close is relative to payload_region; convert to absolute
+        abs_insert = block_start + payload_match.start() + pylons_close
+        text = text[:abs_insert] + new_pylon + text[abs_insert:]
+        return text
+
+    # Step 6: Pylon exists — brace-match to find its closing brace
     brace_start = pylon_match.end() - 1
     depth = 0
     i = brace_start
-    while i < len(pylons_region):
-        if pylons_region[i] == '{':
-            depth += 1
-        elif pylons_region[i] == '}':
-            depth -= 1
-            if depth == 0:
-                break
+    in_string = False
+    while i < len(pylons_text):
+        ch = pylons_text[i]
+        if ch == '"' and (i == 0 or pylons_text[i - 1] != '\\'):
+            in_string = not in_string
+        elif not in_string:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
         i += 1
 
-    # Include trailing comment
+    # Include trailing comma and comment if present
     pylon_end = i + 1
-    rest = pylons_region[pylon_end:]
+    rest = pylons_text[pylon_end:]
     eol_match = re.match(r',\s*-- end of \[\d+\]', rest)
     if eol_match:
         pylon_end += eol_match.end()
 
-    old_pylon = pylons_region[pylon_match.start():pylon_end]
+    old_pylon = pylons_text[pylon_match.start():pylon_end]
 
-    # Detect indentation
-    lines = old_pylon.split('\n')
-    first_line = lines[0] if lines else ''
+    # Detect indentation from old pylon
+    first_line = old_pylon.split('\n')[0] if old_pylon else ''
     indent_match = re.match(r'(\s*)', first_line)
     indent = indent_match.group(1) if indent_match else '\t\t\t\t\t\t\t\t\t\t'
 
-    # Build settings from defaults + overrides
+    # Build settings
     settings = build_default_settings(new_clsid)
     if settings_overrides:
         settings.update(settings_overrides)
 
-    # Build new pylon block with CLSID and settings
+    # Build replacement pylon block
     if settings:
         settings_lines = []
         for k, v in settings.items():
@@ -232,10 +370,10 @@ def _replace_pylon_clsid(text: str, unit_id: int, pylon_num: int, new_clsid: str
                 settings_lines.append(f'{indent}\t\t["{k}"] = {v},')
         settings_block = "\n".join(settings_lines)
         new_pylon = (
-            f'[{pylon_num}] = \n'
+            f'[{pylon_num}] =\n'
             f'{indent}{{\n'
             f'{indent}\t["CLSID"] = "{new_clsid}",\n'
-            f'{indent}\t["settings"] = \n'
+            f'{indent}\t["settings"] =\n'
             f'{indent}\t{{\n'
             f'{settings_block}\n'
             f'{indent}\t}}, -- end of ["settings"]\n'
@@ -243,16 +381,15 @@ def _replace_pylon_clsid(text: str, unit_id: int, pylon_num: int, new_clsid: str
         )
     else:
         new_pylon = (
-            f'[{pylon_num}] = \n'
+            f'[{pylon_num}] =\n'
             f'{indent}{{\n'
             f'{indent}\t["CLSID"] = "{new_clsid}",\n'
             f'{indent}}}, -- end of [{pylon_num}]'
         )
 
-    # Replace in the full text
-    abs_offset = search_start + pylons_match.start()
-    old_abs_start = abs_offset + pylon_match.start()
-    old_abs_end = abs_offset + pylon_end
+    # Replace in full text
+    old_abs_start = pylons_abs + pylon_match.start()
+    old_abs_end = pylons_abs + pylon_end
     text = text[:old_abs_start] + new_pylon + text[old_abs_end:]
     return text
 
@@ -380,47 +517,46 @@ def _replace_unit_name(text: str, unit_id: int, new_name: str) -> str:
 def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
     """Replace the ["livery_id"] field for a specific unit.
     If the field doesn't exist, insert it near the unit block."""
+    import logging
     unit_pos = _find_unit_block_start(text, unit_id)
-    # Unit blocks with lots of pylon/payload data can be very large;
-    # livery_id is near the top while unitId is near the bottom.
-    search_start = max(0, unit_pos - 8000)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[search_start:search_end]
 
-    rel_pos = unit_pos - search_start
+    # Walk backward from unitId to find the unit block's opening brace.
+    # In DCS Lua, units are `[N] = { ... ["unitId"] = X, ... },`
+    # livery_id is near the top of the block, unitId is near the bottom.
+    depth = 0
+    i = unit_pos
+    while i > 0:
+        ch = text[i]
+        if ch == '}':
+            depth += 1
+        elif ch == '{':
+            if depth == 0:
+                break  # found the opening brace of this unit block
+            depth -= 1
+        i -= 1
+    block_start = i
+
+    # The unit block extends from block_start to somewhere past unit_pos
+    unit_block = text[block_start:unit_pos + 500]
+
     livery_pattern = re.compile(r'\["livery_id"\]\s*=\s*"([^"]*)"')
-
-    best = None
-    best_dist = float('inf')
-    for m in livery_pattern.finditer(region):
-        dist = abs(m.start() - rel_pos)
-        if dist < best_dist:
-            best_dist = dist
-            best = m
-
-    if best and best_dist <= 6000:
-        # Replace existing livery_id value
-        abs_start = search_start + best.start(1)
-        abs_end = search_start + best.end(1)
+    m = livery_pattern.search(unit_block)
+    if m:
+        abs_start = block_start + m.start(1)
+        abs_end = block_start + m.end(1)
+        logging.warning(f"[livery] Replacing livery for unit {unit_id}: '{text[abs_start:abs_end]}' -> '{new_livery}'")
         text = text[:abs_start] + new_livery + text[abs_end:]
     else:
-        # No livery_id field — insert one after the ["type"] field for this unit
+        # No livery_id — insert after ["type"] within this unit block
         type_pattern = re.compile(r'\["type"\]\s*=\s*"[^"]*"\s*,')
-        type_match = None
-        type_dist = float('inf')
-        for m in type_pattern.finditer(region):
-            dist = abs(m.start() - rel_pos)
-            if dist < type_dist:
-                type_dist = dist
-                type_match = m
-
-        if type_match and type_dist <= 6000:
-            insert_pos = search_start + type_match.end()
-            indent = "\n                "  # match typical DCS Lua indentation
+        tm = type_pattern.search(unit_block)
+        if tm:
+            insert_pos = block_start + tm.end()
+            indent = "\n                "
+            logging.warning(f"[livery] Inserting livery_id for unit {unit_id}: '{new_livery}'")
             text = text[:insert_pos] + f'{indent}["livery_id"] = "{new_livery}",' + text[insert_pos:]
         else:
-            import logging
-            logging.warning(f"Cannot insert livery_id for unit {unit_id} — no anchor found")
+            logging.warning(f"[livery] Cannot insert livery_id for unit {unit_id} — no anchor found")
 
     return text
 
@@ -608,6 +744,7 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
 
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
+    original_len = len(text)
     # Wind
     wind = weather_data.get("wind", {})
     for level in ("atGround", "at2000", "at8000"):
@@ -631,23 +768,25 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
             m = re.search(pattern, text, re.DOTALL)
             if m:
                 text = text[:m.start(2)] + str(clouds[field]) + text[m.end(2):]
-    # Cloud preset (string value)
+    # Cloud preset (string value) — scoped to the clouds block
     if "preset" in clouds:
         preset_val = clouds["preset"]
-        pattern = r'(\["preset"\]\s*=\s*)("[^"]*")'
-        m = re.search(pattern, text)
-        if m:
-            text = text[:m.start(2)] + f'"{preset_val}"' + text[m.end(2):]
+        clouds_block = re.search(r'\["clouds"\]\s*=\s*\n?\s*\{', text)
+        if clouds_block:
+            pattern = r'(\["preset"\]\s*=\s*)("[^"]*")'
+            m = re.search(pattern, text[clouds_block.start():])
+            if m:
+                pos = clouds_block.start() + m.start(2)
+                end = clouds_block.start() + m.end(2)
+                text = text[:pos] + f'"{preset_val}"' + text[end:]
 
-    # Simple top-level weather fields
+    # Top-level weather fields (booleans + numbers)
     simple_fields = {
         "enable_fog": weather_data.get("fog", {}).get("enabled"),
-        "fogVisibility": weather_data.get("fog", {}).get("visibility"),
-        "fogThickness": weather_data.get("fog", {}).get("thickness"),
         "groundTurbulence": weather_data.get("groundTurbulence"),
         "qnh": weather_data.get("qnh"),
         "enable_dust": weather_data.get("dust", {}).get("enabled"),
-        "dustDensity": weather_data.get("dust", {}).get("density"),
+        "dust_density": weather_data.get("dust", {}).get("density"),
     }
     for field, value in simple_fields.items():
         if value is None:
@@ -660,6 +799,19 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
         m = re.search(pattern, text)
         if m:
             text = text[:m.start(2)] + lua_val + text[m.end(2):]
+
+    # Fog — nested inside ["fog"] = { ["visibility"] = N, ["thickness"] = N }
+    fog_data = weather_data.get("fog", {})
+    fog_block = re.search(r'\["fog"\]\s*=\s*\n?\s*\{', text)
+    if fog_block:
+        for fog_field, fog_key in [("visibility", "visibility"), ("thickness", "thickness")]:
+            if fog_key in fog_data:
+                pattern = rf'(\["{fog_field}"\]\s*=\s*)([^,\n]+)'
+                m = re.search(pattern, text[fog_block.start():])
+                if m:
+                    pos = fog_block.start() + m.start(2)
+                    end = fog_block.start() + m.end(2)
+                    text = text[:pos] + str(fog_data[fog_key]) + text[end:]
 
     # Visibility distance
     vis_dist = weather_data.get("visibility")
@@ -680,23 +832,34 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
         if m:
             text = text[:m.start(2)] + str(temp) + text[m.end(2):]
 
-    # Date
+    # Date — scoped to the ["date"] block at mission root level (single tab indent)
     date_data = weather_data.get("date")
     if date_data:
-        for field, key in [("Day", "day"), ("Month", "month"), ("Year", "year")]:
-            if key in date_data:
-                pattern = rf'(\["{field}"\]\s*=\s*)(\d+)'
-                m = re.search(pattern, text)
-                if m:
-                    text = text[:m.start(2)] + str(date_data[key]) + text[m.end(2):]
+        date_block = re.search(r'\n\t\["date"\]\s*=\s*\n?\s*\{', text)
+        if date_block:
+            # Search within 200 chars after the date block opening
+            date_region_start = date_block.start()
+            date_region = text[date_region_start:date_region_start + 200]
+            for field, key in [("Day", "day"), ("Month", "month"), ("Year", "year")]:
+                if key in date_data:
+                    pattern = rf'(\["{field}"\]\s*=\s*)(\d+)'
+                    m = re.search(pattern, date_region)
+                    if m:
+                        pos = date_region_start + m.start(2)
+                        end = date_region_start + m.end(2)
+                        text = text[:pos] + str(date_data[key]) + text[end:]
+                        # Re-extract region since text shifted
+                        date_region = text[date_region_start:date_region_start + 200]
 
-    # Start time
+    # Start time — mission root level (single tab indent, near end of file)
     start_time = weather_data.get("startTime")
     if start_time is not None:
+        # Find the LAST ["start_time"] in the file (mission root level)
         pattern = r'(\["start_time"\]\s*=\s*)(\d+)'
-        m = re.search(pattern, text)
-        if m:
-            text = text[:m.start(2)] + str(start_time) + text[m.end(2):]
+        all_matches = list(re.finditer(pattern, text))
+        if all_matches:
+            m = all_matches[-1]  # last occurrence = mission root
+            text = text[:m.start(2)] + str(int(start_time)) + text[m.end(2):]
 
     return text
 

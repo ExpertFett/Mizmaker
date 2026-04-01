@@ -116,11 +116,24 @@ export function LoadoutTab() {
 
     const updated = units.map((u) => {
       if (u.unitId !== unitId) return u;
-      const newPylons = u.pylons.map((p) => {
-        if (p.number !== pylonNum) return p;
-        if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
-        return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
-      });
+      const existingPylon = u.pylons.find((p) => p.number === pylonNum);
+      let newPylons: PylonInfo[];
+      if (existingPylon) {
+        // Update existing pylon
+        newPylons = u.pylons.map((p) => {
+          if (p.number !== pylonNum) return p;
+          if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+          return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
+        });
+      } else if (selected) {
+        // Add new pylon that didn't exist in the mission
+        newPylons = [
+          ...u.pylons,
+          { number: pylonNum, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category },
+        ].sort((a, b) => a.number - b.number);
+      } else {
+        newPylons = u.pylons;
+      }
       return { ...u, pylons: newPylons };
     });
     useMissionStore.setState({ clientUnits: updated });
@@ -488,7 +501,11 @@ function UnitRow({
 
         {/* Status badges */}
         <div style={{ display: 'flex', gap: 4 }}>
-          <Badge label="Fuel" value={`${Math.round(unit.fuel)}`} />
+          <Badge label="Fuel" value={(() => {
+            const fuelPct = unit.fuel <= 1 ? `${Math.round(unit.fuel * 100)}%` : `${Math.round(unit.fuel)}`;
+            const tankCount = unit.pylons.filter(p => (p.category || '').toLowerCase().includes('fuel') || (p.name || '').toLowerCase().includes('fuel tank')).length;
+            return tankCount > 0 ? `${fuelPct} +${tankCount}ET` : fuelPct;
+          })()} />
           <Badge label="FL" value={String(unit.flare)} />
           <Badge label="CH" value={String(unit.chaff)} />
           <Badge label="Gun" value={`${unit.gun}%`} />

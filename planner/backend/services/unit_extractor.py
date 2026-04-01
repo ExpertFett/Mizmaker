@@ -293,6 +293,11 @@ def _shorten_single(name: str) -> str:
     if 'Durandal' in s:
         return 'BLU-107 Durandal'
 
+    # Smoke generators — keep the color
+    m = re.match(r'(Smoke Generator\s*-\s*\w+)', s, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+
     # Generic: strip everything after " - "
     m = re.match(r'([\w/.()\s-]+?)\s*-\s', s)
     if m:
