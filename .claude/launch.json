@@ -2,13 +2,6 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "backend",
-      "runtimeExecutable": "C:\\Users\\garre\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-      "runtimeArgs": ["-c", "from app import app; app.run(host='0.0.0.0', port=5001, debug=False)"],
-      "port": 5001,
-      "cwd": "planner/backend"
-    },
-    {
       "name": "frontend",
       "runtimeExecutable": "C:\\Users\\garre\\nodejs-portable\\node-v22.16.0-win-x64\\npx.cmd",
       "runtimeArgs": ["vite", "--host", "--port", "5173"],

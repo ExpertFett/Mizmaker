@@ -648,7 +648,8 @@ def download():
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_text = session["original_mission_text"]
+        # Start with trigger-updated text if available, otherwise original
+        mission_text = session.get("mission_text", session["original_mission_text"])
 
         # 1. Replace waypoints only for groups that were actually edited
         dirty = session.get("dirty_groups", set())
@@ -949,7 +950,7 @@ def get_triggers():
 
     session = sessions[sid]
     try:
-        mission_dict = parse_mission_text(session["mission_text"])
+        mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
         trigger_data = extract_triggers(mission_dict)
         audio_files = list_audio_files(session["miz_bytes"])
         return jsonify({**trigger_data, "audioFiles": audio_files})
@@ -975,7 +976,7 @@ def save_triggers():
 
     session = sessions[sid]
     try:
-        new_text = update_triggers_in_mission(session["mission_text"], trigger_data)
+        new_text = update_triggers_in_mission(session.get("mission_text", session["original_mission_text"]), trigger_data)
         with _lock:
             session["mission_text"] = new_text
         return jsonify({"ok": True})

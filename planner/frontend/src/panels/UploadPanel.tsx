@@ -70,7 +70,7 @@ export function UploadPanel() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '100vh',
+        minHeight: '100vh',
         background: '#080f1c',
         color: '#8fa8c0',
         fontFamily: 'system-ui, sans-serif',

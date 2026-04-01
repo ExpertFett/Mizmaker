@@ -381,7 +381,9 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
     """Replace the ["livery_id"] field for a specific unit.
     If the field doesn't exist, insert it near the unit block."""
     unit_pos = _find_unit_block_start(text, unit_id)
-    search_start = max(0, unit_pos - 3000)
+    # Unit blocks with lots of pylon/payload data can be very large;
+    # livery_id is near the top while unitId is near the bottom.
+    search_start = max(0, unit_pos - 8000)
     search_end = min(len(text), unit_pos + 3000)
     region = text[search_start:search_end]
 
@@ -396,7 +398,7 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
             best_dist = dist
             best = m
 
-    if best and best_dist <= 2000:
+    if best and best_dist <= 6000:
         # Replace existing livery_id value
         abs_start = search_start + best.start(1)
         abs_end = search_start + best.end(1)
@@ -412,13 +414,64 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
                 type_dist = dist
                 type_match = m
 
-        if type_match and type_dist <= 2000:
+        if type_match and type_dist <= 6000:
             insert_pos = search_start + type_match.end()
             indent = "\n                "  # match typical DCS Lua indentation
             text = text[:insert_pos] + f'{indent}["livery_id"] = "{new_livery}",' + text[insert_pos:]
         else:
             import logging
             logging.warning(f"Cannot insert livery_id for unit {unit_id} — no anchor found")
+
+    return text
+
+
+def _replace_heading(text: str, unit_id: int, heading_rad: float) -> str:
+    """Replace heading for a unit (radians)."""
+    unit_pos = _find_unit_block_start(text, unit_id)
+    search_end = min(len(text), unit_pos + 3000)
+    region = text[unit_pos:search_end]
+
+    pattern = r'(\["heading"\]\s*=\s*)([0-9eE.+\-]+)'
+    m = re.search(pattern, region)
+    if m:
+        abs_start = unit_pos + m.start(2)
+        abs_end = unit_pos + m.end(2)
+        text = text[:abs_start] + str(heading_rad) + text[abs_end:]
+    return text
+
+
+def _replace_late_activation(text: str, unit_id: int, enabled: bool) -> str:
+    """Set lateActivation on the group that contains a given unit.
+
+    lateActivation is a group-level field in DCS Lua.  We locate the unit,
+    then search backward to find the enclosing group block and set the flag.
+    """
+    unit_pos = _find_unit_block_start(text, unit_id)
+    lua_val = "true" if enabled else "false"
+
+    # Search backward from unit position for the group-level region
+    search_start = max(0, unit_pos - 15000)
+    region = text[search_start:unit_pos]
+
+    # Look for existing lateActivation in the group block above the unit
+    pattern = r'(\["lateActivation"\]\s*=\s*)(true|false)'
+    m = None
+    for m in re.finditer(pattern, region):
+        pass  # get the last match (closest to unit)
+
+    if m:
+        abs_start = search_start + m.start(2)
+        abs_end = search_start + m.end(2)
+        text = text[:abs_start] + lua_val + text[abs_end:]
+    else:
+        # No lateActivation field exists — insert one after groupId line
+        gid_pattern = r'\["groupId"\]\s*=\s*\d+\s*,'
+        gm = None
+        for gm in re.finditer(gid_pattern, region):
+            pass
+        if gm:
+            insert_pos = search_start + gm.end()
+            text = text[:insert_pos] + f'\n\t\t\t\t["lateActivation"] = {lua_val},' + text[insert_pos:]
 
     return text
 
@@ -751,6 +804,10 @@ def apply_unit_edits(text: str, edits: list) -> str:
                 text = _replace_livery(text, unit_id, value)
             elif field == "skill":
                 text = _replace_skill(text, unit_id, value)
+            elif field == "lateActivation":
+                text = _replace_late_activation(text, unit_id, bool(value))
+            elif field == "heading":
+                text = _replace_heading(text, unit_id, float(value))
             elif field == "radioFrequency":
                 text = _replace_radio_frequency(text, unit_id, int(value))
         except Exception as e:

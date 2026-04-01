@@ -62,7 +62,7 @@ interface DtcData {
   TCN?: unknown[];
 }
 
-type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools';
+type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools' | 'presets';
 
 const COMM_CHANNELS = [
   ...Array.from({ length: 20 }, (_, i) => `Channel_${i + 1}`),
@@ -406,6 +406,7 @@ export function DtcTab() {
               { key: 'nav', label: 'NAV' },
               { key: 'fuel', label: 'Fuel' },
               { key: 'tools', label: 'Tools' },
+              { key: 'presets', label: 'Presets' },
             ] as { key: SubTab; label: string }[]).map((t) => (
               <button
                 key={t.key}
@@ -427,46 +428,13 @@ export function DtcTab() {
             ))}
           </div>
 
-          {/* DTC Templates bar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
-            padding: '8px 12px', background: '#0a1218', borderRadius: 6,
-            border: '1px solid #12202e', flexWrap: 'wrap',
-          }}>
-            <span style={{ color: '#5a7a8a', fontSize: 12, fontWeight: 600, marginRight: 4 }}>TEMPLATES:</span>
-            {DTC_TEMPLATES.map((tpl) => (
-              <button
-                key={tpl.name}
-                title={tpl.description}
-                onClick={() => {
-                  setDtcData((prev) => {
-                    if (!prev) return prev;
-                    const next = { ...prev };
-                    if (tpl.data.CMDS) next.CMDS = { ...prev.CMDS, ...tpl.data.CMDS };
-                    if (tpl.data.COMM) next.COMM = { ...prev.COMM, ...tpl.data.COMM };
-                    return next;
-                  });
-                  setTemplateMsg(`Applied "${tpl.name}" template`);
-                  setTimeout(() => setTemplateMsg(''), 3000);
-                }}
-                style={{
-                  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 12,
-                  color: '#4a8fd4', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
-                  fontWeight: 500, transition: 'all 0.15s',
-                }}
-              >
-                {tpl.name}
-              </button>
-            ))}
-            {templateMsg && <span style={{ color: '#3fb950', fontSize: 12, marginLeft: 8 }}>✓ {templateMsg}</span>}
-          </div>
-
-          {subTab === 'comm' && <CommSubTab data={dtcData.COMM} onUpdate={updateComm} dtcData={dtcData} setDtcData={setDtcData} />}
+          {subTab === 'comm' && <CommSubTab data={dtcData.COMM} onUpdate={updateComm} />}
           {subTab === 'cmds' && <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />}
           {subTab === 'waypoints' && <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />}
           {subTab === 'nav' && <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} />}
           {subTab === 'fuel' && <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />}
           {subTab === 'tools' && <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />}
+          {subTab === 'presets' && <PresetsSubTab dtcData={dtcData} setDtcData={setDtcData} commData={dtcData.COMM} onUpdateComm={updateComm} templateMsg={templateMsg} setTemplateMsg={setTemplateMsg} />}
         </>
       )}
     </div>
@@ -477,122 +445,12 @@ export function DtcTab() {
 /* COMM sub-tab                                                        */
 /* ------------------------------------------------------------------ */
 
-function CommSubTab({ data, onUpdate, dtcData, setDtcData }: {
+function CommSubTab({ data, onUpdate }: {
   data: { COMM1: CommRadio; COMM2: CommRadio };
   onUpdate: (radio: 'COMM1' | 'COMM2', channelKey: string, field: keyof CommChannel, value: string) => void;
-  dtcData: DtcData;
-  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
 }) {
-  const [presetMsg, setPresetMsg] = useState('');
-  const [quickFillRadio, setQuickFillRadio] = useState<'COMM1' | 'COMM2'>('COMM1');
-
-  const applyPresetPack = (pack: FreqPresetPack, radio: 'COMM1' | 'COMM2') => {
-    setDtcData((prev) => {
-      if (!prev) return prev;
-      const radioData = { ...prev.COMM[radio] };
-      for (const ch of pack.channels) {
-        const chKey = `Channel_${ch.ch}`;
-        radioData[chKey] = { frequency: ch.freq, modulation: ch.mod, name: ch.name };
-      }
-      return { ...prev, COMM: { ...prev.COMM, [radio]: radioData } };
-    });
-    setPresetMsg(`Loaded "${pack.name}" → ${radio}`);
-    setTimeout(() => setPresetMsg(''), 3000);
-  };
-
-  const quickFill = (freq: typeof COMMON_FREQS[0], radio: 'COMM1' | 'COMM2') => {
-    // Find first empty channel
-    const radioData = data[radio] ?? {};
-    let targetCh: string | null = null;
-    for (let i = 1; i <= 20; i++) {
-      const chKey = `Channel_${i}`;
-      const ch = radioData[chKey];
-      if (!ch || !ch.frequency || ch.frequency === '0' || ch.frequency === '') {
-        targetCh = chKey;
-        break;
-      }
-    }
-    if (!targetCh) {
-      setPresetMsg('No empty channels available');
-      setTimeout(() => setPresetMsg(''), 2000);
-      return;
-    }
-    onUpdate(radio, targetCh, 'frequency', freq.freq);
-    onUpdate(radio, targetCh, 'modulation', freq.mod);
-    onUpdate(radio, targetCh, 'name', freq.name);
-    setPresetMsg(`${freq.name} → ${radio} ${channelLabel(targetCh)}`);
-    setTimeout(() => setPresetMsg(''), 2000);
-  };
-
   return (
     <div>
-      {/* Preset Packs */}
-      <div style={{
-        marginBottom: 14, padding: '10px 12px', background: '#0a1218',
-        borderRadius: 6, border: '1px solid #12202e',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <span style={{ color: '#5a7a8a', fontSize: 12, fontWeight: 600 }}>PRESET PACKS:</span>
-          {FREQ_PRESET_PACKS.map((pack) => (
-            <div key={pack.name} style={{ display: 'inline-flex', gap: 0 }}>
-              <button
-                title={`${pack.description} → COMM1`}
-                onClick={() => applyPresetPack(pack, 'COMM1')}
-                style={{
-                  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: '12px 0 0 12px',
-                  color: '#4a8fd4', cursor: 'pointer', fontSize: 11, padding: '3px 8px 3px 10px',
-                  fontWeight: 500, borderRight: 'none',
-                }}
-              >
-                {pack.name}
-              </button>
-              <select
-                onChange={(e) => { if (e.target.value) applyPresetPack(pack, e.target.value as 'COMM1' | 'COMM2'); e.target.value = ''; }}
-                style={{
-                  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: '0 12px 12px 0',
-                  color: '#5a7a8a', cursor: 'pointer', fontSize: 10, padding: '2px 4px',
-                  width: 24, appearance: 'none' as const, textAlign: 'center',
-                }}
-                title="Select radio"
-              >
-                <option value="">▾</option>
-                <option value="COMM1">→ COMM1</option>
-                <option value="COMM2">→ COMM2</option>
-              </select>
-            </div>
-          ))}
-        </div>
-
-        {/* Quick Fill Common Freqs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ color: '#5a7a8a', fontSize: 12, fontWeight: 600 }}>QUICK FILL:</span>
-          <select
-            value={quickFillRadio}
-            onChange={(e) => setQuickFillRadio(e.target.value as 'COMM1' | 'COMM2')}
-            style={{ ...selectStyle, fontSize: 11, padding: '2px 6px', borderRadius: 10 }}
-          >
-            <option value="COMM1">COMM1</option>
-            <option value="COMM2">COMM2</option>
-          </select>
-          {COMMON_FREQS.map((f) => (
-            <button
-              key={f.name}
-              title={`${f.freq} ${f.mod} → next empty ch on ${quickFillRadio}`}
-              onClick={() => quickFill(f, quickFillRadio)}
-              style={{
-                background: 'transparent', border: '1px solid #1a2a3a', borderRadius: 10,
-                color: '#8fa8c0', cursor: 'pointer', fontSize: 10, padding: '2px 8px',
-                fontFamily: 'monospace',
-              }}
-            >
-              {f.name} <span style={{ color: '#5a7a8a' }}>{f.freq}</span>
-            </button>
-          ))}
-        </div>
-
-        {presetMsg && <div style={{ color: '#3fb950', fontSize: 11, marginTop: 6 }}>✓ {presetMsg}</div>}
-      </div>
-
       {/* Radio tables */}
       <div style={{ display: 'flex', gap: 24 }}>
         {(['COMM1', 'COMM2'] as const).map((radio) => (
@@ -1506,4 +1364,169 @@ const fieldLabelStyle: React.CSSProperties = {
   color: '#8fa8c0',
   fontSize: 13,
 };
+
+/* ------------------------------------------------------------------ */
+/* Presets sub-tab                                                      */
+/* ------------------------------------------------------------------ */
+
+function PresetsSubTab({ dtcData, setDtcData, commData, onUpdateComm, templateMsg, setTemplateMsg }: {
+  dtcData: DtcData;
+  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
+  commData: { COMM1: CommRadio; COMM2: CommRadio };
+  onUpdateComm: (radio: 'COMM1' | 'COMM2', channelKey: string, field: keyof CommChannel, value: string) => void;
+  templateMsg: string;
+  setTemplateMsg: (msg: string) => void;
+}) {
+  const [quickFillRadio, setQuickFillRadio] = useState<'COMM1' | 'COMM2'>('COMM1');
+
+  const applyTemplate = (tpl: DtcTemplate) => {
+    setDtcData((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev };
+      if (tpl.data.CMDS) next.CMDS = { ...prev.CMDS, ...tpl.data.CMDS };
+      if (tpl.data.COMM) next.COMM = { ...prev.COMM, ...tpl.data.COMM };
+      return next;
+    });
+    setTemplateMsg(`Applied "${tpl.name}" template`);
+    setTimeout(() => setTemplateMsg(''), 3000);
+  };
+
+  const applyPresetPack = (pack: FreqPresetPack, radio: 'COMM1' | 'COMM2') => {
+    setDtcData((prev) => {
+      if (!prev) return prev;
+      const radioData = { ...prev.COMM[radio] };
+      for (const ch of pack.channels) {
+        const chKey = `Channel_${ch.ch}`;
+        radioData[chKey] = { frequency: ch.freq, modulation: ch.mod, name: ch.name };
+      }
+      return { ...prev, COMM: { ...prev.COMM, [radio]: radioData } };
+    });
+    setTemplateMsg(`Loaded "${pack.name}" → ${radio}`);
+    setTimeout(() => setTemplateMsg(''), 3000);
+  };
+
+  const quickFill = (freq: typeof COMMON_FREQS[0], radio: 'COMM1' | 'COMM2') => {
+    const radioData = commData[radio] ?? {};
+    let targetCh: string | null = null;
+    for (let i = 1; i <= 20; i++) {
+      const chKey = `Channel_${i}`;
+      const ch = radioData[chKey];
+      if (!ch || !ch.frequency || ch.frequency === '0' || ch.frequency === '') {
+        targetCh = chKey;
+        break;
+      }
+    }
+    if (!targetCh) {
+      setTemplateMsg('No empty channels available');
+      setTimeout(() => setTemplateMsg(''), 2000);
+      return;
+    }
+    onUpdateComm(radio, targetCh, 'frequency', freq.freq);
+    onUpdateComm(radio, targetCh, 'modulation', freq.mod);
+    onUpdateComm(radio, targetCh, 'name', freq.name);
+    setTemplateMsg(`${freq.name} → ${radio} ${channelLabel(targetCh)}`);
+    setTimeout(() => setTemplateMsg(''), 2000);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {templateMsg && <div style={{ color: '#3fb950', fontSize: 12, padding: '6px 12px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e' }}>✓ {templateMsg}</div>}
+
+      {/* DTC Templates */}
+      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e' }}>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          DTC Templates
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {DTC_TEMPLATES.map((tpl) => (
+            <button
+              key={tpl.name}
+              onClick={() => applyTemplate(tpl)}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 6,
+                color: '#ccdae8', cursor: 'pointer', fontSize: 13, padding: '8px 12px',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{tpl.name}</span>
+              <span style={{ color: '#5a7a8a', fontSize: 11 }}>{tpl.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* COMM Frequency Preset Packs */}
+      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e' }}>
+        <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          COMM Frequency Packs
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {FREQ_PRESET_PACKS.map((pack) => (
+            <div key={pack.name} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 6,
+              padding: '8px 12px',
+            }}>
+              <span style={{ flex: 1, color: '#ccdae8', fontSize: 13, fontWeight: 600 }}>{pack.name}</span>
+              <span style={{ color: '#5a7a8a', fontSize: 11, flex: 2 }}>{pack.description}</span>
+              <button
+                onClick={() => applyPresetPack(pack, 'COMM1')}
+                style={{
+                  background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+                  color: '#6ab4f0', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+                }}
+              >
+                → COMM1
+              </button>
+              <button
+                onClick={() => applyPresetPack(pack, 'COMM2')}
+                style={{
+                  background: '#1a2a3a', border: '1px solid #2a3a4a', borderRadius: 4,
+                  color: '#8aaabe', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+                }}
+              >
+                → COMM2
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick Fill Common Frequencies */}
+      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <span style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Quick Fill
+          </span>
+          <select
+            value={quickFillRadio}
+            onChange={(e) => setQuickFillRadio(e.target.value as 'COMM1' | 'COMM2')}
+            style={{ ...selectStyle, fontSize: 11, padding: '2px 6px', borderRadius: 10 }}
+          >
+            <option value="COMM1">COMM1</option>
+            <option value="COMM2">COMM2</option>
+          </select>
+          <span style={{ color: '#3a5a6a', fontSize: 11 }}>Fills next empty channel</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {COMMON_FREQS.map((f) => (
+            <button
+              key={f.name}
+              title={`${f.freq} ${f.mod} → next empty ch on ${quickFillRadio}`}
+              onClick={() => quickFill(f, quickFillRadio)}
+              style={{
+                background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 6,
+                color: '#8fa8c0', cursor: 'pointer', fontSize: 12, padding: '6px 12px',
+                fontFamily: 'monospace',
+              }}
+            >
+              {f.name} <span style={{ color: '#5a7a8a' }}>{f.freq}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 

@@ -17,6 +17,7 @@ import { RenamerTab } from './tabs/RenamerTab';
 import { BatchEditTab } from './tabs/BatchEditTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
+import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
   { id: 'triggers', label: 'Triggers', icon: '🔔' },
+  { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -148,6 +150,7 @@ export function MissionEditor() {
             {activeTab === 'kneeboard' && <KneeboardTab />}
             {activeTab === 'dtc' && <DtcTab />}
             {activeTab === 'triggers' && <TriggerTab />}
+            {activeTab === 'upload' && <UploadPanel />}
           </div>
         )}
       </div>

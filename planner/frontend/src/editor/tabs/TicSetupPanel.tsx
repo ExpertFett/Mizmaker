@@ -476,6 +476,11 @@ export function TicSetupPanel() {
         field: 'groupRename',
         value: { groupId: a.groupId, newGroupName: a.newGroupName, unitNames: unitNamesObj },
       } as any);
+      // Set late activation + random heading for each unit
+      for (const u of a.units) {
+        addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
+        addEdit({ unitId: u.unitId, field: 'heading', value: Math.random() * Math.PI * 2 } as any);
+      }
     }
     setApplied(true);
   }, [assignments, addEdit]);
