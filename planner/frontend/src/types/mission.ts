@@ -96,6 +96,7 @@ export interface MissionWeather {
   dust_enabled: boolean;
   dust_density: number;
   turbulence: number;
+  halo_preset: string;
 }
 
 export interface MissionOverviewData {

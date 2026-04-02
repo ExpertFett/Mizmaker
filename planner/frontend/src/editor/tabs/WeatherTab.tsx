@@ -43,6 +43,19 @@ const DCS_CLOUD_PRESETS: { id: string; label: string; description: string }[] = 
 ];
 
 /* ------------------------------------------------------------------ */
+/* DCS Ice Halo Presets                                                */
+/* ------------------------------------------------------------------ */
+
+const DCS_HALO_PRESETS: { id: string; label: string; description: string }[] = [
+  { id: 'off', label: 'Off', description: 'No ice halo' },
+  { id: 'auto', label: 'Auto', description: 'Automatic based on weather' },
+  { id: '1', label: 'Halo 1', description: '22-degree halo' },
+  { id: '2', label: 'Halo 2', description: 'Parhelia (sun dogs)' },
+  { id: '3', label: 'Halo 3', description: 'Circumscribed halo' },
+  { id: '4', label: 'Halo 4', description: 'Complex halo display' },
+];
+
+/* ------------------------------------------------------------------ */
 /* Quick Weather Presets                                               */
 /* ------------------------------------------------------------------ */
 
@@ -57,7 +70,7 @@ const QUICK_PRESETS: QuickPreset[] = [
     label: 'Clear Sky', icon: '\u2600\uFE0F',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 80000, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
     },
   },
@@ -65,7 +78,7 @@ const QUICK_PRESETS: QuickPreset[] = [
     label: 'Partly Cloudy', icon: '\u26C5',
     values: {
       clouds_density: 3, clouds_thickness: 400, clouds_base_m: 1500, clouds_precipitation: 0,
-      clouds_preset: 'Preset5', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset5', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 50000, ground_turbulence: 15, dust_enabled: false, dust_density: 0,
     },
   },
@@ -73,7 +86,7 @@ const QUICK_PRESETS: QuickPreset[] = [
     label: 'Overcast', icon: '\u2601\uFE0F',
     values: {
       clouds_density: 7, clouds_thickness: 800, clouds_base_m: 600, clouds_precipitation: 0,
-      clouds_preset: 'Preset11', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset11', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 30000, ground_turbulence: 25, dust_enabled: false, dust_density: 0,
     },
   },
@@ -81,7 +94,7 @@ const QUICK_PRESETS: QuickPreset[] = [
     label: 'Light Rain', icon: '\uD83C\uDF27\uFE0F',
     values: {
       clouds_density: 8, clouds_thickness: 1000, clouds_base_m: 500, clouds_precipitation: 1,
-      clouds_preset: 'Preset16', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset16', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 15000, ground_turbulence: 35, dust_enabled: false, dust_density: 0,
     },
   },
@@ -89,23 +102,23 @@ const QUICK_PRESETS: QuickPreset[] = [
     label: 'Heavy Storm', icon: '\u26C8\uFE0F',
     values: {
       clouds_density: 10, clouds_thickness: 1500, clouds_base_m: 300, clouds_precipitation: 2,
-      clouds_preset: 'Preset22', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset22', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 8000, ground_turbulence: 80, dust_enabled: false, dust_density: 0,
     },
   },
   {
     label: 'Foggy', icon: '\uD83C\uDF2B\uFE0F',
     values: {
-      clouds_density: 1, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: true, fog_visibility: 500, fog_thickness: 100,
-      visibility_m: 4000, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
+      clouds_density: 9, clouds_thickness: 200, clouds_base_m: 0, clouds_precipitation: 0,
+      clouds_preset: 'Preset10', fog_mode: 1, fog_visibility: 500, fog_thickness: 250,
+      visibility_m: 1500, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
     },
   },
   {
     label: 'Dust Storm', icon: '\uD83C\uDF2A\uFE0F',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 2000, ground_turbulence: 60, dust_enabled: true, dust_density: 3000,
     },
   },
@@ -139,7 +152,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling & visibility OK. Perfect flying weather, unlimited visibility.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 3000, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 80000, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
       temperature_c: 22, qnh_mmhg: 760,
     },
@@ -149,7 +162,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Clear with afternoon thermal turbulence. Bumpy below 5,000 ft.',
     values: {
       clouds_density: 1, clouds_thickness: 300, clouds_base_m: 2500, clouds_precipitation: 0,
-      clouds_preset: 'Preset1', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset1', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 70000, ground_turbulence: 40, dust_enabled: false, dust_density: 0,
       temperature_c: 32, qnh_mmhg: 758,
     },
@@ -159,7 +172,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Scattered clouds at 10,000 ft. Good VFR, light winds.',
     values: {
       clouds_density: 3, clouds_thickness: 400, clouds_base_m: 3000, clouds_precipitation: 0,
-      clouds_preset: 'Preset6', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset6', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 60000, ground_turbulence: 10, dust_enabled: false, dust_density: 0,
       temperature_c: 20, qnh_mmhg: 760,
     },
@@ -169,7 +182,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Few clouds at 7,000 ft, light haze. Standard training day.',
     values: {
       clouds_density: 2, clouds_thickness: 300, clouds_base_m: 2100, clouds_precipitation: 0,
-      clouds_preset: 'Preset1', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset1', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 40000, ground_turbulence: 15, dust_enabled: false, dust_density: 0,
       temperature_c: 24, qnh_mmhg: 759,
     },
@@ -179,7 +192,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Clear sky but reduced vis from haze. 10-15 km visibility.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 3000, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 12000, ground_turbulence: 5, dust_enabled: false, dust_density: 0,
       temperature_c: 28, qnh_mmhg: 757,
     },
@@ -191,7 +204,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling 3,000 ft, vis 5 km. Borderline VFR/IFR.',
     values: {
       clouds_density: 6, clouds_thickness: 600, clouds_base_m: 900, clouds_precipitation: 0,
-      clouds_preset: 'Preset8', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset8', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 5000, ground_turbulence: 20, dust_enabled: false, dust_density: 0,
       temperature_c: 14, qnh_mmhg: 752,
     },
@@ -201,7 +214,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling 500 ft, vis 1.5 km. Instrument approach required.',
     values: {
       clouds_density: 9, clouds_thickness: 1200, clouds_base_m: 150, clouds_precipitation: 0,
-      clouds_preset: 'Preset10', fog_enabled: true, fog_visibility: 1500, fog_thickness: 200,
+      clouds_preset: 'Preset10', fog_mode: 1, fog_visibility: 1500, fog_thickness: 200,
       visibility_m: 3000, ground_turbulence: 15, dust_enabled: false, dust_density: 0,
       temperature_c: 8, qnh_mmhg: 748,
     },
@@ -210,9 +223,9 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     label: 'Morning Fog', icon: '\uD83C\uDF2B\uFE0F', category: 'ifr',
     description: 'Dense valley fog, 200m vis. Burns off by midday.',
     values: {
-      clouds_density: 2, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: true, fog_visibility: 200, fog_thickness: 150,
-      visibility_m: 1500, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
+      clouds_density: 8, clouds_thickness: 200, clouds_base_m: 0, clouds_precipitation: 0,
+      clouds_preset: 'Preset10', fog_mode: 1, fog_visibility: 200, fog_thickness: 200,
+      visibility_m: 800, ground_turbulence: 0, dust_enabled: false, dust_density: 0,
       temperature_c: 6, qnh_mmhg: 758,
     },
   },
@@ -221,7 +234,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Coastal stratus 800 ft, clear above. Classic SoCal/Med morning.',
     values: {
       clouds_density: 8, clouds_thickness: 400, clouds_base_m: 250, clouds_precipitation: 0,
-      clouds_preset: 'Preset10', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset10', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 8000, ground_turbulence: 5, dust_enabled: false, dust_density: 0,
       temperature_c: 16, qnh_mmhg: 760,
     },
@@ -231,7 +244,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Solid overcast at 2,000 ft. Dull grey sky, decent ground vis.',
     values: {
       clouds_density: 8, clouds_thickness: 900, clouds_base_m: 600, clouds_precipitation: 0,
-      clouds_preset: 'Preset11', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset11', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 15000, ground_turbulence: 20, dust_enabled: false, dust_density: 0,
       temperature_c: 12, qnh_mmhg: 750,
     },
@@ -243,7 +256,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Light drizzle from low overcast. Wet but flyable.',
     values: {
       clouds_density: 7, clouds_thickness: 800, clouds_base_m: 400, clouds_precipitation: 1,
-      clouds_preset: 'Preset15', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset15', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 10000, ground_turbulence: 15, dust_enabled: false, dust_density: 0,
       temperature_c: 10, qnh_mmhg: 748,
     },
@@ -253,7 +266,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Moderate continuous rain. Reduced vis, slick runways.',
     values: {
       clouds_density: 9, clouds_thickness: 1200, clouds_base_m: 300, clouds_precipitation: 1,
-      clouds_preset: 'Preset17', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset17', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 6000, ground_turbulence: 30, dust_enabled: false, dust_density: 0,
       temperature_c: 12, qnh_mmhg: 745,
     },
@@ -263,7 +276,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Active CB with heavy rain. Severe turbulence, low ceilings.',
     values: {
       clouds_density: 10, clouds_thickness: 1500, clouds_base_m: 200, clouds_precipitation: 2,
-      clouds_preset: 'Preset21', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset21', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 4000, ground_turbulence: 75, dust_enabled: false, dust_density: 0,
       temperature_c: 18, qnh_mmhg: 742,
     },
@@ -273,9 +286,9 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Intermittent snow from broken deck. 3-5 km vis in showers.',
     values: {
       clouds_density: 7, clouds_thickness: 800, clouds_base_m: 600, clouds_precipitation: 1,
-      clouds_preset: 'Preset25', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset25', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 4000, ground_turbulence: 25, dust_enabled: false, dust_density: 0,
-      temperature_c: -4, qnh_mmhg: 748,
+      temperature_c: -4, qnh_mmhg: 748, month: 1,
     },
   },
   {
@@ -283,9 +296,9 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Continuous heavy snow. Near whiteout, 1-2 km vis.',
     values: {
       clouds_density: 10, clouds_thickness: 1500, clouds_base_m: 200, clouds_precipitation: 2,
-      clouds_preset: 'Preset27', fog_enabled: true, fog_visibility: 800, fog_thickness: 100,
+      clouds_preset: 'Preset27', fog_mode: 1, fog_visibility: 800, fog_thickness: 100,
       visibility_m: 1500, ground_turbulence: 30, dust_enabled: false, dust_density: 0,
-      temperature_c: -8, qnh_mmhg: 740,
+      temperature_c: -8, qnh_mmhg: 740, month: 1,
     },
   },
   {
@@ -293,7 +306,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Rain with sub-zero temps. Severe icing hazard.',
     values: {
       clouds_density: 9, clouds_thickness: 1000, clouds_base_m: 300, clouds_precipitation: 1,
-      clouds_preset: 'Preset16', fog_enabled: true, fog_visibility: 1000, fog_thickness: 100,
+      clouds_preset: 'Preset16', fog_mode: 1, fog_visibility: 1000, fog_thickness: 100,
       visibility_m: 3000, ground_turbulence: 20, dust_enabled: false, dust_density: 0,
       temperature_c: -2, qnh_mmhg: 744,
     },
@@ -305,7 +318,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Strong gusty winds, mountain wave. Clear but violent ride.',
     values: {
       clouds_density: 2, clouds_thickness: 300, clouds_base_m: 2000, clouds_precipitation: 0,
-      clouds_preset: 'Preset3', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset3', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 50000, ground_turbulence: 90, dust_enabled: false, dust_density: 0,
       temperature_c: 8, qnh_mmhg: 745,
       wind: { atGround: { speed: 15, dir: 270 }, at2000: { speed: 25, dir: 280 }, at8000: { speed: 40, dir: 290 } },
@@ -316,7 +329,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Severe dust, vis under 2 km. Desert ops nightmare.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 1500, ground_turbulence: 65, dust_enabled: true, dust_density: 3500,
       temperature_c: 40, qnh_mmhg: 752,
       wind: { atGround: { speed: 12, dir: 180 }, at2000: { speed: 18, dir: 190 }, at8000: { speed: 25, dir: 200 } },
@@ -327,7 +340,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Dense sand, near-zero vis. Brownout conditions on approach.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 300, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 500, ground_turbulence: 80, dust_enabled: true, dust_density: 5000,
       temperature_c: 44, qnh_mmhg: 750,
       wind: { atGround: { speed: 18, dir: 200 }, at2000: { speed: 22, dir: 210 }, at8000: { speed: 30, dir: 220 } },
@@ -338,9 +351,9 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Whiteout blizzard. Zero vis, high winds, no-fly conditions.',
     values: {
       clouds_density: 10, clouds_thickness: 2000, clouds_base_m: 100, clouds_precipitation: 2,
-      clouds_preset: 'Preset27', fog_enabled: true, fog_visibility: 200, fog_thickness: 200,
+      clouds_preset: 'Preset27', fog_mode: 1, fog_visibility: 200, fog_thickness: 200,
       visibility_m: 500, ground_turbulence: 85, dust_enabled: false, dust_density: 0,
-      temperature_c: -15, qnh_mmhg: 735,
+      temperature_c: -15, qnh_mmhg: 735, month: 1,
       wind: { atGround: { speed: 15, dir: 330 }, at2000: { speed: 22, dir: 340 }, at8000: { speed: 35, dir: 350 } },
     },
   },
@@ -351,7 +364,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling >3,000 ft, vis >5 NM. Day VFR carrier pattern.',
     values: {
       clouds_density: 2, clouds_thickness: 300, clouds_base_m: 1500, clouds_precipitation: 0,
-      clouds_preset: 'Preset1', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset1', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 30000, ground_turbulence: 10, dust_enabled: false, dust_density: 0,
       temperature_c: 22, qnh_mmhg: 760,
       wind: { atGround: { speed: 8, dir: 0 }, at2000: { speed: 10, dir: 350 }, at8000: { speed: 15, dir: 340 } },
@@ -362,7 +375,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling 1,000-3,000 ft, vis >5 NM. Instrument departure, visual approach.',
     values: {
       clouds_density: 6, clouds_thickness: 600, clouds_base_m: 600, clouds_precipitation: 0,
-      clouds_preset: 'Preset8', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset8', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 15000, ground_turbulence: 20, dust_enabled: false, dust_density: 0,
       temperature_c: 18, qnh_mmhg: 755,
       wind: { atGround: { speed: 10, dir: 0 }, at2000: { speed: 14, dir: 350 }, at8000: { speed: 20, dir: 340 } },
@@ -373,7 +386,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Ceiling <1,000 ft or vis <5 NM. Full instrument approach, ball call at 3/4 mi.',
     values: {
       clouds_density: 9, clouds_thickness: 1000, clouds_base_m: 200, clouds_precipitation: 0,
-      clouds_preset: 'Preset10', fog_enabled: true, fog_visibility: 2000, fog_thickness: 100,
+      clouds_preset: 'Preset10', fog_mode: 1, fog_visibility: 2000, fog_thickness: 100,
       visibility_m: 5000, ground_turbulence: 25, dust_enabled: false, dust_density: 0,
       temperature_c: 14, qnh_mmhg: 748,
       wind: { atGround: { speed: 12, dir: 0 }, at2000: { speed: 16, dir: 350 }, at8000: { speed: 22, dir: 340 } },
@@ -386,7 +399,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Hot, hazy, light dust. Typical Gulf summer ops, 45C+.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 3000, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 8000, ground_turbulence: 35, dust_enabled: true, dust_density: 1500,
       temperature_c: 46, qnh_mmhg: 752,
     },
@@ -396,9 +409,9 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Cold overcast, scattered snow. Short daylight, frozen runways.',
     values: {
       clouds_density: 7, clouds_thickness: 800, clouds_base_m: 500, clouds_precipitation: 1,
-      clouds_preset: 'Preset25', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset25', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 8000, ground_turbulence: 20, dust_enabled: false, dust_density: 0,
-      temperature_c: -6, qnh_mmhg: 745,
+      temperature_c: -6, qnh_mmhg: 745, month: 1,
       wind: { atGround: { speed: 8, dir: 30 }, at2000: { speed: 14, dir: 40 }, at8000: { speed: 22, dir: 50 } },
     },
   },
@@ -407,7 +420,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Hot, clear, thermal bumps. Classic Syria/Cyprus ops.',
     values: {
       clouds_density: 1, clouds_thickness: 200, clouds_base_m: 2500, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 50000, ground_turbulence: 30, dust_enabled: false, dust_density: 0,
       temperature_c: 36, qnh_mmhg: 758,
     },
@@ -417,7 +430,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Cool, overcast, drizzle. English Channel / Normandy conditions.',
     values: {
       clouds_density: 8, clouds_thickness: 900, clouds_base_m: 400, clouds_precipitation: 1,
-      clouds_preset: 'Preset15', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: 'Preset15', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 8000, ground_turbulence: 25, dust_enabled: false, dust_density: 0,
       temperature_c: 10, qnh_mmhg: 748,
       wind: { atGround: { speed: 8, dir: 240 }, at2000: { speed: 14, dir: 250 }, at8000: { speed: 22, dir: 260 } },
@@ -428,7 +441,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Heavy tropical rain, low ceilings, high humidity. SE Asia conditions.',
     values: {
       clouds_density: 10, clouds_thickness: 1500, clouds_base_m: 200, clouds_precipitation: 2,
-      clouds_preset: 'Preset22', fog_enabled: true, fog_visibility: 1500, fog_thickness: 100,
+      clouds_preset: 'Preset22', fog_mode: 1, fog_visibility: 1500, fog_thickness: 100,
       visibility_m: 3000, ground_turbulence: 50, dust_enabled: false, dust_density: 0,
       temperature_c: 30, qnh_mmhg: 746,
       wind: { atGround: { speed: 10, dir: 180 }, at2000: { speed: 16, dir: 190 }, at8000: { speed: 24, dir: 200 } },
@@ -439,7 +452,7 @@ const ADVANCED_PRESETS: AdvancedPreset[] = [
     description: 'Crystal clear polar air, extreme cold. Great vis but sub-zero.',
     values: {
       clouds_density: 0, clouds_thickness: 200, clouds_base_m: 3000, clouds_precipitation: 0,
-      clouds_preset: '', fog_enabled: false, fog_visibility: 0, fog_thickness: 0,
+      clouds_preset: '', fog_mode: 0, fog_visibility: 0, fog_thickness: 0,
       visibility_m: 80000, ground_turbulence: 5, dust_enabled: false, dust_density: 0,
       temperature_c: -20, qnh_mmhg: 770,
     },
@@ -463,13 +476,14 @@ interface WeatherState {
   clouds_thickness: number;
   clouds_precipitation: number;
   clouds_preset: string;
-  fog_enabled: boolean;
+  fog_mode: number;  // 0=Off, 1=Manual, 2=Auto
   fog_visibility: number;
   fog_thickness: number;
   dust_enabled: boolean;
   dust_density: number;
   visibility_m: number;
   ground_turbulence: number;
+  halo_preset: string;
   day: number;
   month: number;
   year: number;
@@ -491,13 +505,14 @@ function weatherFromOverview(weather: MissionWeather, date: string, startTime: n
     clouds_thickness: weather.clouds_thickness ?? 200,
     clouds_precipitation: weather.clouds_precipitation ?? 0,
     clouds_preset: weather.clouds_preset ?? '',
-    fog_enabled: weather.fog_enabled ?? false,
+    fog_mode: weather.fog_enabled ? 1 : 0,
     fog_visibility: weather.fog_visibility ?? 0,
     fog_thickness: weather.fog_thickness ?? 0,
     dust_enabled: weather.dust_enabled ?? false,
     dust_density: weather.dust_density ?? 0,
     visibility_m: weather.visibility_m,
     ground_turbulence: weather.turbulence ?? 0,
+    halo_preset: weather.halo_preset ?? 'auto',
     day: d || 1,
     month: m || 6,
     year: y || 2024,
@@ -517,7 +532,8 @@ function toBackendFormat(w: WeatherState): Record<string, unknown> {
       preset: w.clouds_preset,
     },
     fog: {
-      enabled: w.fog_enabled,
+      enabled: w.fog_mode > 0,
+      mode: w.fog_mode,
       visibility: w.fog_visibility,
       thickness: w.fog_thickness,
     },
@@ -529,6 +545,7 @@ function toBackendFormat(w: WeatherState): Record<string, unknown> {
     temperature: w.temperature_c,
     qnh: w.qnh_mmhg,
     groundTurbulence: w.ground_turbulence,
+    haloPreset: w.halo_preset,
     date: { day: w.day, month: w.month, year: w.year },
     startTime: w.start_time,
   };
@@ -590,7 +607,7 @@ export function WeatherTab() {
               clouds_precipitation: next.clouds_precipitation,
               clouds_preset: next.clouds_preset,
               visibility_m: next.visibility_m,
-              fog_enabled: next.fog_enabled,
+              fog_mode: next.fog_mode ?? prev.fog_mode,
               fog_visibility: next.fog_visibility,
               fog_thickness: next.fog_thickness,
               dust_enabled: next.dust_enabled,
@@ -805,12 +822,15 @@ function SimpleMode({
             <input type="number" value={weather.visibility_m} min={0}
               onChange={(e) => update({ visibility_m: Number(e.target.value) })} style={numInputStyle} />
           </label>
-          <label style={{ ...fieldLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 }}>
-            <input type="checkbox" checked={weather.fog_enabled}
-              onChange={(e) => update({ fog_enabled: e.target.checked })} style={{ accentColor: '#4a8fd4' }} />
-            Fog
+          <label style={fieldLabelStyle}>
+            Fog Mode
+            <select value={weather.fog_mode} onChange={(e) => update({ fog_mode: Number(e.target.value) })} style={selectStyle}>
+              <option value={0}>Off</option>
+              <option value={1}>Manual</option>
+              <option value={2}>Auto</option>
+            </select>
           </label>
-          {weather.fog_enabled && (
+          {weather.fog_mode > 0 && (
             <label style={fieldLabelStyle}>
               Fog Vis (m)
               <input type="number" value={weather.fog_visibility} min={0}
@@ -996,15 +1016,30 @@ function AdvancedMode({
         </div>
       </Section>
 
+      {/* Ice Halo */}
+      <Section title="Ice Halo" changed={hasChanges}>
+        <div>
+          <label style={{ ...fieldLabelStyle, marginBottom: 4 }}>Halo Preset</label>
+          <select value={weather.halo_preset} onChange={(e) => update({ halo_preset: e.target.value })} style={selectStyle}>
+            {DCS_HALO_PRESETS.map((hp) => (
+              <option key={hp.id} value={hp.id}>{hp.label} — {hp.description}</option>
+            ))}
+          </select>
+        </div>
+      </Section>
+
       {/* Fog */}
       <Section title="Fog" changed={hasChanges}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <label style={{ ...fieldLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <input type="checkbox" checked={weather.fog_enabled}
-              onChange={(e) => update({ fog_enabled: e.target.checked })} />
-            Enable Fog
+          <label style={{ ...fieldLabelStyle, marginBottom: 4 }}>
+            Mode
+            <select value={weather.fog_mode} onChange={(e) => update({ fog_mode: Number(e.target.value) })} style={selectStyle}>
+              <option value={0}>Off</option>
+              <option value={1}>Manual</option>
+              <option value={2}>Auto</option>
+            </select>
           </label>
-          {weather.fog_enabled && (
+          {weather.fog_mode > 0 && (
             <>
               <label style={fieldLabelStyle}>
                 Visibility (m)
@@ -1187,7 +1222,7 @@ function weatherSummaryText(w: WeatherState): string {
   parts.push(`Q${hpa}`);
 
   // Fog
-  if (w.fog_enabled) parts.push('FG');
+  if (w.fog_mode > 0) parts.push('FG');
   // Dust
   if (w.dust_enabled) parts.push('DU');
 
@@ -1196,7 +1231,7 @@ function weatherSummaryText(w: WeatherState): string {
 
 function flightConditionLabel(w: WeatherState): { label: string; color: string } {
   const ceilFt = w.clouds_density >= 5 ? w.clouds_base_m * 3.281 : 99999;
-  const visM = w.fog_enabled ? Math.min(w.visibility_m, w.fog_visibility) : w.visibility_m;
+  const visM = w.fog_mode > 0 ? Math.min(w.visibility_m, w.fog_visibility) : w.visibility_m;
   const visSM = visM / 1609.34;
 
   if (ceilFt < 500 || visSM < 1) return { label: 'LIFR', color: '#d95050' };
@@ -1237,7 +1272,7 @@ function WeatherSummary({ weather }: { weather: WeatherState }) {
         {ceilFt !== null && <StatChip label="Ceiling" value={`${ceilFt} ft`} />}
         <StatChip label="Temp" value={`${Math.round(weather.temperature_c)}C`} />
         <StatChip label="QNH" value={`${Math.round(weather.qnh_mmhg * 1.33322)} hPa`} />
-        {weather.fog_enabled && <StatChip label="Fog" value={`${weather.fog_visibility}m`} warn />}
+        {weather.fog_mode > 0 && <StatChip label="Fog" value={`${weather.fog_visibility}m`} warn />}
         {weather.dust_enabled && <StatChip label="Dust" value="Active" warn />}
       </div>
 
@@ -1528,7 +1563,7 @@ function AtisReadback({ weather }: { weather: WeatherState }) {
   const hpa = Math.round(weather.qnh_mmhg * 1.33322);
   const inhg = (weather.qnh_mmhg * 0.03937).toFixed(2);
   const temp = Math.round(weather.temperature_c);
-  const dewpoint = Math.round(weather.temperature_c - (weather.fog_enabled ? 1 : 8));
+  const dewpoint = Math.round(weather.temperature_c - (weather.fog_mode > 0 ? 1 : 8));
   const timeStr = formatTime(weather.start_time);
 
   let sky = '';
@@ -1543,7 +1578,7 @@ function AtisReadback({ weather }: { weather: WeatherState }) {
   }
 
   const precip = weather.clouds_precipitation === 1 ? ' Rain in the area.' : weather.clouds_precipitation === 2 ? ' Thunderstorm activity in the area.' : '';
-  const fogNote = weather.fog_enabled ? ` Fog, visibility ${weather.fog_visibility} meters.` : '';
+  const fogNote = weather.fog_mode > 0 ? ` Fog, visibility ${weather.fog_visibility} meters.` : '';
   const dustNote = weather.dust_enabled ? ' Dust and sand in the vicinity.' : '';
   const turbNote = weather.ground_turbulence > 50 ? ' Caution: moderate to severe turbulence below 5,000 feet.' : weather.ground_turbulence > 25 ? ' Light to moderate turbulence below 3,000 feet.' : '';
 

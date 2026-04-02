@@ -78,82 +78,82 @@ function classifyUnit(type: string): TicCategory {
  */
 const BLUE_DESIGNATIONS: Record<TicCategory, string[]> = {
   tank: [
-    '1-69 Armor',        // 1st Battalion, 69th Armor Regiment (3rd BCT, 3AD)
-    '2-34 Armor',        // 2nd Battalion, 34th Armor Regiment (1st BCT, 1AD)
-    '1-37 Armor',        // 1st Battalion, 37th Armor Regiment (2nd BCT, 1AD)
-    '3-67 Armor',        // 3rd Battalion, 67th Armor Regiment
-    '1-66 Armor',        // 1st Battalion, 66th Armor Regiment (4th ID)
-    '2-70 Armor',        // 2nd Battalion, 70th Armor Regiment
-    '1-68 Armor',        // 1st Battalion, 68th Armor Regiment (3rd BCT, 4ID)
-    '4-118 Armor',       // 4th Combined Arms Battalion, 118th Infantry (SCNG)
-    '2-5 Armor',         // 2nd Battalion, 5th Armor (historical)
-    '1-35 Armor',        // 1st Battalion, 35th Armor Regiment (2AD)
+    '1st Bn 69th Armor',
+    '2nd Bn 34th Armor',
+    '1st Bn 37th Armor',
+    '3rd Bn 67th Armor',
+    '1st Bn 66th Armor',
+    '2nd Bn 70th Armor',
+    '1st Bn 68th Armor',
+    '4th Bn 118th Armor',
+    '2nd Bn 5th Armor',
+    '1st Bn 35th Armor',
   ],
   ifv: [
-    '2-12 Infantry',     // 2nd Battalion, 12th Infantry Regiment (4th ID)
-    '1-18 Infantry',     // 1st Battalion, 18th Infantry ("Vanguards")
-    '3-15 Infantry',     // 3rd Battalion, 15th Infantry (3rd ID)
-    '1-26 Infantry',     // 1st Battalion, 26th Infantry ("Blue Spaders")
-    '2-7 Infantry',      // 2nd Battalion, 7th Infantry (3rd ID)
-    '1-9 Infantry',      // 1st Battalion, 9th Infantry ("Manchus")
-    '5-20 Infantry',     // 5th Battalion, 20th Infantry
-    '2-2 Infantry',      // 2nd Battalion, 2nd Infantry ("Ramrods")
-    '1-64 Armor',        // 1st Battalion, 64th Armor (mech heavy)
-    '4-31 Infantry',     // 4th Battalion, 31st Infantry (10th Mountain)
+    '2nd Bn 12th Infantry',
+    '1st Bn 18th Infantry',
+    '3rd Bn 15th Infantry',
+    '1st Bn 26th Infantry',
+    '2nd Bn 7th Infantry',
+    '1st Bn 9th Infantry',
+    '5th Bn 20th Infantry',
+    '2nd Bn 2nd Infantry',
+    '1st Bn 64th Armor',
+    '4th Bn 31st Infantry',
   ],
   apc: [
-    '3-7 Cavalry',       // 3rd Squadron, 7th Cavalry Regiment ("Garryowen")
-    '1-4 Cavalry',       // 1st Squadron, 4th Cavalry Regiment
-    '6-6 Cavalry',       // 6th Squadron, 6th Cavalry Regiment
-    '4-9 Cavalry',       // 4th Squadron, 9th Cavalry Regiment
-    '1-10 Cavalry',      // 1st Squadron, 10th Cavalry (4th ID)
-    '3-71 Cavalry',      // 3rd Squadron, 71st Cavalry (10th Mountain)
-    '1-73 Cavalry',      // 1st Squadron, 73rd Cavalry (82nd Airborne)
-    '5-4 Cavalry',       // 5th Squadron, 4th Cavalry
-    '2-14 Cavalry',      // 2nd Squadron, 14th Cavalry
-    '6-8 Cavalry',       // 6th Squadron, 8th Cavalry
+    '3rd Sqn 7th Cavalry',
+    '1st Sqn 4th Cavalry',
+    '6th Sqn 6th Cavalry',
+    '4th Sqn 9th Cavalry',
+    '1st Sqn 10th Cavalry',
+    '3rd Sqn 71st Cavalry',
+    '1st Sqn 73rd Cavalry',
+    '5th Sqn 4th Cavalry',
+    '2nd Sqn 14th Cavalry',
+    '6th Sqn 8th Cavalry',
   ],
   infantry: [
-    '1-75 Rangers',      // 1st Battalion, 75th Ranger Regiment
-    '2-504 Airborne',    // 2nd Battalion, 504th PIR (82nd Airborne)
-    '1-187 Infantry',    // 1st Battalion, 187th Infantry ("Rakkasans", 101st)
-    '3-325 Airborne',    // 3rd Battalion, 325th AIR (82nd Airborne)
-    '2-506 Infantry',    // 2nd Battalion, 506th Infantry ("Currahee", 101st)
-    '1-508 Airborne',    // 1st Battalion, 508th PIR
-    '2-75 Rangers',      // 2nd Battalion, 75th Ranger Regiment
-    '1-327 Infantry',    // 1st Battalion, 327th Infantry ("Bastogne", 101st)
-    '3-187 Infantry',    // 3rd Battalion, 187th Infantry
-    '1-501 Airborne',    // 1st Battalion, 501st PIR
+    '1st Bn 75th Rangers',
+    '2nd Bn 504th Airborne',
+    '1st Bn 187th Infantry',
+    '3rd Bn 325th Airborne',
+    '2nd Bn 506th Infantry',
+    '1st Bn 508th Airborne',
+    '2nd Bn 75th Rangers',
+    '1st Bn 327th Infantry',
+    '3rd Bn 187th Infantry',
+    '1st Bn 501st Airborne',
   ],
   airdefense: [
-    '5-7 ADA',           // 5th Battalion, 7th Air Defense Artillery
-    '2-44 ADA',          // 2nd Battalion, 44th Air Defense Artillery
-    '1-62 ADA',          // 1st Battalion, 62nd ADA (Patriot)
-    '3-43 ADA',          // 3rd Battalion, 43rd ADA
-    '4-60 ADA',          // 4th Battalion, 60th ADA
-    '1-174 ADA',         // 1st Battalion, 174th ADA (OHNG)
-    '2-263 ADA',         // 2nd Battalion, 263rd ADA
-    '5-52 ADA',          // 5th Battalion, 52nd ADA
+    '5th Bn 7th ADA',
+    '2nd Bn 44th ADA',
+    '1st Bn 62nd ADA',
+    '3rd Bn 43rd ADA',
+    '4th Bn 60th ADA',
+    '1st Bn 174th ADA',
+    '2nd Bn 263rd ADA',
+    '5th Bn 52nd ADA',
   ],
   artillery: [
-    '1-82 FA',           // 1st Battalion, 82nd Field Artillery (1AD)
-    '3-16 FA',           // 3rd Battalion, 16th Field Artillery
-    '2-20 FA',           // 2nd Battalion, 20th Field Artillery
-    '1-9 FA',            // 1st Battalion, 9th Field Artillery
-    '3-29 FA',           // 3rd Battalion, 29th Field Artillery
-    '1-41 FA',           // 1st Battalion, 41st Field Artillery
-    '2-4 FA',            // 2nd Battalion, 4th Field Artillery
-    '1-320 FA',          // 1st Battalion, 320th Field Artillery (101st)
-    '2-319 FA',          // 2nd Battalion, 319th AFAR (82nd Airborne)
-    '3-321 FA',          // 3rd Battalion, 321st Field Artillery
+    '1st Bn 82nd FA',
+    '3rd Bn 16th FA',
+    '2nd Bn 20th FA',
+    '1st Bn 9th FA',
+    '3rd Bn 29th FA',
+    '1st Bn 41st FA',
+    '2nd Bn 4th FA',
+    '1st Bn 320th FA',
+    '2nd Bn 319th FA',
+    '3rd Bn 321st FA',
   ],
   other: [
-    '299th BSB',         // 299th Brigade Support Battalion
-    '553rd CSSB',        // 553rd Combat Sustainment Support Battalion
-    '47th CSB',          // 47th Combat Support Battalion
-    '87th CSSB',         // 87th CSSB
-    '10th SB',           // 10th Sustainment Brigade
-    '168th BSB',         // 168th Brigade Support Battalion
+    '299th BSB',
+    '553rd CSSB',
+    '47th CSB',
+    '87th CSSB',
+    '10th Sustainment Bde',
+    '168th BSB',
   ],
 };
 

@@ -744,7 +744,26 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
 
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
+    import os as _os
+    _dbg_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "weather_debug.log")
+    _log_lines = []
+    def _log(msg):
+        _log_lines.append(msg)
+
+    _log(f"=== WEATHER REPLACE START ===")
+    _log(f"weather_data keys: {list(weather_data.keys())}")
+    _log(f"weather_data: {weather_data}")
+
     original_len = len(text)
+
+    # --- Dump a snippet of the weather section for debugging ---
+    weather_section = re.search(r'\["weather"\]\s*=\s*\n?\s*\{', text)
+    if weather_section:
+        snippet = text[weather_section.start():weather_section.start() + 2000]
+        _log(f"WEATHER SECTION SNIPPET (first 2000 chars):\n{snippet}")
+    else:
+        _log("WARNING: Could not find [\"weather\"] block in text!")
+
     # Wind
     wind = weather_data.get("wind", {})
     for level in ("atGround", "at2000", "at8000"):
@@ -753,32 +772,99 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
             pattern = rf'(\["{level}"\]\s*=\s*\n?\s*\{{[^}}]*?\["speed"\]\s*=\s*)([^,\n]+)'
             m = re.search(pattern, text, re.DOTALL)
             if m:
+                _log(f"WIND {level} speed: '{m.group(2)}' -> '{level_data['speed']}'")
                 text = text[:m.start(2)] + str(level_data["speed"]) + text[m.end(2):]
+            else:
+                _log(f"WIND {level} speed: NO MATCH")
         if "dir" in level_data:
             pattern = rf'(\["{level}"\]\s*=\s*\n?\s*\{{[^}}]*?\["dir"\]\s*=\s*)([^,\n]+)'
             m = re.search(pattern, text, re.DOTALL)
             if m:
+                _log(f"WIND {level} dir: '{m.group(2)}' -> '{level_data['dir']}'")
                 text = text[:m.start(2)] + str(level_data["dir"]) + text[m.end(2):]
+            else:
+                _log(f"WIND {level} dir: NO MATCH")
 
     # Clouds
     clouds = weather_data.get("clouds", {})
+    _log(f"CLOUDS data: {clouds}")
     for field in ("base", "density", "thickness", "iprecptns"):
         if field in clouds:
             pattern = rf'(\["clouds"\]\s*=\s*\n?\s*\{{[^}}]*?\["{field}"\]\s*=\s*)([^,\n]+)'
             m = re.search(pattern, text, re.DOTALL)
             if m:
+                _log(f"CLOUDS {field}: '{m.group(2)}' -> '{clouds[field]}'")
                 text = text[:m.start(2)] + str(clouds[field]) + text[m.end(2):]
-    # Cloud preset (string value) — scoped to the clouds block
+            else:
+                _log(f"CLOUDS {field}: NO MATCH for pattern")
+    # Cloud preset — DCS 2.7+ REQUIRES a valid cloud preset for volumetric clouds.
+    # Individual density/base/thickness are legacy fields ignored by the new renderer.
+    # When no preset is specified, we pick one based on density to avoid blank skies.
+    # Also: must scope the preset search to WITHIN the clouds block only (not halo etc).
     if "preset" in clouds:
         preset_val = clouds["preset"]
+        # If no preset specified, pick a reasonable default based on cloud density
+        if not preset_val:
+            density = clouds.get("density", 0)
+            if density == 0:
+                preset_val = ""  # truly clear sky, no preset needed
+            elif density <= 2:
+                preset_val = "Preset1"   # FEW070 — few thin clouds
+            elif density <= 4:
+                preset_val = "Preset5"   # SCT080 — scattered clouds
+            elif density <= 6:
+                preset_val = "Preset10"  # BKN070 — broken clouds
+            elif density <= 8:
+                preset_val = "Preset15"  # OVC040 — overcast mid
+            else:
+                preset_val = "Preset22"  # OVC010 — heavy overcast low
+            if preset_val:
+                _log(f"CLOUDS preset: auto-selected '{preset_val}' for density={density}")
+
         clouds_block = re.search(r'\["clouds"\]\s*=\s*\n?\s*\{', text)
         if clouds_block:
-            pattern = r'(\["preset"\]\s*=\s*)("[^"]*")'
-            m = re.search(pattern, text[clouds_block.start():])
-            if m:
-                pos = clouds_block.start() + m.start(2)
-                end = clouds_block.start() + m.end(2)
-                text = text[:pos] + f'"{preset_val}"' + text[end:]
+            # Find the CLOSING brace of the clouds block to scope our search
+            brace_start = text.index('{', clouds_block.start())
+            depth = 0
+            cb_end = brace_start
+            for ci in range(brace_start, len(text)):
+                if text[ci] == '{': depth += 1
+                elif text[ci] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        cb_end = ci + 1
+                        break
+            clouds_text = text[clouds_block.start():cb_end]
+
+            # Search for preset line ONLY within the clouds block
+            line_pattern = r'[ \t]*\["preset"\]\s*=\s*"[^"]*"\s*,[ \t]*\n?'
+            m_line = re.search(line_pattern, clouds_text)
+            if m_line:
+                abs_start = clouds_block.start() + m_line.start()
+                abs_end = clouds_block.start() + m_line.end()
+                if preset_val:
+                    old_line = text[abs_start:abs_end]
+                    indent = re.match(r'([ \t]*)', old_line).group(1)
+                    new_line = f'{indent}["preset"] = "{preset_val}",\n'
+                    _log(f"CLOUDS preset: '{m_line.group().strip()}' -> preset='{preset_val}'")
+                    text = text[:abs_start] + new_line + text[abs_end:]
+                else:
+                    _log(f"CLOUDS preset: density=0, removing preset (was '{m_line.group().strip()}')")
+                    text = text[:abs_start] + text[abs_end:]
+            else:
+                # No existing preset line — insert one if needed
+                if preset_val:
+                    _log(f"CLOUDS preset: inserting preset='{preset_val}'")
+                    brace_pos = text.index('{', clouds_block.start())
+                    field_match = re.search(r'\n([ \t]+)\["', text[brace_pos:brace_pos + 200])
+                    if field_match:
+                        indent = field_match.group(1)
+                        insert_pos = brace_pos + field_match.start()
+                        text = text[:insert_pos] + f'\n{indent}["preset"] = "{preset_val}",' + text[insert_pos:]
+                else:
+                    _log(f"CLOUDS preset: no existing line and density=0, skip")
+        else:
+            _log("CLOUDS preset: no clouds block found")
 
     # Top-level weather fields (booleans + numbers)
     simple_fields = {
@@ -790,6 +876,7 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
     }
     for field, value in simple_fields.items():
         if value is None:
+            _log(f"SIMPLE {field}: skipped (None)")
             continue
         if isinstance(value, bool):
             lua_val = "true" if value else "false"
@@ -798,20 +885,93 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
         pattern = rf'(\["{field}"\]\s*=\s*)([^,\n]+)'
         m = re.search(pattern, text)
         if m:
+            _log(f"SIMPLE {field}: '{m.group(2)}' -> '{lua_val}'")
             text = text[:m.start(2)] + lua_val + text[m.end(2):]
+        else:
+            _log(f"SIMPLE {field}: NO MATCH (value={lua_val})")
 
     # Fog — nested inside ["fog"] = { ["visibility"] = N, ["thickness"] = N }
     fog_data = weather_data.get("fog", {})
+    _log(f"FOG data: {fog_data}")
     fog_block = re.search(r'\["fog"\]\s*=\s*\n?\s*\{', text)
     if fog_block:
+        # Find closing brace of fog block for proper scoping
+        fb_brace = text.index('{', fog_block.start())
+        fb_depth = 0
+        fb_end = fb_brace
+        for fi in range(fb_brace, len(text)):
+            if text[fi] == '{': fb_depth += 1
+            elif text[fi] == '}':
+                fb_depth -= 1
+                if fb_depth == 0:
+                    fb_end = fi + 1
+                    break
+        fog_text = text[fog_block.start():fb_end]
+        _log(f"FOG block found at pos {fog_block.start()}, full block: {repr(fog_text)}")
+
         for fog_field, fog_key in [("visibility", "visibility"), ("thickness", "thickness")]:
             if fog_key in fog_data:
                 pattern = rf'(\["{fog_field}"\]\s*=\s*)([^,\n]+)'
-                m = re.search(pattern, text[fog_block.start():])
+                m = re.search(pattern, fog_text)
                 if m:
                     pos = fog_block.start() + m.start(2)
                     end = fog_block.start() + m.end(2)
+                    _log(f"FOG {fog_field}: '{m.group(2)}' -> '{fog_data[fog_key]}'")
                     text = text[:pos] + str(fog_data[fog_key]) + text[end:]
+                    # Re-extract fog block text since positions shifted
+                    fog_text = text[fog_block.start():fog_block.start() + len(fog_text) + 10]
+                else:
+                    _log(f"FOG {fog_field}: NO MATCH in fog block")
+    else:
+        _log("FOG: no fog block found in text!")
+
+    # DCS 2.9+ uses a SEPARATE ["fog2"] block for the fog mode dropdown in ME.
+    # mode: 0=off, 2=manual fog enabled. Without this block, DCS ME shows fog as Off.
+    fog2_mode = fog_data.get("mode", 0)  # 0=Off, 1=Manual, 2=Auto
+    fog2_block = re.search(r'\["fog2"\]\s*=\s*\n?\s*\{', text)
+    if fog2_block:
+        # Update existing mode field
+        mode_pattern = r'(\["mode"\]\s*=\s*)([^,\n]+)'
+        f2_brace = text.index('{', fog2_block.start())
+        f2_depth = 0
+        f2_end = f2_brace
+        for fi in range(f2_brace, len(text)):
+            if text[fi] == '{': f2_depth += 1
+            elif text[fi] == '}':
+                f2_depth -= 1
+                if f2_depth == 0:
+                    f2_end = fi + 1
+                    break
+        f2_text = text[fog2_block.start():f2_end]
+        m_mode = re.search(mode_pattern, f2_text)
+        if m_mode:
+            pos = fog2_block.start() + m_mode.start(2)
+            end_pos = fog2_block.start() + m_mode.end(2)
+            _log(f"FOG2 mode: '{m_mode.group(2)}' -> '{fog2_mode}'")
+            text = text[:pos] + str(fog2_mode) + text[end_pos:]
+        else:
+            _log(f"FOG2 block exists but no mode field found")
+    else:
+        # Insert ["fog2"] block — place it before ["fog"] block
+        if fog_block:
+            # Get indentation from the fog block
+            line_start = text.rfind('\n', 0, fog_block.start()) + 1
+            indent = ''
+            for ch in text[line_start:fog_block.start()]:
+                if ch in ' \t':
+                    indent += ch
+                else:
+                    break
+            fog2_insert = (
+                f'{indent}["fog2"] = \n'
+                f'{indent}{{\n'
+                f'{indent}\t["mode"] = {fog2_mode},\n'
+                f'{indent}}}, -- end of ["fog2"]\n'
+            )
+            _log(f"FOG2: inserting new block with mode={fog2_mode}")
+            text = text[:line_start] + fog2_insert + text[line_start:]
+        else:
+            _log("FOG2: cannot insert, no fog block to reference")
 
     # Visibility distance
     vis_dist = weather_data.get("visibility")
@@ -822,7 +982,14 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
             m = re.search(pattern, text[vis_block.start():])
             if m:
                 pos = vis_block.start() + m.start(2)
+                _log(f"VISIBILITY distance: '{m.group(2)}' -> '{vis_dist}'")
                 text = text[:pos] + str(vis_dist) + text[vis_block.start() + m.end(2):]
+            else:
+                _log(f"VISIBILITY distance: NO MATCH")
+        else:
+            _log("VISIBILITY: no visibility block found")
+    else:
+        _log("VISIBILITY: not in weather_data")
 
     # Temperature
     temp = weather_data.get("temperature")
@@ -830,16 +997,56 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
         pattern = r'(\["temperature"\]\s*=\s*)([^,\n]+)'
         m = re.search(pattern, text)
         if m:
+            _log(f"TEMPERATURE: '{m.group(2)}' -> '{temp}'")
             text = text[:m.start(2)] + str(temp) + text[m.end(2):]
+        else:
+            _log(f"TEMPERATURE: NO MATCH")
+    else:
+        _log("TEMPERATURE: not in weather_data")
+
+    # Halo preset — scoped to the ["halo"] block
+    halo_preset = weather_data.get("haloPreset")
+    if halo_preset is not None:
+        halo_block = re.search(r'\["halo"\]\s*=\s*\n?\s*\{', text)
+        if halo_block:
+            # Find the closing brace of halo block for scoping
+            brace_start = text.index('{', halo_block.start())
+            depth = 0
+            hb_end = brace_start
+            for hi in range(brace_start, len(text)):
+                if text[hi] == '{': depth += 1
+                elif text[hi] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        hb_end = hi + 1
+                        break
+            halo_text = text[halo_block.start():hb_end]
+            preset_pattern = r'(\["preset"\]\s*=\s*)("[^"]*")'
+            m = re.search(preset_pattern, halo_text)
+            if m:
+                pos = halo_block.start() + m.start(2)
+                end = halo_block.start() + m.end(2)
+                _log(f"HALO preset: '{m.group(2)}' -> '\"{halo_preset}\"'")
+                text = text[:pos] + f'"{halo_preset}"' + text[end:]
+            else:
+                # No existing preset — insert one
+                field_match = re.search(r'\n([ \t]+)', halo_text)
+                if field_match:
+                    indent = field_match.group(1)
+                    insert_pos = brace_start + 1
+                    text = text[:insert_pos] + f'\n{indent}["preset"] = "{halo_preset}",' + text[insert_pos:]
+                    _log(f"HALO preset: inserted '{halo_preset}'")
+        else:
+            _log("HALO: no halo block found")
 
     # Date — scoped to the ["date"] block at mission root level (single tab indent)
     date_data = weather_data.get("date")
     if date_data:
         date_block = re.search(r'\n\t\["date"\]\s*=\s*\n?\s*\{', text)
         if date_block:
-            # Search within 200 chars after the date block opening
             date_region_start = date_block.start()
             date_region = text[date_region_start:date_region_start + 200]
+            _log(f"DATE block snippet: {repr(date_region)}")
             for field, key in [("Day", "day"), ("Month", "month"), ("Year", "year")]:
                 if key in date_data:
                     pattern = rf'(\["{field}"\]\s*=\s*)(\d+)'
@@ -847,19 +1054,32 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
                     if m:
                         pos = date_region_start + m.start(2)
                         end = date_region_start + m.end(2)
+                        _log(f"DATE {field}: '{m.group(2)}' -> '{date_data[key]}'")
                         text = text[:pos] + str(date_data[key]) + text[end:]
-                        # Re-extract region since text shifted
                         date_region = text[date_region_start:date_region_start + 200]
+                    else:
+                        _log(f"DATE {field}: NO MATCH")
+        else:
+            _log("DATE: no date block found")
 
     # Start time — mission root level (single tab indent, near end of file)
     start_time = weather_data.get("startTime")
     if start_time is not None:
-        # Find the LAST ["start_time"] in the file (mission root level)
         pattern = r'(\["start_time"\]\s*=\s*)(\d+)'
         all_matches = list(re.finditer(pattern, text))
+        _log(f"START_TIME: found {len(all_matches)} matches, using last")
         if all_matches:
-            m = all_matches[-1]  # last occurrence = mission root
+            m = all_matches[-1]
+            _log(f"START_TIME: '{m.group(2)}' -> '{int(start_time)}'")
             text = text[:m.start(2)] + str(int(start_time)) + text[m.end(2):]
+    else:
+        _log("START_TIME: not in weather_data")
+
+    _log(f"TEXT SIZE: {original_len} -> {len(text)} ({len(text)-original_len:+d})")
+    _log(f"=== WEATHER REPLACE END ===\n")
+
+    with open(_dbg_path, "a") as _f:
+        _f.write("\n".join(_log_lines) + "\n")
 
     return text
 

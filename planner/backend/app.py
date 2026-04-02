@@ -661,7 +661,24 @@ def download():
 
         # 2. Apply unit-level surgical edits (856's edit engine)
         if unit_edits:
+            import os as _os
+            _dbg = _os.path.join(_os.path.dirname(__file__), "download_debug.log")
+            # Clear weather debug log too
+            _wdbg = _os.path.join(_os.path.dirname(__file__), "weather_debug.log")
+            with open(_wdbg, "w") as _f:
+                _f.write("")
+            with open(_dbg, "w") as _f:
+                _f.write(f"edits: {len(unit_edits)}\n")
+                for e in unit_edits:
+                    val = e.get('value')
+                    if e.get('field') == 'weather':
+                        _f.write(f"  WEATHER: {val}\n")
+                    else:
+                        _f.write(f"  field={e.get('field')} unitId={e.get('unitId')} value={str(val)[:200]}\n")
+            original_len = len(mission_text)
             mission_text = apply_unit_edits(mission_text, unit_edits)
+            with open(_dbg, "a") as _f:
+                _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
 
         miz_bytes = repack_miz(session["miz_bytes"], mission_text)
 

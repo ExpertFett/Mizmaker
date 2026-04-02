@@ -264,12 +264,13 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "clouds_precipitation": int(_num(wx.get("clouds", {}).get("iprecptns", 0))),
             "clouds_preset": wx.get("clouds", {}).get("preset", ""),
             "visibility_m": _num(wx.get("visibility", {}).get("distance", 80000)),
-            "fog_enabled": wx.get("enable_fog", False),
+            "fog_enabled": wx.get("enable_fog", False) or wx.get("fog2", {}).get("mode", 0) == 2,
             "fog_visibility": _num(wx.get("fog", {}).get("visibility", 0)),
             "fog_thickness": _num(wx.get("fog", {}).get("thickness", 0)),
             "dust_enabled": wx.get("enable_dust", False),
             "dust_density": _num(wx.get("dust_density", 0)),
             "turbulence": _num(wx.get("groundTurbulence", 0)),
+            "halo_preset": wx.get("halo", {}).get("preset", "auto"),
         },
     }
 
