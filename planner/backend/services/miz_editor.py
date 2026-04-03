@@ -241,8 +241,15 @@ def replace_group_waypoints(text: str, group_name: str, waypoints: List[Dict]) -
     return text[:points_start] + new_points + text[points_end:]
 
 
-def repack_miz(original_miz_bytes: bytes, new_mission_text: str) -> bytes:
-    """Repack a .miz archive with the edited mission text."""
+def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
+               kneeboards: list = None) -> bytes:
+    """Repack a .miz archive with the edited mission text and optional kneeboards.
+
+    kneeboards: list of dicts with keys:
+        aircraft_type: str  (e.g. "FA-18C_hornet")
+        filename: str       (e.g. "Bengal_1_Route.png")
+        data: bytes         (raw PNG bytes)
+    """
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -251,4 +258,14 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str) -> bytes:
                     zout.writestr(item, new_mission_text.encode("utf-8"))
                 else:
                     zout.writestr(item, zin.read(item.filename))
+
+            # Inject kneeboard PNGs into KNEEBOARD/<aircraft_type>/IMAGES/
+            # Shared cards (aircraft_type == '_SHARED_') go into KNEEBOARD/IMAGES/
+            if kneeboards:
+                for kb in kneeboards:
+                    if kb['aircraft_type'] == '_SHARED_':
+                        path = f"KNEEBOARD/IMAGES/{kb['filename']}"
+                    else:
+                        path = f"KNEEBOARD/{kb['aircraft_type']}/IMAGES/{kb['filename']}"
+                    zout.writestr(path, kb["data"])
     return output.getvalue()

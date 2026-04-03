@@ -642,6 +642,7 @@ def download():
 
     sid = body.get("sessionId")
     unit_edits = body.get("unitEdits", [])
+    kneeboard_data = body.get("kneeboards", [])
 
     session = _get_session(sid)
     if not session:
@@ -680,7 +681,19 @@ def download():
             with open(_dbg, "a") as _f:
                 _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
 
-        miz_bytes = repack_miz(session["miz_bytes"], mission_text)
+        # Decode kneeboard base64 data to raw bytes
+        kneeboards = None
+        if kneeboard_data:
+            import base64
+            kneeboards = []
+            for kb in kneeboard_data:
+                kneeboards.append({
+                    "aircraft_type": kb["aircraft_type"],
+                    "filename": kb["filename"],
+                    "data": base64.b64decode(kb["data"]),
+                })
+
+        miz_bytes = repack_miz(session["miz_bytes"], mission_text, kneeboards=kneeboards)
 
         return send_file(
             io.BytesIO(miz_bytes),

@@ -5,81 +5,190 @@
  * Cards are rendered to PNG via the HTML→Canvas pipeline.
  */
 
-import { useState, useEffect, createElement } from 'react';
+import { useState, useEffect, useRef, createElement } from 'react';
+import JSZip from 'jszip';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore, type KneeboardCards } from '../../store/editStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
-import { renderCardToDataUrl, renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
+import { FlightCard } from '../../kneeboard/FlightCard';
+import { CommsCard } from '../../kneeboard/CommsCard';
+import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
+import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
+import { SupportAssetsCard } from '../../kneeboard/SupportAssetsCard';
+import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
+import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
+import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
+import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
+import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
+
+const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
+  { key: 'lineup', label: 'Lineup Card', desc: 'Waypoints, coords, alt, speed, ETE' },
+  { key: 'flight', label: 'Flight Card', desc: 'Callsigns, loadout, fuel, datalink' },
+  { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
+  { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
+  { key: 'fuelLadder', label: 'Fuel Ladder', desc: 'Fuel burn per leg, joker/bingo' },
+];
+
+const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
+  { key: 'supportAssets', label: 'Support Assets', desc: 'Tankers, AWACS, frequencies' },
+  { key: 'radioLadder', label: 'Radio Ladder', desc: 'Shared frequency reference' },
+  { key: 'airbaseRef', label: 'Airbase Reference', desc: 'Airfield info, ILS, TACAN' },
+  { key: 'bullseyeRef', label: 'Bullseye Reference', desc: 'Bullseye point and radials' },
+  { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
+];
 
 export function KneeboardTab() {
   const groups = useMissionStore((s) => s.groups);
   const overview = useMissionStore((s) => s.overview);
+  const clientUnits = useMissionStore((s) => s.clientUnits);
+  const threats = useMissionStore((s) => s.threats);
+  const airbases = useMissionStore((s) => s.airbases);
+  const theater = useMissionStore((s) => s.theater) || overview?.theater || '';
   const wx = overview?.weather as Weather | undefined;
+
+  const injectKneeboards = useEditStore((s) => s.injectKneeboards);
+  const setInjectKneeboards = useEditStore((s) => s.setInjectKneeboards);
+  const kneeboardSettings = useEditStore((s) => s.kneeboardSettings);
+  const setKneeboardSettings = useEditStore((s) => s.setKneeboardSettings);
+
+  const coordFormat = kneeboardSettings.coordFormat;
+  const speedRef = kneeboardSettings.speedRef as KneeboardSpeedRef;
+  const machThreshold = kneeboardSettings.machThreshold;
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
     playerGroups[0]?.groupId ?? null,
   );
-  const [coordFormat, setCoordFormat] = useState<'mgrs' | 'latlon'>('mgrs');
-  const [speedRef, setSpeedRef] = useState<KneeboardSpeedRef>('auto');
-  const [machThreshold, setMachThreshold] = useState(18000); // ft
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  // Auto-select first player group when groups load
+  useEffect(() => {
+    if (selectedGroupId === null && playerGroups.length > 0) {
+      setSelectedGroupId(playerGroups[0].groupId);
+    }
+  }, [playerGroups, selectedGroupId]);
 
   const selectedGroup = groups.find((g) => g.groupId === selectedGroupId);
 
-  // Update preview when selection or settings change
-  useEffect(() => {
-    if (!selectedGroup) {
-      setPreviewUrl(null);
-      return;
+  // Preview is now rendered directly in the DOM (no canvas pipeline needed)
+
+  const cards = kneeboardSettings.cards;
+
+  const coalition = playerGroups[0]?.coalition || 'blue';
+
+  /** Render all enabled card PNGs for a single group. Returns name+blob pairs. */
+  const renderGroupCards = async (g: typeof selectedGroup): Promise<{ name: string; blob: Blob }[]> => {
+    if (!g) return [];
+    const results: { name: string; blob: Blob }[] = [];
+    const safeName = g.groupName.replace(/\s+/g, '_');
+
+    if (cards.lineup) {
+      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
+      results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el) });
     }
+    if (cards.flight) {
+      const el = createElement(FlightCard, { group: g, clientUnits });
+      results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el) });
+    }
+    if (cards.comms) {
+      const el = createElement(CommsCard, { group: g, allGroups: groups });
+      results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el) });
+    }
+    if (cards.routeDetail) {
+      const el = createElement(RouteDetailCard, { group: g, threats });
+      results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el) });
+    }
+    if (cards.fuelLadder) {
+      const el = createElement(FuelLadderCard, { group: g, clientUnits });
+      results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el) });
+    }
+    return results;
+  };
 
-    let cancelled = false;
-    const el = createElement(RouteCard, {
-      group: selectedGroup,
-      weather: wx,
-      coordFormat,
-      speedRef,
-      machThreshold,
-    });
+  /** Render enabled shared cards. */
+  const renderSharedCards = async (): Promise<{ name: string; blob: Blob }[]> => {
+    const results: { name: string; blob: Blob }[] = [];
+    if (cards.supportAssets) {
+      const el = createElement(SupportAssetsCard, { groups, coalition });
+      results.push({ name: 'Support_Assets.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.radioLadder) {
+      const el = createElement(RadioLadderCard, { groups, coalition });
+      results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.airbaseRef) {
+      const el = createElement(AirbaseRefCard, { airbases, theater });
+      results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.bullseyeRef && overview) {
+      const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition });
+      results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.weatherBrief && overview) {
+      const el = createElement(WeatherBriefCard, { overview });
+      results.push({ name: 'Weather_Brief.png', blob: await renderCardToBlob(el) });
+    }
+    return results;
+  };
 
-    renderCardToDataUrl(el)
-      .then((url) => {
-        if (!cancelled) setPreviewUrl(url);
-      })
-      .catch((e) => {
-        console.error('Kneeboard render failed:', e);
-        if (!cancelled) setPreviewUrl(null);
-      });
-
-    return () => { cancelled = true; };
-  }, [selectedGroup, wx, coordFormat, speedRef, machThreshold]);
+  const enabledPerFlightCount = PER_FLIGHT_CARDS.filter((c) => cards[c.key]).length;
+  const enabledSharedCount = SHARED_CARDS.filter((c) => cards[c.key]).length;
+  const noCardsSelected = enabledPerFlightCount === 0 && enabledSharedCount === 0;
 
   const handleDownloadOne = async () => {
     if (!selectedGroup) return;
+    if (noCardsSelected) { alert('No card types selected'); return; }
     setRendering(true);
     try {
-      const el = createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold });
-      const blob = await renderCardToBlob(el);
-      downloadBlob(blob, `${selectedGroup.groupName.replace(/\s+/g, '_')}_Route.png`);
+      const zip = new JSZip();
+      const safeName = selectedGroup.groupName.replace(/\s+/g, '_');
+      const folder = zip.folder(safeName)!;
+
+      const rendered = await renderGroupCards(selectedGroup);
+      for (const r of rendered) folder.file(r.name, r.blob);
+
+      // Include shared cards too
+      const shared = await renderSharedCards();
+      if (shared.length > 0) {
+        const sharedFolder = zip.folder('Shared')!;
+        for (const r of shared) sharedFolder.file(r.name, r.blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, `${safeName}_Kneeboards.zip`);
     } catch (e) {
       console.error('Download failed:', e);
+      alert('PNG export failed — check browser console for details.');
     }
     setRendering(false);
   };
 
   const handleDownloadAll = async () => {
+    if (noCardsSelected) { alert('No card types selected'); return; }
     setRendering(true);
     try {
+      const zip = new JSZip();
+
+      // Per-flight cards in subfolders
       for (const g of playerGroups) {
-        const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
-        const blob = await renderCardToBlob(el);
-        downloadBlob(blob, `${g.groupName.replace(/\s+/g, '_')}_Route.png`);
-        // Small delay between downloads so browser doesn't block them
-        await new Promise((r) => setTimeout(r, 200));
+        const safeName = g.groupName.replace(/\s+/g, '_');
+        const folder = zip.folder(safeName)!;
+        const rendered = await renderGroupCards(g);
+        for (const r of rendered) folder.file(r.name, r.blob);
       }
+
+      // Shared cards
+      const shared = await renderSharedCards();
+      if (shared.length > 0) {
+        const sharedFolder = zip.folder('Shared')!;
+        for (const r of shared) sharedFolder.file(r.name, r.blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, 'Kneeboards.zip');
     } catch (e) {
       console.error('Batch download failed:', e);
     }
@@ -107,7 +216,7 @@ export function KneeboardTab() {
   };
 
   return (
-    <div style={{ maxWidth: 700 }}>
+    <div style={{ maxWidth: 1100 }}>
       <h2 style={{ color: '#ccdae8', fontSize: 18, margin: '0 0 16px', fontWeight: 600 }}>
         Kneeboards
       </h2>
@@ -131,7 +240,7 @@ export function KneeboardTab() {
           Coords:
           <select
             value={coordFormat}
-            onChange={(e) => setCoordFormat(e.target.value as 'mgrs' | 'latlon')}
+            onChange={(e) => setKneeboardSettings({ coordFormat: e.target.value as 'mgrs' | 'latlon' })}
             style={{ ...selectStyle, marginLeft: 6 }}
           >
             <option value="mgrs">MGRS</option>
@@ -143,7 +252,7 @@ export function KneeboardTab() {
           Speed:
           <select
             value={speedRef}
-            onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
+            onChange={(e) => setKneeboardSettings({ speedRef: e.target.value as KneeboardSpeedRef })}
             style={{ ...selectStyle, marginLeft: 6 }}
           >
             <option value="auto">Auto (CAS/Mach)</option>
@@ -159,7 +268,7 @@ export function KneeboardTab() {
             Mach above:
             <select
               value={machThreshold}
-              onChange={(e) => setMachThreshold(Number(e.target.value))}
+              onChange={(e) => setKneeboardSettings({ machThreshold: Number(e.target.value) })}
               style={{ ...selectStyle, marginLeft: 6 }}
             >
               <option value={10000}>FL100</option>
@@ -172,21 +281,98 @@ export function KneeboardTab() {
           </label>
         )}
 
-        <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering} style={btnStyle}>
-          {rendering ? 'Rendering...' : 'Download PNG'}
+        <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering || noCardsSelected} style={btnStyle}>
+          {rendering ? 'Rendering...' : 'Download .zip'}
         </button>
 
         <button
           onClick={handleDownloadAll}
-          disabled={rendering || playerGroups.length === 0}
+          disabled={rendering || playerGroups.length === 0 || noCardsSelected}
           style={{ ...btnStyle, background: '#1a3a2a' }}
         >
-          Download All Flights
+          Download All .zip
         </button>
       </div>
 
-      {/* Preview */}
-      {previewUrl ? (
+      {/* Card Selection */}
+      <div style={{
+        marginBottom: 16, padding: '10px 14px', background: '#0a1a2a', borderRadius: 6,
+        border: '1px solid #1a2a3a',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>Card Types</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => {
+                const all: Partial<KneeboardCards> = {};
+                [...PER_FLIGHT_CARDS, ...SHARED_CARDS].forEach((c) => { all[c.key] = true; });
+                setKneeboardSettings({ cards: { ...kneeboardSettings.cards, ...all } });
+              }}
+              style={{ ...btnStyle, padding: '2px 8px', fontSize: 11 }}
+            >All</button>
+            <button
+              onClick={() => {
+                const none: Partial<KneeboardCards> = {};
+                [...PER_FLIGHT_CARDS, ...SHARED_CARDS].forEach((c) => { none[c.key] = false; });
+                setKneeboardSettings({ cards: { ...kneeboardSettings.cards, ...none } });
+              }}
+              style={{ ...btnStyle, padding: '2px 8px', fontSize: 11 }}
+            >None</button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11, color: '#5a8a6a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+          Per-Flight ({playerGroups.length} flight{playerGroups.length !== 1 ? 's' : ''})
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '6px 24px', marginBottom: 12 }}>
+          {PER_FLIGHT_CARDS.map((card) => (
+            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccdae8', cursor: 'pointer', padding: '3px 0' }}>
+              <input
+                type="checkbox"
+                checked={kneeboardSettings.cards[card.key]}
+                onChange={(e) => setKneeboardSettings({ cards: { ...kneeboardSettings.cards, [card.key]: e.target.checked } })}
+                style={{ accentColor: '#4a8fd4', flexShrink: 0 }}
+              />
+              <span style={{ whiteSpace: 'nowrap' }}>{card.label}</span>
+              <span style={{ fontSize: 11, color: '#4a6a7a' }}>{card.desc}</span>
+            </label>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, color: '#5a8a6a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+          Shared (Mission-wide)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '6px 24px', marginBottom: 10 }}>
+          {SHARED_CARDS.map((card) => (
+            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccdae8', cursor: 'pointer', padding: '3px 0' }}>
+              <input
+                type="checkbox"
+                checked={kneeboardSettings.cards[card.key]}
+                onChange={(e) => setKneeboardSettings({ cards: { ...kneeboardSettings.cards, [card.key]: e.target.checked } })}
+                style={{ accentColor: '#4a8fd4', flexShrink: 0 }}
+              />
+              <span style={{ whiteSpace: 'nowrap' }}>{card.label}</span>
+              <span style={{ fontSize: 11, color: '#4a6a7a' }}>{card.desc}</span>
+            </label>
+          ))}
+        </div>
+
+        {/* Inject toggle */}
+        <div style={{ borderTop: '1px solid #1a2a3a', paddingTop: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccdae8', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={injectKneeboards}
+              onChange={(e) => setInjectKneeboards(e.target.checked)}
+              style={{ accentColor: '#4a8fd4' }}
+            />
+            Inject selected cards into .miz on download
+          </label>
+        </div>
+      </div>
+
+      {/* Live Preview */}
+      {selectedGroup ? (
         <div style={{
           border: '1px solid #1a3a5a',
           borderRadius: 6,
@@ -194,11 +380,15 @@ export function KneeboardTab() {
           display: 'inline-block',
           boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
         }}>
-          <img
-            src={previewUrl}
-            alt="Kneeboard preview"
-            style={{ display: 'block', width: 600, height: 850 }}
-          />
+          <div ref={previewRef}>
+            <RouteCard
+              group={selectedGroup}
+              weather={wx}
+              coordFormat={coordFormat}
+              speedRef={speedRef}
+              machThreshold={machThreshold}
+            />
+          </div>
         </div>
       ) : (
         <div style={{

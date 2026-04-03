@@ -1,0 +1,149 @@
+/**
+ * Flight Card — per-flight kneeboard card.
+ * Shows callsigns, loadout summary, fuel/flare/chaff, datalink donors+team.
+ */
+
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle } from './cardStyles';
+import type { MissionGroup, ClientUnit } from '../types/mission';
+import { getAircraftType } from '../utils/groups';
+
+interface FlightCardProps {
+  group: MissionGroup;
+  clientUnits: ClientUnit[];
+}
+
+export function FlightCard({ group, clientUnits }: FlightCardProps) {
+  const airframe = getAircraftType(group);
+  const flightUnits = clientUnits.filter((cu) => cu.groupName === group.groupName);
+
+  // Aggregate loadout across all pylons for first unit (representative)
+  const rep = flightUnits[0];
+  const weaponSummary = rep
+    ? Object.values(
+        rep.pylons.reduce((acc, p) => {
+          const key = p.shortName || p.name;
+          if (!acc[key]) acc[key] = { name: key, count: 0, cat: p.category };
+          acc[key].count += 1;
+          return acc;
+        }, {} as Record<string, { name: string; count: number; cat: string }>),
+      )
+    : [];
+
+  return (
+    <div style={{ ...cardRoot, position: 'relative' }}>
+      <div style={headerStyle}>
+        <div style={titleStyle}>FLIGHT CARD — {group.groupName.toUpperCase()}</div>
+        <div style={subtitleStyle}>
+          {airframe} | {flightUnits.length} aircraft | {group.task || 'N/A'} | {group.frequency.toFixed(3)} MHz {group.modulation === 0 ? 'AM' : 'FM'}
+        </div>
+      </div>
+
+      {/* Crew roster */}
+      <div style={sectionTitle}>CREW</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, width: 30 }}>#</th>
+            <th style={{ ...th, textAlign: 'left', width: 120 }}>CALLSIGN</th>
+            <th style={{ ...th, width: 70 }}>STN L16</th>
+            <th style={{ ...th, width: 60 }}>LASER</th>
+            <th style={{ ...th, textAlign: 'left' }}>UNIT NAME</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flightUnits.map((cu, i) => (
+            <tr key={cu.unitId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{i + 1}</td>
+              <td style={{ ...cell, fontWeight: 600 }}>
+                {cu.voiceCallsignLabel} {cu.voiceCallsignNumber}
+              </td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{cu.stnL16 || '—'}</td>
+              <td style={{ ...cell, textAlign: 'center', color: cu.laserCode ? WARN : DIM }}>
+                {cu.laserCode || '—'}
+              </td>
+              <td style={{ ...cell, fontSize: 9, color: DIM }}>{cu.name}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Stores summary */}
+      {rep && (
+        <>
+          <div style={sectionTitle}>STORES</div>
+          <div style={{ padding: '4px 16px', display: 'flex', gap: 24, flexWrap: 'wrap', borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 10 }}>
+              <span style={{ color: DIM }}>FUEL </span>
+              <span style={{ color: TEXT, fontWeight: 600 }}>{rep.fuel.toLocaleString()} lbs</span>
+            </div>
+            <div style={{ fontSize: 10 }}>
+              <span style={{ color: DIM }}>FL </span>
+              <span style={{ color: TEXT }}>{rep.flare}</span>
+            </div>
+            <div style={{ fontSize: 10 }}>
+              <span style={{ color: DIM }}>CH </span>
+              <span style={{ color: TEXT }}>{rep.chaff}</span>
+            </div>
+            <div style={{ fontSize: 10 }}>
+              <span style={{ color: DIM }}>GUN </span>
+              <span style={{ color: TEXT }}>{rep.gun}</span>
+            </div>
+          </div>
+
+          {/* Loadout */}
+          <div style={sectionTitle}>LOADOUT</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, width: 40 }}>STN</th>
+                <th style={{ ...th, textAlign: 'left' }}>WEAPON</th>
+                <th style={{ ...th, width: 80 }}>CATEGORY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rep.pylons
+                .filter((p) => p.name)
+                .map((p, i) => (
+                  <tr key={p.number} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+                    <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>{p.number}</td>
+                    <td style={{ ...cell, fontSize: 9 }}>{p.shortName || p.name}</td>
+                    <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{p.category}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+
+          {/* Weapon totals */}
+          {weaponSummary.length > 0 && (
+            <div style={{ padding: '4px 16px', fontSize: 9, color: DIM, borderBottom: `1px solid ${BORDER}` }}>
+              {weaponSummary.map((w) => `${w.count}x ${w.name}`).join(' | ')}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Datalink */}
+      {rep && rep.hasDatalinks && (
+        <>
+          <div style={sectionTitle}>DATALINK</div>
+          <div style={{ padding: '4px 16px', fontSize: 10 }}>
+            {rep.donors.length > 0 && (
+              <div style={{ marginBottom: 4 }}>
+                <span style={{ color: DIM }}>DONORS: </span>
+                {rep.donors.map((d) => d.name).join(', ')}
+              </div>
+            )}
+            {rep.teamMembers.length > 0 && (
+              <div>
+                <span style={{ color: DIM }}>TEAM: </span>
+                {rep.teamMembers.map((t) => t.name).join(', ')}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>
+    </div>
+  );
+}

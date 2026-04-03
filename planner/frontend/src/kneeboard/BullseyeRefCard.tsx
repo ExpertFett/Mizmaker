@@ -1,0 +1,131 @@
+/**
+ * Bullseye Reference Card — shared mission-wide kneeboard card.
+ * Shows bullseye point, with bearing/range table to key locations.
+ */
+
+import { forward as toMGRS } from 'mgrs';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import type { Airbase, MissionGroup, ThreatRing } from '../types/mission';
+import type { MissionOverviewData } from '../types/mission';
+import { metersToNm } from '../utils/conversions';
+
+interface BullseyeRefCardProps {
+  overview: MissionOverviewData;
+  airbases: Airbase[];
+  groups: MissionGroup[];
+  threats: ThreatRing[];
+  coalition: string;
+}
+
+function fmtCoord(lat?: number, lon?: number): string {
+  if (lat == null || lon == null) return '—';
+  try { return toMGRS([lon, lat], 4); } catch { return '—'; }
+}
+
+function fmtLatLon(lat?: number, lon?: number): string {
+  if (lat == null || lon == null) return '—';
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lon >= 0 ? 'E' : 'W';
+  const la = Math.abs(lat);
+  const lo = Math.abs(lon);
+  return `${ns}${Math.floor(la)}°${((la % 1) * 60).toFixed(1)}' ${ew}${Math.floor(lo)}°${((lo % 1) * 60).toFixed(1)}'`;
+}
+
+function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = Math.PI / 180;
+  const dLon = (lon2 - lon1) * toRad;
+  const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+  const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) - Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+function distance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = Math.PI / 180;
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function BullseyeRefCard({ overview, airbases, groups, threats, coalition }: BullseyeRefCardProps) {
+  // DCS bullseye is stored in overview but we may not have it parsed directly
+  // For now, show key reference points with inter-point bearings
+  const theater = overview.theater;
+
+  // Collect notable locations
+  type RefPoint = { name: string; lat: number; lon: number; type: string };
+  const points: RefPoint[] = [];
+
+  // Airbases
+  for (const ab of airbases) {
+    if (ab.lat != null && ab.lon != null) {
+      points.push({ name: ab.name, lat: ab.lat, lon: ab.lon, type: 'AIRFIELD' });
+    }
+  }
+
+  // Major threat sites
+  for (const t of threats.filter((t) => t.coalition !== coalition && t.lat != null)) {
+    points.push({ name: t.name, lat: t.lat!, lon: t.lon!, type: `THREAT (${Math.round(metersToNm(t.range))}nm)` });
+  }
+
+  // Waypoint 0 of player groups as reference
+  const playerGroups = groups.filter((g) =>
+    g.coalition === coalition && g.units.some((u) => u.skill === 'Client' || u.skill === 'Player'),
+  );
+  for (const g of playerGroups) {
+    const wp0 = g.waypoints.find((wp) => wp.waypoint_number === 0);
+    if (wp0?.lat != null && wp0?.lon != null) {
+      points.push({ name: `${g.groupName} HOME`, lat: wp0.lat, lon: wp0.lon, type: 'HOME' });
+    }
+  }
+
+  return (
+    <div style={{ ...cardRoot, position: 'relative' }}>
+      <div style={headerStyle}>
+        <div style={titleStyle}>BULLSEYE / REFERENCE</div>
+        <div style={subtitleStyle}>
+          {theater} | {coalition.toUpperCase()} | {points.length} reference points
+        </div>
+      </div>
+
+      {/* Reference points */}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
+            <th style={{ ...th, width: 70 }}>TYPE</th>
+            <th style={{ ...th, width: 140 }}>MGRS</th>
+            <th style={{ ...th, width: 180 }}>LAT/LON</th>
+          </tr>
+        </thead>
+        <tbody>
+          {points.slice(0, 25).map((pt, i) => (
+            <tr key={pt.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              <td style={{ ...cell, fontWeight: 500, fontSize: 9 }}>{pt.name}</td>
+              <td style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM }}>{pt.type}</td>
+              <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{fmtCoord(pt.lat, pt.lon)}</td>
+              <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{fmtLatLon(pt.lat, pt.lon)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {points.length === 0 && (
+        <div style={{ padding: '20px 16px', fontSize: 12, color: DIM, textAlign: 'center' }}>
+          No reference points available.
+        </div>
+      )}
+
+      {/* Notes */}
+      <div style={{ padding: '8px 16px' }}>
+        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+        {[...Array(4)].map((_, i) => (
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+        ))}
+      </div>
+
+      <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>
+    </div>
+  );
+}
