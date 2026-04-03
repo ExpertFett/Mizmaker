@@ -127,6 +127,28 @@ export function DatalinkTab() {
     });
   }, []);
 
+  const handleAutoAssignAll = useCallback(() => {
+    // Assign sequential flight numbers across all groups so nothing overlaps
+    // Flight 1 → callsign #11,12,13,14  STN 00011,00012,00013,00014
+    // Flight 2 → callsign #21,22,23,24  STN 00021,00022,00023,00024
+    let flightNum = 1;
+    for (const [, { units }] of grouped) {
+      const lead = units[0];
+      const csLabel = lead.voiceCallsignLabel || lead.groupName.slice(0, 3).toUpperCase();
+
+      for (let i = 0; i < units.length; i++) {
+        const memberNum = i + 1;
+        const csNumber = String(flightNum) + String(memberNum);
+        const stn = String(flightNum * 10 + memberNum).padStart(5, '0');
+
+        handleFieldChange(units[i].unitId, 'voiceCallsignLabel', csLabel);
+        handleFieldChange(units[i].unitId, 'voiceCallsignNumber', csNumber);
+        handleFieldChange(units[i].unitId, 'stnL16', stn);
+      }
+      flightNum++;
+    }
+  }, [grouped, handleFieldChange]);
+
   if (clientUnits.length === 0) {
     return (
       <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
@@ -138,13 +160,23 @@ export function DatalinkTab() {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
-          Datalink &amp; Callsign Editor
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
-          Click a group to expand. Edit callsigns, STN L16 addresses, donors, and team members.
-        </p>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+            Datalink &amp; Callsign Editor
+          </h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+            Click a group to expand. Edit callsigns, STN L16 addresses, donors, and team members.
+          </p>
+        </div>
+        <button
+          onClick={handleAutoAssignAll}
+          style={{
+            background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+            color: '#6ab4f0', padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+            fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+          }}
+        >Auto Assign All</button>
       </div>
 
       {/* Filter bar */}

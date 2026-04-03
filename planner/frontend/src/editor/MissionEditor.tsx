@@ -189,7 +189,7 @@ export function MissionEditor() {
             {activeTab === 'dtc' && <DtcTab />}
             {activeTab === 'triggers' && <TriggerTab />}
             {activeTab === 'drawings' && <DrawingsTab />}
-            {activeTab === 'upload' && <UploadPanel />}
+            {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
           </div>
         )}
       </div>

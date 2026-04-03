@@ -120,6 +120,15 @@ export function TriggerTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 500 }}>
+      {/* Under Construction banner */}
+      <div style={{
+        background: 'rgba(210, 153, 34, 0.1)', border: '1px solid #d29922', borderRadius: 6,
+        padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10,
+        color: '#d29922', fontSize: 13, fontWeight: 500,
+      }}>
+        <span style={{ fontSize: 18 }}>&#x1F6A7;</span>
+        Under Construction — This feature is still being developed.
+      </div>
       {/* ── View Mode Toggle + Save ──────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,

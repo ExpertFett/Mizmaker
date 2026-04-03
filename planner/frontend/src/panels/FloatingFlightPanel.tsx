@@ -632,6 +632,7 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const addEdit = useEditStore((s) => s.addEdit);
   const units = clientUnits.filter((u) => u.groupName === groupName);
+  const [resetKey, setResetKey] = useState(0);
 
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
 
@@ -641,6 +642,33 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
     const num = u.voiceCallsignNumber ?? '';
     if (!num) return '';
     return num.padStart(5, '0');
+  };
+
+  const handleAutoAssign = () => {
+    // Use lead unit's callsign label, or derive from group name
+    const lead = units[0];
+    const csLabel = lead.voiceCallsignLabel || groupName.slice(0, 3).toUpperCase();
+
+    // Flight number: use lead's first digit if available, otherwise "1"
+    const leadNum = lead.voiceCallsignNumber || '';
+    const flightDigit = leadNum.length >= 2 ? leadNum.slice(0, -1) : '1';
+
+    // Lead STN base: parse existing or default to flight digit
+    const leadStn = lead.stnL16 || '';
+    let stnBase = parseInt(leadStn, 10);
+    if (isNaN(stnBase)) stnBase = parseInt(flightDigit + '1', 10);
+    const stnLen = Math.max((leadStn || '').length, 5);
+
+    for (let i = 0; i < units.length; i++) {
+      const memberNum = i + 1;
+      const csNumber = flightDigit + String(memberNum);
+      const stn = String(stnBase + i).padStart(stnLen, '0');
+
+      handleChange(units[i].unitId, 'voiceCallsignLabel', csLabel);
+      handleChange(units[i].unitId, 'voiceCallsignNumber', csNumber);
+      handleChange(units[i].unitId, 'stnL16', stn);
+    }
+    setResetKey((k) => k + 1);
   };
 
   const handleChange = (unitId: number, field: string, value: string) => {
@@ -665,7 +693,19 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
 
   return (
     <div style={{ padding: 12 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#ccdae8' }}>
+      {!locked && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button
+            onClick={handleAutoAssign}
+            style={{
+              background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+              color: '#6ab4f0', padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >Auto Assign</button>
+        </div>
+      )}
+      <table key={resetKey} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#ccdae8' }}>
         <thead>
           <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a' }}>
             <th style={{ ...thStyle, textAlign: 'left' }}>Unit</th>

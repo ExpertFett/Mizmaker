@@ -94,6 +94,15 @@ export function DrawingsTab() {
 
   return (
     <div style={{ maxWidth: 700 }}>
+      {/* Under Construction banner */}
+      <div style={{
+        background: 'rgba(210, 153, 34, 0.1)', border: '1px solid #d29922', borderRadius: 6,
+        padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10,
+        color: '#d29922', fontSize: 13, fontWeight: 500,
+      }}>
+        <span style={{ fontSize: 18 }}>&#x1F6A7;</span>
+        Under Construction — This feature is still being developed.
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#ccdae8' }}>Mission Overlays</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
