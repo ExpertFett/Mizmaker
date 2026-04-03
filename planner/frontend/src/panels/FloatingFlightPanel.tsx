@@ -157,22 +157,59 @@ export function FloatingFlightPanel() {
   if (!group) return null;
 
   const airframe = getAircraftType(group);
-  const pos = floatingPanelPos.x < 0
+  const pos = floatingPanelPos.x < -0.5
     ? { x: Math.max(50, (window.innerWidth - 740) / 2), y: Math.max(30, (window.innerHeight - 600) / 2) }
     : floatingPanelPos;
 
   const onDragStart = (e: React.PointerEvent) => {
-    dragState.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const parentRect = el.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: rect.left - parentRect.left,
+      origY: rect.top - parentRect.top,
+    };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onDragMove = (e: React.PointerEvent) => {
-    if (!dragState.current) return;
-    setFloatingPanelPos({
-      x: dragState.current.origX + (e.clientX - dragState.current.startX),
-      y: dragState.current.origY + (e.clientY - dragState.current.startY),
-    });
+    if (!dragState.current || !panelRef.current) return;
+    // Move DOM element directly — no React re-render during drag
+    const newX = dragState.current.origX + (e.clientX - dragState.current.startX);
+    const newY = dragState.current.origY + (e.clientY - dragState.current.startY);
+    panelRef.current.style.left = `${newX}px`;
+    panelRef.current.style.top = `${newY}px`;
   };
-  const onDragEnd = () => { dragState.current = null; };
+  const onDragEnd = () => {
+    if (!dragState.current) return;
+    dragState.current = null;
+    // Read final position from DOM
+    const el = panelRef.current;
+    if (!el) return;
+    const parent = el.offsetParent;
+    const parentRect = parent?.getBoundingClientRect() ?? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const rect = el.getBoundingClientRect();
+    const pw = parentRect.width;
+    const ph = parentRect.height;
+    const ew = rect.width;
+    const eh = rect.height;
+    let x = rect.left - parentRect.left;
+    let y = rect.top - parentRect.top;
+    // Snap to edges within 40px
+    if (x <= 40) x = 0;
+    else if (x + ew >= pw - 40) x = pw - ew;
+    if (y <= 40) y = 0;
+    else if (y + eh >= ph - 40) y = ph - eh;
+    // Clamp to stay on screen
+    x = Math.max(0, Math.min(x, pw - ew));
+    y = Math.max(0, Math.min(y, ph - eh));
+    // Apply snap to DOM immediately so there's no flicker
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    setFloatingPanelPos({ x, y });
+  };
 
   return (
     <div
@@ -598,6 +635,14 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
 
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
 
+  // Derive a default STN L16 from voice callsign number (e.g. "11" → "00011")
+  const defaultStn = (u: typeof units[0]) => {
+    if (u.stnL16) return u.stnL16;
+    const num = u.voiceCallsignNumber ?? '';
+    if (!num) return '';
+    return num.padStart(5, '0');
+  };
+
   const handleChange = (unitId: number, field: string, value: string) => {
     addEdit({ unitId, field, value } as any);
     const { clientUnits: all } = useMissionStore.getState();
@@ -651,8 +696,8 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
                 )}
               </td>
               <td style={tdStyle}>
-                {locked ? <span style={{ fontFamily: 'monospace', fontSize: 14, color: '#d29922' }}>{u.stnL16}</span> : (
-                  <input defaultValue={u.stnL16} maxLength={5}
+                {locked ? <span style={{ fontFamily: 'monospace', fontSize: 14, color: '#d29922' }}>{u.stnL16 || defaultStn(u)}</span> : (
+                  <input defaultValue={defaultStn(u)} maxLength={5}
                     onBlur={(e) => handleChange(u.unitId, 'stnL16', e.target.value)}
                     style={{ ...inputSt, color: '#d29922' }} />
                 )}
@@ -676,18 +721,34 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
 
   const handlePylonChange = (unitId: number, pylonNum: number, clsid: string) => {
-    const opts = pylonOptions[units[0]?.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
+    const unit = units.find((u) => u.unitId === unitId);
+    if (!unit) return;
+    const opts = pylonOptions[unit.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
     const selected = opts?.find((o) => o.clsid === clsid);
+    if (!selected && clsid !== '') return;
+
     addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
 
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
       if (u.unitId !== unitId) return u;
-      return { ...u, pylons: u.pylons.map((p) => {
-        if (p.number !== pylonNum) return p;
-        if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
-        return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
-      })};
+      const existingPylon = u.pylons.find((p) => p.number === pylonNum);
+      let newPylons: PylonInfo[];
+      if (existingPylon) {
+        newPylons = u.pylons.map((p) => {
+          if (p.number !== pylonNum) return p;
+          if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+          return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
+        });
+      } else if (selected) {
+        newPylons = [
+          ...u.pylons,
+          { number: pylonNum, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category },
+        ].sort((a, b) => a.number - b.number);
+      } else {
+        newPylons = u.pylons;
+      }
+      return { ...u, pylons: newPylons };
     });
     useMissionStore.setState({ clientUnits: updated });
     if (clsid) setExpandedPylon(`${unitId}-${pylonNum}`);

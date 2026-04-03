@@ -131,6 +131,7 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             "participants": {},  # { token: { name, group, connected, ready } }
             "status": "planning",
             "sse_clients": [],
+            "planner_drawings": [],
         }
     return sid, host_token
 
@@ -964,6 +965,32 @@ def close_session():
     if sid:
         with _lock:
             sessions.pop(sid, None)
+    return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------------------
+# Planner Drawings (user-created overlays)
+# --------------------------------------------------------------------------
+
+@app.route("/api/sessions/<sid>/drawings", methods=["GET"])
+def get_planner_drawings(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify({"drawings": session.get("planner_drawings", [])})
+
+
+@app.route("/api/sessions/<sid>/drawings", methods=["POST"])
+def save_planner_drawings(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+    with _lock:
+        session["planner_drawings"] = body.get("drawings", [])
+    _broadcast(session, "drawings_update", {"drawings": session["planner_drawings"]})
     return jsonify({"ok": True})
 
 

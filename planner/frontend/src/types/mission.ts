@@ -236,6 +236,22 @@ export interface CountryInfo {
 export type Coalition = 'blue' | 'red' | 'neutrals';
 export type UnitCategory = 'plane' | 'helicopter' | 'vehicle' | 'ship' | 'static';
 
+// ── Planner Drawings (user-created overlays) ─────────────────────────────
+
+export type PlannerDrawingType = 'corridor' | 'threatRing' | 'referenceLine' | 'racetrack';
+
+export interface PlannerDrawing {
+  id: string;
+  type: PlannerDrawingType;
+  name: string;
+  color: string;
+  visible: boolean;
+  coords: [number, number][];        // [lon, lat] pairs
+  widthNm?: number;                  // corridor / racetrack width in NM
+  radiusNm?: number;                 // threatRing radius in NM
+  lineStyle?: 'solid' | 'dashed';    // referenceLine style
+}
+
 // ── Trigger & Audio types ─────────────────────────────────────────────────
 
 export interface TriggerCondition {

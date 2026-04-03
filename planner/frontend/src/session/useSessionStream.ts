@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useDrawingStore } from '../store/drawingStore';
 
 export function useSessionStream(sessionId: string | null, enabled: boolean = true) {
   const esRef = useRef<EventSource | null>(null);
@@ -26,6 +27,15 @@ export function useSessionStream(sessionId: string | null, enabled: boolean = tr
         useMissionStore.setState({ groups: updated });
       } catch (err) {
         console.error('SSE route_update parse error:', err);
+      }
+    });
+
+    es.addEventListener('drawings_update', (e) => {
+      try {
+        const { drawings } = JSON.parse(e.data);
+        useDrawingStore.getState().loadDrawings(drawings);
+      } catch (err) {
+        console.error('SSE drawings_update parse error:', err);
       }
     });
 

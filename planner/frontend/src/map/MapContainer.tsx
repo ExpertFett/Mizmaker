@@ -8,6 +8,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import { boundingExtent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
 import ScaleLine from 'ol/control/ScaleLine';
+import { defaults as defaultInteractions } from 'ol/interaction';
 import type { Draw } from 'ol/interaction';
 import type VectorLayer from 'ol/layer/Vector';
 import 'ol/ol.css';
@@ -20,6 +21,8 @@ import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
 import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
 import { createTriggerZoneLayer, populateTriggerZoneLayer } from './layers/triggerZoneLayer';
+import { createPlannerDrawingLayer, populatePlannerDrawingLayer } from './layers/plannerDrawingLayer';
+import { useDrawingStore } from '../store/drawingStore';
 import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
@@ -31,7 +34,6 @@ import { setupWaypointDrag } from './interactions/waypointDrag';
 import { isPlayerGroup } from '../utils/groups';
 import { createWaypointAdd } from './interactions/waypointAdd';
 import { createMeasureTool } from './interactions/measureTool';
-
 import { LayerSwitcher } from './controls/LayerSwitcher';
 
 import { WeatherPanel } from './controls/WeatherPanel';
@@ -113,7 +115,8 @@ export function MapContainer() {
     airbase: ReturnType<typeof createAirbaseLayer> | null;
     drawing: ReturnType<typeof createDrawingLayer> | null;
     triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null });
+    plannerDrawing: ReturnType<typeof createPlannerDrawingLayer> | null;
+  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null, plannerDrawing: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
   const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
@@ -260,14 +263,16 @@ export function MapContainer() {
     const airbaseLayer = createAirbaseLayer();
     const drawingLayer = createDrawingLayer();
     const triggerZoneLayer = createTriggerZoneLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer };
+    const plannerDrawingLayer = createPlannerDrawingLayer();
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
 
     const map = new Map({
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        drawingLayer, triggerZoneLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
+        drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
       ],
+      interactions: defaultInteractions({ doubleClickZoom: false }),
       view: new View({
         center: fromLonLat([44, 41]),
         zoom: 7,
@@ -284,15 +289,12 @@ export function MapContainer() {
       const { addWaypointMode, measureMode } = useMapStore.getState();
       if (addWaypointMode || measureMode) return;
 
-      // Check for waypoint hit first (more specific)
-      const wpHit = map.forEachFeatureAtPixel(
-        e.pixel,
-        (f, layer) => {
-          if (layer === routeLayer && f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0) return f;
-          return undefined;
-        },
-        { hitTolerance: 10 },
-      );
+      // Collect all features at click point
+      const hits: any[] = [];
+      map.forEachFeatureAtPixel(e.pixel, (f) => { hits.push(f); }, { hitTolerance: 10 });
+
+      // Prioritize waypoint hits
+      const wpHit = hits.find((f) => f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0);
       if (wpHit) {
         const gid = wpHit.get('groupId');
         const wpi = wpHit.get('wpIndex');
@@ -301,36 +303,28 @@ export function MapContainer() {
         return;
       }
 
-      // Otherwise select group
-      const feature = map.forEachFeatureAtPixel(e.pixel, (f) => f, { hitTolerance: 8 });
-      if (feature) {
-        const gid = feature.get('groupId');
-        if (gid != null) {
-          selectGroup(gid);
-          setSelectedWpIndex(null);
-          return;
-        }
+      // Then check for unit or route hits
+      const groupHit = hits.find((f) => f.get('groupId') != null);
+      if (groupHit) {
+        selectGroup(groupHit.get('groupId'));
+        setSelectedWpIndex(null);
+        return;
       }
-      // Clicked empty space — close wp selection
+
+      // Clicked empty space — deselect waypoint
       setSelectedWpIndex(null);
     });
 
     // Double-click to edit waypoint (keep for compatibility)
     map.on('dblclick', (e) => {
-      const hit = map.forEachFeatureAtPixel(
-        e.pixel,
-        (f, layer) => {
-          if (layer === routeLayer && f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0) return f;
-          return undefined;
-        },
-        { hitTolerance: 10 },
-      );
+      const hits: any[] = [];
+      map.forEachFeatureAtPixel(e.pixel, (f) => { hits.push(f); }, { hitTolerance: 10 });
+      const hit = hits.find((f) => f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0);
       if (hit) {
         e.preventDefault();
         e.stopPropagation();
-        const gid = hit.get('groupId');
-        const wpi = hit.get('wpIndex');
-        setSelectedWpIndex(wpi);
+        selectGroup(hit.get('groupId'));
+        setSelectedWpIndex(hit.get('wpIndex'));
       }
     });
 
@@ -417,20 +411,11 @@ export function MapContainer() {
       }
     });
 
-    // Right-click to add waypoint (no mode toggle needed)
+    // Right-click to deselect group
     map.getViewport().addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const { selectedGroupId: gid } = useMissionStore.getState();
-      const { adminMode: am } = useMapStore.getState();
-      if (!gid) return;
-      const group = useMissionStore.getState().groups.find((g) => g.groupId === gid);
-      if (!group) return;
-      if (am && !isPlayerGroup(group)) return;
-
-      const pixel = map.getEventPixel(e);
-      const coord = map.getCoordinateFromPixel(pixel);
-      const [lon, lat] = toLonLat(coord);
-      handleAddWaypoint(lat, lon);
+      useMissionStore.getState().selectGroup(null as any);
+      useMapStore.getState().setSelectedWpIndex(null);
     });
 
     // Esc key to cancel modes
@@ -528,6 +513,17 @@ export function MapContainer() {
     }
   }, [measureMode]);
 
+  // Planner drawings — auto-generated from mission data
+  const plannerDrawings = useDrawingStore((s) => s.drawings);
+
+
+  // Populate planner drawing layer
+  useEffect(() => {
+    if (layerRefs.current.plannerDrawing) {
+      populatePlannerDrawingLayer(layerRefs.current.plannerDrawing, plannerDrawings);
+    }
+  }, [plannerDrawings]);
+
   // Fit map to content on initial load only
   const hasFitted = useRef(false);
   const role = useMissionStore((s) => s.role);
@@ -609,6 +605,7 @@ export function MapContainer() {
     if (layerRefs.current.threat) layerRefs.current.threat.setVisible(layers.threats);
     if (layerRefs.current.airbase) layerRefs.current.airbase.setVisible(layers.airbases);
     if (layerRefs.current.drawing) layerRefs.current.drawing.setVisible(layers.drawings !== false);
+    if (layerRefs.current.plannerDrawing) layerRefs.current.plannerDrawing.setVisible(layers.plannerDrawings !== false);
   }, [layers]);
 
   // Toggle base map
