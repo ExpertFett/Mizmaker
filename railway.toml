@@ -1,6 +1,5 @@
 [build]
 dockerfilePath = "planner/Dockerfile"
-dockerContext = "planner"
 
 [deploy]
 healthcheckPath = "/api/sam-ranges"
