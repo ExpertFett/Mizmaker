@@ -35,13 +35,6 @@ function airDensity(altFt: number): number {
   }
 }
 
-/** Speed of sound (m/s) at pressure altitude in feet */
-function speedOfSound(altFt: number): number {
-  const altM = altFt * 0.3048;
-  const T = altM <= 11000 ? 288.15 - 0.0065 * altM : 216.65;
-  return Math.sqrt(1.4 * 287.05 * T);
-}
-
 // ── Aircraft performance database ────────────────────────────────────────
 
 interface AircraftPerf {

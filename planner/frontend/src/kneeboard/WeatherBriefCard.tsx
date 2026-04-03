@@ -3,7 +3,7 @@
  * Full weather summary with all wind layers, clouds, visibility, fog, dust.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, BORDER, TEXT, DIM, ACCENT, WARN, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, BORDER, TEXT, DIM, WARN, footerStyle } from './cardStyles';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 

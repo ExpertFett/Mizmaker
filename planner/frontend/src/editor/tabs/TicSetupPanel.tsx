@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import type { GroupRenamerData } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
 /* DCS unit type → TIC category mapping                                */
@@ -31,8 +30,6 @@ const CATEGORY_COLORS: Record<TicCategory, string> = {
 
 /** Map DCS unit type strings to TIC categories */
 function classifyUnit(type: string): TicCategory {
-  const t = type.toLowerCase();
-
   // Tanks
   if (/t-55|t-62|t-72|t-80|t-90|m1a|m-?1\s?abrams|abrams|leopard|leclerc|challenger|merkava|ariete|chieftain|centurion|type-?59|type-?96|type-?99|ztz|mbt|m60/i.test(type))
     return 'tank';

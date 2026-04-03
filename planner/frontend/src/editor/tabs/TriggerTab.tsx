@@ -1132,59 +1132,6 @@ const BUILDER_EXAMPLES = [
 ];
 
 /** Generate warnings for a parsed trigger against mission data */
-function getWarnings(
-  trigger: ParsedTrigger,
-  allTriggers: ParsedTrigger[],
-  groupNames: Set<string>,
-  zoneNames: Set<string>,
-): string[] {
-  const warnings: string[] = [];
-
-  // Check group/zone references in conditions
-  for (const c of trigger.conditions) {
-    const p = c.params;
-    if (p.group && typeof p.group === 'string' && !groupNames.has(p.group)) {
-      warnings.push(`Group "${p.group}" not found in mission`);
-    }
-    if (p.zone && typeof p.zone === 'string' && !zoneNames.has(p.zone)) {
-      warnings.push(`Zone "${p.zone}" not found in mission`);
-    }
-    if (p.unit && typeof p.unit === 'string' && p.unit !== 'player') {
-      warnings.push(`Unit "${p.unit}" — verify this unit name exists`);
-    }
-    // Check if flag is read but never set by another trigger in the chain
-    if ((c.type === 'FLAG_IS_TRUE' || c.type === 'FLAG_IS_FALSE') && p.flag) {
-      const flagId = String(p.flag);
-      const isSetAnywhere = allTriggers.some((t) =>
-        t !== trigger && t.actions.some((a) =>
-          (a.type === 'SET_FLAG' || a.type === 'CLEAR_FLAG') && String(a.params.flag) === flagId,
-        ),
-      );
-      if (!isSetAnywhere) warnings.push(`Flag ${flagId} is checked but never set by another trigger in this plan`);
-    }
-  }
-
-  // Check group references in actions
-  for (const a of trigger.actions) {
-    const p = a.params;
-    if (p.group && typeof p.group === 'string' && !groupNames.has(p.group)) {
-      warnings.push(`Group "${p.group}" not found in mission`);
-    }
-    if ((a.type === 'MESSAGE_TO_ALL' || a.type === 'MESSAGE_TO_COALITION') && !p.text) {
-      warnings.push('Message action has no text');
-    }
-  }
-
-  if (trigger.conditions.length === 0 && trigger.actions.length > 0 && trigger.eventType === 'once') {
-    warnings.push('No conditions — this trigger will fire immediately');
-  }
-  if (trigger.actions.length === 0 && !trigger.name.startsWith('[Unparsed]')) {
-    warnings.push('No actions defined — trigger won\'t do anything');
-  }
-
-  return warnings;
-}
-
 /** Format seconds into human-readable */
 function formatSeconds(s: number): string {
   if (s < 60) return `${s}s`;

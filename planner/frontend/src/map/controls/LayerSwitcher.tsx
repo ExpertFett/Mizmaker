@@ -33,7 +33,7 @@ export function LayerSwitcher() {
     layers, toggleLayer, viewMode, setViewMode, adminMode, setAdminMode,
     measureMode, setMeasureMode,
   } = useMapStore();
-  const { containerRef, handleProps, resetPosition } = useDraggable();
+  const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable();
   const [collapsed, setCollapsed] = useState(false);
 
   const setBaseMap = (id: string) => {

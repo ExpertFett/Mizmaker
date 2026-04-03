@@ -881,7 +881,7 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
 
 function WaypointDetail({
   groupId,
-  groupName,
+  groupName: _groupName,
   waypoints,
   wpIndex,
   locked,

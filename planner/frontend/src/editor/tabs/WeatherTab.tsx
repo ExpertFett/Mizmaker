@@ -607,7 +607,7 @@ export function WeatherTab() {
               clouds_precipitation: next.clouds_precipitation,
               clouds_preset: next.clouds_preset,
               visibility_m: next.visibility_m,
-              fog_mode: next.fog_mode ?? prev.fog_mode,
+              fog_enabled: (next.fog_mode ?? prev.fog_mode) > 0,
               fog_visibility: next.fog_visibility,
               fog_thickness: next.fog_thickness,
               dust_enabled: next.dust_enabled,
@@ -1154,7 +1154,7 @@ function AdvancedMode({
 /* Shared UI                                                           */
 /* ================================================================== */
 
-function Section({ title, changed, children }: { title: string; changed: boolean; children: React.ReactNode }) {
+function Section({ title, changed: _changed, children }: { title: string; changed: boolean; children: React.ReactNode }) {
   return (
     <div style={{
       marginBottom: 20,
@@ -1550,54 +1550,6 @@ function DensityAltitude({ weather, fieldElevFt }: { weather: WeatherState; fiel
 /* ================================================================== */
 /* ATIS-style Readback                                                 */
 /* ================================================================== */
-
-function AtisReadback({ weather }: { weather: WeatherState }) {
-  const letters = 'ALPHA BRAVO CHARLIE DELTA ECHO FOXTROT GOLF HOTEL INDIA JULIET KILO LIMA MIKE NOVEMBER OSCAR PAPA QUEBEC ROMEO SIERRA TANGO UNIFORM VICTOR WHISKEY XRAY YANKEE ZULU'.split(' ');
-  // Use hour as info letter index
-  const hr = Math.floor(weather.start_time / 3600);
-  const infoLetter = letters[hr % 26];
-
-  const windKts = Math.round(weather.wind.atGround.speed * 1.944);
-  const windDir = String(Math.round(weather.wind.atGround.dir)).padStart(3, '0');
-  const visSM = weather.visibility_m / 1609.34;
-  const hpa = Math.round(weather.qnh_mmhg * 1.33322);
-  const inhg = (weather.qnh_mmhg * 0.03937).toFixed(2);
-  const temp = Math.round(weather.temperature_c);
-  const dewpoint = Math.round(weather.temperature_c - (weather.fog_mode > 0 ? 1 : 8));
-  const timeStr = formatTime(weather.start_time);
-
-  let sky = '';
-  if (weather.clouds_preset) {
-    const cp = DCS_CLOUD_PRESETS.find((p) => p.id === weather.clouds_preset);
-    if (cp) sky = cp.description;
-  } else if (weather.clouds_density > 0) {
-    const cov = weather.clouds_density <= 2 ? 'Few' : weather.clouds_density <= 4 ? 'Scattered' : weather.clouds_density <= 7 ? 'Broken' : 'Overcast';
-    sky = `${cov} at ${Math.round(weather.clouds_base_m * 3.281).toLocaleString()} feet`;
-  } else {
-    sky = 'Sky clear';
-  }
-
-  const precip = weather.clouds_precipitation === 1 ? ' Rain in the area.' : weather.clouds_precipitation === 2 ? ' Thunderstorm activity in the area.' : '';
-  const fogNote = weather.fog_mode > 0 ? ` Fog, visibility ${weather.fog_visibility} meters.` : '';
-  const dustNote = weather.dust_enabled ? ' Dust and sand in the vicinity.' : '';
-  const turbNote = weather.ground_turbulence > 50 ? ' Caution: moderate to severe turbulence below 5,000 feet.' : weather.ground_turbulence > 25 ? ' Light to moderate turbulence below 3,000 feet.' : '';
-
-  const atis = `Information ${infoLetter}, ${timeStr} Zulu. Wind ${windDir} at ${windKts} knots. Visibility ${visSM >= 10 ? 'greater than 10' : visSM.toFixed(1)} statute miles. ${sky}.${precip}${fogNote}${dustNote} Temperature ${temp}, dewpoint ${dewpoint}. Altimeter ${inhg}, QNH ${hpa}.${turbNote} Advise on initial contact you have information ${infoLetter}.`;
-
-  return (
-    <div style={{
-      fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6,
-      color: '#8fa8c0', background: '#0a1218',
-      padding: '10px 14px', borderRadius: 6,
-      border: '1px solid #12202e', whiteSpace: 'pre-wrap',
-    }}>
-      <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontWeight: 700 }}>
-        ATIS Information {infoLetter}
-      </div>
-      {atis}
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Styles                                                              */

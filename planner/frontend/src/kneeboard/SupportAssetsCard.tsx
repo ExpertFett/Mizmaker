@@ -3,7 +3,7 @@
  * Shows tankers, AWACS, and other support groups with frequencies and positions.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
 import type { MissionGroup } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 
@@ -39,7 +39,7 @@ export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps)
       !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
   });
 
-  const renderAssetTable = (assets: MissionGroup[], role: string) => (
+  const renderAssetTable = (assets: MissionGroup[], _role: string) => (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr>

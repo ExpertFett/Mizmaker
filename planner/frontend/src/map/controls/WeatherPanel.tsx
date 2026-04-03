@@ -19,7 +19,7 @@ export function WeatherPanel({
 }) {
   const overview = useMissionStore((s) => s.overview);
   const { speedMode, setSpeedMode } = useMapStore();
-  const { containerRef, handleProps, resetPosition } = useDraggable();
+  const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable();
   const [collapsed, setCollapsed] = useState(false);
 
   if (!overview?.weather) return null;

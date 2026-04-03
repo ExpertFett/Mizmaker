@@ -155,7 +155,6 @@ function extractOrbitFromTask(
     const tObj = t as any;
 
     if (tObj.id === 'Orbit' && tObj.params) {
-      const orbitParams = tObj.params;
       // We found an orbit — but the coordinates are in DCS x/y, not lat/lon
       // The waypoint itself has the orbit start position in lat/lon already
       // For Race-Track, there might be a point2 offset

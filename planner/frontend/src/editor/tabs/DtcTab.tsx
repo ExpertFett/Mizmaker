@@ -184,14 +184,6 @@ const COMMON_FREQS: { name: string; freq: string; mod: string }[] = [
 /* Fuel Planner Data                                                   */
 /* ------------------------------------------------------------------ */
 
-interface FuelLeg {
-  wpFrom: number;
-  wpTo: number;
-  distNm: number;
-  groundSpeedKts: number;
-  fuelBurnLbsPerHr: number;
-}
-
 const DEFAULT_FUEL_BURN = 5800; // lbs/hr cruise for F/A-18C
 const HORNET_INTERNAL_FUEL = 10860; // lbs
 const HORNET_BINGO_DEFAULT = 3000; // lbs
@@ -1157,7 +1149,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
 /* Copy DTC to Wingman                                                 */
 /* ------------------------------------------------------------------ */
 
-function CopyToWingman({ dtcData, setDtcData, selectedFlight }: {
+function CopyToWingman({ dtcData, setDtcData, selectedFlight: _selectedFlight }: {
   dtcData: DtcData;
   setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
   selectedFlight: string;
@@ -1369,7 +1361,7 @@ const fieldLabelStyle: React.CSSProperties = {
 /* Presets sub-tab                                                      */
 /* ------------------------------------------------------------------ */
 
-function PresetsSubTab({ dtcData, setDtcData, commData, onUpdateComm, templateMsg, setTemplateMsg }: {
+function PresetsSubTab({ dtcData: _dtcData, setDtcData, commData, onUpdateComm, templateMsg, setTemplateMsg }: {
   dtcData: DtcData;
   setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
   commData: { COMM1: CommRadio; COMM2: CommRadio };

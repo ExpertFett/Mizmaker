@@ -3,7 +3,7 @@
  * Master frequency reference for all flights and support assets.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
 import type { MissionGroup } from '../types/mission';
 
 interface RadioLadderCardProps {

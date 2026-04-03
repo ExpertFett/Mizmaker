@@ -77,11 +77,6 @@ function fmtSpeed(wp: Waypoint, mode: KneeboardSpeedRef, wx?: Weather | null, ma
   return `${Math.round(val)}`;
 }
 
-function fmtSpeedLabel(wp: Waypoint, mode: KneeboardSpeedRef, machThreshold: number = 18000): string {
-  const resolved = resolveSpeedMode(wp, mode, machThreshold);
-  return speedLabel(resolved);
-}
-
 function fmtDist(nm?: number): string {
   if (nm == null || nm <= 0) return '—';
   return nm.toFixed(1);
@@ -208,8 +203,8 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
         </thead>
         <tbody>
           {wps.map((wp, idx) => {
-            const legEta = idx > 0 && wp.cumulative_eta && wps[idx - 1].cumulative_eta
-              ? wp.cumulative_eta - wps[idx - 1].cumulative_eta
+            const legEta = idx > 0 && wp.cumulative_eta && wps[idx - 1]?.cumulative_eta
+              ? wp.cumulative_eta - wps[idx - 1]!.cumulative_eta!
               : 0;
             return (
               <tr key={wp.waypoint_number} style={{
