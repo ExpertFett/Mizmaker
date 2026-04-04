@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 
-export function UploadPanel() {
+export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const loadMission = useMissionStore((s) => s.loadMission);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -16,6 +17,7 @@ export function UploadPanel() {
         const data = await uploadMission(file);
         setActiveTheater(data.theater);
         loadMission(data);
+        onLoaded?.();
       } catch (e: any) {
         setError(e.message || 'Upload failed');
       } finally {
@@ -70,10 +72,12 @@ export function UploadPanel() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: '100vh',
+        minHeight: 0,
         background: '#080f1c',
         color: '#8fa8c0',
         fontFamily: 'system-ui, sans-serif',
+        paddingTop: 40,
+        paddingBottom: 40,
       }}
     >
       <div style={{ maxWidth: 700, width: '100%', padding: '0 20px' }}>
@@ -89,6 +93,9 @@ export function UploadPanel() {
 
         {/* Upload zone */}
         <div
+          onDrop={onDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onDragEnter={(e) => e.preventDefault()}
           style={{
             border: '2px dashed #2a3a4a',
             borderRadius: 10,
@@ -98,7 +105,7 @@ export function UploadPanel() {
             background: '#0a1520',
             marginBottom: 20,
           }}
-          onClick={() => document.getElementById('file-input')?.click()}
+          onClick={() => fileRef.current?.click()}
         >
           <h2 style={{ color: '#ccdae8', margin: '0 0 8px', fontSize: 18 }}>
             Drop .miz file here or click to browse
@@ -107,7 +114,7 @@ export function UploadPanel() {
             Upload a DCS mission file to start planning
           </p>
           <input
-            id="file-input"
+            ref={fileRef}
             type="file"
             accept=".miz"
             onChange={onChange}

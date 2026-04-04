@@ -116,11 +116,24 @@ export function LoadoutTab() {
 
     const updated = units.map((u) => {
       if (u.unitId !== unitId) return u;
-      const newPylons = u.pylons.map((p) => {
-        if (p.number !== pylonNum) return p;
-        if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
-        return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
-      });
+      const existingPylon = u.pylons.find((p) => p.number === pylonNum);
+      let newPylons: PylonInfo[];
+      if (existingPylon) {
+        // Update existing pylon
+        newPylons = u.pylons.map((p) => {
+          if (p.number !== pylonNum) return p;
+          if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+          return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
+        });
+      } else if (selected) {
+        // Add new pylon that didn't exist in the mission
+        newPylons = [
+          ...u.pylons,
+          { number: pylonNum, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category },
+        ].sort((a, b) => a.number - b.number);
+      } else {
+        newPylons = u.pylons;
+      }
       return { ...u, pylons: newPylons };
     });
     useMissionStore.setState({ clientUnits: updated });
@@ -327,7 +340,10 @@ function GroupCard({
 }: GroupCardProps) {
   const coalitionColor = coalition === 'blue' ? '#4a8fd4' : '#d95050';
   const copiedUnit = copiedUnitId ? units.find((u) => u.unitId === copiedUnitId) : null;
-  const canPasteToGroup = copiedUnitId != null && units.some((u) => u.unitId !== copiedUnitId && u.type === type);
+  // Only show "Paste to Group" if the copied unit is the same aircraft type as this group
+  const allUnits = useMissionStore((s) => s.clientUnits);
+  const copiedUnitType = copiedUnitId ? allUnits.find((u) => u.unitId === copiedUnitId)?.type : null;
+  const canPasteToGroup = copiedUnitId != null && copiedUnitType === type && units.some((u) => u.unitId !== copiedUnitId);
 
   return (
     <div style={{
@@ -488,7 +504,11 @@ function UnitRow({
 
         {/* Status badges */}
         <div style={{ display: 'flex', gap: 4 }}>
-          <Badge label="Fuel" value={`${Math.round(unit.fuel)}`} />
+          <Badge label="Fuel" value={(() => {
+            const fuelPct = unit.fuel <= 1 ? `${Math.round(unit.fuel * 100)}%` : `${Math.round(unit.fuel)}`;
+            const tankCount = unit.pylons.filter(p => (p.category || '').toLowerCase().includes('fuel') || (p.name || '').toLowerCase().includes('fuel tank')).length;
+            return tankCount > 0 ? `${fuelPct} +${tankCount}ET` : fuelPct;
+          })()} />
           <Badge label="FL" value={String(unit.flare)} />
           <Badge label="CH" value={String(unit.chaff)} />
           <Badge label="Gun" value={`${unit.gun}%`} />
@@ -518,17 +538,23 @@ function UnitRow({
             onClick={onCopy}
             style={{
               ...smallActionBtn,
-              color: isCopied ? '#3fb950' : '#5a7a8a',
-              borderColor: isCopied ? '#3fb950' : '#1a2a3a',
+              background: isCopied ? 'rgba(63, 185, 80, 0.15)' : 'rgba(74, 143, 212, 0.1)',
+              color: isCopied ? '#3fb950' : '#4a8fd4',
+              borderColor: isCopied ? '#3fb950' : '#1a3a5a',
             }}
             title="Copy this loadout"
           >
-            {isCopied ? 'Copied' : 'Copy'}
+            {isCopied ? '\u2713 Copied' : 'Copy'}
           </button>
           {canPaste && (
             <button
               onClick={onPaste}
-              style={{ ...smallActionBtn, color: '#4a8fd4', borderColor: '#1a3a5a' }}
+              style={{
+                ...smallActionBtn,
+                background: 'rgba(217, 153, 34, 0.15)',
+                color: '#d99922',
+                borderColor: '#d9992244',
+              }}
               title="Paste copied loadout to this unit"
             >
               Paste
@@ -658,14 +684,14 @@ function Badge({ label, value }: { label: string; value: string }) {
       background: '#0f1a28',
       border: '1px solid #1a2a3a',
       borderRadius: 3,
-      padding: '1px 5px',
-      fontSize: 10,
-      color: '#5a7a8a',
+      padding: '2px 6px',
+      fontSize: 11,
+      color: '#8fa8c0',
       fontFamily: 'monospace',
       whiteSpace: 'nowrap',
     }}>
-      <span style={{ color: '#3a5a6a', marginRight: 2 }}>{label}</span>
-      <span style={{ color: '#8fa8c0' }}>{value}</span>
+      <span style={{ color: '#6a8a9a', marginRight: 3 }}>{label}</span>
+      <span style={{ color: '#ccdae8', fontWeight: 500 }}>{value}</span>
     </span>
   );
 }

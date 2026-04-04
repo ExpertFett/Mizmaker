@@ -228,9 +228,8 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
         </thead>
         <tbody>
           {wps.map((wp, idx) => {
-            const prevEta = idx > 0 ? wps[idx - 1]?.cumulative_eta : undefined;
-            const legEta = idx > 0 && wp.cumulative_eta != null && prevEta != null
-              ? wp.cumulative_eta - prevEta
+            const legEta = idx > 0 && wp.cumulative_eta && wps[idx - 1]?.cumulative_eta
+              ? wp.cumulative_eta - wps[idx - 1]!.cumulative_eta!
               : 0;
             const isWp0 = wp.waypoint_number === 0;
             return (

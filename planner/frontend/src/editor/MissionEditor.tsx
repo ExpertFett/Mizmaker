@@ -17,7 +17,11 @@ import { RenamerTab } from './tabs/RenamerTab';
 import { BatchEditTab } from './tabs/BatchEditTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
-import { TriggerTab } from './tabs/TriggerTab';
+import { DrawingsTab } from './tabs/DrawingsTab';
+import { TacanTab } from './tabs/TacanTab';
+import { CommCardTab } from './tabs/CommCardTab';
+import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
+import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
@@ -28,16 +32,21 @@ const TABS = [
   { id: 'weather', label: 'Weather', icon: '🌤' },
   { id: 'rename', label: 'Rename', icon: '✏' },
   { id: 'batch', label: 'Batch', icon: '⚡' },
-  { id: 'triggers', label: 'Triggers', icon: '⚙' },
+  { id: 'tacan', label: 'TACAN', icon: '📻' },
+  { id: 'commcard', label: 'Comm Card', icon: '📶' },
   { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
   { id: 'triggers', label: 'Triggers', icon: '🔔' },
+  { id: 'threats', label: 'Threats', icon: '⚠' },
+  { id: 'drawings', label: 'Drawings', icon: '📐' },
+  { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
 export function MissionEditor() {
   const [activeTab, setActiveTab] = useState<TabId>('map');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sessionId = useMissionStore((s) => s.sessionId);
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
@@ -47,6 +56,9 @@ export function MissionEditor() {
   useSessionStream(sessionId, true);
 
   const isMap = activeTab === 'map';
+  // Only allow collapse on map page
+  const isCollapsed = isMap && sidebarCollapsed;
+  const sidebarWidth = isCollapsed ? 44 : isMap ? 280 : 140;
 
   return (
     <div style={{
@@ -58,32 +70,61 @@ export function MissionEditor() {
       color: '#ccdae8',
       overflow: 'hidden',
     }}>
-      {/* Left sidebar — always visible */}
+      {/* Left sidebar */}
       <div style={{
-        width: isMap ? 280 : 140,
-        minWidth: isMap ? 280 : 140,
+        width: sidebarWidth,
+        minWidth: sidebarWidth,
         display: 'flex',
         flexDirection: 'column',
         background: '#0a1520',
         borderRight: '1px solid #1a2a3a',
         flexShrink: 0,
         overflow: 'hidden',
-        transition: 'width 0.15s',
+        transition: 'width 0.15s, min-width 0.15s',
       }}>
         {/* Header */}
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #1a2a3a' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#ccdae8' }}>{theater}</div>
-          {isMap && <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 2 }}>{filename}</div>}
+        <div style={{
+          padding: isCollapsed ? '10px 6px' : '12px 14px',
+          borderBottom: '1px solid #1a2a3a',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isCollapsed ? 'center' : 'space-between',
+          minHeight: 42,
+        }}>
+          {!isCollapsed && (
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#ccdae8', whiteSpace: 'nowrap' }}>{theater}</div>
+              {isMap && <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
+            </div>
+          )}
+          {isMap && (
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#5a7a8a',
+                cursor: 'pointer',
+                fontSize: 14,
+                padding: '2px 4px',
+                flexShrink: 0,
+              }}
+            >
+              {isCollapsed ? '▶' : '◀'}
+            </button>
+          )}
         </div>
 
         {/* Tab buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #1a2a3a' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #1a2a3a', overflow: isCollapsed ? 'hidden' : undefined }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
+                title={isCollapsed ? tab.label : undefined}
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
                   border: 'none',
@@ -92,23 +133,26 @@ export function MissionEditor() {
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  padding: isMap ? '9px 14px' : '11px 14px',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  gap: isCollapsed ? 0 : 8,
+                  padding: isCollapsed ? '10px 0' : isMap ? '9px 14px' : '11px 14px',
                   fontSize: 14,
                   fontFamily: 'inherit',
                   textAlign: 'left',
                   width: '100%',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
                 }}
               >
-                <span style={{ fontSize: 16 }}>{tab.icon}</span>
-                {tab.label}
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{tab.icon}</span>
+                {!isCollapsed && tab.label}
               </button>
             );
           })}
         </div>
 
-        {/* Flights + export (only on map tab) */}
-        {isMap && (
+        {/* Flights + export (only on map tab, not collapsed) */}
+        {isMap && !isCollapsed && (
           <>
             <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
               <PlayerGroupsButton />
@@ -147,10 +191,14 @@ export function MissionEditor() {
             {activeTab === 'weather' && <WeatherTab />}
             {activeTab === 'rename' && <RenamerTab />}
             {activeTab === 'batch' && <BatchEditTab />}
-            {activeTab === 'triggers' && <TriggerTab />}
+            {activeTab === 'tacan' && <TacanTab />}
+            {activeTab === 'commcard' && <CommCardTab />}
             {activeTab === 'kneeboard' && <KneeboardTab />}
             {activeTab === 'dtc' && <DtcTab />}
             {activeTab === 'triggers' && <TriggerTab />}
+            {activeTab === 'threats' && <ThreatLibraryTab />}
+            {activeTab === 'drawings' && <DrawingsTab />}
+            {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
           </div>
         )}
       </div>

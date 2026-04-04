@@ -121,7 +121,7 @@ export async function dtcGenerate(sessionId: string, groupName: string, edits: u
 
 // ── Triggers & Audio ──────────────────────────────────────────────────────
 
-import type { TriggerData, AudioFile, TriggerRule } from '../types/mission';
+import type { TriggerData, AudioFile, TriggerRule, PlannerDrawing } from '../types/mission';
 
 export async function getTriggers(sessionId: string): Promise<TriggerData> {
   const res = await fetch(`${BASE}/api/triggers?sessionId=${sessionId}`);
@@ -163,4 +163,22 @@ export async function deleteAudio(sessionId: string, path: string): Promise<void
 
 export function audioStreamUrl(sessionId: string, path: string): string {
   return `${BASE}/api/audio/stream/${path}?sessionId=${sessionId}`;
+}
+
+// ── Planner Drawings ─────────────────────────────────────────────────────
+
+export async function getPlannerDrawings(sessionId: string): Promise<PlannerDrawing[]> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/drawings`);
+  if (!res.ok) throw new Error('Failed to load planner drawings');
+  const data = await res.json();
+  return data.drawings || [];
+}
+
+export async function savePlannerDrawings(sessionId: string, drawings: PlannerDrawing[]): Promise<void> {
+  const res = await fetch(`${BASE}/api/sessions/${sessionId}/drawings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ drawings }),
+  });
+  if (!res.ok) throw new Error('Failed to save planner drawings');
 }

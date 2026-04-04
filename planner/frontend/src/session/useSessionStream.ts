@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useDrawingStore } from '../store/drawingStore';
 
 export function useSessionStream(sessionId: string | null, enabled: boolean = true) {
   const esRef = useRef<EventSource | null>(null);
@@ -29,31 +30,13 @@ export function useSessionStream(sessionId: string | null, enabled: boolean = tr
       }
     });
 
-    es.addEventListener('unit_edit', (e) => {
+    es.addEventListener('drawings_update', (e) => {
       try {
-        const edit = JSON.parse(e.data);
-        const { clientUnits } = useMissionStore.getState();
-        // Apply the edit locally to reflect other participants' changes
-        const field = edit.field;
-        const unitId = edit.unitId;
-        if (field === 'pylonChange') {
-          const { pylon, clsid } = edit.value || {};
-          const updated = clientUnits.map((u) => {
-            if (u.unitId !== unitId) return u;
-            return { ...u, pylons: u.pylons.map((p) => {
-              if (p.number !== pylon) return p;
-              return { ...p, clsid: clsid || '', name: clsid ? p.name : '<Empty>' };
-            })};
-          });
-          useMissionStore.setState({ clientUnits: updated });
-        } else if (['voiceCallsignLabel', 'voiceCallsignNumber', 'stnL16'].includes(field)) {
-          const updated = clientUnits.map((u) => {
-            if (u.unitId !== unitId) return u;
-            return { ...u, [field]: edit.value };
-          });
-          useMissionStore.setState({ clientUnits: updated });
-        }
-      } catch {}
+        const { drawings } = JSON.parse(e.data);
+        useDrawingStore.getState().loadDrawings(drawings);
+      } catch (err) {
+        console.error('SSE drawings_update parse error:', err);
+      }
     });
 
     es.addEventListener('participant_joined', (e) => {

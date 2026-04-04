@@ -1,0 +1,8 @@
+[build]
+dockerfilePath = "planner/Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/sam-ranges"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

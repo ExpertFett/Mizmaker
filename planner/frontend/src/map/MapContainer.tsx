@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -8,6 +8,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import { boundingExtent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
 import ScaleLine from 'ol/control/ScaleLine';
+import { defaults as defaultInteractions } from 'ol/interaction';
 import type { Draw } from 'ol/interaction';
 import type VectorLayer from 'ol/layer/Vector';
 import 'ol/ol.css';
@@ -20,6 +21,8 @@ import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
 import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
 import { createTriggerZoneLayer, populateTriggerZoneLayer } from './layers/triggerZoneLayer';
+import { createPlannerDrawingLayer, populatePlannerDrawingLayer } from './layers/plannerDrawingLayer';
+import { useDrawingStore } from '../store/drawingStore';
 import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
@@ -31,10 +34,8 @@ import { setupWaypointDrag } from './interactions/waypointDrag';
 import { isPlayerGroup } from '../utils/groups';
 import { createWaypointAdd } from './interactions/waypointAdd';
 import { createMeasureTool } from './interactions/measureTool';
-
-import { WaypointEditPopup } from './controls/WaypointEditPopup';
 import { LayerSwitcher } from './controls/LayerSwitcher';
-import { CoordinateDisplay } from './controls/CoordinateDisplay';
+
 import { WeatherPanel } from './controls/WeatherPanel';
 
 const THEATER_CENTERS: Record<string, [number, number]> = {
@@ -64,7 +65,7 @@ function createDarkLayer(): TileLayer {
       attributions: '&copy; CARTO',
     }),
     properties: { name: 'dark' },
-    visible: false,
+    visible: true, // default
   });
 }
 
@@ -76,7 +77,7 @@ function createOsmLayer(lang: string = 'en'): TileLayer {
         maxZoom: 20,
         attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       });
-  return new TileLayer({ source, properties: { name: 'osm' }, visible: true }); // default
+  return new TileLayer({ source, properties: { name: 'osm' }, visible: false });
 }
 
 function createSatelliteLayer(): TileLayer {
@@ -114,7 +115,8 @@ export function MapContainer() {
     airbase: ReturnType<typeof createAirbaseLayer> | null;
     drawing: ReturnType<typeof createDrawingLayer> | null;
     triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null });
+    plannerDrawing: ReturnType<typeof createPlannerDrawingLayer> | null;
+  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null, plannerDrawing: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
   const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
@@ -124,11 +126,9 @@ export function MapContainer() {
     measureLayer: VectorLayer | null;
   }>({ addDraw: null, measureDraw: null, measureLayer: null });
   const coordRef = useRef<HTMLDivElement>(null);
-  const [editPopup, setEditPopup] = useState<{ groupId: number; wpIndex: number; x: number; y: number } | null>(null);
-
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup } =
     useMissionStore();
-  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -263,14 +263,16 @@ export function MapContainer() {
     const airbaseLayer = createAirbaseLayer();
     const drawingLayer = createDrawingLayer();
     const triggerZoneLayer = createTriggerZoneLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer };
+    const plannerDrawingLayer = createPlannerDrawingLayer();
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
 
     const map = new Map({
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        drawingLayer, triggerZoneLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
+        drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
       ],
+      interactions: defaultInteractions({ doubleClickZoom: false }),
       view: new View({
         center: fromLonLat([44, 41]),
         zoom: 7,
@@ -282,38 +284,47 @@ export function MapContainer() {
       ]),
     });
 
-    // Click to select group (only when not in add/measure mode)
+    // Click to select group — or open waypoint popup if clicking a waypoint
     map.on('click', (e) => {
       const { addWaypointMode, measureMode } = useMapStore.getState();
       if (addWaypointMode || measureMode) return;
 
-      const feature = map.forEachFeatureAtPixel(e.pixel, (f) => f, { hitTolerance: 8 });
-      if (feature) {
-        const gid = feature.get('groupId');
-        if (gid != null) {
-          selectGroup(gid);
-          return;
-        }
+      // Collect all features at click point
+      const hits: any[] = [];
+      map.forEachFeatureAtPixel(e.pixel, (f) => { hits.push(f); }, { hitTolerance: 10 });
+
+      // Prioritize waypoint hits
+      const wpHit = hits.find((f) => f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0);
+      if (wpHit) {
+        const gid = wpHit.get('groupId');
+        const wpi = wpHit.get('wpIndex');
+        selectGroup(gid);
+        setSelectedWpIndex(wpi);
+        return;
       }
+
+      // Then check for unit or route hits
+      const groupHit = hits.find((f) => f.get('groupId') != null);
+      if (groupHit) {
+        selectGroup(groupHit.get('groupId'));
+        setSelectedWpIndex(null);
+        return;
+      }
+
+      // Clicked empty space — deselect waypoint
+      setSelectedWpIndex(null);
     });
 
-    // Double-click to edit waypoint
+    // Double-click to edit waypoint (keep for compatibility)
     map.on('dblclick', (e) => {
-      const hit = map.forEachFeatureAtPixel(
-        e.pixel,
-        (f, layer) => {
-          if (layer === routeLayer && f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0) return f;
-          return undefined;
-        },
-        { hitTolerance: 10 },
-      );
+      const hits: any[] = [];
+      map.forEachFeatureAtPixel(e.pixel, (f) => { hits.push(f); }, { hitTolerance: 10 });
+      const hit = hits.find((f) => f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0);
       if (hit) {
         e.preventDefault();
         e.stopPropagation();
-        const gid = hit.get('groupId');
-        const wpi = hit.get('wpIndex');
-        const pixel = map.getPixelFromCoordinate((hit.getGeometry() as any).getCoordinates());
-        setEditPopup({ groupId: gid, wpIndex: wpi, x: pixel[0], y: pixel[1] });
+        selectGroup(hit.get('groupId'));
+        setSelectedWpIndex(hit.get('wpIndex'));
       }
     });
 
@@ -352,7 +363,7 @@ export function MapContainer() {
       }
       updateCoordDisplay();
 
-      // Tooltip
+      // Tooltip — only for units and route lines, NOT waypoints (waypoints use the edit popup)
       const tooltip = document.getElementById('map-tooltip');
       if (!tooltip) return;
 
@@ -381,23 +392,8 @@ export function MapContainer() {
           tooltip.innerHTML = header + '<br/>' + meta + roster;
           tooltip.style.display = 'block';
         } else if (wp) {
-          const altFt = Math.round(metersToFeet(wp.altitude_m || 0));
-          const spdKts = Math.round((wp.speed_ms || 0) * 1.94384);
-          const altType = wp.altitude_type === 'RADIO' ? 'AGL' : 'MSL';
-          const dist = wp.leg_distance_nm ? `${wp.leg_distance_nm.toFixed(1)} nm` : '';
-          const brg = wp.leg_bearing_deg ? `${Math.round(wp.leg_bearing_deg)}\u00B0` : '';
-          const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
-
-          tooltip.innerHTML =
-            `<b>WP${wp.waypoint_number} ${wp.waypoint_name}</b>` +
-            `<br/><span style="color:#6a8a9a">${groupName || ''}</span>` +
-            `<div style="margin-top:4px;border-top:1px solid #1a2a3a;padding-top:4px;font-family:monospace;font-size:11px">` +
-            (pos ? `<div>${pos}</div>` : '') +
-            `<div>Alt: ${altFt} ft ${altType}</div>` +
-            `<div>Spd: ${spdKts} kts</div>` +
-            (dist ? `<div>Leg: ${dist} ${brg}</div>` : '') +
-            `</div>`;
-          tooltip.style.display = 'block';
+          // Waypoints don't show a hover tooltip — click opens the edit popup instead
+          tooltip.style.display = 'none';
         } else if (groupName && hit.get('featureType') === 'route') {
           tooltip.innerHTML = `<b>${groupName}</b>`;
           tooltip.style.display = 'block';
@@ -406,7 +402,7 @@ export function MapContainer() {
         }
 
         if (tooltip.style.display === 'block') {
-          
+
           tooltip.style.left = `${e.pixel[0] + 14}px`;
           tooltip.style.top = `${e.pixel[1] - 8}px`;
         }
@@ -415,20 +411,11 @@ export function MapContainer() {
       }
     });
 
-    // Right-click to add waypoint (no mode toggle needed)
+    // Right-click to deselect group
     map.getViewport().addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const { selectedGroupId: gid } = useMissionStore.getState();
-      const { adminMode: am } = useMapStore.getState();
-      if (!gid) return;
-      const group = useMissionStore.getState().groups.find((g) => g.groupId === gid);
-      if (!group) return;
-      if (am && !isPlayerGroup(group)) return;
-
-      const pixel = map.getEventPixel(e);
-      const coord = map.getCoordinateFromPixel(pixel);
-      const [lon, lat] = toLonLat(coord);
-      handleAddWaypoint(lat, lon);
+      useMissionStore.getState().selectGroup(null as any);
+      useMapStore.getState().setSelectedWpIndex(null);
     });
 
     // Esc key to cancel modes
@@ -436,7 +423,7 @@ export function MapContainer() {
       if (e.key === 'Escape') {
         useMapStore.getState().setAddWaypointMode(false);
         useMapStore.getState().setMeasureMode(false);
-        setEditPopup(null);
+        useMapStore.getState().setSelectedWpIndex(null);
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -526,15 +513,20 @@ export function MapContainer() {
     }
   }, [measureMode]);
 
-  // Filter data for flight leads — blue only
-  const role = useMissionStore((s) => s.role);
-  const isFlightLead = role === 'flight_lead';
-  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
-  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
-  const visibleThreats = isFlightLead ? [] : threats;
+  // Planner drawings — auto-generated from mission data
+  const plannerDrawings = useDrawingStore((s) => s.drawings);
+
+
+  // Populate planner drawing layer
+  useEffect(() => {
+    if (layerRefs.current.plannerDrawing) {
+      populatePlannerDrawingLayer(layerRefs.current.plannerDrawing, plannerDrawings);
+    }
+  }, [plannerDrawings]);
 
   // Fit map to content on initial load only
   const hasFitted = useRef(false);
+  const role = useMissionStore((s) => s.role);
   useEffect(() => {
     if (!mapInstance.current || !theater || hasFitted.current) return;
     if (groups.length === 0) return; // wait for data
@@ -567,6 +559,12 @@ export function MapContainer() {
     }
     hasFitted.current = true;
   }, [theater, groups, role]);
+
+  // Filter data for flight leads — blue only
+  const isFlightLead = role === 'flight_lead';
+  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
+  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
+  const visibleThreats = isFlightLead ? [] : threats;
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
@@ -607,13 +605,13 @@ export function MapContainer() {
     if (layerRefs.current.threat) layerRefs.current.threat.setVisible(layers.threats);
     if (layerRefs.current.airbase) layerRefs.current.airbase.setVisible(layers.airbases);
     if (layerRefs.current.drawing) layerRefs.current.drawing.setVisible(layers.drawings !== false);
-    if (layerRefs.current.triggerZone) layerRefs.current.triggerZone.setVisible(layers.triggerZones !== false);
+    if (layerRefs.current.plannerDrawing) layerRefs.current.plannerDrawing.setVisible(layers.plannerDrawings !== false);
   }, [layers]);
 
   // Toggle base map
   useEffect(() => {
     if (!baseLayers.current) return;
-    const bm = layers.baseMap || 'osm';
+    const bm = layers.baseMap || 'dark';
     baseLayers.current.dark.setVisible(bm === 'dark');
     baseLayers.current.osm.setVisible(bm === 'osm');
     baseLayers.current.satellite.setVisible(bm === 'satellite');
@@ -648,10 +646,9 @@ export function MapContainer() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
-      <WeatherPanel />
+      <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
+      <WeatherPanel coordRef={coordRef} />
       <LayerSwitcher />
-      <CoordinateDisplay coordRef={coordRef} />
 
       {/* Instructional overlays */}
       {addWaypointMode && (
@@ -692,15 +689,6 @@ export function MapContainer() {
           whiteSpace: 'nowrap',
         }}
       />
-      {editPopup && (
-        <WaypointEditPopup
-          groupId={editPopup.groupId}
-          wpIndex={editPopup.wpIndex}
-          pixelX={editPopup.x}
-          pixelY={editPopup.y}
-          onClose={() => setEditPopup(null)}
-        />
-      )}
     </div>
   );
 }

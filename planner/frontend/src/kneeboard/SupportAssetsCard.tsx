@@ -1,0 +1,127 @@
+/**
+ * Support Assets Card — shared mission-wide kneeboard card.
+ * Shows tankers, AWACS, and other support groups with frequencies and positions.
+ */
+
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import type { MissionGroup } from '../types/mission';
+import { metersToFeet, msToKnots } from '../utils/conversions';
+
+interface SupportAssetsCardProps {
+  groups: MissionGroup[];
+  coalition: string;
+}
+
+function formatFreq(freq: number, mod: number): string {
+  return `${freq.toFixed(3)} ${mod === 0 ? 'AM' : 'FM'}`;
+}
+
+function formatAlt(wp: { altitude_m: number }): string {
+  const ft = Math.round(metersToFeet(wp.altitude_m));
+  if (ft <= 0) return 'SFC';
+  return `${ft.toLocaleString()} ft`;
+}
+
+function formatSpeed(wp: { speed_ms: number }): string {
+  return `${Math.round(msToKnots(wp.speed_ms))} kts`;
+}
+
+export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps) {
+  const coalitionGroups = groups.filter((g) => g.coalition === coalition);
+  const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
+  const awacsGroups = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
+
+  // Other support — non-player planes/helos that aren't tanker/AWACS
+  const otherSupport = coalitionGroups.filter((g) => {
+    const task = (g.task || '').toLowerCase();
+    return (g.category === 'plane' || g.category === 'helicopter') &&
+      task !== 'refueling' && task !== 'awacs' &&
+      !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
+  });
+
+  const renderAssetTable = (assets: MissionGroup[], _role: string) => (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={{ ...th, textAlign: 'left' }}>CALLSIGN</th>
+          <th style={{ ...th, width: 80 }}>TYPE</th>
+          <th style={{ ...th, width: 110 }}>FREQ</th>
+          <th style={{ ...th, width: 70 }}>ALT</th>
+          <th style={{ ...th, width: 60 }}>SPD</th>
+        </tr>
+      </thead>
+      <tbody>
+        {assets.map((g, i) => {
+          const orbitWp = g.waypoints.find((wp) => wp.waypoint_number > 0) || g.waypoints[0];
+          const acType = g.units[0]?.type || '—';
+          const shortType = acType.replace(/[_-]/g, ' ').split(' ').slice(0, 2).join(' ');
+          return (
+            <tr key={g.groupId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              <td style={{ ...cell, fontWeight: 600 }}>{g.groupName}</td>
+              <td style={{ ...cell, fontSize: 9, color: DIM, textAlign: 'center' }}>{shortType}</td>
+              <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>{formatFreq(g.frequency, g.modulation)}</td>
+              <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{orbitWp ? formatAlt(orbitWp) : '—'}</td>
+              <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{orbitWp ? formatSpeed(orbitWp) : '—'}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  return (
+    <div style={{ ...cardRoot, position: 'relative' }}>
+      <div style={headerStyle}>
+        <div style={titleStyle}>SUPPORT ASSETS</div>
+        <div style={subtitleStyle}>
+          {coalition.toUpperCase()} coalition | {tankers.length} tanker{tankers.length !== 1 ? 's' : ''} | {awacsGroups.length} AWACS
+        </div>
+      </div>
+
+      {/* Tankers */}
+      {tankers.length > 0 && (
+        <>
+          <div style={sectionTitle}>TANKERS</div>
+          {renderAssetTable(tankers, 'TANKER')}
+        </>
+      )}
+
+      {/* AWACS */}
+      {awacsGroups.length > 0 && (
+        <>
+          <div style={sectionTitle}>AWACS</div>
+          {renderAssetTable(awacsGroups, 'AWACS')}
+        </>
+      )}
+
+      {/* Other support */}
+      {otherSupport.length > 0 && (
+        <>
+          <div style={sectionTitle}>OTHER AIR ASSETS</div>
+          {renderAssetTable(otherSupport.slice(0, 10), 'SUPPORT')}
+          {otherSupport.length > 10 && (
+            <div style={{ padding: '4px 16px', fontSize: 9, color: DIM }}>
+              + {otherSupport.length - 10} more
+            </div>
+          )}
+        </>
+      )}
+
+      {tankers.length === 0 && awacsGroups.length === 0 && otherSupport.length === 0 && (
+        <div style={{ padding: '20px 16px', fontSize: 12, color: DIM, textAlign: 'center' }}>
+          No support assets found for this coalition.
+        </div>
+      )}
+
+      {/* Notes */}
+      <div style={{ padding: '8px 16px' }}>
+        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+        {[...Array(6)].map((_, i) => (
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+        ))}
+      </div>
+
+      <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>
+    </div>
+  );
+}

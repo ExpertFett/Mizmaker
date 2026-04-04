@@ -1,0 +1,10 @@
+planner/frontend/node_modules
+planner/frontend/dist
+planner/backend/venv
+planner/backend/__pycache__
+planner/backend/static
+planner/backend/*.log
+dcs-scripts
+*.miz
+.git
+.env

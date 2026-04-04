@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback, useReducer } from 'react';
+import { useState, useRef, useCallback, useReducer, useEffect } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useMapStore } from '../store/mapStore';
 import { useEditStore } from '../store/editStore';
-import { metersToFeet, feetToMeters, msToKnots } from '../utils/conversions';
+import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../utils/conversions';
 import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils/atmosphere';
 import { sessionEdit, sessionUnitEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
@@ -10,9 +10,42 @@ import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
 import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
 
 
+/* ------------------------------------------------------------------ */
+/* 4-char waypoint abbreviation generator                              */
+/* ------------------------------------------------------------------ */
+
+function abbreviate(name: string): string {
+  if (!name || !name.trim()) return '';
+  const clean = name.trim().toUpperCase();
+  if (clean.length <= 4) return clean;
+  const words = clean.split(/[\s\-_/]+/).filter(Boolean);
+  if (words.length >= 2) {
+    const initials = words.map((w) => w[0]).join('').slice(0, 4);
+    if (initials.length >= 2) return initials.padEnd(4, words[words.length - 1].slice(1, 1 + (4 - initials.length))).slice(0, 4);
+  }
+  const vowels = /[AEIOU]/g;
+  const consonants = clean.replace(vowels, '');
+  if (consonants.length >= 4) return consonants.slice(0, 4);
+  return clean.slice(0, 4);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Persistent notes store (client-side, keyed by groupId + wpIndex)    */
+/* ------------------------------------------------------------------ */
+
+const wpNotesMap: Record<string, string> = {};
+function getWpNote(groupId: number, wpIndex: number): string {
+  return wpNotesMap[`${groupId}-${wpIndex}`] ?? '';
+}
+function setWpNote(groupId: number, wpIndex: number, note: string) {
+  wpNotesMap[`${groupId}-${wpIndex}`] = note;
+}
+
+
 export function FloatingFlightPanel() {
   const { groups, selectedGroupId, selectGroup } = useMissionStore();
-  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode } = useMapStore();
+  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode, selectedWpIndex, setSelectedWpIndex } = useMapStore();
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather;
 
@@ -124,22 +157,59 @@ export function FloatingFlightPanel() {
   if (!group) return null;
 
   const airframe = getAircraftType(group);
-  const pos = floatingPanelPos.x < 0
+  const pos = floatingPanelPos.x < -0.5
     ? { x: Math.max(50, (window.innerWidth - 740) / 2), y: Math.max(30, (window.innerHeight - 600) / 2) }
     : floatingPanelPos;
 
   const onDragStart = (e: React.PointerEvent) => {
-    dragState.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const parentRect = el.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: rect.left - parentRect.left,
+      origY: rect.top - parentRect.top,
+    };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onDragMove = (e: React.PointerEvent) => {
-    if (!dragState.current) return;
-    setFloatingPanelPos({
-      x: dragState.current.origX + (e.clientX - dragState.current.startX),
-      y: dragState.current.origY + (e.clientY - dragState.current.startY),
-    });
+    if (!dragState.current || !panelRef.current) return;
+    // Move DOM element directly — no React re-render during drag
+    const newX = dragState.current.origX + (e.clientX - dragState.current.startX);
+    const newY = dragState.current.origY + (e.clientY - dragState.current.startY);
+    panelRef.current.style.left = `${newX}px`;
+    panelRef.current.style.top = `${newY}px`;
   };
-  const onDragEnd = () => { dragState.current = null; };
+  const onDragEnd = () => {
+    if (!dragState.current) return;
+    dragState.current = null;
+    // Read final position from DOM
+    const el = panelRef.current;
+    if (!el) return;
+    const parent = el.offsetParent;
+    const parentRect = parent?.getBoundingClientRect() ?? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const rect = el.getBoundingClientRect();
+    const pw = parentRect.width;
+    const ph = parentRect.height;
+    const ew = rect.width;
+    const eh = rect.height;
+    let x = rect.left - parentRect.left;
+    let y = rect.top - parentRect.top;
+    // Snap to edges within 40px
+    if (x <= 40) x = 0;
+    else if (x + ew >= pw - 40) x = pw - ew;
+    if (y <= 40) y = 0;
+    else if (y + eh >= ph - 40) y = ph - eh;
+    // Clamp to stay on screen
+    x = Math.max(0, Math.min(x, pw - ew));
+    y = Math.max(0, Math.min(y, ph - eh));
+    // Apply snap to DOM immediately so there's no flicker
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    setFloatingPanelPos({ x, y });
+  };
 
   return (
     <div
@@ -191,7 +261,7 @@ export function FloatingFlightPanel() {
           >
             {minimized.current ? '\u25B2' : '\u25BC'}
           </button>
-          <button onClick={() => selectGroup(null)} style={titleBtnStyle} title="Close">X</button>
+          <button onClick={() => { setSelectedWpIndex(null); selectGroup(null); }} style={titleBtnStyle} title="Close">X</button>
         </div>
       </div>
 
@@ -262,6 +332,8 @@ export function FloatingFlightPanel() {
                     canMoveDown={!locked && wp.waypoint_number > 0 && idx < group.waypoints.length - 1}
                     showControls={!locked}
                     weather={wx}
+                    selected={selectedWpIndex === wp.waypoint_number}
+                    onSelect={() => setSelectedWpIndex(selectedWpIndex === wp.waypoint_number ? null : wp.waypoint_number)}
                     onPropChange={handlePropChange}
                     onDelete={handleDelete}
                     onReorder={handleReorder}
@@ -285,6 +357,20 @@ export function FloatingFlightPanel() {
                 </tr>
               </tfoot>
             </table>
+
+            {/* Waypoint detail panel */}
+            {selectedWpIndex != null && (
+              <WaypointDetail
+                groupId={group.groupId}
+                groupName={group.groupName}
+                waypoints={group.waypoints}
+                wpIndex={selectedWpIndex}
+                locked={locked}
+                onNavigate={(idx) => setSelectedWpIndex(idx)}
+                onClose={() => setSelectedWpIndex(null)}
+                onPropChange={handlePropChange}
+              />
+            )}
           </div>
           )}
           </div>
@@ -316,10 +402,11 @@ export function FloatingFlightPanel() {
   );
 }
 
-function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showControls, weather, onPropChange, onDelete, onReorder }: {
+function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showControls, weather, selected, onSelect, onPropChange, onDelete, onReorder }: {
   wp: Waypoint; prevWp?: Waypoint; locked: boolean; canDelete: boolean;
   canMoveUp?: boolean; canMoveDown?: boolean; showControls: boolean;
-  weather?: MissionWeather;
+  weather?: MissionWeather; selected?: boolean;
+  onSelect?: () => void;
   onPropChange: (i: number, f: string, v: string | number | boolean) => void;
   onDelete: (i: number) => void;
   onReorder: (i: number, dir: 'up' | 'down') => void;
@@ -349,7 +436,16 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
   };
 
   return (
-    <tr style={{ borderBottom: '1px solid #0f1a28', opacity: isWp0 ? 0.45 : 1 }}>
+    <tr
+      onClick={onSelect}
+      style={{
+        borderBottom: '1px solid #0f1a28',
+        opacity: isWp0 ? 0.45 : 1,
+        background: selected ? 'rgba(74, 143, 212, 0.12)' : 'transparent',
+        borderLeft: selected ? '2px solid #4a8fd4' : '2px solid transparent',
+        cursor: 'pointer',
+      }}
+    >
       {showControls && (
         <td style={{ ...tdStyle, padding: '2px 4px', width: 32 }}>
           {!isWp0 && (
@@ -366,12 +462,25 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
       )}
       <td style={{ ...tdStyle, fontFamily: 'monospace', color: '#5a7a8a', fontSize: 13 }}>{wp.waypoint_number}</td>
       <td style={tdStyle}>
-        {locked ? (
-          <span style={{ color: '#8fa8c0', fontSize: 14 }}>{wp.waypoint_name}</span>
-        ) : (
-          <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
-            style={{ ...inputStyle, width: 100, color: '#ccdae8' }} />
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {locked ? (
+            <span style={{ color: '#8fa8c0', fontSize: 14 }}>{wp.waypoint_name}</span>
+          ) : (
+            <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
+              style={{ ...inputStyle, width: 100, color: '#ccdae8' }} />
+          )}
+          {abbreviate(wp.waypoint_name) && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+              color: '#d29922', background: '#d2992215',
+              padding: '1px 4px', borderRadius: 3,
+              border: '1px solid #d2992230',
+              letterSpacing: 1, whiteSpace: 'nowrap',
+            }}>
+              {abbreviate(wp.waypoint_name)}
+            </span>
+          )}
+        </div>
       </td>
       <td style={{ ...tdStyle, textAlign: 'right' }}>
         {locked ? (
@@ -523,8 +632,44 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const addEdit = useEditStore((s) => s.addEdit);
   const units = clientUnits.filter((u) => u.groupName === groupName);
+  const [resetKey, setResetKey] = useState(0);
 
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
+
+  // Derive a default STN L16 from voice callsign number (e.g. "11" → "00011")
+  const defaultStn = (u: typeof units[0]) => {
+    if (u.stnL16) return u.stnL16;
+    const num = u.voiceCallsignNumber ?? '';
+    if (!num) return '';
+    return num.padStart(5, '0');
+  };
+
+  const handleAutoAssign = () => {
+    // Use lead unit's callsign label, or derive from group name
+    const lead = units[0];
+    const csLabel = lead.voiceCallsignLabel || groupName.slice(0, 3).toUpperCase();
+
+    // Flight number: use lead's first digit if available, otherwise "1"
+    const leadNum = lead.voiceCallsignNumber || '';
+    const flightDigit = leadNum.length >= 2 ? leadNum.slice(0, -1) : '1';
+
+    // Lead STN base: parse existing or default to flight digit
+    const leadStn = lead.stnL16 || '';
+    let stnBase = parseInt(leadStn, 10);
+    if (isNaN(stnBase)) stnBase = parseInt(flightDigit + '1', 10);
+    const stnLen = Math.max((leadStn || '').length, 5);
+
+    for (let i = 0; i < units.length; i++) {
+      const memberNum = i + 1;
+      const csNumber = flightDigit + String(memberNum);
+      const stn = String(stnBase + i).padStart(stnLen, '0');
+
+      handleChange(units[i].unitId, 'voiceCallsignLabel', csLabel);
+      handleChange(units[i].unitId, 'voiceCallsignNumber', csNumber);
+      handleChange(units[i].unitId, 'stnL16', stn);
+    }
+    setResetKey((k) => k + 1);
+  };
 
   const handleChange = (unitId: number, field: string, value: string) => {
     const edit = { unitId, field, groupName, value };
@@ -553,7 +698,19 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
 
   return (
     <div style={{ padding: 12 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#ccdae8' }}>
+      {!locked && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button
+            onClick={handleAutoAssign}
+            style={{
+              background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+              color: '#6ab4f0', padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >Auto Assign</button>
+        </div>
+      )}
+      <table key={resetKey} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#ccdae8' }}>
         <thead>
           <tr style={{ color: '#7a9ab0', borderBottom: '1px solid #1a2a3a' }}>
             <th style={{ ...thStyle, textAlign: 'left' }}>Unit</th>
@@ -584,8 +741,8 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
                 )}
               </td>
               <td style={tdStyle}>
-                {locked ? <span style={{ fontFamily: 'monospace', fontSize: 14, color: '#d29922' }}>{u.stnL16}</span> : (
-                  <input defaultValue={u.stnL16} maxLength={5}
+                {locked ? <span style={{ fontFamily: 'monospace', fontSize: 14, color: '#d29922' }}>{u.stnL16 || defaultStn(u)}</span> : (
+                  <input defaultValue={defaultStn(u)} maxLength={5}
                     onBlur={(e) => handleChange(u.unitId, 'stnL16', e.target.value)}
                     style={{ ...inputSt, color: '#d29922' }} />
                 )}
@@ -609,23 +766,34 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
   if (units.length === 0) return <div style={{ padding: 12, color: '#5a7a8a', fontSize: 12 }}>No client units in this group</div>;
 
   const handlePylonChange = (unitId: number, pylonNum: number, clsid: string) => {
-    const opts = pylonOptions[units[0]?.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
+    const unit = units.find((u) => u.unitId === unitId);
+    if (!unit) return;
+    const opts = pylonOptions[unit.type]?.[String(pylonNum)] as PylonInfo[] | undefined;
     const selected = opts?.find((o) => o.clsid === clsid);
-    const edit = { unitId, field: 'pylonChange', groupName, value: { pylon: pylonNum, clsid, settings: {} } };
-    addEdit(edit as any);
+    if (!selected && clsid !== '') return;
 
-    // Also send to server so other participants + download get it
-    const { sessionId: sid, sessionToken } = useMissionStore.getState();
-    if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
+    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
 
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
       if (u.unitId !== unitId) return u;
-      return { ...u, pylons: u.pylons.map((p) => {
-        if (p.number !== pylonNum) return p;
-        if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
-        return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
-      })};
+      const existingPylon = u.pylons.find((p) => p.number === pylonNum);
+      let newPylons: PylonInfo[];
+      if (existingPylon) {
+        newPylons = u.pylons.map((p) => {
+          if (p.number !== pylonNum) return p;
+          if (!selected) return { ...p, clsid: '', name: '<Empty>', shortName: '<Empty>', category: '' };
+          return { ...p, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category };
+        });
+      } else if (selected) {
+        newPylons = [
+          ...u.pylons,
+          { number: pylonNum, clsid: selected.clsid, name: selected.name, shortName: selected.shortName, category: selected.category },
+        ].sort((a, b) => a.number - b.number);
+      } else {
+        newPylons = u.pylons;
+      }
+      return { ...u, pylons: newPylons };
     });
     useMissionStore.setState({ clientUnits: updated });
     if (clsid) setExpandedPylon(`${unitId}-${pylonNum}`);
@@ -716,6 +884,302 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Waypoint detail panel — shown below route table when a WP selected  */
+/* ------------------------------------------------------------------ */
+
+function WaypointDetail({
+  groupId,
+  groupName: _groupName,
+  waypoints,
+  wpIndex,
+  locked,
+  onNavigate,
+  onClose,
+  onPropChange,
+}: {
+  groupId: number;
+  groupName: string;
+  waypoints: Waypoint[];
+  wpIndex: number;
+  locked: boolean;
+  onNavigate: (idx: number) => void;
+  onClose: () => void;
+  onPropChange: (i: number, f: string, v: string | number | boolean) => void;
+}) {
+  const wp = waypoints.find((w) => w.waypoint_number === wpIndex);
+  const [note, setNoteState] = useState(() => getWpNote(groupId, wpIndex));
+
+  // Sync notes when navigating
+  useEffect(() => {
+    setNoteState(getWpNote(groupId, wpIndex));
+  }, [groupId, wpIndex]);
+
+  const handleNoteChange = useCallback((val: string) => {
+    setNoteState(val);
+    setWpNote(groupId, wpIndex, val);
+  }, [groupId, wpIndex]);
+
+  // Keyboard nav
+  const wpNumbers = waypoints
+    .map((w) => w.waypoint_number)
+    .filter((n) => n > 0)
+    .sort((a, b) => a - b);
+  const currentIdx = wpNumbers.indexOf(wpIndex);
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx < wpNumbers.length - 1;
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft' && hasPrev) onNavigate(wpNumbers[currentIdx - 1]);
+      if (e.key === 'ArrowRight' && hasNext) onNavigate(wpNumbers[currentIdx + 1]);
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onNavigate, hasPrev, hasNext, wpNumbers, currentIdx]);
+
+  if (!wp) return null;
+
+  const altFt = Math.round(metersToFeet(wp.altitude_m));
+  const spdKts = Math.round(msToKnots(wp.speed_ms));
+  const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
+  const legNm = wp.leg_distance_nm ? wp.leg_distance_nm.toFixed(1) : null;
+  const legBrg = wp.leg_bearing_deg ? Math.round(wp.leg_bearing_deg) : null;
+  const abbr = abbreviate(wp.waypoint_name);
+
+  // Cumulative distance
+  let cumulativeNm = 0;
+  for (let i = 0; i <= currentIdx; i++) {
+    const w = waypoints.find((ww) => ww.waypoint_number === wpNumbers[i]);
+    if (w?.leg_distance_nm) cumulativeNm += w.leg_distance_nm;
+  }
+
+  const etaMin = wp.eta_seconds ? Math.round(wp.eta_seconds / 60) : null;
+
+  const detailInputStyle: React.CSSProperties = {
+    background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+    color: '#ccdae8', fontSize: 13, padding: '5px 8px', width: '100%',
+    fontFamily: 'monospace', boxSizing: 'border-box' as const,
+  };
+
+  const detailLabel: React.CSSProperties = {
+    display: 'block', color: '#4a6a7a', fontSize: 10, marginBottom: 3,
+    fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' as const,
+  };
+
+  return (
+    <div style={{
+      borderTop: '1px solid #1a3a5a',
+      background: 'rgba(10, 20, 35, 0.6)',
+    }}>
+      {/* Nav header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', padding: '8px 14px',
+        borderBottom: '1px solid #1a2a3a',
+      }}>
+        <button
+          onClick={() => hasPrev && onNavigate(wpNumbers[currentIdx - 1])}
+          disabled={!hasPrev}
+          style={{
+            background: 'none', border: '1px solid #1a2a3a', borderRadius: 4,
+            color: hasPrev ? '#4a8fd4' : '#1a2a3a',
+            cursor: hasPrev ? 'pointer' : 'default',
+            fontSize: 14, padding: '2px 8px', lineHeight: 1,
+          }}
+          title="Previous waypoint (←)"
+        >◀</button>
+
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#ccdae8' }}>
+              WP{wpIndex}
+            </span>
+            {wp.waypoint_name && (
+              <span style={{ color: '#6a8a9a', fontSize: 12 }}>
+                {wp.waypoint_name}
+              </span>
+            )}
+            {abbr && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+                color: '#d29922', background: '#d2992215',
+                padding: '1px 5px', borderRadius: 3,
+                border: '1px solid #d2992230',
+                letterSpacing: 1,
+              }} title="4-char abbreviation">
+                {abbr}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: '#4a6a7a', marginTop: 1 }}>
+            {currentIdx + 1} of {wpNumbers.length}
+          </div>
+        </div>
+
+        <button
+          onClick={() => hasNext && onNavigate(wpNumbers[currentIdx + 1])}
+          disabled={!hasNext}
+          style={{
+            background: 'none', border: '1px solid #1a2a3a', borderRadius: 4,
+            color: hasNext ? '#4a8fd4' : '#1a2a3a',
+            cursor: hasNext ? 'pointer' : 'default',
+            fontSize: 14, padding: '2px 8px', lineHeight: 1,
+          }}
+          title="Next waypoint (→)"
+        >▶</button>
+
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none', color: '#5a7a8a',
+            cursor: 'pointer', fontSize: 13, marginLeft: 8, padding: '2px 4px',
+          }}
+          title="Close detail"
+        >✕</button>
+      </div>
+
+      {/* Info strip */}
+      <div style={{
+        display: 'flex', gap: 0, borderBottom: '1px solid #1a2a3a',
+        background: 'rgba(10, 18, 30, 0.5)',
+      }}>
+        <DetailInfoCell label="ALT" value={`${altFt.toLocaleString()} ft`} sub={wp.altitude_type === 'BARO' ? 'MSL' : 'AGL'} />
+        <DetailInfoCell label="SPD" value={`${spdKts} kts`} sub="GS" border />
+        {legNm && <DetailInfoCell label="LEG" value={`${legNm} nm`} sub={legBrg !== null ? `${String(legBrg).padStart(3, '0')}°` : ''} border />}
+        {cumulativeNm > 0 && <DetailInfoCell label="TOTAL" value={`${cumulativeNm.toFixed(1)} nm`} sub="" border />}
+        {etaMin !== null && <DetailInfoCell label="ETA" value={`${etaMin} min`} sub="" border />}
+      </div>
+
+      {/* Coordinates */}
+      {pos && (
+        <div style={{
+          padding: '4px 14px', borderBottom: '1px solid #1a2a3a',
+          fontFamily: 'monospace', fontSize: 11, color: '#6a8a9a',
+          background: 'rgba(10, 18, 30, 0.3)',
+        }}>
+          {pos}
+        </div>
+      )}
+
+      {/* Edit fields */}
+      <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Name</span>
+            <input
+              key={`detail-name-${groupId}-${wpIndex}`}
+              defaultValue={wp.waypoint_name}
+              onBlur={(e) => onPropChange(wpIndex, 'name', e.target.value)}
+              style={detailInputStyle}
+              disabled={locked}
+              placeholder="e.g. Target Alpha"
+            />
+          </label>
+          <div style={{ width: 52, textAlign: 'center', paddingBottom: 1 }}>
+            <span style={detailLabel}>ABBR</span>
+            <div style={{
+              background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+              padding: '5px 4px', fontSize: 13, fontFamily: 'monospace',
+              color: abbr ? '#d29922' : '#2a3a4a', fontWeight: 700,
+              letterSpacing: 1, textAlign: 'center',
+            }}>
+              {abbr || '----'}
+            </div>
+          </div>
+          <label style={{ width: 70 }}>
+            <span style={detailLabel}>Alt Type</span>
+            <select
+              key={`detail-alttype-${groupId}-${wpIndex}`}
+              defaultValue={wp.altitude_type}
+              onChange={(e) => onPropChange(wpIndex, 'alt_type', e.target.value)}
+              style={{ ...detailInputStyle, padding: '4px 4px' }}
+              disabled={locked}
+            >
+              <option value="BARO">MSL</option>
+              <option value="RADIO">AGL</option>
+            </select>
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Altitude (ft)</span>
+            <input
+              key={`detail-alt-${groupId}-${wpIndex}`}
+              type="number"
+              defaultValue={altFt}
+              onBlur={(e) => onPropChange(wpIndex, 'alt', feetToMeters(parseFloat(e.target.value)))}
+              style={detailInputStyle}
+              disabled={locked}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={detailLabel}>Speed (kts)</span>
+            <input
+              key={`detail-spd-${groupId}-${wpIndex}`}
+              type="number"
+              defaultValue={spdKts}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val)) onPropChange(wpIndex, 'speed', knotsToMs(val));
+              }}
+              style={detailInputStyle}
+              disabled={locked}
+            />
+          </label>
+        </div>
+
+        {locked && (
+          <div style={{ fontSize: 10, color: '#5a6a7a', textAlign: 'center', fontStyle: 'italic' }}>
+            Read-only
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
+      <div style={{ padding: '6px 14px 10px', borderTop: '1px solid #1a2a3a' }}>
+        <label>
+          <span style={detailLabel}>Notes</span>
+          <textarea
+            value={note}
+            onChange={(e) => handleNoteChange(e.target.value)}
+            placeholder="IP, fence in, push point, threats nearby..."
+            rows={2}
+            style={{
+              ...detailInputStyle,
+              fontFamily: 'inherit',
+              fontSize: 12,
+              resize: 'vertical',
+              minHeight: 32,
+              lineHeight: 1.4,
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function DetailInfoCell({ label, value, sub, border }: { label: string; value: string; sub?: string; border?: boolean }) {
+  return (
+    <div style={{
+      flex: 1, padding: '6px 8px', textAlign: 'center',
+      borderLeft: border ? '1px solid #1a2a3a' : 'none',
+    }}>
+      <div style={{ fontSize: 9, color: '#4a6a7a', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#ccdae8', fontFamily: 'monospace' }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 9, color: '#5a7a8a' }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
 
 function formatEte(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;

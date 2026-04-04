@@ -60,6 +60,7 @@ export function populateUnitLayer(
 
     const feature = new Feature({
       geometry: new Point(fromLonLat([firstUnit.lon!, firstUnit.lat!])),
+      groupId: group.groupId,
       unit: {
         name: group.groupName,
         unitList,

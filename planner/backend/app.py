@@ -134,6 +134,7 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             "participants": {},  # { token: { name, group, connected, ready } }
             "status": "planning",
             "sse_clients": [],
+            "planner_drawings": [],
         }
     return sid, host_token
 
@@ -685,13 +686,15 @@ def download():
 
     sid = body.get("sessionId")
     unit_edits = body.get("unitEdits", [])
+    kneeboard_data = body.get("kneeboards", [])
 
     session = _get_session(sid)
     if not session:
         return jsonify({"error": "Session not found or expired"}), 404
 
     try:
-        mission_text = session["original_mission_text"]
+        # Start with trigger-updated text if available, otherwise original
+        mission_text = session.get("mission_text", session["original_mission_text"])
 
         # 1. Replace waypoints only for groups that were actually edited
         dirty = session.get("dirty_groups", set())
@@ -702,17 +705,39 @@ def download():
             mission_text = replace_group_waypoints(mission_text, group_name, waypoints)
 
         # 2. Apply unit-level surgical edits (856's edit engine)
-        # Merge: server-stored edits from all participants + any client-local edits
-        all_edits = list(session.get("unit_edits", [])) + unit_edits
-        if all_edits:
-            mission_text = apply_unit_edits(mission_text, all_edits)
+        if unit_edits:
+            import os as _os
+            _dbg = _os.path.join(_os.path.dirname(__file__), "download_debug.log")
+            # Clear weather debug log too
+            _wdbg = _os.path.join(_os.path.dirname(__file__), "weather_debug.log")
+            with open(_wdbg, "w") as _f:
+                _f.write("")
+            with open(_dbg, "w") as _f:
+                _f.write(f"edits: {len(unit_edits)}\n")
+                for e in unit_edits:
+                    val = e.get('value')
+                    if e.get('field') == 'weather':
+                        _f.write(f"  WEATHER: {val}\n")
+                    else:
+                        _f.write(f"  field={e.get('field')} unitId={e.get('unitId')} value={str(val)[:200]}\n")
+            original_len = len(mission_text)
+            mission_text = apply_unit_edits(mission_text, unit_edits)
+            with open(_dbg, "a") as _f:
+                _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
 
-        # 3. Apply trigger edits if any
-        pending_triggers = session.get("pending_triggers")
-        if pending_triggers:
-            mission_text = update_triggers_in_mission(mission_text, pending_triggers)
+        # Decode kneeboard base64 data to raw bytes
+        kneeboards = None
+        if kneeboard_data:
+            import base64
+            kneeboards = []
+            for kb in kneeboard_data:
+                kneeboards.append({
+                    "aircraft_type": kb["aircraft_type"],
+                    "filename": kb["filename"],
+                    "data": base64.b64decode(kb["data"]),
+                })
 
-        miz_bytes = repack_miz(session["miz_bytes"], mission_text)
+        miz_bytes = repack_miz(session["miz_bytes"], mission_text, kneeboards=kneeboards)
 
         return send_file(
             io.BytesIO(miz_bytes),
@@ -987,6 +1012,32 @@ def close_session():
 
 
 # --------------------------------------------------------------------------
+# Planner Drawings (user-created overlays)
+# --------------------------------------------------------------------------
+
+@app.route("/api/sessions/<sid>/drawings", methods=["GET"])
+def get_planner_drawings(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify({"drawings": session.get("planner_drawings", [])})
+
+
+@app.route("/api/sessions/<sid>/drawings", methods=["POST"])
+def save_planner_drawings(sid):
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    body = request.get_json()
+    if not body:
+        return jsonify({"error": "No JSON body"}), 400
+    with _lock:
+        session["planner_drawings"] = body.get("drawings", [])
+    _broadcast(session, "drawings_update", {"drawings": session["planner_drawings"]})
+    return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------------------
 # Triggers & Audio
 # --------------------------------------------------------------------------
 
@@ -999,7 +1050,7 @@ def get_triggers():
 
     session = sessions[sid]
     try:
-        mission_dict = parse_mission_text(session["mission_text"])
+        mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
         trigger_data = extract_triggers(mission_dict)
         audio_files = list_audio_files(session["miz_bytes"])
         return jsonify({**trigger_data, "audioFiles": audio_files})
@@ -1025,7 +1076,7 @@ def save_triggers():
 
     session = sessions[sid]
     try:
-        new_text = update_triggers_in_mission(session["mission_text"], trigger_data)
+        new_text = update_triggers_in_mission(session.get("mission_text", session["original_mission_text"]), trigger_data)
         with _lock:
             session["mission_text"] = new_text
         return jsonify({"ok": True})
@@ -1133,4 +1184,4 @@ def serve_frontend(path):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=False)

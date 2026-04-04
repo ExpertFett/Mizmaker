@@ -264,14 +264,62 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "clouds_precipitation": int(_num(wx.get("clouds", {}).get("iprecptns", 0))),
             "clouds_preset": wx.get("clouds", {}).get("preset", ""),
             "visibility_m": _num(wx.get("visibility", {}).get("distance", 80000)),
-            "fog_enabled": wx.get("enable_fog", False),
-            "fog_visibility": _num(wx.get("fogVisibility", 0)),
-            "fog_thickness": _num(wx.get("fogThickness", 0)),
+            "fog_enabled": wx.get("enable_fog", False) or wx.get("fog2", {}).get("mode", 0) == 2,
+            "fog_visibility": _num(wx.get("fog", {}).get("visibility", 0)),
+            "fog_thickness": _num(wx.get("fog", {}).get("thickness", 0)),
             "dust_enabled": wx.get("enable_dust", False),
-            "dust_density": _num(wx.get("dustDensity", 0)),
+            "dust_density": _num(wx.get("dust_density", 0)),
             "turbulence": _num(wx.get("groundTurbulence", 0)),
+            "halo_preset": wx.get("halo", {}).get("preset", "auto"),
         },
     }
+
+
+def _extract_tacan_from_tasks(waypoints: list) -> dict | None:
+    """Recursively search waypoint task dicts for ActivateBeacon TACAN params."""
+    def _search(obj):
+        if not isinstance(obj, dict):
+            return None
+        # Direct ActivateBeacon command
+        if obj.get("id") == "ActivateBeacon":
+            params = obj.get("params", {})
+            ch = params.get("channel")
+            if ch:
+                return {
+                    "channel": int(ch),
+                    "band": "Y" if params.get("modeChannel") == "Y" or params.get("modeChannel") == 2 else "X",
+                    "callsign": str(params.get("callsign", "")),
+                }
+        # WrappedAction containing an ActivateBeacon
+        action = obj.get("action")
+        if isinstance(action, dict):
+            r = _search(action)
+            if r:
+                return r
+        # ComboTask / list of tasks
+        tasks = obj.get("tasks")
+        if isinstance(tasks, dict):
+            tasks = list(tasks.values())
+        if isinstance(tasks, list):
+            for t in tasks:
+                r = _search(t)
+                if r:
+                    return r
+        # Params may contain nested structures
+        params = obj.get("params")
+        if isinstance(params, dict):
+            r = _search(params)
+            if r:
+                return r
+        return None
+
+    for wp in waypoints:
+        task = wp.get("task")
+        if task and isinstance(task, dict):
+            result = _search(task)
+            if result:
+                return result
+    return None
 
 
 def _extract_group(
@@ -347,6 +395,9 @@ def _extract_group(
             wp["lon"] = lon
         waypoints.append(wp)
 
+    # Extract TACAN beacon data from waypoint tasks (tankers, carriers)
+    tacan = _extract_tacan_from_tasks(waypoints)
+
     return {
         "groupId": group_id,
         "groupName": group_name,
@@ -356,6 +407,7 @@ def _extract_group(
         "task": group.get("task", ""),
         "frequency": _num(group.get("frequency")),
         "modulation": group.get("modulation", 0),
+        "tacan": tacan,
         "units": extracted_units,
         "waypoints": waypoints,
     }
