@@ -31,8 +31,6 @@ interface CarrierConfig {
   hasIcls: boolean;
   /** TIW speed (kts) */
   tiwSpeed: number;
-  /** BRC offset (degrees, e.g., -9 for angled deck CVN, 0 for LHA) */
-  brcOffset: number;
   /** Rescue helo group name (if found) */
   rescueHeloGroup: string;
   /** Rescue helo modex */
@@ -49,48 +47,48 @@ interface HullData {
   label: string;
   callsign: string;
   tacan: number;
-  brcOffset: number;
   tiwSpeed: number;
   hasIcls: boolean;
 }
 
 const HULL_DB: Record<string, HullData> = {
-  'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-77':   { label: 'CVN', callsign: 'Avenger',       tacan: 77, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-78':   { label: 'CVN', callsign: 'Old Ironsides',  tacan: 78, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  'CVN-79':   { label: 'CVN', callsign: 'Big John',      tacan: 79, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  forrestal:  { label: 'CV',  callsign: 'Forrestal',     tacan: 59, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
-  tarawa:     { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
-  'LHA-1':    { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
-  wasp:       { label: 'LHD', callsign: 'Stinger',       tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
-  'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
+  'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, tiwSpeed: 25, hasIcls: true},
+  'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, tiwSpeed: 25, hasIcls: true},
+  'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, tiwSpeed: 25, hasIcls: true},
+  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, tiwSpeed: 25, hasIcls: true},
+  'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, tiwSpeed: 25, hasIcls: true},
+  'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, tiwSpeed: 25, hasIcls: true},
+  'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, tiwSpeed: 25, hasIcls: true},
+  'CVN-77':   { label: 'CVN', callsign: 'Avenger',       tacan: 77, tiwSpeed: 25, hasIcls: true},
+  'CVN-78':   { label: 'CVN', callsign: 'Old Ironsides',  tacan: 78, tiwSpeed: 25, hasIcls: true},
+  'CVN-79':   { label: 'CVN', callsign: 'Big John',      tacan: 79, tiwSpeed: 25, hasIcls: true},
+  stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, tiwSpeed: 25, hasIcls: true},
+  vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, tiwSpeed: 25, hasIcls: true},
+  lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, tiwSpeed: 25, hasIcls: true},
+  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, tiwSpeed: 25, hasIcls: true},
+  roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, tiwSpeed: 25, hasIcls: true},
+  truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, tiwSpeed: 25, hasIcls: true},
+  forrestal:  { label: 'CV',  callsign: 'Forrestal',     tacan: 59, tiwSpeed: 25, hasIcls: true},
+  tarawa:     { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  tiwSpeed: 10, hasIcls: false},
+  'LHA-1':    { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  tiwSpeed: 10, hasIcls: false},
+  wasp:       { label: 'LHD', callsign: 'Stinger',       tacan: 1,  tiwSpeed: 10, hasIcls: false},
+  'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  tiwSpeed: 10, hasIcls: false},
 };
 
 function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
   const name = g.groupName.toLowerCase();
   const utype = (g.units[0]?.type || '').toLowerCase();
   const combined = name + ' ' + utype;
+  // Normalize separators: "CVN 73" and "CVN_73" both become "CVN-73" for matching
+  const normalized = combined.replace(/[\s_]/g, '-');
 
   for (const [key, data] of Object.entries(HULL_DB)) {
-    if (combined.includes(key.toLowerCase())) {
+    if (normalized.includes(key.toLowerCase())) {
       return {
         label: data.label,
         callsign: data.callsign,
         tacanCh: data.tacan,
         tacanCallsign: data.label,
-        brcOffset: data.brcOffset,
         tiwSpeed: data.tiwSpeed,
         hasIcls: data.hasIcls,
         aclsEnabled: data.hasIcls,
@@ -98,11 +96,21 @@ function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
     }
   }
 
+  // Dynamic extraction: if group name has "CVN <number>" but wasn't in HULL_DB
+  const cvnMatch = normalized.match(/cvn-?(\d+)/);
+  if (cvnMatch) {
+    const hull = parseInt(cvnMatch[1], 10);
+    return {
+      label: 'CVN', callsign: 'Carrier', tacanCh: hull > 0 && hull <= 126 ? hull : 72,
+      tacanCallsign: 'CVN', tiwSpeed: 25, hasIcls: true, aclsEnabled: true,
+    };
+  }
+
   // Fallback: detect type
   if (/lha|lhd|tarawa|wasp/i.test(combined)) {
-    return { label: 'LHA', callsign: 'Eagle', tacanCh: 1, tacanCallsign: 'LHA', brcOffset: 0, tiwSpeed: 10, hasIcls: false, aclsEnabled: false };
+    return { label: 'LHA', callsign: 'Eagle', tacanCh: 1, tacanCallsign: 'LHA', tiwSpeed: 10, hasIcls: false, aclsEnabled: false };
   }
-  return { label: 'CVN', callsign: 'Carrier', tacanCh: 72, tacanCallsign: 'CVN', brcOffset: -9, tiwSpeed: 25, hasIcls: true, aclsEnabled: true };
+  return { label: 'CVN', callsign: 'Carrier', tacanCh: 72, tacanCallsign: 'CVN', tiwSpeed: 25, hasIcls: true, aclsEnabled: true };
 }
 
 /* ------------------------------------------------------------------ */
@@ -168,7 +176,7 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
       lines.push(`  local timeend = timenow + ${d.min} * 60`);
       lines.push('  local t_start = UTILS.SecondsToClock(timenow, false)');
       lines.push('  local t_end = UTILS.SecondsToClock(timeend, false)');
-      lines.push(`  ${varName}:AddTurnIntoWind(t_start, t_end, ${c.tiwSpeed}, false, ${c.brcOffset})`);
+      lines.push(`  ${varName}:AddTurnIntoWind(t_start, t_end, ${c.tiwSpeed})`);
       lines.push(`  MESSAGE:New("99 ${c.callsign} Turning, at time " .. t_start .. " until " .. t_end):ToAll()`);
       lines.push('end');
       lines.push('');
@@ -306,7 +314,6 @@ export function CarrierSetupPanel() {
         aclsEnabled: info.aclsEnabled ?? hasIcls,
         hasIcls,
         tiwSpeed: info.tiwSpeed || 25,
-        brcOffset: info.brcOffset ?? -9,
         rescueHeloGroup: '',
         rescueModex: 42,
         flagBase,
@@ -354,22 +361,6 @@ export function CarrierSetupPanel() {
     } as any);
   }, [addEdit, script, configs]);
 
-  // Rename carrier group
-  const handleRenameGroup = useCallback((groupId: number, newName: string) => {
-    updateConfig(groupId, 'groupName', newName);
-    const group = carrierGroups.find((g) => g.groupId === groupId);
-    if (group) {
-      const unitNamesObj: Record<number, string> = {};
-      for (const u of group.units) {
-        unitNamesObj[u.unitId] = u.name;
-      }
-      addEdit({
-        groupId,
-        field: 'groupRename',
-        value: { groupId, newGroupName: newName, unitNames: unitNamesObj },
-      } as any);
-    }
-  }, [addEdit, carrierGroups, updateConfig]);
 
   if (carrierGroups.length === 0) {
     return (
@@ -426,10 +417,19 @@ export function CarrierSetupPanel() {
             <span style={{ color: '#5a7a8a', fontSize: 12 }}>{c.unitType}</span>
           </div>
 
+          {/* Group name (read-only — use Renamer tab to change) */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={fieldLabel}>Group Name</div>
+            <div style={{ fontSize: 13, color: '#ccdae8', padding: '5px 0' }}>
+              {c.groupName}
+              <span style={{ color: '#5a7a8a', fontSize: 11, marginLeft: 8 }}>
+                (use Renamer tab to edit)
+              </span>
+            </div>
+          </div>
+
           {/* Editable fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
-            <Field label="Group Name" value={c.groupName}
-              onChange={(v) => handleRenameGroup(c.groupId, v)} />
             <Field label="Callsign / Radio Name" value={c.callsign}
               onChange={(v) => updateConfig(c.groupId, 'callsign', v)} />
             <Field label="Menu Label" value={c.label}
@@ -462,8 +462,6 @@ export function CarrierSetupPanel() {
             )}
             <NumField label="TIW Speed (kts)" value={c.tiwSpeed} min={5} max={35}
               onChange={(v) => updateConfig(c.groupId, 'tiwSpeed', v)} />
-            <NumField label="BRC Offset (deg)" value={c.brcOffset} min={-15} max={15}
-              onChange={(v) => updateConfig(c.groupId, 'brcOffset', v)} />
             <Field label="Rescue Helo Group" value={c.rescueHeloGroup}
               onChange={(v) => updateConfig(c.groupId, 'rescueHeloGroup', v)}
               placeholder="Leave blank if none" />

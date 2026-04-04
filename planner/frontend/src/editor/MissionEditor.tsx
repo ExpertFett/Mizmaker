@@ -20,6 +20,7 @@ import { KneeboardTab } from './tabs/KneeboardTab';
 import { DrawingsTab } from './tabs/DrawingsTab';
 import { TacanTab } from './tabs/TacanTab';
 import { CommCardTab } from './tabs/CommCardTab';
+import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
@@ -36,6 +37,7 @@ const TABS = [
   { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
   { id: 'triggers', label: 'Triggers', icon: '🔔' },
+  { id: 'threats', label: 'Threats', icon: '⚠' },
   { id: 'drawings', label: 'Drawings', icon: '📐' },
   { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
@@ -194,6 +196,7 @@ export function MissionEditor() {
             {activeTab === 'kneeboard' && <KneeboardTab />}
             {activeTab === 'dtc' && <DtcTab />}
             {activeTab === 'triggers' && <TriggerTab />}
+            {activeTab === 'threats' && <ThreatLibraryTab />}
             {activeTab === 'drawings' && <DrawingsTab />}
             {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
           </div>

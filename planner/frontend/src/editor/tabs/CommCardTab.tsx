@@ -387,10 +387,15 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
           const eff = getEffective(row);
           const conflict = isConflict(row.groupId, eff.frequency, eff.modulation);
           const hasOverride = overrides.has(row.groupId);
+          const freqChanged = hasOverride && overrides.get(row.groupId)?.frequency !== undefined && overrides.get(row.groupId)?.frequency !== row.frequency;
           return (
             <tr key={row.groupId} style={{
-              background: conflict ? 'rgba(217, 80, 80, 0.06)' : i % 2 === 0 ? 'transparent' : 'rgba(74, 143, 212, 0.03)',
-              borderLeft: conflict ? '3px solid #d95050' : hasOverride ? '3px solid #d29922' : '3px solid transparent',
+              background: conflict
+                ? 'rgba(217, 80, 80, 0.12)'
+                : freqChanged
+                  ? 'rgba(210, 153, 34, 0.08)'
+                  : i % 2 === 0 ? 'transparent' : 'rgba(74, 143, 212, 0.03)',
+              borderLeft: conflict ? '3px solid #d95050' : freqChanged ? '3px solid #d29922' : '3px solid transparent',
             }}>
               <td style={{ ...cellStyle, textAlign: 'center', color: '#5a7a8a', width: 30 }}>{i + 1}</td>
               <td style={{ ...cellStyle, fontWeight: 600 }}>{row.groupName}</td>
@@ -410,19 +415,31 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
                 {row.coalition.toUpperCase()}
               </td>
               <td style={{ ...cellStyle, textAlign: 'center' }}>
-                <input
-                  type="number"
-                  step={0.025}
-                  min={30}
-                  max={400}
-                  value={eff.frequency || ''}
-                  onChange={(e) => updateFreq(row.groupId, parseFloat(e.target.value) || 0)}
-                  style={{
-                    ...inputStyle,
-                    width: 100,
-                    borderColor: conflict ? '#d95050' : hasOverride ? '#d29922' : '#1a2a3a',
-                  }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  {freqChanged && (
+                    <span style={{
+                      fontSize: 11, color: '#5a7a8a', fontFamily: 'monospace',
+                      textDecoration: 'line-through', opacity: 0.7,
+                    }}>
+                      {row.frequency.toFixed(3)}
+                    </span>
+                  )}
+                  {freqChanged && <span style={{ color: '#d29922', fontSize: 11 }}>→</span>}
+                  <input
+                    type="number"
+                    step={0.025}
+                    min={30}
+                    max={400}
+                    value={eff.frequency || ''}
+                    onChange={(e) => updateFreq(row.groupId, parseFloat(e.target.value) || 0)}
+                    style={{
+                      ...inputStyle,
+                      width: freqChanged ? 90 : 100,
+                      borderColor: conflict ? '#d95050' : freqChanged ? '#d29922' : '#1a2a3a',
+                      color: freqChanged ? '#d29922' : '#ccdae8',
+                    }}
+                  />
+                </div>
               </td>
               <td style={{ ...cellStyle, textAlign: 'center' }}>
                 <select
@@ -434,8 +451,20 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
                   <option value={1}>FM</option>
                 </select>
               </td>
-              <td style={{ ...cellStyle, textAlign: 'center' }}>
-                {conflict && <span title="Frequency conflict" style={{ color: '#d95050', fontSize: 14 }}>!</span>}
+              <td style={{ ...cellStyle, textAlign: 'center', width: 30 }}>
+                {conflict && (
+                  <span title="Frequency conflict — shared with another group" style={{
+                    color: '#fff', fontSize: 10, fontWeight: 700,
+                    background: '#d95050', borderRadius: '50%',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, height: 18,
+                  }}>!</span>
+                )}
+                {!conflict && freqChanged && (
+                  <span title="Frequency will be changed" style={{
+                    color: '#d29922', fontSize: 12,
+                  }}>*</span>
+                )}
               </td>
             </tr>
           );
