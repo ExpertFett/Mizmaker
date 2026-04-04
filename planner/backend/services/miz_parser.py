@@ -275,6 +275,53 @@ def _extract_overview(d: dict, theater: str) -> dict:
     }
 
 
+def _extract_tacan_from_tasks(waypoints: list) -> dict | None:
+    """Recursively search waypoint task dicts for ActivateBeacon TACAN params."""
+    def _search(obj):
+        if not isinstance(obj, dict):
+            return None
+        # Direct ActivateBeacon command
+        if obj.get("id") == "ActivateBeacon":
+            params = obj.get("params", {})
+            ch = params.get("channel")
+            if ch:
+                return {
+                    "channel": int(ch),
+                    "band": "Y" if params.get("modeChannel") == "Y" or params.get("modeChannel") == 2 else "X",
+                    "callsign": str(params.get("callsign", "")),
+                }
+        # WrappedAction containing an ActivateBeacon
+        action = obj.get("action")
+        if isinstance(action, dict):
+            r = _search(action)
+            if r:
+                return r
+        # ComboTask / list of tasks
+        tasks = obj.get("tasks")
+        if isinstance(tasks, dict):
+            tasks = list(tasks.values())
+        if isinstance(tasks, list):
+            for t in tasks:
+                r = _search(t)
+                if r:
+                    return r
+        # Params may contain nested structures
+        params = obj.get("params")
+        if isinstance(params, dict):
+            r = _search(params)
+            if r:
+                return r
+        return None
+
+    for wp in waypoints:
+        task = wp.get("task")
+        if task and isinstance(task, dict):
+            result = _search(task)
+            if result:
+                return result
+    return None
+
+
 def _extract_group(
     group: dict,
     coalition: str,
@@ -348,6 +395,9 @@ def _extract_group(
             wp["lon"] = lon
         waypoints.append(wp)
 
+    # Extract TACAN beacon data from waypoint tasks (tankers, carriers)
+    tacan = _extract_tacan_from_tasks(waypoints)
+
     return {
         "groupId": group_id,
         "groupName": group_name,
@@ -357,6 +407,7 @@ def _extract_group(
         "task": group.get("task", ""),
         "frequency": _num(group.get("frequency")),
         "modulation": group.get("modulation", 0),
+        "tacan": tacan,
         "units": extracted_units,
         "waypoints": waypoints,
     }

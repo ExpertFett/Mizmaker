@@ -612,6 +612,138 @@ def _replace_late_activation(text: str, unit_id: int, enabled: bool) -> str:
     return text
 
 
+def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
+                          callsign: str) -> str:
+    """Replace ActivateBeacon TACAN params for a unit's waypoint task.
+
+    Finds the ActivateBeacon that has a matching unitId param, then updates
+    its channel, modeChannel (band), and callsign.
+    """
+    # Find ALL ActivateBeacon occurrences and pick the one with matching unitId
+    beacon_pattern = r'\["id"\]\s*=\s*"ActivateBeacon"'
+    beacon_pos = None
+    for m in re.finditer(beacon_pattern, text):
+        # Check if this beacon's params contain our unitId
+        region = text[m.start():m.start() + 1000]
+        uid_match = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', region)
+        if uid_match:
+            beacon_pos = m.start()
+            break
+
+    if beacon_pos is None:
+        # Fallback: find the closest ActivateBeacon before the unit position
+        unit_pos = _find_unit_block_start(text, unit_id)
+        best = None
+        for m in re.finditer(beacon_pattern, text):
+            if m.start() < unit_pos:
+                best = m.start()
+            else:
+                break
+        if best is None:
+            return text
+        beacon_pos = best
+
+    beacon_region = text[beacon_pos:beacon_pos + 1000]
+
+    # Replace channel
+    ch_match = re.search(r'(\["channel"\]\s*=\s*)(\d+)', beacon_region)
+    if ch_match:
+        abs_s = beacon_pos + ch_match.start(2)
+        abs_e = beacon_pos + ch_match.end(2)
+        text = text[:abs_s] + str(channel) + text[abs_e:]
+
+    # Re-read region after text shift
+    beacon_region = text[beacon_pos:beacon_pos + 1000]
+
+    # Replace modeChannel (band: "X" or "Y")
+    mode_val = '"Y"' if band.upper() == 'Y' else '"X"'
+    mc_match = re.search(r'(\["modeChannel"\]\s*=\s*)("[^"]*"|\d+)', beacon_region)
+    if mc_match:
+        abs_s = beacon_pos + mc_match.start(2)
+        abs_e = beacon_pos + mc_match.end(2)
+        text = text[:abs_s] + mode_val + text[abs_e:]
+
+    beacon_region = text[beacon_pos:beacon_pos + 1000]
+
+    # Replace callsign
+    cs_match = re.search(r'(\["callsign"\]\s*=\s*")([^"]*)', beacon_region)
+    if cs_match:
+        abs_s = beacon_pos + cs_match.start(2)
+        abs_e = beacon_pos + cs_match.end(2)
+        text = text[:abs_s] + callsign + text[abs_e:]
+
+    return text
+
+
+def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
+                       pos: int, name_str: str) -> str:
+    """Replace the callsign block for an AI unit.
+
+    DCS Lua structure:
+        ["callsign"] = {
+            [1] = <name_index>,
+            [2] = <flight_number>,
+            [3] = <position_in_flight>,
+            ["name"] = "<NameFF>",
+        },
+    """
+    unit_pos = _find_unit_block_start(text, unit_id)
+    search_end = min(len(text), unit_pos + 5000)
+    region = text[unit_pos:search_end]
+
+    # Replace [1] = name index
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[1\]\s*=\s*)(\d+)', region)
+    if m:
+        abs_s = unit_pos + m.start(2)
+        abs_e = unit_pos + m.end(2)
+        text = text[:abs_s] + str(name_idx) + text[abs_e:]
+
+    # Re-read region after text shift
+    region = text[unit_pos:min(len(text), unit_pos + 5000)]
+
+    # Replace [2] = flight number
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[2\]\s*=\s*)(\d+)', region)
+    if m:
+        abs_s = unit_pos + m.start(2)
+        abs_e = unit_pos + m.end(2)
+        text = text[:abs_s] + str(flight) + text[abs_e:]
+
+    region = text[unit_pos:min(len(text), unit_pos + 5000)]
+
+    # Replace [3] = position
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[3\]\s*=\s*)(\d+)', region)
+    if m:
+        abs_s = unit_pos + m.start(2)
+        abs_e = unit_pos + m.end(2)
+        text = text[:abs_s] + str(pos) + text[abs_e:]
+
+    region = text[unit_pos:min(len(text), unit_pos + 5000)]
+
+    # Replace ["name"] = "..."
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\["name"\]\s*=\s*")([^"]*)', region)
+    if m:
+        abs_s = unit_pos + m.start(2)
+        abs_e = unit_pos + m.end(2)
+        text = text[:abs_s] + name_str + text[abs_e:]
+
+    return text
+
+
+def _replace_onboard_num(text: str, unit_id: int, new_num: str) -> str:
+    """Replace onboard_num (tail number) for a unit."""
+    unit_pos = _find_unit_block_start(text, unit_id)
+    search_end = min(len(text), unit_pos + 3000)
+    region = text[unit_pos:search_end]
+
+    pattern = r'(\["onboard_num"\]\s*=\s*")([^"]*)'
+    m = re.search(pattern, region)
+    if m:
+        abs_start = unit_pos + m.start(2)
+        abs_end = unit_pos + m.end(2)
+        text = text[:abs_start] + new_num + text[abs_end:]
+    return text
+
+
 def _replace_skill(text: str, unit_id: int, new_skill: str) -> str:
     """Replace skill level for a unit."""
     unit_pos = _find_unit_block_start(text, unit_id)
@@ -1126,7 +1258,7 @@ def apply_unit_edits(text: str, edits: list) -> str:
     Supported fields: voiceCallsignLabel, voiceCallsignNumber, stnL16, donors,
     teamMembers, copyLoadout, pylonChange, laserCode, groupRename, unitRename,
     livery, weather, groupTask, groupFrequency, groupModulation, skill,
-    radioFrequency, findReplace
+    radioFrequency, onboard_num, callsign, tacan, findReplace
     """
     for edit in edits:
         field = edit.get("field")
@@ -1193,6 +1325,20 @@ def apply_unit_edits(text: str, edits: list) -> str:
                 text = _replace_heading(text, unit_id, float(value))
             elif field == "radioFrequency":
                 text = _replace_radio_frequency(text, unit_id, int(value))
+            elif field == "onboard_num":
+                text = _replace_onboard_num(text, unit_id, str(value))
+            elif field == "tacan":
+                text = _replace_tacan_beacon(
+                    text, unit_id,
+                    int(value["channel"]), str(value.get("band", "X")),
+                    str(value.get("callsign", "")),
+                )
+            elif field == "callsign":
+                text = _replace_callsign(
+                    text, unit_id,
+                    int(value["nameIdx"]), int(value["flight"]),
+                    int(value["pos"]), str(value["name"]),
+                )
         except Exception as e:
             import logging
             logging.warning(f"Skipping edit {field} (unit={edit.get('unitId')}, group={edit.get('groupId')}): {e}")

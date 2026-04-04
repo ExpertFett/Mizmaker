@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "C:\\Users\\garre\\nodejs-portable\\node-v22.16.0-win-x64\\npx.cmd",
-      "runtimeArgs": ["vite", "--host", "--port", "5173"],
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", ".claude\\start-frontend.bat"],
       "port": 5173
     }
   ]

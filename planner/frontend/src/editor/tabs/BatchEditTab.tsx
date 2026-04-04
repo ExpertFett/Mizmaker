@@ -4,6 +4,22 @@ import { useEditStore } from '../../store/editStore';
 
 const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
 
+/** DCS callsign names mapped to their Lua index */
+const CALLSIGN_NAMES: { idx: number; name: string }[] = [
+  { idx: 1, name: 'Enfield' },
+  { idx: 2, name: 'Springfield' },
+  { idx: 3, name: 'Uzi' },
+  { idx: 4, name: 'Colt' },
+  { idx: 5, name: 'Dodge' },
+  { idx: 6, name: 'Ford' },
+  { idx: 7, name: 'Chevy' },
+  { idx: 8, name: 'Pontiac' },
+  { idx: 9, name: 'Hawg' },
+  { idx: 10, name: 'Boar' },
+  { idx: 11, name: 'Pig' },
+  { idx: 12, name: 'Tusk' },
+];
+
 /** Make a raw livery_id human-readable */
 function formatLiveryId(raw: string): string {
   if (!raw) return '(default)';
@@ -24,6 +40,8 @@ export function BatchEditTab() {
   const [skill, setSkill] = useState('');
   const [radioMhz, setRadioMhz] = useState('');
   const [livery, setLivery] = useState('');
+  const [tailMin, setTailMin] = useState('');
+  const [tailMax, setTailMax] = useState('');
   const [result, setResult] = useState('');
   const [availableLiveries, setAvailableLiveries] = useState<{ id: string; name: string }[]>([]);
 
@@ -119,22 +137,44 @@ export function BatchEditTab() {
 
   const handleApply = useCallback(() => {
     if (!country) return;
-    if (!skill && !radioMhz && !livery) { setResult('No changes entered'); return; }
+    if (!skill && !radioMhz && !livery && !tailMin) { setResult('No changes entered'); return; }
 
     const targets = units.filter((u) =>
       u.country === country && (checkedTypes.size === 0 || checkedTypes.has(u.type))
     );
 
-    for (const u of targets) {
+    // Generate random unique tail numbers within range (octal digits only: 0-7)
+    let tailNums: number[] = [];
+    if (tailMin) {
+      const lo = parseInt(tailMin, 10);
+      const hi = tailMax ? parseInt(tailMax, 10) : lo + targets.length * 5;
+      const pool: number[] = [];
+      for (let n = lo; n <= hi; n++) {
+        // Only include numbers with octal-valid digits (no 8 or 9)
+        if (/^[0-7]+$/.test(String(n))) pool.push(n);
+      }
+      // Fisher-Yates shuffle and take what we need
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      tailNums = pool.slice(0, targets.length);
+    }
+
+    for (let i = 0; i < targets.length; i++) {
+      const u = targets[i];
       if (skill) addEdit({ unitId: u.unitId, field: 'skill', value: skill } as any);
       if (livery) addEdit({ unitId: u.unitId, field: 'livery', value: livery } as any);
       if (radioMhz && (u.category === 'plane' || u.category === 'helicopter')) {
         addEdit({ unitId: u.unitId, field: 'radioFrequency', value: Math.round(parseFloat(radioMhz) * 1e6) } as any);
       }
+      if (tailNums.length > 0) {
+        addEdit({ unitId: u.unitId, field: 'onboard_num', value: String(tailNums[i]) } as any);
+      }
     }
 
     setResult(`Applied to ${targets.length} unit${targets.length !== 1 ? 's' : ''}`);
-  }, [country, checkedTypes, skill, radioMhz, livery, units, addEdit]);
+  }, [country, checkedTypes, skill, radioMhz, livery, tailMin, tailMax, units, addEdit]);
 
   return (
     <div>
@@ -259,7 +299,7 @@ export function BatchEditTab() {
             </div>
 
             {/* Radio */}
-            <div style={{ gridColumn: 'span 2' }}>
+            <div>
               <label style={labelStyle}>Radio Freq MHz (aircraft only)</label>
               <input
                 type="number"
@@ -269,8 +309,89 @@ export function BatchEditTab() {
                 step={0.025}
                 min={100}
                 max={400}
-                style={{ ...inputStyle, width: 160 }}
+                style={{ ...inputStyle, width: '100%' }}
               />
+            </div>
+
+            {/* Tail Number */}
+            <div>
+              <label style={labelStyle}>Tail # Range</label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={tailMin}
+                  onChange={(e) => setTailMin(e.target.value)}
+                  placeholder="100"
+                  min={0}
+                  max={9999}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <span style={{ color: '#5a7a8a', fontSize: 12 }}>–</span>
+                <input
+                  type="number"
+                  value={tailMax}
+                  onChange={(e) => setTailMax(e.target.value)}
+                  placeholder={tailMin ? String(parseInt(tailMin, 10) + affected * 3) : '300'}
+                  min={0}
+                  max={9999}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+              {tailMin && affected > 0 && (
+                <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+                  {affected} random octal tail numbers from {tailMin} – {tailMax || parseInt(tailMin, 10) + affected * 5}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Auto-assign callsigns */}
+          <div style={{ marginBottom: 12 }}>
+            <button
+              onClick={() => {
+                if (!country || affected === 0) return;
+                const targets = units.filter((u) =>
+                  u.country === country && (checkedTypes.size === 0 || checkedTypes.has(u.type))
+                    && (u.category === 'plane' || u.category === 'helicopter')
+                );
+                if (targets.length === 0) { setResult('No aircraft found'); return; }
+                const groupOrder: string[] = [];
+                for (const u of targets) {
+                  const gn = u.groupName || `g${u.groupId}`;
+                  if (!groupOrder.includes(gn)) groupOrder.push(gn);
+                }
+                const groupCs = new Map<string, { nameIdx: number; name: string; flight: number }>();
+                for (let i = 0; i < groupOrder.length; i++) {
+                  const cs = CALLSIGN_NAMES[i % CALLSIGN_NAMES.length];
+                  const flight = Math.floor(i / CALLSIGN_NAMES.length) + 1;
+                  groupCs.set(groupOrder[i], { nameIdx: cs.idx, name: cs.name, flight });
+                }
+                const posCounters = new Map<string, number>();
+                for (const u of targets) {
+                  const gn = u.groupName || `g${u.groupId}`;
+                  const gc = groupCs.get(gn)!;
+                  const pos = (posCounters.get(gn) || 0) + 1;
+                  posCounters.set(gn, pos);
+                  addEdit({ unitId: u.unitId, field: 'callsign', value: {
+                    nameIdx: gc.nameIdx, flight: gc.flight, pos,
+                    name: `${gc.name}${gc.flight}${pos}`,
+                  }} as any);
+                }
+                setResult(`Callsigns assigned to ${targets.length} aircraft across ${groupOrder.length} groups`);
+              }}
+              disabled={!country || affected === 0}
+              style={{
+                background: country && affected > 0 ? '#1a3a5a' : '#1a2a3a',
+                border: `1px solid ${country && affected > 0 ? '#4a8fd4' : '#1a2a3a'}`,
+                borderRadius: 4, color: country && affected > 0 ? '#4a8fd4' : '#5a7a8a',
+                cursor: country && affected > 0 ? 'pointer' : 'not-allowed',
+                fontSize: 13, fontWeight: 600, padding: '6px 14px', width: '100%',
+              }}
+            >
+              Auto-Assign Callsigns (aircraft only)
+            </button>
+            <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+              Each group gets a unique callsign: Enfield 1-1, Springfield 1-1, Uzi 1-1, ...
             </div>
           </div>
 
