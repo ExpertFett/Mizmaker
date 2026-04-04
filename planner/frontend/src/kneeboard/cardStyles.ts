@@ -1,100 +1,119 @@
-/** Shared kneeboard card constants and styles */
+/** Shared kneeboard card constants and styles — DCS Kneeboard Style Guide */
 
 export const W = 600;
 export const H = 850;
-export const FONT = "'Consolas', 'Courier New', monospace";
-export const BG = '#0a1520';
-export const BORDER = '#1a3a5a';
-export const TEXT = '#ccdae8';
-export const DIM = '#5a7a8a';
-export const ACCENT = '#4a8fd4';
-export const ROW_ALT = 'rgba(74, 143, 212, 0.04)';
+export const FONT = "'Arial', sans-serif";
+export const BG = '#1a1a1a';
+export const BG_NOTES = '#4a4a4a';
+export const BORDER = '#444';
+export const BORDER_MED = '#555';
+export const BORDER_LIGHT = '#666';
+export const TEXT = '#e0e0e0';
+export const TEXT_BRIGHT = '#fff';
+export const TEXT_MUTED = '#ccc';
+export const ACCENT = '#ffa500';
 export const WARN = '#d9a050';
+export const ROW_ALT = 'rgba(255, 165, 0, 0.04)';
+export const DIM = '#aaa';
 
 export const cardRoot: React.CSSProperties = {
   width: W,
   height: H,
-  background: BG,
+  backgroundColor: BG,
   fontFamily: FONT,
   color: TEXT,
-  padding: 0,
+  padding: 12,
   boxSizing: 'border-box',
+  display: 'flex',
+  flexDirection: 'column',
   overflow: 'hidden',
 };
 
 export const headerStyle: React.CSSProperties = {
-  padding: '10px 16px 8px',
-  borderBottom: `2px solid ${ACCENT}`,
+  textAlign: 'center',
+  borderBottom: `2px solid ${BORDER_LIGHT}`,
+  paddingBottom: 6,
+  marginBottom: 10,
+  flexShrink: 0,
 };
 
 export const titleStyle: React.CSSProperties = {
-  fontSize: 16,
-  fontWeight: 700,
-  color: TEXT,
+  fontSize: 25,
+  fontWeight: 'bold',
+  color: TEXT_BRIGHT,
   letterSpacing: 1,
 };
 
 export const subtitleStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: DIM,
-  marginTop: 2,
+  fontSize: 17,
+  color: TEXT_MUTED,
+  marginTop: 4,
 };
 
 export const sectionTitle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
+  fontSize: 21,
+  fontWeight: 'bold',
   color: ACCENT,
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  padding: '6px 16px 4px',
-  borderBottom: `1px solid ${BORDER}`,
+  borderBottom: `1px solid ${BORDER_MED}`,
+  paddingBottom: 2,
+  margin: '0 0 4px 0',
+  flexShrink: 0,
 };
 
 export const cell: React.CSSProperties = {
   padding: '3px 6px',
-  borderBottom: `1px solid ${BORDER}`,
-  fontSize: 10,
-  fontFamily: FONT,
+  border: `1px solid ${BORDER}`,
   color: TEXT,
+  fontSize: 19,
+  fontFamily: FONT,
   whiteSpace: 'nowrap',
   overflow: 'hidden',
 };
 
 export const th: React.CSSProperties = {
-  ...cell,
-  fontSize: 9,
-  color: ACCENT,
-  fontWeight: 600,
-  textAlign: 'center',
-  borderBottom: `2px solid ${BORDER}`,
+  backgroundColor: '#333',
+  color: TEXT_MUTED,
   padding: '4px 6px',
+  textAlign: 'center',
+  border: `1px solid ${BORDER_MED}`,
+  fontWeight: 'bold',
+  fontSize: 17,
 };
 
 export const footerStyle: React.CSSProperties = {
-  padding: '4px 16px',
+  padding: '4px 0',
   borderTop: `1px solid ${BORDER}`,
-  fontSize: 8,
-  color: DIM,
+  fontSize: 14,
+  color: TEXT_MUTED,
   textAlign: 'right',
-  position: 'absolute',
-  bottom: 0,
-  left: 0,
-  right: 0,
+  flexShrink: 0,
+  marginTop: 'auto',
+};
+
+export const notesBox: React.CSSProperties = {
+  backgroundColor: BG_NOTES,
+  border: `1px solid ${BORDER_MED}`,
+  borderRadius: 2,
+  padding: '6px 8px',
+  flex: 1,
+  minHeight: 0,
+  fontSize: 17,
+  color: TEXT,
 };
 
 export const row: React.CSSProperties = {
   display: 'flex',
   gap: 16,
-  padding: '4px 16px',
-  fontSize: 10,
+  padding: '4px 0',
+  fontSize: 17,
 };
 
 export const label: React.CSSProperties = {
-  color: DIM,
-  fontSize: 9,
+  color: TEXT_MUTED,
+  fontSize: 15,
 };
 
 export const value: React.CSSProperties = {
   color: TEXT,
-  fontSize: 10,
+  fontSize: 17,
 };

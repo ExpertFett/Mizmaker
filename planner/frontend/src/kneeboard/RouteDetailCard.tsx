@@ -5,7 +5,7 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox } from './cardStyles';
 import type { MissionGroup, ThreatRing } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, metersToNm } from '../utils/conversions';
@@ -111,20 +111,19 @@ export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
                 background: t.inRange ? 'rgba(217, 80, 80, 0.1)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
               }}>
                 <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{wp.waypoint_number}</td>
-                <td style={{ ...cell, fontSize: 9 }}>{(wp.waypoint_name || '').substring(0, 8)}</td>
-                <td style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM }}>{fmtCoord(wp.lat, wp.lon)}</td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>
+                <td style={{ ...cell }}>{(wp.waypoint_name || '').substring(0, 8)}</td>
+                <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(wp.lat, wp.lon)}</td>
+                <td style={{ ...cell, textAlign: 'right' }}>
                   {Math.round(metersToFeet(wp.altitude_m)).toLocaleString()}
                 </td>
-                <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>
+                <td style={{ ...cell, textAlign: 'center', color: DIM }}>
                   {wp.leg_bearing_deg != null ? `${Math.round(wp.leg_bearing_deg).toString().padStart(3, '0')}` : '—'}
                 </td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>
+                <td style={{ ...cell, textAlign: 'right' }}>
                   {wp.leg_distance_nm ? wp.leg_distance_nm.toFixed(1) : '—'}
                 </td>
                 <td style={{
                   ...cell,
-                  fontSize: 8,
                   color: t.inRange ? '#d95050' : threatDist && threatDist < 30 ? WARN : DIM,
                 }}>
                   {t.nearest
@@ -154,12 +153,12 @@ export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
             <tbody>
               {uniqueWarnings.map((w, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-                  <td style={{ ...cell, fontSize: 9, color: ACCENT }}>{w.leg}</td>
-                  <td style={{ ...cell, fontSize: 9, color: WARN }}>{w.threat}</td>
-                  <td style={{ ...cell, textAlign: 'right', fontSize: 9, color: metersToNm(w.dist) < metersToNm(w.dist) ? '#d95050' : TEXT }}>
+                  <td style={{ ...cell, color: ACCENT }}>{w.leg}</td>
+                  <td style={{ ...cell, color: WARN }}>{w.threat}</td>
+                  <td style={{ ...cell, textAlign: 'right', color: TEXT }}>
                     {metersToNm(w.dist).toFixed(0)} nm
                   </td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>
+                  <td style={{ ...cell, textAlign: 'center', color: DIM }}>
                     {Math.round(w.brg).toString().padStart(3, '0')}°
                   </td>
                 </tr>
@@ -184,11 +183,11 @@ export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
             <tbody>
               {enemyThreats.slice(0, 10).map((t, i) => (
                 <tr key={t.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-                  <td style={{ ...cell, fontSize: 9 }}>{t.name}</td>
-                  <td style={{ ...cell, textAlign: 'right', fontSize: 9, color: WARN }}>
+                  <td style={{ ...cell }}>{t.name}</td>
+                  <td style={{ ...cell, textAlign: 'right', color: WARN }}>
                     {metersToNm(t.range).toFixed(0)} nm
                   </td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM }}>{fmtCoord(t.lat, t.lon)}</td>
+                  <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(t.lat, t.lon)}</td>
                 </tr>
               ))}
             </tbody>
@@ -197,10 +196,10 @@ export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
       )}
 
       {/* Notes */}
-      <div style={{ padding: '8px 16px' }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+      <div style={{ ...sectionTitle, marginTop: 6 }}>NOTES</div>
+      <div style={notesBox}>
         {[...Array(3)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 20, marginBottom: 4 }} />
         ))}
       </div>
 

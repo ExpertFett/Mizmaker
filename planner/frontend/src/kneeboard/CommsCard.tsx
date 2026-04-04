@@ -3,7 +3,7 @@
  * Shows radio frequency, modulation, and mission phase flow based on waypoint actions.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox } from './cardStyles';
 import type { MissionGroup } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 
@@ -57,7 +57,7 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
 
       {/* Primary frequency */}
       <div style={sectionTitle}>FLIGHT FREQUENCY</div>
-      <div style={{ padding: '6px 16px', fontSize: 14, fontWeight: 700, color: ACCENT, borderBottom: `1px solid ${BORDER}` }}>
+      <div style={{ padding: '6px 16px', fontSize: 19, fontWeight: 700, color: ACCENT, borderBottom: `1px solid ${BORDER}` }}>
         {formatFreq(group.frequency, group.modulation)}
       </div>
 
@@ -108,12 +108,12 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
             <tbody>
               {flights.map((g, i) => (
                 <tr key={g.groupId} style={{
-                  background: g.groupId === group.groupId ? 'rgba(74, 143, 212, 0.12)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
+                  background: g.groupId === group.groupId ? 'rgba(255, 165, 0, 0.12)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
                 }}>
                   <td style={{ ...cell, fontWeight: g.groupId === group.groupId ? 600 : 400 }}>
                     {g.groupName}{g.groupId === group.groupId ? ' *' : ''}
                   </td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{g.task || '—'}</td>
+                  <td style={{ ...cell, textAlign: 'center', fontSize: 17, color: DIM }}>{g.task || '—'}</td>
                   <td style={{ ...cell, textAlign: 'center' }}>{formatFreq(g.frequency, g.modulation)}</td>
                 </tr>
               ))}
@@ -124,7 +124,7 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
 
       {/* Mission flow */}
       <div style={sectionTitle}>MISSION FLOW</div>
-      <div style={{ padding: '6px 16px', fontSize: 10, color: DIM }}>
+      <div style={{ padding: '6px 16px', fontSize: 17, color: DIM }}>
         {phases.map((p, i) => (
           <span key={i}>
             {i > 0 && <span style={{ color: ACCENT }}> → </span>}
@@ -134,10 +134,10 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
       </div>
 
       {/* Notes */}
-      <div style={{ padding: '8px 16px', flex: 1 }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+      <div style={sectionTitle}>NOTES</div>
+      <div style={notesBox}>
         {[...Array(5)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 20, marginBottom: 4 }} />
         ))}
       </div>
 

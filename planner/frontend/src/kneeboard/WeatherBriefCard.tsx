@@ -3,7 +3,11 @@
  * Full weather summary with all wind layers, clouds, visibility, fog, dust.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, BORDER, TEXT, DIM, WARN, footerStyle } from './cardStyles';
+import {
+  cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
+  notesBox, footerStyle,
+  BORDER, BORDER_MED, TEXT, TEXT_MUTED, DIM, WARN,
+} from './cardStyles';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 
@@ -24,6 +28,15 @@ function formatTime(seconds: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}Z`;
 }
 
+const rowStyle: React.CSSProperties = {
+  display: 'flex',
+  padding: '5px 16px',
+  borderBottom: `1px solid ${BORDER}`,
+  fontSize: 19,
+};
+const lbl: React.CSSProperties = { color: TEXT_MUTED, width: 160, flexShrink: 0, fontSize: 17 };
+const val: React.CSSProperties = { color: TEXT, fontWeight: 500, fontSize: 19 };
+
 export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
   const wx = overview.weather;
   const hpa = Math.round(wx.qnh_mmhg * 1.33322);
@@ -43,17 +56,8 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
 
   const precipLabel = wx.clouds_precipitation === 1 ? 'Rain' : wx.clouds_precipitation === 2 ? 'Thunderstorm' : 'None';
 
-  const row: React.CSSProperties = {
-    display: 'flex',
-    padding: '5px 16px',
-    borderBottom: `1px solid ${BORDER}`,
-    fontSize: 11,
-  };
-  const lbl: React.CSSProperties = { color: DIM, width: 130, flexShrink: 0, fontSize: 10 };
-  const val: React.CSSProperties = { color: TEXT, fontWeight: 500 };
-
   return (
-    <div style={{ ...cardRoot, position: 'relative' }}>
+    <div style={cardRoot}>
       <div style={headerStyle}>
         <div style={titleStyle}>WEATHER BRIEFING</div>
         <div style={subtitleStyle}>
@@ -69,45 +73,46 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexShrink: 0,
       }}>
-        <span style={{ fontSize: 18, fontWeight: 700, color: catColor }}>{flightCat}</span>
-        <span style={{ fontSize: 11, color: DIM }}>
+        <span style={{ fontSize: 21, fontWeight: 700, color: catColor }}>{flightCat}</span>
+        <span style={{ fontSize: 17, color: DIM }}>
           Ceiling {ceilCheck < 99999 ? `${ceilFt.toLocaleString()} ft` : 'Unlimited'} | Vis {visSM} SM
         </span>
       </div>
 
       {/* Pressure */}
       <div style={sectionTitle}>PRESSURE</div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>QNH</span>
         <span style={val}>{hpa} hPa / {inhg} inHg / {Math.round(wx.qnh_mmhg)} mmHg</span>
       </div>
 
       {/* Temperature */}
       <div style={sectionTitle}>TEMPERATURE</div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>Surface Temp</span>
         <span style={val}>{Math.round(wx.temperature_c)}°C / {tempF}°F</span>
       </div>
 
       {/* Wind layers */}
       <div style={sectionTitle}>WINDS</div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>Surface</span>
         <span style={val}>{fmtWind(wx.wind.atGround)}</span>
       </div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>2,000m / FL066</span>
         <span style={val}>{fmtWind(wx.wind.at2000)}</span>
       </div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>8,000m / FL263</span>
         <span style={val}>{fmtWind(wx.wind.at8000)}</span>
       </div>
 
       {/* Clouds */}
       <div style={sectionTitle}>CLOUDS</div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>Coverage</span>
         <span style={val}>
           {wx.clouds_density <= 0 ? 'Clear' :
@@ -119,31 +124,31 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
       </div>
       {wx.clouds_density > 0 && (
         <>
-          <div style={row}>
+          <div style={rowStyle}>
             <span style={lbl}>Base / Thickness</span>
             <span style={val}>{ceilFt.toLocaleString()} ft / {Math.round(metersToFeet(wx.clouds_thickness)).toLocaleString()} ft</span>
           </div>
           {wx.clouds_preset && (
-            <div style={row}>
+            <div style={rowStyle}>
               <span style={lbl}>Preset</span>
               <span style={val}>{wx.clouds_preset}</span>
             </div>
           )}
         </>
       )}
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>Precipitation</span>
         <span style={{ ...val, color: wx.clouds_precipitation > 0 ? WARN : TEXT }}>{precipLabel}</span>
       </div>
 
       {/* Visibility */}
       <div style={sectionTitle}>VISIBILITY</div>
-      <div style={row}>
+      <div style={rowStyle}>
         <span style={lbl}>Visibility</span>
         <span style={val}>{(wx.visibility_m / 1000).toFixed(1)} km / {visSM} SM</span>
       </div>
       {wx.fog_enabled && (
-        <div style={row}>
+        <div style={rowStyle}>
           <span style={lbl}>Fog</span>
           <span style={{ ...val, color: WARN }}>
             Vis {wx.fog_visibility}m | Thickness {wx.fog_thickness}m
@@ -151,7 +156,7 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
         </div>
       )}
       {wx.dust_enabled && (
-        <div style={row}>
+        <div style={rowStyle}>
           <span style={lbl}>Dust/Sand</span>
           <span style={{ ...val, color: WARN }}>Active (density {wx.dust_density})</span>
         </div>
@@ -161,7 +166,7 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
       {wx.turbulence > 0 && (
         <>
           <div style={sectionTitle}>TURBULENCE</div>
-          <div style={row}>
+          <div style={rowStyle}>
             <span style={lbl}>Ground Turb</span>
             <span style={{
               ...val,
@@ -174,11 +179,11 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
       )}
 
       {/* Notes */}
-      <div style={{ padding: '8px 16px' }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
-        {[...Array(3)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
-        ))}
+      <div style={{ padding: '8px 16px 0', flexShrink: 0 }}>
+        <div style={{ fontSize: 17, color: TEXT_MUTED, marginBottom: 4 }}>NOTES</div>
+      </div>
+      <div style={{ padding: '0 16px 8px', flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={notesBox} />
       </div>
 
       <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>

@@ -3,7 +3,7 @@
  * Shows tankers, AWACS, and other support groups with frequencies and positions.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER_MED, DIM, ACCENT, ROW_ALT, footerStyle, notesBox } from './cardStyles';
 import type { MissionGroup } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 
@@ -58,10 +58,10 @@ export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps)
           return (
             <tr key={g.groupId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, fontWeight: 600 }}>{g.groupName}</td>
-              <td style={{ ...cell, fontSize: 9, color: DIM, textAlign: 'center' }}>{shortType}</td>
+              <td style={{ ...cell, color: DIM, textAlign: 'center' }}>{shortType}</td>
               <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>{formatFreq(g.frequency, g.modulation)}</td>
-              <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{orbitWp ? formatAlt(orbitWp) : '—'}</td>
-              <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{orbitWp ? formatSpeed(orbitWp) : '—'}</td>
+              <td style={{ ...cell, textAlign: 'right' }}>{orbitWp ? formatAlt(orbitWp) : '—'}</td>
+              <td style={{ ...cell, textAlign: 'right' }}>{orbitWp ? formatSpeed(orbitWp) : '—'}</td>
             </tr>
           );
         })}
@@ -100,7 +100,7 @@ export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps)
           <div style={sectionTitle}>OTHER AIR ASSETS</div>
           {renderAssetTable(otherSupport.slice(0, 10), 'SUPPORT')}
           {otherSupport.length > 10 && (
-            <div style={{ padding: '4px 16px', fontSize: 9, color: DIM }}>
+            <div style={{ padding: '4px 16px', fontSize: 17, color: DIM }}>
               + {otherSupport.length - 10} more
             </div>
           )}
@@ -108,16 +108,16 @@ export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps)
       )}
 
       {tankers.length === 0 && awacsGroups.length === 0 && otherSupport.length === 0 && (
-        <div style={{ padding: '20px 16px', fontSize: 12, color: DIM, textAlign: 'center' }}>
+        <div style={{ padding: '20px 16px', fontSize: 17, color: DIM, textAlign: 'center' }}>
           No support assets found for this coalition.
         </div>
       )}
 
       {/* Notes */}
-      <div style={{ padding: '8px 16px' }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+      <div style={{ ...sectionTitle, marginTop: 8 }}>NOTES</div>
+      <div style={notesBox}>
         {[...Array(6)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 22, marginBottom: 2 }} />
         ))}
       </div>
 

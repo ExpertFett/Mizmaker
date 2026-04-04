@@ -6,7 +6,7 @@
  * Shows running fuel total with joker/bingo marks and visual gauges.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, BORDER_MED, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN } from './cardStyles';
 import type { MissionGroup, ClientUnit } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, msToKnots } from '../utils/conversions';
@@ -82,7 +82,7 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
   const bingoWp = legs.find((l) => l.remaining <= bingoFuel && l.remaining > 0);
 
   return (
-    <div style={{ ...cardRoot, position: 'relative' }}>
+    <div style={cardRoot}>
       <div style={headerStyle}>
         <div style={titleStyle}>FUEL LADDER — {group.groupName.toUpperCase()}</div>
         <div style={subtitleStyle}>
@@ -91,24 +91,24 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
       </div>
 
       {/* Key fuel marks */}
-      <div style={{ display: 'flex', gap: 16, padding: '6px 16px', borderBottom: `1px solid ${BORDER}` }}>
-        <div style={{ fontSize: 10 }}>
+      <div style={{ display: 'flex', gap: 16, padding: '6px 0', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 17 }}>
           <span style={{ color: DIM }}>START </span>
-          <span style={{ color: TEXT, fontWeight: 600 }}>{startFuel.toLocaleString()}</span>
+          <span style={{ color: TEXT_BRIGHT, fontWeight: 600 }}>{startFuel.toLocaleString()}</span>
         </div>
-        <div style={{ fontSize: 10 }}>
+        <div style={{ fontSize: 17 }}>
           <span style={{ color: WARN }}>JOKER </span>
           <span style={{ color: WARN, fontWeight: 600 }}>{jokerFuel.toLocaleString()}</span>
         </div>
-        <div style={{ fontSize: 10 }}>
+        <div style={{ fontSize: 17 }}>
           <span style={{ color: '#d95050' }}>BINGO </span>
           <span style={{ color: '#d95050', fontWeight: 600 }}>{bingoFuel.toLocaleString()}</span>
         </div>
-        <div style={{ fontSize: 10 }}>
+        <div style={{ fontSize: 17 }}>
           <span style={{ color: DIM }}>BURN </span>
           <span style={{ color: TEXT }}>{totalBurn.toLocaleString()}</span>
         </div>
-        <div style={{ fontSize: 10 }}>
+        <div style={{ fontSize: 17 }}>
           <span style={{ color: DIM }}>LAND </span>
           <span style={{
             color: fuel <= bingoFuel ? '#d95050' : fuel <= jokerFuel ? WARN : TEXT,
@@ -119,7 +119,7 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
 
       {/* Joker/Bingo waypoint callouts */}
       {(jokerWp || bingoWp) && (
-        <div style={{ display: 'flex', gap: 16, padding: '4px 16px', borderBottom: `1px solid ${BORDER}`, fontSize: 9 }}>
+        <div style={{ display: 'flex', gap: 16, padding: '4px 0', borderBottom: `1px solid ${BORDER}`, fontSize: 17, flexShrink: 0 }}>
           {jokerWp && (
             <span style={{ color: WARN }}>JOKER at WP {jokerWp.wp} ({jokerWp.remaining.toLocaleString()} lbs)</span>
           )}
@@ -130,7 +130,7 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
       )}
 
       {/* Fuel ladder table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', flexShrink: 0 }}>
         <colgroup>
           <col style={{ width: 28 }} />
           <col style={{ width: 52 }} />
@@ -162,23 +162,22 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
             return (
               <tr key={leg.wp} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
                 <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{leg.wp}</td>
-                <td style={{ ...cell, fontSize: 9 }}>{leg.name}</td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>
+                <td style={cell}>{leg.name}</td>
+                <td style={{ ...cell, textAlign: 'right' }}>
                   {leg.altFt > 0 ? (leg.altFt >= 1000 ? `${(leg.altFt / 1000).toFixed(1)}k` : leg.altFt) : 'SFC'}
                 </td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{leg.spdKts > 0 ? leg.spdKts : '—'}</td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>{fmtEte(leg.ete)}</td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 8, color: DIM }}>
+                <td style={{ ...cell, textAlign: 'right' }}>{leg.spdKts > 0 ? leg.spdKts : '—'}</td>
+                <td style={{ ...cell, textAlign: 'right' }}>{fmtEte(leg.ete)}</td>
+                <td style={{ ...cell, textAlign: 'right', color: DIM }}>
                   {leg.flowRate > 0 ? `${(leg.flowRate / 1000).toFixed(1)}k` : '—'}
                 </td>
-                <td style={{ ...cell, textAlign: 'right', fontSize: 9 }}>
+                <td style={{ ...cell, textAlign: 'right' }}>
                   {leg.burn > 0 ? `-${leg.burn.toLocaleString()}` : '—'}
                 </td>
                 <td style={{
                   ...cell,
                   textAlign: 'right',
                   fontWeight: 600,
-                  fontSize: 9,
                   color: leg.remaining <= bingoFuel ? '#d95050' : leg.remaining <= jokerFuel ? WARN : TEXT,
                 }}>
                   {leg.remaining.toLocaleString()}
@@ -186,7 +185,7 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
                 <td style={{ ...cell, padding: '3px 6px' }}>
                   <div style={{
                     width: '100%', height: 8,
-                    background: '#0a0f18', borderRadius: 2, overflow: 'hidden',
+                    background: BORDER, borderRadius: 2, overflow: 'hidden',
                     position: 'relative',
                   }}>
                     <div style={{
@@ -222,8 +221,8 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
       {/* Totals row */}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
-        padding: '6px 16px', borderTop: `2px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`,
-        fontSize: 10, fontWeight: 600,
+        padding: '6px 0', borderTop: `2px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`,
+        fontSize: 19, fontWeight: 600, flexShrink: 0,
       }}>
         <span style={{ color: TEXT }}>TOTAL BURN: {totalBurn.toLocaleString()} lbs</span>
         <span style={{
@@ -231,16 +230,14 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
         }}>LANDING FUEL: {fuel.toLocaleString()} lbs</span>
       </div>
 
-      {/* Disclaimer + notes */}
-      <div style={{ padding: '6px 16px' }}>
-        <div style={{ fontSize: 8, color: DIM, marginBottom: 6 }}>
-          * Estimates based on level cruise drag model. Actual burn varies with throttle, turns, combat, and loadout drag. Joker=35% / Bingo=20% of start fuel.
-        </div>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
-        {[...Array(3)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 14, marginBottom: 3 }} />
-        ))}
+      {/* Disclaimer */}
+      <div style={{ padding: '6px 0', fontSize: 17, color: DIM, flexShrink: 0 }}>
+        * Estimates based on level cruise drag model. Actual burn varies with throttle, turns, combat, and loadout drag. Joker=35% / Bingo=20% of start fuel.
       </div>
+
+      {/* Notes section — fills remaining space */}
+      <div style={{ ...sectionTitle, marginTop: 4 }}>NOTES</div>
+      <div style={notesBox} />
 
       <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>
     </div>

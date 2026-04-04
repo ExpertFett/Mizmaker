@@ -4,7 +4,7 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, cell, th, BORDER, DIM, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, BORDER_MED, DIM, ROW_ALT, footerStyle } from './cardStyles';
 import type { Airbase, MissionGroup, ThreatRing } from '../types/mission';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToNm } from '../utils/conversions';
@@ -64,7 +64,7 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
   }
 
   return (
-    <div style={{ ...cardRoot, position: 'relative' }}>
+    <div style={cardRoot}>
       <div style={headerStyle}>
         <div style={titleStyle}>BULLSEYE / REFERENCE</div>
         <div style={subtitleStyle}>
@@ -73,38 +73,39 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
       </div>
 
       {/* Reference points */}
+      <div style={sectionTitle}>REFERENCE POINTS</div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
-            <th style={{ ...th, width: 70 }}>TYPE</th>
-            <th style={{ ...th, width: 140 }}>MGRS</th>
-            <th style={{ ...th, width: 180 }}>LAT/LON</th>
+            <th style={{ ...th, width: 90 }}>TYPE</th>
+            <th style={{ ...th, width: 150 }}>MGRS</th>
+            <th style={{ ...th, width: 190 }}>LAT/LON</th>
           </tr>
         </thead>
         <tbody>
           {points.slice(0, 25).map((pt, i) => (
             <tr key={pt.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-              <td style={{ ...cell, fontWeight: 500, fontSize: 9 }}>{pt.name}</td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM }}>{pt.type}</td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{fmtCoord(pt.lat, pt.lon)}</td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 9, color: DIM }}>{fmtLatLon(pt.lat, pt.lon)}</td>
+              <td style={{ ...cell, fontWeight: 500 }}>{pt.name}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{pt.type}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(pt.lat, pt.lon)}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtLatLon(pt.lat, pt.lon)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
       {points.length === 0 && (
-        <div style={{ padding: '20px 16px', fontSize: 12, color: DIM, textAlign: 'center' }}>
+        <div style={{ padding: '20px 16px', fontSize: 17, color: DIM, textAlign: 'center' }}>
           No reference points available.
         </div>
       )}
 
       {/* Notes */}
-      <div style={{ padding: '8px 16px' }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 4 }}>NOTES:</div>
+      <div style={{ ...sectionTitle, marginTop: 8 }}>NOTES</div>
+      <div style={notesBox}>
         {[...Array(4)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 16, marginBottom: 4 }} />
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 22, marginBottom: 2 }} />
         ))}
       </div>
 
