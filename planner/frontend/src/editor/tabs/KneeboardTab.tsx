@@ -146,7 +146,7 @@ export function KneeboardTab() {
     color: '#ccdae8',
     padding: '6px 14px',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 500,
   };
 
@@ -158,7 +158,7 @@ export function KneeboardTab() {
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
           Flight:
           <select
             value={selectedGroupId ?? ''}
@@ -171,8 +171,8 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-          Card:
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
+          Coords:
           <select
             value={cardType}
             onChange={(e) => setCardType(e.target.value as CardType)}
@@ -183,53 +183,37 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        {cardType === 'route' && (
-          <>
-            <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-              Coords:
-              <select
-                value={coordFormat}
-                onChange={(e) => setCoordFormat(e.target.value as 'mgrs' | 'latlon')}
-                style={{ ...selectStyle, marginLeft: 6 }}
-              >
-                <option value="mgrs">MGRS</option>
-                <option value="latlon">Lat/Lon</option>
-              </select>
-            </label>
+        <label style={{ fontSize: 13, color: '#5a7a8a' }}>
+          Speed:
+          <select
+            value={speedRef}
+            onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
+            style={{ ...selectStyle, marginLeft: 6 }}
+          >
+            <option value="auto">Auto (CAS/Mach)</option>
+            <option value="cas">CAS</option>
+            <option value="tas">TAS</option>
+            <option value="gs">GS</option>
+            <option value="mach">Mach</option>
+          </select>
+        </label>
 
-            <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-              Speed:
-              <select
-                value={speedRef}
-                onChange={(e) => setSpeedRef(e.target.value as KneeboardSpeedRef)}
-                style={{ ...selectStyle, marginLeft: 6 }}
-              >
-                <option value="auto">Auto (CAS/Mach)</option>
-                <option value="cas">CAS</option>
-                <option value="tas">TAS</option>
-                <option value="gs">GS</option>
-                <option value="mach">Mach</option>
-              </select>
-            </label>
-
-            {speedRef === 'auto' && (
-              <label style={{ fontSize: 12, color: '#5a7a8a' }}>
-                Mach above:
-                <select
-                  value={machThreshold}
-                  onChange={(e) => setMachThreshold(Number(e.target.value))}
-                  style={{ ...selectStyle, marginLeft: 6 }}
-                >
-                  <option value={10000}>FL100</option>
-                  <option value={15000}>FL150</option>
-                  <option value={18000}>FL180</option>
-                  <option value={20000}>FL200</option>
-                  <option value={25000}>FL250</option>
-                  <option value={30000}>FL300</option>
-                </select>
-              </label>
-            )}
-          </>
+        {speedRef === 'auto' && (
+          <label style={{ fontSize: 13, color: '#5a7a8a' }}>
+            Mach above:
+            <select
+              value={machThreshold}
+              onChange={(e) => setMachThreshold(Number(e.target.value))}
+              style={{ ...selectStyle, marginLeft: 6 }}
+            >
+              <option value={10000}>FL100</option>
+              <option value={15000}>FL150</option>
+              <option value={18000}>FL180</option>
+              <option value={20000}>FL200</option>
+              <option value={25000}>FL250</option>
+              <option value={30000}>FL300</option>
+            </select>
+          </label>
         )}
 
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering} style={btnStyle}>
@@ -270,7 +254,7 @@ export function KneeboardTab() {
           alignItems: 'center',
           justifyContent: 'center',
           color: '#5a7a8a',
-          fontSize: 14,
+          fontSize: 15,
         }}>
           {playerGroups.length === 0 ? 'No player flights in this mission' : rendering ? 'Rendering...' : 'Select a flight to preview'}
         </div>

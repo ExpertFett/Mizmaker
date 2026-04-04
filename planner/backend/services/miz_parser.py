@@ -407,7 +407,7 @@ def _extract_trigger_zones(d: dict, theater: str, has_projection: bool) -> list:
         else:
             color = "rgba(255,255,255,0.15)"
 
-        zone = {
+        zone: Dict[str, Any] = {
             "zoneId": zone_id,
             "name": name,
             "x": x,

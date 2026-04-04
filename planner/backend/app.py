@@ -15,6 +15,12 @@ Routes:
   GET  /api/dtc/blank           — Blank DTC template
   POST /api/dtc/export-raw      — Export DTC from raw data
   POST /api/close               — Close session
+  GET  /api/triggers             — Get parsed triggers from loaded mission
+  POST /api/triggers             — Update triggers in mission
+  GET  /api/audio/list           — List audio files in .miz
+  POST /api/audio/upload         — Upload audio file to .miz
+  DELETE /api/audio/<path>       — Remove audio file from .miz
+  GET  /api/audio/stream/<path>  — Stream audio file for preview
   POST /api/sessions/{id}/invite — Generate invite link for a flight lead
   GET  /api/sessions/{id}/join   — Join session via invite token
   GET  /api/sessions/{id}/stream — SSE event stream for real-time updates
@@ -44,11 +50,11 @@ from services.miz_editor import replace_group_waypoints, repack_miz
 from services.unit_editor import apply_unit_edits
 from services.trigger_editor import (
     extract_triggers,
-    update_triggers_in_mission,
     list_audio_files,
     get_audio_bytes,
     add_audio_to_miz,
     remove_audio_from_miz,
+    update_triggers_in_mission,
 )
 from services.unit_extractor import (
     find_client_units,
@@ -988,17 +994,13 @@ def close_session():
 def get_triggers():
     """Get parsed triggers from the loaded mission."""
     sid = request.args.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
+    session = sessions[sid]
     try:
-        # If triggers were edited, return the pending version
-        if session.get("pending_triggers"):
-            trigger_data = session["pending_triggers"]
-        else:
-            mission_dict = parse_mission_text(session["original_mission_text"])
-            trigger_data = extract_triggers(mission_dict)
+        mission_dict = parse_mission_text(session["mission_text"])
+        trigger_data = extract_triggers(mission_dict)
         audio_files = list_audio_files(session["miz_bytes"])
         return jsonify({**trigger_data, "audioFiles": audio_files})
     except Exception as e:
@@ -1008,36 +1010,38 @@ def get_triggers():
 
 @app.route("/api/triggers", methods=["POST"])
 def save_triggers():
-    """Store trigger edits — applied at download time."""
+    """Update triggers in the mission (immediate apply to session)."""
     body = request.get_json()
     if not body:
         return jsonify({"error": "No JSON body"}), 400
 
     sid = body.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
     trigger_data = body.get("triggers")
     if not trigger_data:
         return jsonify({"error": "No trigger data"}), 400
 
-    with _lock:
-        session["pending_triggers"] = trigger_data
-        session["last_activity"] = time.time()
-
-    return jsonify({"ok": True})
+    session = sessions[sid]
+    try:
+        new_text = update_triggers_in_mission(session["mission_text"], trigger_data)
+        with _lock:
+            session["mission_text"] = new_text
+        return jsonify({"ok": True})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/api/audio/list", methods=["GET"])
 def audio_list():
     """List audio files in the .miz archive."""
     sid = request.args.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
-    audio_files = list_audio_files(session["miz_bytes"])
+    audio_files = list_audio_files(sessions[sid]["miz_bytes"])
     return jsonify({"audioFiles": audio_files})
 
 
@@ -1045,8 +1049,7 @@ def audio_list():
 def audio_upload():
     """Upload an audio file and embed it in the .miz archive."""
     sid = request.form.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
     if "file" not in request.files:
@@ -1061,6 +1064,11 @@ def audio_upload():
         return jsonify({"error": "File must be .wav, .ogg, or .mp3"}), 400
 
     audio_data = f.read()
+    session = sessions[sid]
+
+    if session["miz_bytes"] is None:
+        return jsonify({"error": "Cannot add audio to a raw mission file — must be a .miz archive"}), 400
+
     try:
         new_miz = add_audio_to_miz(session["miz_bytes"], f.filename, audio_data)
         with _lock:
@@ -1079,10 +1087,10 @@ def audio_upload():
 def audio_delete(filepath):
     """Remove an audio file from the .miz archive."""
     sid = request.args.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
+    session = sessions[sid]
     try:
         new_miz = remove_audio_from_miz(session["miz_bytes"], filepath)
         with _lock:
@@ -1096,11 +1104,10 @@ def audio_delete(filepath):
 def audio_stream(filepath):
     """Stream an audio file from the .miz for preview playback."""
     sid = request.args.get("sessionId")
-    session = _get_session(sid) if sid else None
-    if not session:
+    if not sid or sid not in sessions:
         return jsonify({"error": "Session not found"}), 404
 
-    audio_bytes = get_audio_bytes(session["miz_bytes"], filepath)
+    audio_bytes = get_audio_bytes(sessions[sid]["miz_bytes"], filepath)
     if audio_bytes is None:
         return jsonify({"error": "Audio file not found"}), 404
 

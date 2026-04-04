@@ -88,7 +88,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       threats: data.threats,
       airbases: data.airbases,
       drawings: data.drawings || [],
-      triggerZones: (data as any).triggerZones || [],
+      triggerZones: data.triggerZones || [],
       clientUnits: data.clientUnits || [],
       allUnitsDonor: data.allUnitsDonor || [],
       pylonOptions: data.pylonOptions || {},

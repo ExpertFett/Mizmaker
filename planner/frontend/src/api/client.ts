@@ -119,9 +119,7 @@ export async function dtcGenerate(sessionId: string, groupName: string, edits: u
   return res.blob();
 }
 
-// --------------------------------------------------------------------------
-// Triggers & Audio
-// --------------------------------------------------------------------------
+// ── Triggers & Audio ──────────────────────────────────────────────────────
 
 import type { TriggerData, AudioFile, TriggerRule } from '../types/mission';
 
@@ -157,7 +155,9 @@ export async function uploadAudio(sessionId: string, file: File): Promise<AudioF
 }
 
 export async function deleteAudio(sessionId: string, path: string): Promise<void> {
-  const res = await fetch(`${BASE}/api/audio/${path}?sessionId=${sessionId}`, { method: 'DELETE' });
+  const res = await fetch(`${BASE}/api/audio/${path}?sessionId=${sessionId}`, {
+    method: 'DELETE',
+  });
   if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
 }
 

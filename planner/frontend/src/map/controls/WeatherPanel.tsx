@@ -70,7 +70,28 @@ export function WeatherPanel() {
           {wx.clouds_base_m > 0 && (
             <>
               <span style={{ color: '#5a7a8a' }}>Clouds</span>
-              <span>{Math.round(metersToFeet(wx.clouds_base_m))}ft</span>
+              <span>{Math.round(metersToFeet(wx.clouds_base_m))}ft{wx.clouds_preset ? ` (${wx.clouds_preset})` : ''}</span>
+            </>
+          )}
+
+          {wx.fog_enabled && (
+            <>
+              <span style={{ color: '#d29922' }}>Fog</span>
+              <span style={{ color: '#d29922' }}>{wx.fog_visibility || 'ON'}m</span>
+            </>
+          )}
+
+          {wx.dust_enabled && (
+            <>
+              <span style={{ color: '#d29922' }}>Dust</span>
+              <span style={{ color: '#d29922' }}>ON</span>
+            </>
+          )}
+
+          {(wx.turbulence ?? 0) > 0 && (
+            <>
+              <span style={{ color: '#5a7a8a' }}>Turb</span>
+              <span>{wx.turbulence}</span>
             </>
           )}
         </div>

@@ -64,7 +64,7 @@ function createDarkLayer(): TileLayer {
       attributions: '&copy; CARTO',
     }),
     properties: { name: 'dark' },
-    visible: true, // default
+    visible: false,
   });
 }
 
@@ -72,11 +72,11 @@ function createOsmLayer(lang: string = 'en'): TileLayer {
   const source = lang === 'local'
     ? new OSM()
     : new XYZ({
-        url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        url: `https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png`,
         maxZoom: 20,
-        attributions: '&copy; OpenStreetMap &copy; CARTO',
+        attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
       });
-  return new TileLayer({ source, properties: { name: 'osm' }, visible: false });
+  return new TileLayer({ source, properties: { name: 'osm' }, visible: true }); // default
 }
 
 function createSatelliteLayer(): TileLayer {
@@ -597,8 +597,8 @@ export function MapContainer() {
   }, [drawings]);
 
   useEffect(() => {
-    if (layerRefs.current.triggerZone) populateTriggerZoneLayer(layerRefs.current.triggerZone, triggerZones);
-  }, [triggerZones]);
+    if (layerRefs.current.triggerZone) populateTriggerZoneLayer(layerRefs.current.triggerZone, triggerZones, !!layers.triggerZones);
+  }, [triggerZones, layers.triggerZones]);
 
   // Toggle overlay layer visibility
   useEffect(() => {
@@ -613,7 +613,7 @@ export function MapContainer() {
   // Toggle base map
   useEffect(() => {
     if (!baseLayers.current) return;
-    const bm = layers.baseMap || 'dark';
+    const bm = layers.baseMap || 'osm';
     baseLayers.current.dark.setVisible(bm === 'dark');
     baseLayers.current.osm.setVisible(bm === 'osm');
     baseLayers.current.satellite.setVisible(bm === 'satellite');
@@ -621,6 +621,19 @@ export function MapContainer() {
   }, [layers]);
 
   // Switch street map language (swap OSM layer source)
+  useEffect(() => {
+    if (!baseLayers.current || !mapInstance.current) return;
+    const lang = layers.mapLang || 'en';
+    const oldOsm = baseLayers.current.osm;
+    const wasVisible = oldOsm.getVisible();
+    const newOsm = createOsmLayer(lang);
+    newOsm.setVisible(wasVisible);
+    mapInstance.current.getLayers().insertAt(1, newOsm); // osm is 2nd base layer
+    mapInstance.current.removeLayer(oldOsm);
+    baseLayers.current.osm = newOsm;
+  }, [layers.mapLang]);
+
+  // Fit to selected group
   useEffect(() => {
     if (!baseLayers.current || !mapInstance.current) return;
     const lang = layers.mapLang || 'en';

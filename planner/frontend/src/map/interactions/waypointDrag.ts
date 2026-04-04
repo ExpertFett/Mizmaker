@@ -41,6 +41,7 @@ export function setupWaypointDrag(
     const source = routeLayer.getSource();
     if (!source) return;
 
+    // Find the route line feature for this group
     const routeFeat = source.getFeatureById(`route-${groupId}`) as Feature | null;
     if (!routeFeat) return;
 
@@ -49,10 +50,16 @@ export function setupWaypointDrag(
 
     routeFeature = routeFeat;
 
-    // Match the dragged WP's current position to find its index in the line
+    // The route coords are built from waypoints that have lat/lon, in order.
+    // WP0 is skipped for dots but IS in the route line (it's the departure point).
+    // wpIndex is the waypoint_number (1-based for non-departure WPs).
+    // Route coords include WP0, so the coord index for wpIndex N is N.
+    // But if some WPs lack coords they're filtered out, so we match by finding
+    // the waypoint feature positions in the line.
     const lineGeom = geom as LineString;
     const lineCoords = lineGeom.getCoordinates();
 
+    // Find WP0 + all waypoint features for this group to build index mapping
     const wpFeatures: { wpIdx: number; coord: number[] }[] = [];
     source.getFeatures().forEach((f) => {
       if (f.get('groupId') === groupId && f.get('featureType') === 'waypoint') {
@@ -61,6 +68,10 @@ export function setupWaypointDrag(
       }
     });
 
+    // WP0 (departure) is at coords[0] in the line, then WP1 at coords[1], etc.
+    // Since route is built from all waypoints with valid lat/lon in order,
+    // wpIndex maps to that same position in the line coordinates.
+    // Best approach: match the dragged WP's current position to find its index.
     const draggedWpFeat = wpFeatures.find((w) => w.wpIdx === wpIndex);
     if (!draggedWpFeat) {
       routeCoordIndex = wpIndex; // fallback

@@ -90,10 +90,10 @@ export function LayerSwitcher() {
               onClick={() => setBaseMap(bm.id)}
               style={{
                 flex: 1, padding: '4px 6px', fontSize: 12,
-                background: (layers.baseMap || 'dark') === bm.id ? '#1a3a5a' : '#0f1a28',
-                border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#4a8fd4' : '#1a2a3a'}`,
+                background: (layers.baseMap || 'osm') === bm.id ? '#1a3a5a' : '#0f1a28',
+                border: `1px solid ${(layers.baseMap || 'osm') === bm.id ? '#4a8fd4' : '#1a2a3a'}`,
                 borderRadius: 3,
-                color: (layers.baseMap || 'dark') === bm.id ? '#ccdae8' : '#5a7a8a',
+                color: (layers.baseMap || 'osm') === bm.id ? '#ccdae8' : '#5a7a8a',
                 cursor: 'pointer',
               }}
             >
@@ -104,7 +104,7 @@ export function LayerSwitcher() {
       </div>
 
       {/* Map Language (only relevant for Street map) */}
-      {(layers.baseMap || 'dark') === 'osm' && (
+      {(layers.baseMap || 'osm') === 'osm' && (
         <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
           <div style={sectionLabel}>Labels</div>
           <div style={{ display: 'flex', gap: 4 }}>
