@@ -23,8 +23,12 @@ interface CarrierConfig {
   tacanBand: string;
   /** TACAN callsign */
   tacanCallsign: string;
-  /** ICLS channel */
+  /** ICLS channel (0 = N/A for LHA/LHD) */
   iclsCh: number;
+  /** ACLS enabled */
+  aclsEnabled: boolean;
+  /** Has ICLS capability */
+  hasIcls: boolean;
   /** TIW speed (kts) */
   tiwSpeed: number;
   /** BRC offset (degrees, e.g., -9 for angled deck CVN, 0 for LHA) */
@@ -41,18 +45,37 @@ interface CarrierConfig {
 /* Known carrier data                                                  */
 /* ------------------------------------------------------------------ */
 
-const HULL_DB: Record<string, { label: string; callsign: string; tacan: number; brcOffset: number; tiwSpeed: number }> = {
-  'CVN-70': { label: 'CVN', callsign: 'Rough Rider', tacan: 70, brcOffset: -9, tiwSpeed: 25 },
-  'CVN-71': { label: 'CVN', callsign: 'Rough Rider', tacan: 71, brcOffset: -9, tiwSpeed: 25 },
-  'CVN-72': { label: 'CVN', callsign: 'Rough Rider', tacan: 72, brcOffset: -9, tiwSpeed: 25 },
-  'CVN-73': { label: 'CVN', callsign: 'Rough Rider', tacan: 73, brcOffset: -9, tiwSpeed: 25 },
-  'CVN-74': { label: 'CVN', callsign: 'Rough Rider', tacan: 74, brcOffset: -9, tiwSpeed: 25 },
-  'CVN-75': { label: 'CVN', callsign: 'Rough Rider', tacan: 75, brcOffset: -9, tiwSpeed: 25 },
-  stennis:  { label: 'CVN', callsign: 'Rough Rider', tacan: 74, brcOffset: -9, tiwSpeed: 25 },
-  vinson:   { label: 'CVN', callsign: 'Rough Rider', tacan: 70, brcOffset: -9, tiwSpeed: 25 },
-  forrestal:{ label: 'CVN', callsign: 'Rough Rider', tacan: 59, brcOffset: -9, tiwSpeed: 25 },
-  tarawa:   { label: 'LHA', callsign: 'Proud Eagle', tacan: 1, brcOffset: 0, tiwSpeed: 10 },
-  'LHA-1':  { label: 'LHA', callsign: 'Proud Eagle', tacan: 1, brcOffset: 0, tiwSpeed: 10 },
+interface HullData {
+  label: string;
+  callsign: string;
+  tacan: number;
+  brcOffset: number;
+  tiwSpeed: number;
+  hasIcls: boolean;
+}
+
+const HULL_DB: Record<string, HullData> = {
+  'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-77':   { label: 'CVN', callsign: 'Avenger',       tacan: 77, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-78':   { label: 'CVN', callsign: 'Old Ironsides',  tacan: 78, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  'CVN-79':   { label: 'CVN', callsign: 'Big John',      tacan: 79, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  forrestal:  { label: 'CV',  callsign: 'Forrestal',     tacan: 59, brcOffset: -9, tiwSpeed: 25, hasIcls: true },
+  tarawa:     { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
+  'LHA-1':    { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
+  wasp:       { label: 'LHD', callsign: 'Stinger',       tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
+  'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  brcOffset: 0,  tiwSpeed: 10, hasIcls: false },
 };
 
 function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
@@ -62,15 +85,24 @@ function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
 
   for (const [key, data] of Object.entries(HULL_DB)) {
     if (combined.includes(key.toLowerCase())) {
-      return { ...data, tacanCh: data.tacan, tacanCallsign: data.label, iclsCh: 2 };
+      return {
+        label: data.label,
+        callsign: data.callsign,
+        tacanCh: data.tacan,
+        tacanCallsign: data.label,
+        brcOffset: data.brcOffset,
+        tiwSpeed: data.tiwSpeed,
+        hasIcls: data.hasIcls,
+        aclsEnabled: data.hasIcls,
+      };
     }
   }
 
   // Fallback: detect type
-  if (/lha|lhd|tarawa/i.test(combined)) {
-    return { label: 'LHA', callsign: 'Eagle', tacanCh: 1, tacanCallsign: 'LHA', brcOffset: 0, tiwSpeed: 10, iclsCh: 2 };
+  if (/lha|lhd|tarawa|wasp/i.test(combined)) {
+    return { label: 'LHA', callsign: 'Eagle', tacanCh: 1, tacanCallsign: 'LHA', brcOffset: 0, tiwSpeed: 10, hasIcls: false, aclsEnabled: false };
   }
-  return { label: 'CVN', callsign: 'Carrier', tacanCh: 72, tacanCallsign: 'CVN', brcOffset: -9, tiwSpeed: 25, iclsCh: 2 };
+  return { label: 'CVN', callsign: 'Carrier', tacanCh: 72, tacanCallsign: 'CVN', brcOffset: -9, tiwSpeed: 25, hasIcls: true, aclsEnabled: true };
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,12 +174,16 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
       lines.push('');
     }
 
-    // Beacon toggle functions
+    // Beacon toggle functions (ICLS/LINK4/ACLS only for CVN types)
     const beacons = [
       { name: 'TACAN', offFlag: fb, onFlag: fb + 1 },
-      { name: 'ICLS', offFlag: fb + 2, onFlag: fb + 3 },
-      { name: 'LINK 4', offFlag: fb + 4, onFlag: fb + 5 },
-      { name: 'ACLS', offFlag: fb + 6, onFlag: fb + 7 },
+      ...(c.hasIcls ? [
+        { name: 'ICLS', offFlag: fb + 2, onFlag: fb + 3 },
+        { name: 'LINK 4', offFlag: fb + 4, onFlag: fb + 5 },
+      ] : []),
+      ...(c.aclsEnabled ? [
+        { name: 'ACLS', offFlag: fb + 6, onFlag: fb + 7 },
+      ] : []),
     ];
 
     for (const b of beacons) {
@@ -205,8 +241,12 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
     }
 
     // Beacons submenu
+    const beaconList = ['TACAN'];
+    if (c.hasIcls) { beaconList.push('ICLS'); beaconList.push('LINK4'); }
+    if (c.aclsEnabled) beaconList.push('ACLS');
+
     lines.push(`local ${menuVar}_bcn = MENU_COALITION:New(coalition.side.BLUE, "Beacons", ${menuVar})`);
-    for (const b of ['TACAN', 'ICLS', 'LINK4', 'ACLS']) {
+    for (const b of beaconList) {
       const bClean = b.replace(/\s/g, '');
       lines.push(`local ${menuVar}_${bClean} = MENU_COALITION:New(coalition.side.BLUE, "${b}", ${menuVar}_bcn)`);
       lines.push(`MENU_COALITION_COMMAND:New(coalition.side.BLUE, "Deactivate ${b}", ${menuVar}_${bClean}, ${varName}_${bClean}_off)`);
@@ -247,9 +287,11 @@ export function CarrierSetupPanel() {
   const handleDetect = useCallback(() => {
     const result: CarrierConfig[] = [];
     let flagBase = 1;
+    let nextIclsCh = 1; // auto-increment ICLS for multi-carrier
 
     for (const g of carrierGroups) {
       const info = detectCarrierInfo(g);
+      const hasIcls = info.hasIcls ?? true;
       result.push({
         groupId: g.groupId,
         groupName: g.groupName,
@@ -260,13 +302,16 @@ export function CarrierSetupPanel() {
         tacanCh: info.tacanCh || 72,
         tacanBand: 'X',
         tacanCallsign: info.tacanCallsign || 'CVN',
-        iclsCh: info.iclsCh || 2,
+        iclsCh: hasIcls ? nextIclsCh : 0,
+        aclsEnabled: info.aclsEnabled ?? hasIcls,
+        hasIcls,
         tiwSpeed: info.tiwSpeed || 25,
         brcOffset: info.brcOffset ?? -9,
         rescueHeloGroup: '',
         rescueModex: 42,
         flagBase,
       });
+      if (hasIcls) nextIclsCh++;
       flagBase += 20; // 20 flags per carrier
     }
 
@@ -389,12 +434,32 @@ export function CarrierSetupPanel() {
               onChange={(v) => updateConfig(c.groupId, 'callsign', v)} />
             <Field label="Menu Label" value={c.label}
               onChange={(v) => updateConfig(c.groupId, 'label', v)} />
-            <NumField label="TACAN Channel" value={c.tacanCh} min={1} max={126}
+            <NumField label={`TACAN Channel (${c.tacanCh}X)`} value={c.tacanCh} min={1} max={126}
               onChange={(v) => updateConfig(c.groupId, 'tacanCh', v)} />
             <Field label="TACAN Callsign" value={c.tacanCallsign}
               onChange={(v) => updateConfig(c.groupId, 'tacanCallsign', v)} />
-            <NumField label="ICLS Channel" value={c.iclsCh} min={1} max={20}
-              onChange={(v) => updateConfig(c.groupId, 'iclsCh', v)} />
+            {c.hasIcls ? (
+              <NumField label="ICLS Channel" value={c.iclsCh} min={1} max={20}
+                onChange={(v) => updateConfig(c.groupId, 'iclsCh', v)} />
+            ) : (
+              <div>
+                <div style={fieldLabel}>ICLS</div>
+                <div style={{ fontSize: 12, color: '#5a7a8a', padding: '5px 0' }}>N/A ({c.label})</div>
+              </div>
+            )}
+            {c.hasIcls && (
+              <div>
+                <div style={fieldLabel}>ACLS</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '5px 0' }}>
+                  <input type="checkbox" checked={c.aclsEnabled}
+                    onChange={(e) => updateConfig(c.groupId, 'aclsEnabled', e.target.checked ? 1 : 0)}
+                    style={{ accentColor: '#4a8fd4' }} />
+                  <span style={{ fontSize: 13, color: c.aclsEnabled ? '#ccdae8' : '#5a7a8a' }}>
+                    {c.aclsEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
+            )}
             <NumField label="TIW Speed (kts)" value={c.tiwSpeed} min={5} max={35}
               onChange={(v) => updateConfig(c.groupId, 'tiwSpeed', v)} />
             <NumField label="BRC Offset (deg)" value={c.brcOffset} min={-15} max={15}
