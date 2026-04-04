@@ -19,6 +19,7 @@ import { TriggerTab } from './tabs/TriggerTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
 import { DrawingsTab } from './tabs/DrawingsTab';
 import { TacanTab } from './tabs/TacanTab';
+import { CommCardTab } from './tabs/CommCardTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'rename', label: 'Rename', icon: '✏' },
   { id: 'batch', label: 'Batch', icon: '⚡' },
   { id: 'tacan', label: 'TACAN', icon: '📻' },
+  { id: 'commcard', label: 'Comm Card', icon: '📶' },
   { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
   { id: 'triggers', label: 'Triggers', icon: '🔔' },
@@ -188,6 +190,7 @@ export function MissionEditor() {
             {activeTab === 'rename' && <RenamerTab />}
             {activeTab === 'batch' && <BatchEditTab />}
             {activeTab === 'tacan' && <TacanTab />}
+            {activeTab === 'commcard' && <CommCardTab />}
             {activeTab === 'kneeboard' && <KneeboardTab />}
             {activeTab === 'dtc' && <DtcTab />}
             {activeTab === 'triggers' && <TriggerTab />}

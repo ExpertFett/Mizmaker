@@ -104,7 +104,7 @@ export function TacanTab() {
     let fallbackCh = 30; // fallback counter for groups with no derivable number
 
     // First pass: derive channels from names
-    const derived: { row: TacanRow; ch: number; cs: string }[] = [];
+    const derived: { row: TacanRow; ch: number; cs: string; band: string }[] = [];
     for (const row of tacanGroups) {
       const ch = clampChannel(deriveChannel(row.groupName, row.type, row.role));
       const cs = row.groupName.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase()
@@ -134,7 +134,7 @@ export function TacanTab() {
   const handleApply = useCallback(() => {
     if (overrides.size === 0) { setResult('No changes to apply'); return; }
     let count = 0;
-    for (const [groupId, ov] of overrides) {
+    for (const [groupId] of overrides) {
       const row = getRow(groupId);
       const group = groups.find((g) => g.groupId === groupId);
       if (!group) continue;
