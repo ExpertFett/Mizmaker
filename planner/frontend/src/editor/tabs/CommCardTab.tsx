@@ -238,7 +238,6 @@ export function CommCardTab() {
       }
     }
     setResult(`Applied ${count} change${count !== 1 ? 's' : ''} — download .miz to save`);
-    setOverrides(new Map());
   }, [overrides, addEdit]);
 
   // Reset
