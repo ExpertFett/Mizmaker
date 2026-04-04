@@ -3,6 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { TicSetupPanel } from './TicSetupPanel';
 import { AegisSetupPanel } from './AegisSetupPanel';
+import { CarrierSetupPanel } from './CarrierSetupPanel';
 import type { GroupRenamerData } from '../../types/mission';
 
 type CategoryFilter = 'all' | 'plane' | 'helicopter' | 'vehicle' | 'ship' | 'static';
@@ -185,6 +186,9 @@ export function RenamerTab() {
 
       {/* AEGIS IADS Auto-Setup (collapsible) */}
       <AegisSection />
+
+      {/* Carrier Control Setup (collapsible) */}
+      <CarrierSection />
 
       {/* Find & Replace */}
       <div style={{
@@ -473,6 +477,49 @@ function AegisSection() {
       {open && (
         <div style={{ padding: '12px 14px' }}>
           <AegisSetupPanel />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Carrier Section (collapsible)                                      */
+/* ------------------------------------------------------------------ */
+
+function CarrierSection() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{
+      marginBottom: 16,
+      border: '1px solid #1a2a3a',
+      borderRadius: 4,
+      background: '#0a1520',
+    }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          padding: '10px 14px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          borderBottom: open ? '1px solid #1a2a3a' : 'none',
+        }}
+      >
+        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+          {open ? '\u25BC' : '\u25B6'}
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#4a8fd4' }}>
+          Carrier Control Setup
+        </span>
+        <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+          Configure carriers and generate MOOSE control script
+        </span>
+      </div>
+      {open && (
+        <div style={{ padding: '12px 14px' }}>
+          <CarrierSetupPanel />
         </div>
       )}
     </div>
