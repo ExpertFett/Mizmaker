@@ -61,8 +61,8 @@ export async function renderCardToBlob(element: ReactElement): Promise<Blob> {
   const root = createRoot(container);
   root.render(element);
 
-  // Wait for React to flush and browser to compute styles
-  await new Promise((r) => setTimeout(r, 300));
+  // Wait for React to flush, browser to compute styles, and map tiles to load
+  await new Promise((r) => setTimeout(r, 800));
 
   try {
     const canvas = await html2canvas(container, {

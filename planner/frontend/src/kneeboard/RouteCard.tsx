@@ -13,6 +13,7 @@ import { metersToFeet, msToKnots } from '../utils/conversions';
 import { convertSpeed, type Weather, type SpeedMode } from '../utils/atmosphere';
 import type { Waypoint, MissionGroup } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
+import { TileMap, createProjection } from './TileMap';
 
 export type KneeboardSpeedRef = SpeedMode | 'auto';
 
@@ -310,7 +311,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
 }
 
 /* ------------------------------------------------------------------ */
-/* Route Map — SVG mini-map of waypoint path                           */
+/* Route Map — tile-backed map with waypoint overlay                    */
 /* ------------------------------------------------------------------ */
 
 function RouteMap({ waypoints }: { waypoints: Waypoint[] }) {
@@ -319,162 +320,112 @@ function RouteMap({ waypoints }: { waypoints: Waypoint[] }) {
 
   const MAP_W = 568;
   const MAP_H = 200;
-  const PAD = 32;
 
   const lats = wps.map((w) => w.lat!);
   const lons = wps.map((w) => w.lon!);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  const midLat = (minLat + maxLat) / 2;
-  const midLon = (minLon + maxLon) / 2;
-  const lonScale = Math.cos(midLat * Math.PI / 180);
-  const dLat = maxLat - minLat || 0.01;
-  const dLon = (maxLon - minLon) * lonScale || 0.01;
-  const scaleX = (MAP_W - PAD * 2) / dLon;
-  const scaleY = (MAP_H - PAD * 2) / dLat;
-  const scale = Math.min(scaleX, scaleY);
-  const cx = MAP_W / 2;
-  const cy = MAP_H / 2;
 
-  function project(lat: number, lon: number): [number, number] {
-    return [cx + (lon - midLon) * lonScale * scale, cy - (lat - midLat) * scale];
-  }
+  // Add 10% padding to bounds
+  const rawMinLat = Math.min(...lats);
+  const rawMaxLat = Math.max(...lats);
+  const rawMinLon = Math.min(...lons);
+  const rawMaxLon = Math.max(...lons);
+  const padLat = (rawMaxLat - rawMinLat) * 0.1 || 0.01;
+  const padLon = (rawMaxLon - rawMinLon) * 0.1 || 0.01;
+  const minLat = rawMinLat - padLat;
+  const maxLat = rawMaxLat + padLat;
+  const minLon = rawMinLon - padLon;
+  const maxLon = rawMaxLon + padLon;
 
-  // Lat/lon grid — pick a nice interval
-  function niceInterval(range: number): number {
-    if (range < 0.05) return 0.01;
-    if (range < 0.2) return 0.05;
-    if (range < 0.5) return 0.1;
-    if (range < 2) return 0.5;
-    if (range < 5) return 1;
-    return 2;
-  }
-  const latInterval = niceInterval(dLat);
-  const lonInterval = niceInterval(maxLon - minLon);
-  const gridLats: number[] = [];
-  const gridLons: number[] = [];
-  for (let v = Math.floor(minLat / latInterval) * latInterval; v <= maxLat + latInterval; v += latInterval) gridLats.push(v);
-  for (let v = Math.floor(minLon / lonInterval) * lonInterval; v <= maxLon + lonInterval; v += lonInterval) gridLons.push(v);
+  const proj = createProjection(minLat, maxLat, minLon, maxLon, MAP_W, MAP_H);
 
-  const fmtDeg = (v: number) => `${Math.abs(v).toFixed(v % 1 === 0 ? 0 : 1)}°`;
-
-  const points = wps.map((w) => project(w.lat!, w.lon!));
+  const points = wps.map((w) => proj.project(w.lat!, w.lon!));
   const polyline = points.map(([x, y]) => `${x},${y}`).join(' ');
 
   return (
     <div style={{ padding: '4px 16px 0', borderTop: `1px solid ${BORDER}` }}>
       <div style={{ fontSize: 9, color: ACCENT, fontWeight: 600, marginBottom: 2, letterSpacing: 1 }}>ROUTE</div>
-      <svg width={MAP_W} height={MAP_H} style={{ display: 'block' }}>
-        <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="#060d14" rx={4} />
+      <TileMap width={MAP_W} height={MAP_H} minLat={minLat} maxLat={maxLat} minLon={minLon} maxLon={maxLon}>
+        <svg width={MAP_W} height={MAP_H} style={{ display: 'block' }}>
+          {/* Route line with glow */}
+          <polyline points={polyline} fill="none" stroke="rgba(74, 143, 212, 0.3)" strokeWidth={5} strokeLinejoin="round" />
+          <polyline points={polyline} fill="none" stroke="#4a8fd4" strokeWidth={2} strokeLinejoin="round" />
 
-        {/* Lat/lon grid with labels */}
-        {gridLats.map((lat) => {
-          const [, py] = project(lat, midLon);
-          if (py < 8 || py > MAP_H - 4) return null;
-          return (
-            <g key={`glat${lat}`}>
-              <line x1={PAD} y1={py} x2={MAP_W - 4} y2={py} stroke="#12202e" strokeWidth={0.5} />
-              <text x={4} y={py + 3} fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
-                {fmtDeg(lat)}{lat >= 0 ? 'N' : 'S'}
-              </text>
-            </g>
-          );
-        })}
-        {gridLons.map((lon) => {
-          const [px] = project(midLat, lon);
-          if (px < PAD || px > MAP_W - 4) return null;
-          return (
-            <g key={`glon${lon}`}>
-              <line x1={px} y1={4} x2={px} y2={MAP_H - 12} stroke="#12202e" strokeWidth={0.5} />
-              <text x={px} y={MAP_H - 3} textAnchor="middle" fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
-                {fmtDeg(lon)}{lon >= 0 ? 'E' : 'W'}
-              </text>
-            </g>
-          );
-        })}
+          {/* Leg distance labels */}
+          {points.map(([x, y], i) => {
+            if (i === 0) return null;
+            const [px, py] = points[i - 1];
+            const mx = (px + x) / 2;
+            const my = (py + y) / 2;
+            const dist = wps[i].leg_distance_nm;
+            if (!dist || dist < 0.5) return null;
+            const angle = Math.atan2(y - py, x - px) * 180 / Math.PI;
+            const offX = Math.sin(angle * Math.PI / 180) * 10;
+            const offY = -Math.cos(angle * Math.PI / 180) * 10;
+            return (
+              <g key={`dist${i}`}>
+                <polygon points={`${mx - 4},-3 ${mx + 4},0 ${mx - 4},3`} fill="#4a8fd4" opacity={0.6}
+                  transform={`translate(${mx},${my}) rotate(${angle}) translate(${-mx},${-my})`} />
+                <text x={mx + offX} y={my + offY} textAnchor="middle" fontSize={7}
+                  fill="#7ab8e8" fontFamily={FONT}
+                  stroke="#060d14" strokeWidth={2} paintOrder="stroke">
+                  {dist.toFixed(0)}nm
+                </text>
+              </g>
+            );
+          })}
 
-        {/* Compass rose */}
-        <g transform={`translate(${MAP_W - 18}, 18)`}>
-          <circle r={10} fill="none" stroke="#1a2a3a" strokeWidth={0.5} />
-          <line x1={0} y1={-10} x2={0} y2={10} stroke="#1a2a3a" strokeWidth={0.5} />
-          <line x1={-10} y1={0} x2={10} y2={0} stroke="#1a2a3a" strokeWidth={0.5} />
-          <text x={0} y={-12} textAnchor="middle" fontSize={7} fill={DIM} fontFamily={FONT} fontWeight={700}>N</text>
-        </g>
+          {/* Waypoint dots + labels */}
+          {points.map(([x, y], i) => {
+            const wp = wps[i];
+            const isFirst = i === 0;
+            const isLast = i === wps.length - 1;
+            const r = isFirst || isLast ? 5 : 3.5;
+            const color = isFirst ? '#3fb950' : isLast ? '#f85149' : '#4a8fd4';
+            return (
+              <g key={`wp${i}`}>
+                <circle cx={x} cy={y} r={r + 1.5} fill="rgba(6, 13, 20, 0.6)" />
+                <circle cx={x} cy={y} r={r} fill={color} stroke="#0a1520" strokeWidth={1.5} />
+                <text x={x + (isFirst || isLast ? 8 : 0)} y={y - r - 4}
+                  textAnchor={isFirst || isLast ? 'start' : 'middle'} fontSize={8} fontFamily={FONT}
+                  fill={isFirst || isLast ? color : '#ccdae8'}
+                  fontWeight={isFirst || isLast ? 700 : 500}
+                  stroke="#060d14" strokeWidth={2} paintOrder="stroke">
+                  {isFirst ? 'DEP' : isLast ? 'ARR' : `${wp.waypoint_number}`}
+                </text>
+              </g>
+            );
+          })}
 
-        {/* Route line */}
-        <polyline points={polyline} fill="none" stroke="#4a8fd4" strokeWidth={2} strokeLinejoin="round" />
-
-        {/* Leg distance labels */}
-        {points.map(([x, y], i) => {
-          if (i === 0) return null;
-          const [px, py] = points[i - 1];
-          const mx = (px + x) / 2;
-          const my = (py + y) / 2;
-          const dist = wps[i].leg_distance_nm;
-          if (!dist || dist < 0.5) return null;
-          const angle = Math.atan2(y - py, x - px) * 180 / Math.PI;
-          // Offset label to side of line
-          const offX = Math.sin(angle * Math.PI / 180) * 8;
-          const offY = -Math.cos(angle * Math.PI / 180) * 8;
-          return (
-            <g key={`dist${i}`}>
-              <polygon points={`${mx - 4},-3 ${mx + 4},0 ${mx - 4},3`} fill="#4a8fd4" opacity={0.5}
-                transform={`translate(${mx},${my}) rotate(${angle}) translate(${-mx},${-my})`} />
-              <text x={mx + offX} y={my + offY} textAnchor="middle" fontSize={7}
-                fill="#5a8aaa" fontFamily={FONT}>
-                {dist.toFixed(0)}nm
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Waypoint dots + labels */}
-        {points.map(([x, y], i) => {
-          const wp = wps[i];
-          const isFirst = i === 0;
-          const isLast = i === wps.length - 1;
-          const r = isFirst || isLast ? 5 : 3.5;
-          const color = isFirst ? '#3fb950' : isLast ? '#f85149' : '#4a8fd4';
-          return (
-            <g key={`wp${i}`}>
-              <circle cx={x} cy={y} r={r} fill={color} stroke="#060d14" strokeWidth={1.5} />
-              <text x={x + (isFirst ? 8 : isLast ? 8 : 0)} y={y - r - 3}
-                textAnchor={isFirst || isLast ? 'start' : 'middle'} fontSize={8} fontFamily={FONT}
-                fill={isFirst || isLast ? color : DIM}
-                fontWeight={isFirst || isLast ? 700 : 400}>
-                {isFirst ? 'DEP' : isLast ? 'ARR' : `${wp.waypoint_number}`}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Scale bar */}
-        {(() => {
-          const barPx = 60;
-          const barNm = barPx / scale / 1852 * 111320;
-          const niceNm = barNm < 5 ? Math.max(1, Math.round(barNm)) : Math.round(barNm / 5) * 5;
-          if (niceNm <= 0) return null;
-          const actualPx = niceNm / barNm * barPx;
-          return (
-            <g>
-              <rect x={MAP_W - 20 - actualPx} y={MAP_H - 22} width={actualPx + 8} height={14}
-                fill="rgba(6, 13, 20, 0.8)" rx={2} />
-              <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 12} x2={MAP_W - 16} y2={MAP_H - 12}
-                stroke={DIM} strokeWidth={1} />
-              <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 15} x2={MAP_W - 16 - actualPx} y2={MAP_H - 9}
-                stroke={DIM} strokeWidth={1} />
-              <line x1={MAP_W - 16} y1={MAP_H - 15} x2={MAP_W - 16} y2={MAP_H - 9}
-                stroke={DIM} strokeWidth={1} />
-              <text x={MAP_W - 16 - actualPx / 2} y={MAP_H - 16}
-                textAnchor="middle" fontSize={7} fill={DIM} fontFamily={FONT}>
-                {niceNm} nm
-              </text>
-            </g>
-          );
-        })()}
-      </svg>
+          {/* Scale bar */}
+          {(() => {
+            const nmInMeters = 1852;
+            const testNm = [1, 2, 5, 10, 20, 50, 100, 200];
+            let barNm = 5;
+            let barPx = 0;
+            for (const nm of testNm) {
+              barPx = proj.metersToPixels(nm * nmInMeters);
+              if (barPx >= 40 && barPx <= 120) { barNm = nm; break; }
+            }
+            if (barPx <= 0) return null;
+            return (
+              <g>
+                <rect x={MAP_W - 20 - barPx} y={MAP_H - 22} width={barPx + 8} height={14}
+                  fill="rgba(6, 13, 20, 0.85)" rx={2} />
+                <line x1={MAP_W - 16 - barPx} y1={MAP_H - 12} x2={MAP_W - 16} y2={MAP_H - 12}
+                  stroke={DIM} strokeWidth={1} />
+                <line x1={MAP_W - 16 - barPx} y1={MAP_H - 15} x2={MAP_W - 16 - barPx} y2={MAP_H - 9}
+                  stroke={DIM} strokeWidth={1} />
+                <line x1={MAP_W - 16} y1={MAP_H - 15} x2={MAP_W - 16} y2={MAP_H - 9}
+                  stroke={DIM} strokeWidth={1} />
+                <text x={MAP_W - 16 - barPx / 2} y={MAP_H - 16}
+                  textAnchor="middle" fontSize={7} fill={DIM} fontFamily={FONT}>
+                  {barNm} nm
+                </text>
+              </g>
+            );
+          })()}
+        </svg>
+      </TileMap>
     </div>
   );
 }
