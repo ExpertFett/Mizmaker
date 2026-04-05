@@ -1,14 +1,16 @@
 /**
- * Radio tab — combines Comms and TACAN into one view with sub-tabs.
+ * Radio tab — combines Comms, TACAN, and ATIS into one view with sub-tabs.
  */
 
 import { useState } from 'react';
 import { CommCardTab } from './CommCardTab';
 import { TacanTab } from './TacanTab';
+import { AtisConfigTab } from './AtisConfigTab';
 
 const SUB_TABS = [
   { id: 'comms', label: 'Comms' },
   { id: 'tacan', label: 'TACAN' },
+  { id: 'atis', label: 'ATIS' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -21,6 +23,7 @@ export function RadioTab() {
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
       {sub === 'comms' && <CommCardTab />}
       {sub === 'tacan' && <TacanTab />}
+      {sub === 'atis' && <AtisConfigTab />}
     </div>
   );
 }
