@@ -278,43 +278,79 @@ function RouteDetailMap({ waypoints, threats, coalition }: {
   const routePoints = wps.map((w) => project(w.lat!, w.lon!));
   const polyline = routePoints.map(([x, y]) => `${x},${y}`).join(' ');
 
+  // Lat/lon grid
+  function niceInterval(range: number): number {
+    if (range < 0.05) return 0.01;
+    if (range < 0.2) return 0.05;
+    if (range < 0.5) return 0.1;
+    if (range < 2) return 0.5;
+    if (range < 5) return 1;
+    return 2;
+  }
+  const latInterval = niceInterval(maxLat - minLat);
+  const lonInterval = niceInterval(maxLon - minLon);
+  const gridLats: number[] = [];
+  const gridLons: number[] = [];
+  for (let v = Math.floor(minLat / latInterval) * latInterval; v <= maxLat + latInterval; v += latInterval) gridLats.push(v);
+  for (let v = Math.floor(minLon / lonInterval) * lonInterval; v <= maxLon + lonInterval; v += lonInterval) gridLons.push(v);
+  const fmtDeg = (v: number) => `${Math.abs(v).toFixed(v % 1 === 0 ? 0 : 1)}°`;
+
   return (
     <div style={{ padding: '4px 16px', borderBottom: `1px solid ${BORDER}` }}>
       <svg width={MAP_W} height={MAP_H} style={{ display: 'block' }}>
-        {/* Background */}
         <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="#060d14" rx={4} />
 
-        {/* Grid */}
-        {[0.25, 0.5, 0.75].map((f) => (
-          <g key={f}>
-            <line x1={MAP_W * f} y1={0} x2={MAP_W * f} y2={MAP_H}
-              stroke="#0f1a24" strokeWidth={0.5} />
-            <line x1={0} y1={MAP_H * f} x2={MAP_W} y2={MAP_H * f}
-              stroke="#0f1a24" strokeWidth={0.5} />
-          </g>
-        ))}
+        {/* Lat/lon grid with labels */}
+        {gridLats.map((lat) => {
+          const [, py] = project(lat, midLon);
+          if (py < 8 || py > MAP_H - 4) return null;
+          return (
+            <g key={`glat${lat}`}>
+              <line x1={PAD} y1={py} x2={MAP_W - 4} y2={py} stroke="#12202e" strokeWidth={0.5} />
+              <text x={4} y={py + 3} fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
+                {fmtDeg(lat)}{lat >= 0 ? 'N' : 'S'}
+              </text>
+            </g>
+          );
+        })}
+        {gridLons.map((lon) => {
+          const [px] = project(midLat, lon);
+          if (px < PAD || px > MAP_W - 4) return null;
+          return (
+            <g key={`glon${lon}`}>
+              <line x1={px} y1={4} x2={px} y2={MAP_H - 12} stroke="#12202e" strokeWidth={0.5} />
+              <text x={px} y={MAP_H - 3} textAnchor="middle" fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
+                {fmtDeg(lon)}{lon >= 0 ? 'E' : 'W'}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Compass rose */}
+        <g transform={`translate(${MAP_W - 18}, 18)`}>
+          <circle r={10} fill="none" stroke="#1a2a3a" strokeWidth={0.5} />
+          <line x1={0} y1={-10} x2={0} y2={10} stroke="#1a2a3a" strokeWidth={0.5} />
+          <line x1={-10} y1={0} x2={10} y2={0} stroke="#1a2a3a" strokeWidth={0.5} />
+          <text x={0} y={-12} textAnchor="middle" fontSize={7} fill={DIM} fontFamily={FONT} fontWeight={700}>N</text>
+        </g>
 
         {/* Threat rings */}
         {threats.map((t, i) => {
           if (t.lat == null || t.lon == null) return null;
           const [tx, ty] = project(t.lat, t.lon);
           const r = rangeToPixels(t.range);
-          if (r < 2) return null; // too small to see
+          if (r < 2) return null;
           const isRed = t.coalition === 'red' || t.coalition !== coalition;
           return (
             <g key={`threat-${i}`}>
               <circle cx={tx} cy={ty} r={r}
                 fill={isRed ? 'rgba(217, 80, 80, 0.08)' : 'rgba(74, 143, 212, 0.06)'}
                 stroke={isRed ? 'rgba(217, 80, 80, 0.4)' : 'rgba(74, 143, 212, 0.3)'}
-                strokeWidth={1}
-                strokeDasharray="4 2"
-              />
-              {/* Threat center marker */}
+                strokeWidth={1} strokeDasharray="4 2" />
               <line x1={tx - 3} y1={ty} x2={tx + 3} y2={ty}
                 stroke={isRed ? '#d95050' : '#4a8fd4'} strokeWidth={1} />
               <line x1={tx} y1={ty - 3} x2={tx} y2={ty + 3}
                 stroke={isRed ? '#d95050' : '#4a8fd4'} strokeWidth={1} />
-              {/* Label */}
               {r > 15 && (
                 <text x={tx} y={ty + r + 10}
                   textAnchor="middle" fontSize={7} fontFamily={FONT}
@@ -327,24 +363,26 @@ function RouteDetailMap({ waypoints, threats, coalition }: {
         })}
 
         {/* Route line */}
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="#4a8fd4"
-          strokeWidth={2}
-          strokeLinejoin="round"
-        />
+        <polyline points={polyline} fill="none" stroke="#4a8fd4" strokeWidth={2} strokeLinejoin="round" />
 
-        {/* Direction arrows */}
+        {/* Direction arrows + leg distances */}
         {routePoints.map(([x, y], i) => {
           if (i === 0) return null;
           const [px, py] = routePoints[i - 1];
           const mx = (px + x) / 2;
           const my = (py + y) / 2;
           const angle = Math.atan2(y - py, x - px) * 180 / Math.PI;
+          const dist = wps[i].leg_distance_nm;
+          const offX = Math.sin(angle * Math.PI / 180) * 8;
+          const offY = -Math.cos(angle * Math.PI / 180) * 8;
           return (
-            <g key={`arr${i}`} transform={`translate(${mx},${my}) rotate(${angle})`}>
-              <polygon points="-4,-3 4,0 -4,3" fill="#4a8fd4" opacity={0.7} />
+            <g key={`arr${i}`}>
+              <polygon points={`${mx - 4},-3 ${mx + 4},0 ${mx - 4},3`} fill="#4a8fd4" opacity={0.5}
+                transform={`translate(${mx},${my}) rotate(${angle}) translate(${-mx},${-my})`} />
+              {dist && dist >= 0.5 && (
+                <text x={mx + offX} y={my + offY} textAnchor="middle" fontSize={7}
+                  fill="#5a8aaa" fontFamily={FONT}>{dist.toFixed(0)}nm</text>
+              )}
             </g>
           );
         })}
@@ -359,12 +397,10 @@ function RouteDetailMap({ waypoints, threats, coalition }: {
           return (
             <g key={`wp${i}`}>
               <circle cx={x} cy={y} r={r} fill={color} stroke="#060d14" strokeWidth={1.5} />
-              <text
-                x={x} y={y - r - 3}
-                textAnchor="middle" fontSize={8} fontFamily={FONT}
+              <text x={x + (isFirst || isLast ? 8 : 0)} y={y - r - 3}
+                textAnchor={isFirst || isLast ? 'start' : 'middle'} fontSize={8} fontFamily={FONT}
                 fill={isFirst || isLast ? color : DIM}
-                fontWeight={isFirst || isLast ? 700 : 400}
-              >
+                fontWeight={isFirst || isLast ? 700 : 400}>
                 {isFirst ? 'DEP' : isLast ? 'ARR' : `${wp.waypoint_number}`}
               </text>
             </g>
@@ -380,6 +416,8 @@ function RouteDetailMap({ waypoints, threats, coalition }: {
           const actualPx = niceNm / barNm * barPx;
           return (
             <g>
+              <rect x={MAP_W - 20 - actualPx} y={MAP_H - 22} width={actualPx + 8} height={14}
+                fill="rgba(6, 13, 20, 0.8)" rx={2} />
               <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 12} x2={MAP_W - 16} y2={MAP_H - 12}
                 stroke={DIM} strokeWidth={1} />
               <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 15} x2={MAP_W - 16 - actualPx} y2={MAP_H - 9}

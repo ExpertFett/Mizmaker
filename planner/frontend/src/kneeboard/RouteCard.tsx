@@ -317,84 +317,115 @@ function RouteMap({ waypoints }: { waypoints: Waypoint[] }) {
   const wps = waypoints.filter((w) => w.lat != null && w.lon != null);
   if (wps.length < 2) return null;
 
-  const MAP_W = 568; // 600 - 32 padding
+  const MAP_W = 568;
   const MAP_H = 200;
-  const PAD = 24;
+  const PAD = 32;
 
-  // Compute bounds
   const lats = wps.map((w) => w.lat!);
   const lons = wps.map((w) => w.lon!);
   const minLat = Math.min(...lats);
   const maxLat = Math.max(...lats);
   const minLon = Math.min(...lons);
   const maxLon = Math.max(...lons);
-
-  // Apply aspect-ratio correction for latitude
   const midLat = (minLat + maxLat) / 2;
+  const midLon = (minLon + maxLon) / 2;
   const lonScale = Math.cos(midLat * Math.PI / 180);
-
   const dLat = maxLat - minLat || 0.01;
   const dLon = (maxLon - minLon) * lonScale || 0.01;
-
-  // Scale to fit with padding
   const scaleX = (MAP_W - PAD * 2) / dLon;
   const scaleY = (MAP_H - PAD * 2) / dLat;
   const scale = Math.min(scaleX, scaleY);
-
   const cx = MAP_W / 2;
   const cy = MAP_H / 2;
-  const midLon = (minLon + maxLon) / 2;
 
   function project(lat: number, lon: number): [number, number] {
-    const x = cx + (lon - midLon) * lonScale * scale;
-    const y = cy - (lat - midLat) * scale; // Y inverted
-    return [x, y];
+    return [cx + (lon - midLon) * lonScale * scale, cy - (lat - midLat) * scale];
   }
 
-  // Build polyline points
+  // Lat/lon grid — pick a nice interval
+  function niceInterval(range: number): number {
+    if (range < 0.05) return 0.01;
+    if (range < 0.2) return 0.05;
+    if (range < 0.5) return 0.1;
+    if (range < 2) return 0.5;
+    if (range < 5) return 1;
+    return 2;
+  }
+  const latInterval = niceInterval(dLat);
+  const lonInterval = niceInterval(maxLon - minLon);
+  const gridLats: number[] = [];
+  const gridLons: number[] = [];
+  for (let v = Math.floor(minLat / latInterval) * latInterval; v <= maxLat + latInterval; v += latInterval) gridLats.push(v);
+  for (let v = Math.floor(minLon / lonInterval) * lonInterval; v <= maxLon + lonInterval; v += lonInterval) gridLons.push(v);
+
+  const fmtDeg = (v: number) => `${Math.abs(v).toFixed(v % 1 === 0 ? 0 : 1)}°`;
+
   const points = wps.map((w) => project(w.lat!, w.lon!));
   const polyline = points.map(([x, y]) => `${x},${y}`).join(' ');
 
   return (
-    <div style={{
-      padding: '4px 16px 0', borderTop: `1px solid ${BORDER}`,
-    }}>
-      <div style={{ fontSize: 9, color: ACCENT, fontWeight: 600, marginBottom: 2, letterSpacing: 1 }}>
-        ROUTE
-      </div>
+    <div style={{ padding: '4px 16px 0', borderTop: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 9, color: ACCENT, fontWeight: 600, marginBottom: 2, letterSpacing: 1 }}>ROUTE</div>
       <svg width={MAP_W} height={MAP_H} style={{ display: 'block' }}>
-        {/* Background */}
         <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="#060d14" rx={4} />
 
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map((f) => (
-          <g key={f}>
-            <line x1={MAP_W * f} y1={0} x2={MAP_W * f} y2={MAP_H}
-              stroke="#1a2a3a" strokeWidth={0.5} />
-            <line x1={0} y1={MAP_H * f} x2={MAP_W} y2={MAP_H * f}
-              stroke="#1a2a3a" strokeWidth={0.5} />
-          </g>
-        ))}
+        {/* Lat/lon grid with labels */}
+        {gridLats.map((lat) => {
+          const [, py] = project(lat, midLon);
+          if (py < 8 || py > MAP_H - 4) return null;
+          return (
+            <g key={`glat${lat}`}>
+              <line x1={PAD} y1={py} x2={MAP_W - 4} y2={py} stroke="#12202e" strokeWidth={0.5} />
+              <text x={4} y={py + 3} fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
+                {fmtDeg(lat)}{lat >= 0 ? 'N' : 'S'}
+              </text>
+            </g>
+          );
+        })}
+        {gridLons.map((lon) => {
+          const [px] = project(midLat, lon);
+          if (px < PAD || px > MAP_W - 4) return null;
+          return (
+            <g key={`glon${lon}`}>
+              <line x1={px} y1={4} x2={px} y2={MAP_H - 12} stroke="#12202e" strokeWidth={0.5} />
+              <text x={px} y={MAP_H - 3} textAnchor="middle" fontSize={6} fill="#2a3a4a" fontFamily={FONT}>
+                {fmtDeg(lon)}{lon >= 0 ? 'E' : 'W'}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Compass rose */}
+        <g transform={`translate(${MAP_W - 18}, 18)`}>
+          <circle r={10} fill="none" stroke="#1a2a3a" strokeWidth={0.5} />
+          <line x1={0} y1={-10} x2={0} y2={10} stroke="#1a2a3a" strokeWidth={0.5} />
+          <line x1={-10} y1={0} x2={10} y2={0} stroke="#1a2a3a" strokeWidth={0.5} />
+          <text x={0} y={-12} textAnchor="middle" fontSize={7} fill={DIM} fontFamily={FONT} fontWeight={700}>N</text>
+        </g>
 
         {/* Route line */}
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="#4a8fd4"
-          strokeWidth={2}
-          strokeLinejoin="round"
-        />
+        <polyline points={polyline} fill="none" stroke="#4a8fd4" strokeWidth={2} strokeLinejoin="round" />
 
-        {/* Direction arrows on legs */}
+        {/* Leg distance labels */}
         {points.map(([x, y], i) => {
           if (i === 0) return null;
           const [px, py] = points[i - 1];
           const mx = (px + x) / 2;
           const my = (py + y) / 2;
+          const dist = wps[i].leg_distance_nm;
+          if (!dist || dist < 0.5) return null;
           const angle = Math.atan2(y - py, x - px) * 180 / Math.PI;
+          // Offset label to side of line
+          const offX = Math.sin(angle * Math.PI / 180) * 8;
+          const offY = -Math.cos(angle * Math.PI / 180) * 8;
           return (
-            <g key={`arr${i}`} transform={`translate(${mx},${my}) rotate(${angle})`}>
-              <polygon points="-4,-3 4,0 -4,3" fill="#4a8fd4" opacity={0.7} />
+            <g key={`dist${i}`}>
+              <polygon points={`${mx - 4},-3 ${mx + 4},0 ${mx - 4},3`} fill="#4a8fd4" opacity={0.5}
+                transform={`translate(${mx},${my}) rotate(${angle}) translate(${-mx},${-my})`} />
+              <text x={mx + offX} y={my + offY} textAnchor="middle" fontSize={7}
+                fill="#5a8aaa" fontFamily={FONT}>
+                {dist.toFixed(0)}nm
+              </text>
             </g>
           );
         })}
@@ -408,29 +439,28 @@ function RouteMap({ waypoints }: { waypoints: Waypoint[] }) {
           const color = isFirst ? '#3fb950' : isLast ? '#f85149' : '#4a8fd4';
           return (
             <g key={`wp${i}`}>
-              <circle cx={x} cy={y} r={r} fill={color} stroke="#0a1520" strokeWidth={1.5} />
-              <text
-                x={x} y={y - r - 3}
-                textAnchor="middle" fontSize={8} fontFamily={FONT}
+              <circle cx={x} cy={y} r={r} fill={color} stroke="#060d14" strokeWidth={1.5} />
+              <text x={x + (isFirst ? 8 : isLast ? 8 : 0)} y={y - r - 3}
+                textAnchor={isFirst || isLast ? 'start' : 'middle'} fontSize={8} fontFamily={FONT}
                 fill={isFirst || isLast ? color : DIM}
-                fontWeight={isFirst || isLast ? 700 : 400}
-              >
+                fontWeight={isFirst || isLast ? 700 : 400}>
                 {isFirst ? 'DEP' : isLast ? 'ARR' : `${wp.waypoint_number}`}
               </text>
             </g>
           );
         })}
 
-        {/* Scale indicator */}
+        {/* Scale bar */}
         {(() => {
-          // Approximate nm for a reference bar
           const barPx = 60;
-          const barNm = barPx / scale / 1852 * 111320; // rough
-          const niceNm = barNm < 5 ? Math.round(barNm) : Math.round(barNm / 5) * 5;
+          const barNm = barPx / scale / 1852 * 111320;
+          const niceNm = barNm < 5 ? Math.max(1, Math.round(barNm)) : Math.round(barNm / 5) * 5;
           if (niceNm <= 0) return null;
           const actualPx = niceNm / barNm * barPx;
           return (
             <g>
+              <rect x={MAP_W - 20 - actualPx} y={MAP_H - 22} width={actualPx + 8} height={14}
+                fill="rgba(6, 13, 20, 0.8)" rx={2} />
               <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 12} x2={MAP_W - 16} y2={MAP_H - 12}
                 stroke={DIM} strokeWidth={1} />
               <line x1={MAP_W - 16 - actualPx} y1={MAP_H - 15} x2={MAP_W - 16 - actualPx} y2={MAP_H - 9}
