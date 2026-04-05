@@ -1,10 +1,10 @@
 /**
- * Mission Options tab — displays DCS forcedOptions from the .miz file.
- * Read-only view of what the mission maker configured in the ME.
+ * Mission Options tab — edit DCS forcedOptions for the .miz file.
+ * Changes are saved into the miz on export.
  */
 
+import { useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
-import type { MissionOptions } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
 /* Human-readable mappings for DCS option values                       */
@@ -38,43 +38,40 @@ const OPTIONS_VIEW_MAP: Record<number, string> = {
   3: 'My Aircraft',
 };
 
-/** Organized option definitions for display */
 interface OptionDef {
   key: string;
   label: string;
   category: string;
-  format: 'bool' | 'enum' | 'raw';
+  format: 'bool' | 'enum';
   enumMap?: Record<number, string>;
-  /** If true, "enabled" is the restrictive/hard setting */
-  hardWhenTrue?: boolean;
 }
 
 const OPTION_DEFS: OptionDef[] = [
   // Flight Model
-  { key: 'easyFlight',   label: 'Easy Flight',          category: 'Flight Model',   format: 'bool' },
-  { key: 'fuel',         label: 'Unlimited Fuel',        category: 'Flight Model',   format: 'bool' },
-  { key: 'immortal',     label: 'Immortal',              category: 'Flight Model',   format: 'bool' },
-  { key: 'geffect',      label: 'G-Effects',             category: 'Flight Model',   format: 'enum', enumMap: GEFFECT_MAP },
-  { key: 'wakeTurbulence', label: 'Wake Turbulence',     category: 'Flight Model',   format: 'bool' },
-  { key: 'birds',        label: 'Bird Strikes',          category: 'Flight Model',   format: 'bool' },
-  { key: 'accidental_failures', label: 'Random Failures', category: 'Flight Model', format: 'bool' },
-  { key: 'permitCrash',  label: 'Permit Crash Recovery', category: 'Flight Model',   format: 'bool' },
+  { key: 'easyFlight',         label: 'Easy Flight',          category: 'Flight Model',    format: 'bool' },
+  { key: 'fuel',               label: 'Unlimited Fuel',       category: 'Flight Model',    format: 'bool' },
+  { key: 'immortal',           label: 'Immortal',             category: 'Flight Model',    format: 'bool' },
+  { key: 'geffect',            label: 'G-Effects',            category: 'Flight Model',    format: 'enum', enumMap: GEFFECT_MAP },
+  { key: 'wakeTurbulence',     label: 'Wake Turbulence',      category: 'Flight Model',    format: 'bool' },
+  { key: 'birds',              label: 'Bird Strikes',         category: 'Flight Model',    format: 'bool' },
+  { key: 'accidental_failures', label: 'Random Failures',     category: 'Flight Model',    format: 'bool' },
+  { key: 'permitCrash',        label: 'Permit Crash Recovery', category: 'Flight Model',   format: 'bool' },
 
   // Views & HUD
-  { key: 'externalViews', label: 'External Views',       category: 'Views & HUD',    format: 'bool' },
-  { key: 'padlock',       label: 'Padlock',              category: 'Views & HUD',    format: 'bool' },
-  { key: 'optionsView',   label: 'F10 Map View',         category: 'Views & HUD',    format: 'enum', enumMap: OPTIONS_VIEW_MAP },
-  { key: 'miniHUD',       label: 'Mini HUD',             category: 'Views & HUD',    format: 'bool' },
-  { key: 'labels',        label: 'Labels',               category: 'Views & HUD',    format: 'enum', enumMap: LABELS_MAP },
+  { key: 'externalViews',      label: 'External Views',       category: 'Views & HUD',     format: 'bool' },
+  { key: 'padlock',            label: 'Padlock',              category: 'Views & HUD',     format: 'bool' },
+  { key: 'optionsView',        label: 'F10 Map View',         category: 'Views & HUD',     format: 'enum', enumMap: OPTIONS_VIEW_MAP },
+  { key: 'miniHUD',            label: 'Mini HUD',             category: 'Views & HUD',     format: 'bool' },
+  { key: 'labels',             label: 'Labels',               category: 'Views & HUD',     format: 'enum', enumMap: LABELS_MAP },
 
   // Comms & Traffic
-  { key: 'easyComms',     label: 'Easy Comms',           category: 'Comms & Traffic', format: 'bool' },
-  { key: 'civTraffic',    label: 'Civilian Traffic',      category: 'Comms & Traffic', format: 'enum', enumMap: CIV_TRAFFIC_MAP },
-  { key: 'userMarks',     label: 'User Marks',           category: 'Comms & Traffic', format: 'bool' },
+  { key: 'easyComms',          label: 'Easy Comms',           category: 'Comms & Traffic',  format: 'bool' },
+  { key: 'civTraffic',         label: 'Civilian Traffic',     category: 'Comms & Traffic',  format: 'enum', enumMap: CIV_TRAFFIC_MAP },
+  { key: 'userMarks',          label: 'User Marks',           category: 'Comms & Traffic',  format: 'bool' },
 
   // AI
-  { key: 'easyRadar',     label: 'Easy Radar',           category: 'AI & Sensors',   format: 'bool' },
-  { key: 'RBDAI',         label: 'Battle Damage AI',     category: 'AI & Sensors',   format: 'bool' },
+  { key: 'easyRadar',          label: 'Easy Radar',           category: 'AI & Sensors',     format: 'bool' },
+  { key: 'RBDAI',              label: 'Battle Damage AI',     category: 'AI & Sensors',     format: 'bool' },
 ];
 
 const CATEGORY_ORDER = ['Flight Model', 'Views & HUD', 'Comms & Traffic', 'AI & Sensors'];
@@ -83,101 +80,95 @@ const CATEGORY_ORDER = ['Flight Model', 'Views & HUD', 'Comms & Traffic', 'AI & 
 /* Styles                                                              */
 /* ------------------------------------------------------------------ */
 
-const sectionStyle: React.CSSProperties = {
-  marginBottom: 20,
-};
+const sectionStyle: React.CSSProperties = { marginBottom: 20 };
 
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#4a8fd4',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  padding: '6px 0',
-  borderBottom: '1px solid #1a3a5a',
-  marginBottom: 8,
+  fontSize: 12, fontWeight: 600, color: '#4a8fd4', textTransform: 'uppercase',
+  letterSpacing: 1, padding: '6px 0', borderBottom: '1px solid #1a3a5a', marginBottom: 8,
 };
 
 const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '6px 12px',
-  borderRadius: 4,
-  fontSize: 13,
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  padding: '7px 12px', borderRadius: 4, fontSize: 13,
 };
 
-const altRow: React.CSSProperties = {
-  ...rowStyle,
-  background: 'rgba(74, 143, 212, 0.04)',
+const altRow: React.CSSProperties = { ...rowStyle, background: 'rgba(74, 143, 212, 0.04)' };
+
+const selectStyle: React.CSSProperties = {
+  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 4,
+  color: '#ccdae8', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
+  fontFamily: 'inherit', minWidth: 140,
 };
 
-const labelStyle: React.CSSProperties = {
-  color: '#ccdae8',
-};
+/* ------------------------------------------------------------------ */
+/* Toggle switch component                                             */
+/* ------------------------------------------------------------------ */
 
-const tagOn: React.CSSProperties = {
-  padding: '2px 10px',
-  borderRadius: 10,
-  fontSize: 11,
-  fontWeight: 600,
-  background: 'rgba(63, 185, 80, 0.15)',
-  color: '#3fb950',
-  border: '1px solid rgba(63, 185, 80, 0.25)',
-};
+function TriToggle({ value, onChange }: {
+  value: boolean | undefined;
+  onChange: (v: boolean | undefined) => void;
+}) {
+  // Three states: undefined (not set) → true (ON) → false (OFF) → undefined ...
+  const cycle = () => {
+    if (value === undefined) onChange(true);
+    else if (value === true) onChange(false);
+    else onChange(undefined);
+  };
 
-const tagOff: React.CSSProperties = {
-  padding: '2px 10px',
-  borderRadius: 10,
-  fontSize: 11,
-  fontWeight: 600,
-  background: 'rgba(217, 80, 80, 0.1)',
-  color: '#d95050',
-  border: '1px solid rgba(217, 80, 80, 0.2)',
-};
+  const isOn = value === true;
+  const isOff = value === false;
+  const isUnset = value === undefined;
 
-const tagEnum: React.CSSProperties = {
-  padding: '2px 10px',
-  borderRadius: 10,
-  fontSize: 11,
-  fontWeight: 600,
-  background: 'rgba(74, 143, 212, 0.12)',
-  color: '#4a8fd4',
-  border: '1px solid rgba(74, 143, 212, 0.25)',
-};
-
-const tagUnset: React.CSSProperties = {
-  padding: '2px 10px',
-  borderRadius: 10,
-  fontSize: 11,
-  color: '#5a7a8a',
-};
+  return (
+    <button onClick={cycle} style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    }}>
+      {/* Track */}
+      <div style={{
+        width: 44, height: 22, borderRadius: 11, position: 'relative',
+        background: isOn ? 'rgba(63, 185, 80, 0.25)' : isOff ? 'rgba(217, 80, 80, 0.2)' : '#1a2a3a',
+        border: `1px solid ${isOn ? 'rgba(63, 185, 80, 0.4)' : isOff ? 'rgba(217, 80, 80, 0.3)' : '#2a3a4a'}`,
+        transition: 'all 0.15s',
+      }}>
+        {/* Knob */}
+        <div style={{
+          width: 16, height: 16, borderRadius: '50%', position: 'absolute', top: 2,
+          left: isOn ? 24 : isUnset ? 12 : 2,
+          background: isOn ? '#3fb950' : isOff ? '#d95050' : '#5a7a8a',
+          transition: 'all 0.15s',
+        }} />
+      </div>
+      {/* Label */}
+      <span style={{
+        fontSize: 11, fontWeight: 600, minWidth: 55,
+        color: isOn ? '#3fb950' : isOff ? '#d95050' : '#5a7a8a',
+      }}>
+        {isOn ? 'ON' : isOff ? 'OFF' : 'NOT SET'}
+      </span>
+    </button>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
-function formatValue(def: OptionDef, opts: MissionOptions) {
-  const val = opts[def.key];
-  if (val === undefined || val === null) {
-    return <span style={tagUnset}>Not Set (Player Default)</span>;
-  }
-  if (def.format === 'bool') {
-    const isOn = Boolean(val);
-    return <span style={isOn ? tagOn : tagOff}>{isOn ? 'ON' : 'OFF'}</span>;
-  }
-  if (def.format === 'enum' && def.enumMap) {
-    const label = def.enumMap[val as number] ?? String(val);
-    return <span style={tagEnum}>{label}</span>;
-  }
-  return <span style={tagEnum}>{String(val)}</span>;
-}
-
 export function MissionOptionsTab() {
   const missionOptions = useMissionStore((s) => s.missionOptions);
+  const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
   const overview = useMissionStore((s) => s.overview);
 
-  const hasAnyOption = Object.keys(missionOptions).length > 0;
+  const setOption = useCallback((key: string, value: unknown) => {
+    if (value === undefined) {
+      // Remove the key (unset it)
+      const next = { ...missionOptions };
+      delete next[key];
+      setMissionOptions(next);
+    } else {
+      setMissionOptions({ ...missionOptions, [key]: value });
+    }
+  }, [missionOptions, setMissionOptions]);
 
   // Group defined options by category
   const grouped = new Map<string, OptionDef[]>();
@@ -188,34 +179,20 @@ export function MissionOptionsTab() {
     grouped.set(def.category, list);
   }
 
-  // Collect any unknown keys not in OPTION_DEFS
-  const knownKeys = new Set(OPTION_DEFS.map((d) => d.key));
-  const extras = Object.entries(missionOptions).filter(([k]) => !knownKeys.has(k));
-
   return (
     <div style={{ maxWidth: 700 }}>
       <h2 style={{ fontSize: 18, fontWeight: 600, color: '#ccdae8', marginBottom: 4 }}>
         Mission Options
       </h2>
-      <p style={{ fontSize: 12, color: '#5a7a8a', marginBottom: 20 }}>
-        Forced options set by the mission maker in the DCS Mission Editor.
+      <p style={{ fontSize: 12, color: '#5a7a8a', marginBottom: 4 }}>
+        Force options for all players in this mission. Changes are written to the .miz on export.
         {overview?.sortie && <span> &mdash; <strong style={{ color: '#ccdae8' }}>{overview.sortie}</strong></span>}
       </p>
-
-      {!hasAnyOption && (
-        <div style={{
-          padding: '24px 16px',
-          background: 'rgba(74, 143, 212, 0.04)',
-          borderRadius: 6,
-          border: '1px solid #1a3a5a',
-          textAlign: 'center',
-          color: '#5a7a8a',
-          fontSize: 13,
-        }}>
-          No forced options detected in this mission.<br />
-          All settings will use each player's local defaults.
-        </div>
-      )}
+      <p style={{ fontSize: 11, color: '#5a7a8a', marginBottom: 20 }}>
+        <strong style={{ color: '#4a8fd4' }}>NOT SET</strong> = uses each player's local settings &nbsp;|&nbsp;
+        <strong style={{ color: '#3fb950' }}>ON</strong> = forced enabled &nbsp;|&nbsp;
+        <strong style={{ color: '#d95050' }}>OFF</strong> = forced disabled
+      </p>
 
       {CATEGORY_ORDER.map((cat) => {
         const defs = grouped.get(cat) || [];
@@ -224,25 +201,50 @@ export function MissionOptionsTab() {
             <div style={sectionTitleStyle}>{cat}</div>
             {defs.map((def, i) => (
               <div key={def.key} style={i % 2 === 0 ? rowStyle : altRow}>
-                <span style={labelStyle}>{def.label}</span>
-                {formatValue(def, missionOptions)}
+                <span style={{ color: '#ccdae8' }}>{def.label}</span>
+                {def.format === 'bool' ? (
+                  <TriToggle
+                    value={missionOptions[def.key] as boolean | undefined}
+                    onChange={(v) => setOption(def.key, v)}
+                  />
+                ) : (
+                  <EnumSelect
+                    value={missionOptions[def.key] as number | undefined}
+                    enumMap={def.enumMap!}
+                    onChange={(v) => setOption(def.key, v)}
+                  />
+                )}
               </div>
             ))}
           </div>
         );
       })}
-
-      {extras.length > 0 && (
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Other</div>
-          {extras.map(([key, val], i) => (
-            <div key={key} style={i % 2 === 0 ? rowStyle : altRow}>
-              <span style={labelStyle}>{key}</span>
-              <span style={tagEnum}>{String(val)}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Enum dropdown with "Not Set" option                                 */
+/* ------------------------------------------------------------------ */
+
+function EnumSelect({ value, enumMap, onChange }: {
+  value: number | undefined;
+  enumMap: Record<number, string>;
+  onChange: (v: number | undefined) => void;
+}) {
+  return (
+    <select
+      value={value === undefined ? '__unset__' : String(value)}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === '__unset__' ? undefined : Number(v));
+      }}
+      style={selectStyle}
+    >
+      <option value="__unset__">Not Set (Player Default)</option>
+      {Object.entries(enumMap).map(([k, label]) => (
+        <option key={k} value={k}>{label}</option>
+      ))}
+    </select>
   );
 }

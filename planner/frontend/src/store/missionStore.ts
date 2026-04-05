@@ -36,6 +36,7 @@ interface MissionState {
   loadMission: (data: UploadResponse) => void;
   selectGroup: (groupId: number | null) => void;
   updateGroupData: (groups: MissionGroup[], units: MissionUnit[], threats: ThreatRing[], airbases: Airbase[]) => void;
+  setMissionOptions: (opts: MissionOptions) => void;
   clear: () => void;
   selectedGroup: () => MissionGroup | undefined;
 }
@@ -110,6 +111,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   updateGroupData: (groups, units, threats, airbases) =>
     set({ groups, units, threats, airbases }),
+
+  setMissionOptions: (opts) => set({ missionOptions: opts }),
 
   clear: () =>
     set({

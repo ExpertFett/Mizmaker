@@ -874,6 +874,54 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
     return text
 
 
+def _replace_forced_options(text: str, options: dict) -> str:
+    """Replace or create the forcedOptions block in the mission Lua text.
+
+    `options` is a flat dict of key→value pairs, e.g.:
+    {"padlock": True, "labels": 0, "externalViews": False}
+    """
+    import re
+
+    # Serialize options dict to DCS Lua format
+    lines = []
+    for k, v in sorted(options.items()):
+        if isinstance(v, bool):
+            lua_val = "true" if v else "false"
+        elif isinstance(v, (int, float)):
+            lua_val = str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+        elif isinstance(v, str):
+            lua_val = f'"{v}"'
+        else:
+            lua_val = str(v).lower() if isinstance(v, bool) else str(v)
+        lines.append(f'        ["{k}"] = {lua_val},')
+    inner = "\n".join(lines)
+    new_block = f'["forcedOptions"] =\n    {{\n{inner}\n    }}'
+
+    # Try to find and replace existing forcedOptions block
+    # Pattern: ["forcedOptions"] = { ... }, at mission root level
+    pattern = re.compile(
+        r'\["forcedOptions"\]\s*=\s*\{[^}]*\}',
+        re.DOTALL,
+    )
+    if pattern.search(text):
+        text = pattern.sub(new_block, text)
+    else:
+        # No existing block — insert before the closing of the mission table
+        # Look for the last "} -- end of mission" or just before final closing
+        # Insert right before the end of the mission root table
+        # The mission Lua typically ends with: } -- end of mission
+        insert_pattern = re.compile(r'(\n\} -- end of mission)', re.IGNORECASE)
+        if insert_pattern.search(text):
+            text = insert_pattern.sub(f'\n    {new_block},\\1', text)
+        else:
+            # Fallback: insert before the very last closing brace
+            last_brace = text.rfind("}")
+            if last_brace > 0:
+                text = text[:last_brace] + f'    {new_block},\n' + text[last_brace:]
+
+    return text
+
+
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
     import os as _os
@@ -1268,7 +1316,10 @@ def apply_unit_edits(text: str, edits: list) -> str:
 
         try:
             # Mission-level edits (no unitId needed)
-            if field == "weather":
+            if field == "forcedOptions":
+                text = _replace_forced_options(text, value)
+                continue
+            elif field == "weather":
                 text = _replace_weather_block(text, value)
                 continue
             elif field == "findReplace":
