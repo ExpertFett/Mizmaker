@@ -18,6 +18,7 @@ import { SupportAssetsCard } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
+import { ThreatCard } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import type { Weather } from '../../utils/atmosphere';
@@ -36,6 +37,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'radioLadder', label: 'Radio Ladder', desc: 'Shared frequency reference' },
   { key: 'airbaseRef', label: 'Airbase Reference', desc: 'Airfield info, ILS, TACAN' },
   { key: 'bullseyeRef', label: 'Bullseye Reference', desc: 'Bullseye point and radials' },
+  { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
 ];
 
@@ -125,6 +127,10 @@ export function KneeboardTab() {
     if (cards.bullseyeRef && overview) {
       const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition });
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.threatCard) {
+      const el = createElement(ThreatCard, { threats, playerCoalition: coalition });
+      results.push({ name: 'Threat_Card.png', blob: await renderCardToBlob(el) });
     }
     if (cards.weatherBrief && overview) {
       const el = createElement(WeatherBriefCard, { overview });
@@ -484,6 +490,12 @@ function CardCarousel({
       list.push({
         key: 'bullseyeRef', label: 'Bullseye Reference',
         element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition }),
+      });
+    }
+    if (cards.threatCard) {
+      list.push({
+        key: 'threatCard', label: 'Threat Card',
+        element: createElement(ThreatCard, { threats, playerCoalition: coalition }),
       });
     }
     if (cards.weatherBrief && overview) {

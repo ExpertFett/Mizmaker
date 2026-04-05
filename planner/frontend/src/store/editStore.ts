@@ -13,6 +13,7 @@ export interface KneeboardCards {
   radioLadder: boolean;
   airbaseRef: boolean;
   bullseyeRef: boolean;
+  threatCard: boolean;
   weatherBrief: boolean;
 }
 
@@ -42,7 +43,7 @@ export const useEditStore = create<EditState>((set) => ({
     coordFormat: 'mgrs', speedRef: 'auto', machThreshold: 18000,
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true,
-      supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, weatherBrief: true,
+      supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
     },
   },
 
