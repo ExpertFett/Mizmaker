@@ -141,6 +141,32 @@ export interface TriggerZone {
   vertices?: [number, number][];  // lat/lon pairs for polygon zones
 }
 
+/** DCS Mission Options (forcedOptions from .miz) */
+export interface MissionOptions {
+  // Booleans
+  padlock?: boolean;
+  permitCrash?: boolean;
+  immortal?: boolean;
+  fuel?: boolean;
+  miniHUD?: boolean;
+  easyRadar?: boolean;
+  easyFlight?: boolean;
+  externalViews?: boolean;
+  birds?: boolean;
+  userMarks?: boolean;
+  wakeTurbulence?: boolean;
+  accidental_failures?: boolean;
+  easyComms?: boolean;
+  RBDAI?: boolean;
+  // Enums / numbers
+  labels?: number;        // 0=Full, 1=Abbreviated, 2=Dot Only, 3=Neutral Dot, 4=Off
+  civTraffic?: number;    // 0=Off, 1=Low, 2=Medium, 3=High
+  geffect?: number;       // 0=None, 1=Realistic with recovery, 2=Realistic lethal
+  optionsView?: number;   // 0=All, 1=Friendly, 2=Map Only, 3=MyAircraft
+  // Catch-all for any other options
+  [key: string]: unknown;
+}
+
 export interface UploadResponse {
   sessionId: string;
   filename: string;
@@ -152,6 +178,7 @@ export interface UploadResponse {
   airbases: Airbase[];
   drawings: MissionDrawing[];
   triggerZones: TriggerZone[];
+  missionOptions: MissionOptions;
   clientUnits: ClientUnit[];
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   pylonOptions: Record<string, Record<string, PylonInfo[]>>;

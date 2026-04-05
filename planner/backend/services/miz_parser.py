@@ -116,6 +116,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)
     trigger_zones = _extract_trigger_zones(mission_dict, theater, has_projection)
+    mission_options = _extract_mission_options(mission_dict)
 
     return {
         "overview": overview,
@@ -125,6 +126,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
         "airbases": airbases,
         "drawings": drawings,
         "triggerZones": trigger_zones,
+        "missionOptions": mission_options,
     }
 
 
@@ -273,6 +275,48 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "halo_preset": wx.get("halo", {}).get("preset", "auto"),
         },
     }
+
+
+def _extract_mission_options(d: dict) -> dict:
+    """Extract forcedOptions and mission-level options from the mission dict.
+
+    DCS forcedOptions controls what players can/cannot do:
+    - labels, padlock, externalViews, birds, civTraffic, easyFlight, etc.
+    These are set in the ME under 'Mission Options'.
+    """
+    forced = d.get("forcedOptions", {})
+    if not isinstance(forced, dict):
+        forced = {}
+
+    # DCS stores these as nested dicts; flatten to simple key-value pairs
+    # Boolean fields (true/false)
+    bool_keys = [
+        "padlock", "permitCrash", "immortal", "fuel",
+        "miniHUD", "easyRadar", "easyFlight",
+        "externalViews", "birds", "userMarks", "wakeTurbulence",
+        "accidental_failures", "easyComms", "RBDAI",
+    ]
+    # Integer/enum fields
+    enum_keys = [
+        "labels", "civTraffic", "geffect", "optionsView",
+    ]
+
+    result: dict = {}
+    for k in bool_keys:
+        v = forced.get(k)
+        if v is not None:
+            result[k] = bool(v)
+    for k in enum_keys:
+        v = forced.get(k)
+        if v is not None:
+            result[k] = v
+
+    # Also grab any keys we didn't explicitly list (future-proof)
+    for k, v in forced.items():
+        if k not in result:
+            result[k] = v
+
+    return result
 
 
 def _extract_tacan_from_tasks(waypoints: list) -> dict | None:

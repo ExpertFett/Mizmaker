@@ -1,12 +1,14 @@
 /**
- * Mission Edit tab — combines Triggers and Drawings into one view.
+ * Mission Edit tab — combines Mission Options, Triggers, and Drawings.
  */
 
 import { useState } from 'react';
+import { MissionOptionsTab } from './MissionOptionsTab';
 import { TriggerTab } from './TriggerTab';
 import { DrawingsTab } from './DrawingsTab';
 
 const SUB_TABS = [
+  { id: 'options', label: 'Options' },
   { id: 'triggers', label: 'Triggers' },
   { id: 'drawings', label: 'Drawings' },
 ] as const;
@@ -14,11 +16,12 @@ const SUB_TABS = [
 type SubTab = (typeof SUB_TABS)[number]['id'];
 
 export function MissionEditTab() {
-  const [sub, setSub] = useState<SubTab>('triggers');
+  const [sub, setSub] = useState<SubTab>('options');
 
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
+      {sub === 'options' && <MissionOptionsTab />}
       {sub === 'triggers' && <TriggerTab />}
       {sub === 'drawings' && <DrawingsTab />}
     </div>
