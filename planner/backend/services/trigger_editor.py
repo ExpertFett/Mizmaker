@@ -299,18 +299,24 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
         if not isinstance(rule_data, dict):
             continue
 
-        rule_id = int(rule_idx)
+        try:
+            rule_id = int(rule_idx)
+        except (TypeError, ValueError):
+            continue
 
         # Parse conditions
         cond_indices = rule_data.get("conditions", {})
         parsed_conditions = []
         if isinstance(cond_indices, dict):
-            for ci in sorted(cond_indices.values(), key=lambda x: int(x) if isinstance(x, (int, float)) else 0):
+            flat_vals = [v for v in cond_indices.values() if isinstance(v, (int, float, str))]
+            for ci in sorted(flat_vals, key=lambda x: int(x) if isinstance(x, (int, float)) else 0):
                 lua_str = conditions_lua.get(int(ci), conditions_lua.get(str(ci), ""))
                 if lua_str:
                     parsed_conditions.append(_parse_condition_string(str(lua_str)))
         elif isinstance(cond_indices, list):
             for ci in cond_indices:
+                if not isinstance(ci, (int, float, str)):
+                    continue
                 lua_str = conditions_lua.get(int(ci), conditions_lua.get(str(ci), ""))
                 if lua_str:
                     parsed_conditions.append(_parse_condition_string(str(lua_str)))
@@ -319,12 +325,15 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
         act_indices = rule_data.get("actions", {})
         parsed_actions = []
         if isinstance(act_indices, dict):
-            for ai in sorted(act_indices.values(), key=lambda x: int(x) if isinstance(x, (int, float)) else 0):
+            flat_vals = [v for v in act_indices.values() if isinstance(v, (int, float, str))]
+            for ai in sorted(flat_vals, key=lambda x: int(x) if isinstance(x, (int, float)) else 0):
                 lua_str = actions_lua.get(int(ai), actions_lua.get(str(ai), ""))
                 if lua_str:
                     parsed_actions.append(_parse_action_string(str(lua_str)))
         elif isinstance(act_indices, list):
             for ai in act_indices:
+                if not isinstance(ai, (int, float, str)):
+                    continue
                 lua_str = actions_lua.get(int(ai), actions_lua.get(str(ai), ""))
                 if lua_str:
                     parsed_actions.append(_parse_action_string(str(lua_str)))
