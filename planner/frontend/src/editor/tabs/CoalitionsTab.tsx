@@ -1,60 +1,142 @@
 /**
- * Coalitions tab — view force composition by coalition, country, and category.
+ * Coalitions tab — view and reassign countries between coalitions.
  *
- * Shows which countries are in each coalition with unit breakdowns by
- * category (plane, helicopter, vehicle, ship, static) and specific types.
+ * Shows current coalition assignments with unit counts, and allows
+ * reassigning countries via click or using era-based presets.
+ * Changes are staged as edits and applied on .miz download.
  */
 
-import { useMemo, useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore } from '../../store/editStore';
 
 /* ------------------------------------------------------------------ */
-/* Types                                                               */
+/* Presets                                                             */
 /* ------------------------------------------------------------------ */
 
-interface CoalitionData {
+interface CoalitionPreset {
+  id: string;
   name: string;
-  color: string;
-  countries: CountryData[];
-  totalUnits: number;
-  totalGroups: number;
-  categoryCounts: Record<string, number>;
+  description: string;
+  blue: string[];
+  red: string[];
 }
 
-interface CountryData {
-  name: string;
-  unitCount: number;
-  groupCount: number;
-  categories: Record<string, number>;
-  unitTypes: Record<string, number>;
-}
+const PRESETS: CoalitionPreset[] = [
+  {
+    id: 'modern-nato-vs-russia',
+    name: 'Modern NATO vs Russia',
+    description: 'Current-era NATO alliance vs Russian Federation and allies',
+    blue: [
+      'USA', 'UK', 'France', 'Germany', 'Canada', 'Turkey', 'Spain', 'Italy',
+      'Norway', 'Denmark', 'Netherlands', 'Belgium', 'Greece', 'Poland',
+      'Czech Republic', 'Hungary', 'Romania', 'Bulgaria', 'Croatia', 'Slovakia',
+      'Slovenia', 'Latvia', 'Lithuania', 'Estonia', 'Albania', 'Portugal',
+      'Australia', 'Israel', 'Japan', 'South Korea',
+    ],
+    red: [
+      'Russia', 'China', 'North Korea', 'Iran', 'Syria', 'Belarus',
+    ],
+  },
+  {
+    id: 'cold-war',
+    name: 'Cold War (1980s)',
+    description: 'NATO vs Warsaw Pact, circa 1985',
+    blue: [
+      'USA', 'UK', 'France', 'Germany', 'Canada', 'Turkey', 'Spain', 'Italy',
+      'Norway', 'Denmark', 'Netherlands', 'Belgium', 'Greece', 'Portugal',
+      'Australia', 'Japan', 'South Korea', 'Israel',
+    ],
+    red: [
+      'Russia', 'China', 'North Korea', 'Cuba', 'Hungary', 'Poland',
+      'Czech Republic', 'Romania', 'Bulgaria', 'Syria', 'Iraq', 'Iran',
+    ],
+  },
+  {
+    id: 'gulf-war',
+    name: 'Gulf War (1991)',
+    description: 'US-led coalition vs Iraq',
+    blue: [
+      'USA', 'UK', 'France', 'Saudi Arabia', 'Canada', 'Italy', 'Kuwait',
+      'Egypt', 'Qatar', 'Bahrain', 'UAE', 'Oman', 'Australia',
+    ],
+    red: [
+      'Iraq', 'Russia',
+    ],
+  },
+  {
+    id: 'pacific',
+    name: 'Pacific Theater',
+    description: 'US and allies vs China and DPRK',
+    blue: [
+      'USA', 'Japan', 'South Korea', 'Australia', 'UK', 'Canada', 'France',
+      'Philippines', 'Thailand',
+    ],
+    red: [
+      'China', 'North Korea', 'Russia',
+    ],
+  },
+  {
+    id: 'middle-east',
+    name: 'Middle East Conflict',
+    description: 'Western coalition vs regional adversaries',
+    blue: [
+      'USA', 'UK', 'France', 'Israel', 'Saudi Arabia', 'UAE', 'Jordan',
+      'Turkey', 'Egypt', 'Kuwait', 'Qatar', 'Bahrain',
+    ],
+    red: [
+      'Iran', 'Syria', 'Iraq', 'Russia',
+    ],
+  },
+  {
+    id: 'india-pakistan',
+    name: 'India vs Pakistan',
+    description: 'South Asian conflict scenario',
+    blue: [
+      'India', 'USA', 'UK', 'France', 'Israel',
+    ],
+    red: [
+      'Pakistan', 'China', 'North Korea',
+    ],
+  },
+  {
+    id: 'falklands',
+    name: 'Falklands War (1982)',
+    description: 'UK vs Argentina',
+    blue: [
+      'UK', 'USA',
+    ],
+    red: [
+      'Argentina',
+    ],
+  },
+];
 
-const COALITION_COLORS: Record<string, string> = {
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
+const COAL_COLORS: Record<string, string> = {
   blue: '#4a8fd4',
   red: '#d95050',
   neutrals: '#8a8a6a',
 };
 
-const COALITION_LABELS: Record<string, string> = {
-  blue: 'BLUE',
-  red: 'RED',
-  neutrals: 'NEUTRAL',
+const columnStyle: React.CSSProperties = {
+  flex: 1, minWidth: 0,
+  background: '#0a1218', borderRadius: 6, border: '1px solid #12202e',
+  padding: 10, minHeight: 200,
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  plane: 'A',
-  helicopter: 'H',
-  vehicle: 'V',
-  ship: 'S',
-  static: 'T',
+const countryPill: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  padding: '6px 10px', borderRadius: 4, marginBottom: 4,
+  fontSize: 12, cursor: 'pointer', transition: 'background 0.1s',
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  plane: '#4a8fd4',
-  helicopter: '#38bdf8',
-  vehicle: '#d29922',
-  ship: '#a371f7',
-  static: '#5a7a8a',
+const presetCard: React.CSSProperties = {
+  padding: '8px 12px', background: '#0a1218', borderRadius: 4,
+  border: '1px solid #12202e', cursor: 'pointer', transition: 'border-color 0.15s',
 };
 
 /* ------------------------------------------------------------------ */
@@ -62,71 +144,171 @@ const CATEGORY_COLORS: Record<string, string> = {
 /* ------------------------------------------------------------------ */
 
 export function CoalitionsTab() {
-  const groups = useMissionStore((s) => s.groups);
   const countries = useMissionStore((s) => s.countries);
-  const [expandedCountry, setExpandedCountry] = useState<string | null>(null);
+  const groups = useMissionStore((s) => s.groups);
+  const addEdit = useEditStore((s) => s.addEdit);
 
-  const coalitions = useMemo<CoalitionData[]>(() => {
-    const coalMap = new Map<string, CoalitionData>();
-
-    // Build from countries data
+  // Local state: map of country name → coalition
+  const initialAssignments = useMemo(() => {
+    const map = new Map<string, string>();
     for (const c of countries) {
-      const coal = c.coalition;
-      if (!coalMap.has(coal)) {
-        coalMap.set(coal, {
-          name: coal,
-          color: COALITION_COLORS[coal] || '#888',
-          countries: [],
-          totalUnits: 0,
-          totalGroups: 0,
-          categoryCounts: {},
-        });
+      map.set(c.name, c.coalition);
+    }
+    return map;
+  }, [countries]);
+
+  const [assignments, setAssignments] = useState<Map<string, string>>(new Map(initialAssignments));
+  const [applied, setApplied] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
+
+  // Rebuild when countries change
+  useMemo(() => {
+    setAssignments(new Map(initialAssignments));
+  }, [initialAssignments]);
+
+  // Group countries by coalition
+  const coalitionGroups = useMemo(() => {
+    const result: Record<string, { name: string; unitCount: number; groupCount: number }[]> = {
+      blue: [], red: [], neutrals: [],
+    };
+    for (const c of countries) {
+      const coal = assignments.get(c.name) || c.coalition;
+      if (!result[coal]) result[coal] = [];
+      const groupCount = groups.filter(
+        (g) => g.country === c.name
+      ).length;
+      result[coal].push({ name: c.name, unitCount: c.unitCount, groupCount });
+    }
+    // Sort each by unit count descending
+    for (const coal of Object.keys(result)) {
+      result[coal].sort((a, b) => b.unitCount - a.unitCount);
+    }
+    return result;
+  }, [countries, groups, assignments]);
+
+  const hasChanges = useMemo(() => {
+    for (const c of countries) {
+      if (assignments.get(c.name) !== c.coalition) return true;
+    }
+    return false;
+  }, [assignments, countries]);
+
+  const moveCountry = useCallback((name: string, toCoalition: string) => {
+    setAssignments((prev) => {
+      const next = new Map(prev);
+      next.set(name, toCoalition);
+      return next;
+    });
+    setApplied(false);
+  }, []);
+
+  const cycleCoalition = useCallback((name: string) => {
+    const current = assignments.get(name) || 'neutrals';
+    const order = ['blue', 'red', 'neutrals'];
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    moveCountry(name, next);
+  }, [assignments, moveCountry]);
+
+  const applyPreset = useCallback((preset: CoalitionPreset) => {
+    setAssignments((prev) => {
+      const next = new Map(prev);
+      const blueSet = new Set(preset.blue.map((s) => s.toLowerCase()));
+      const redSet = new Set(preset.red.map((s) => s.toLowerCase()));
+      for (const c of countries) {
+        const lower = c.name.toLowerCase();
+        if (blueSet.has(lower)) next.set(c.name, 'blue');
+        else if (redSet.has(lower)) next.set(c.name, 'red');
+        // Countries not in preset keep their current assignment
       }
-      const cd = coalMap.get(coal)!;
+      return next;
+    });
+    setApplied(false);
+    setShowPresets(false);
+  }, [countries]);
 
-      // Count groups for this country
-      const countryGroups = groups.filter(
-        (g) => g.coalition === coal && g.country === c.name
-      );
-
-      const countryData: CountryData = {
-        name: c.name,
-        unitCount: c.unitCount,
-        groupCount: countryGroups.length,
-        categories: (c as any).categories || {},
-        unitTypes: (c as any).unitTypes || {},
-      };
-
-      cd.countries.push(countryData);
-      cd.totalUnits += c.unitCount;
-      cd.totalGroups += countryGroups.length;
-
-      for (const [cat, count] of Object.entries(countryData.categories)) {
-        cd.categoryCounts[cat] = (cd.categoryCounts[cat] || 0) + (count as number);
+  const handleApply = useCallback(() => {
+    // Build the reassignment map: only changed countries
+    const changes: Record<string, string> = {};
+    for (const c of countries) {
+      const newCoal = assignments.get(c.name);
+      if (newCoal && newCoal !== c.coalition) {
+        changes[c.name] = newCoal;
       }
     }
+    if (Object.keys(changes).length === 0) return;
 
-    // Sort coalitions: blue, red, neutrals
-    const order = ['blue', 'red', 'neutrals'];
-    return [...coalMap.values()].sort(
-      (a, b) => order.indexOf(a.name) - order.indexOf(b.name)
-    );
-  }, [countries, groups]);
+    addEdit({
+      field: 'coalitionReassign',
+      value: changes,
+    } as any);
+    setApplied(true);
+  }, [assignments, countries, addEdit]);
 
-  const toggleCountry = (key: string) => {
-    setExpandedCountry((prev) => (prev === key ? null : key));
-  };
+  const handleReset = useCallback(() => {
+    setAssignments(new Map(initialAssignments));
+    setApplied(false);
+  }, [initialAssignments]);
 
   return (
-    <div style={{ maxWidth: 750 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
-        Coalitions
-      </h2>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5a7a8a' }}>
-        Force composition by coalition and country.
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+          Coalitions
+        </h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => setShowPresets(!showPresets)}
+            style={{
+              background: showPresets ? 'rgba(74, 143, 212, 0.15)' : '#1a2a3a',
+              border: '1px solid #2a3a4a', borderRadius: 4,
+              color: '#4a8fd4', cursor: 'pointer', fontSize: 12,
+              padding: '5px 12px', fontFamily: 'inherit',
+            }}
+          >
+            {showPresets ? 'Hide Presets' : 'Presets'}
+          </button>
+          {hasChanges && (
+            <button onClick={handleReset} style={{
+              background: 'transparent', border: '1px solid #2a3a4a', borderRadius: 4,
+              color: '#5a7a8a', cursor: 'pointer', fontSize: 12,
+              padding: '5px 12px', fontFamily: 'inherit',
+            }}>
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#5a7a8a' }}>
+        Click a country to cycle it between coalitions. Use presets for quick era-based setups.
       </p>
 
-      {coalitions.length === 0 ? (
+      {/* Presets panel */}
+      {showPresets && (
+        <div style={{
+          marginBottom: 14, padding: 12, background: '#0c1824',
+          border: '1px solid #1a3a5a', borderRadius: 6,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#ccdae8', marginBottom: 8 }}>
+            Alliance Presets
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
+            {PRESETS.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => applyPreset(p)}
+                style={presetCard}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#4a8fd4')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#12202e')}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#ccdae8' }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 2 }}>{p.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {countries.length === 0 ? (
         <div style={{
           padding: '24px 16px', background: 'rgba(74, 143, 212, 0.04)',
           borderRadius: 6, border: '1px solid #1a3a5a', textAlign: 'center',
@@ -135,141 +317,105 @@ export function CoalitionsTab() {
           No coalition data available. Upload a mission first.
         </div>
       ) : (
-        coalitions.map((coal) => (
-          <div key={coal.name} style={{ marginBottom: 16 }}>
-            {/* Coalition header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 14px', background: `${coal.color}10`,
-              border: `1px solid ${coal.color}30`, borderRadius: '6px 6px 0 0',
-            }}>
-              <div style={{
-                width: 12, height: 12, borderRadius: 2,
-                background: coal.color,
-              }} />
-              <span style={{ fontSize: 15, fontWeight: 700, color: coal.color }}>
-                {COALITION_LABELS[coal.name] || coal.name.toUpperCase()}
-              </span>
-              <span style={{ fontSize: 12, color: '#5a7a8a', marginLeft: 'auto' }}>
-                {coal.countries.length} {coal.countries.length === 1 ? 'country' : 'countries'}
-                {' / '}
-                {coal.totalGroups} groups
-                {' / '}
-                {coal.totalUnits} units
-              </span>
-            </div>
+        <>
+          {/* Three-column layout */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['blue', 'red', 'neutrals'] as const).map((coal) => {
+              const color = COAL_COLORS[coal];
+              const items = coalitionGroups[coal] || [];
+              const totalUnits = items.reduce((s, c) => s + c.unitCount, 0);
+              const totalGroups = items.reduce((s, c) => s + c.groupCount, 0);
 
-            {/* Category summary bar */}
-            <div style={{
-              display: 'flex', gap: 12, padding: '8px 14px',
-              background: '#0c1824', borderLeft: `1px solid ${coal.color}30`,
-              borderRight: `1px solid ${coal.color}30`,
-            }}>
-              {Object.entries(coal.categoryCounts)
-                .sort((a, b) => b[1] - a[1])
-                .map(([cat, count]) => (
-                  <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, width: 18, height: 18,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: 3, background: `${CATEGORY_COLORS[cat] || '#5a7a8a'}20`,
-                      color: CATEGORY_COLORS[cat] || '#5a7a8a',
-                      border: `1px solid ${CATEGORY_COLORS[cat] || '#5a7a8a'}40`,
-                    }}>
-                      {CATEGORY_ICONS[cat] || '?'}
+              return (
+                <div key={coal} style={columnStyle}>
+                  {/* Column header */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${color}30`,
+                  }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+                    <span style={{ fontSize: 14, fontWeight: 700, color }}>
+                      {coal === 'neutrals' ? 'NEUTRAL' : coal.toUpperCase()}
                     </span>
-                    <span style={{ fontSize: 12, color: '#8a9aaa' }}>
-                      {count} {cat}
+                    <span style={{ fontSize: 11, color: '#5a7a8a', marginLeft: 'auto' }}>
+                      {items.length}c / {totalGroups}g / {totalUnits}u
                     </span>
                   </div>
-                ))}
-            </div>
 
-            {/* Country rows */}
-            <div style={{
-              border: `1px solid ${coal.color}30`, borderTop: 'none',
-              borderRadius: '0 0 6px 6px', overflow: 'hidden',
-            }}>
-              {coal.countries
-                .sort((a, b) => b.unitCount - a.unitCount)
-                .map((country) => {
-                  const key = `${coal.name}:${country.name}`;
-                  const isExpanded = expandedCountry === key;
-                  const typeEntries = Object.entries(country.unitTypes)
-                    .sort((a, b) => (b[1] as number) - (a[1] as number));
-
-                  return (
-                    <div key={key}>
+                  {/* Country pills */}
+                  {items.length === 0 && (
+                    <div style={{ fontSize: 11, color: '#3a4a5a', textAlign: 'center', padding: '8px 0' }}>
+                      No countries
+                    </div>
+                  )}
+                  {items.map((c) => {
+                    const changed = assignments.get(c.name) !== initialAssignments.get(c.name);
+                    return (
                       <div
-                        onClick={() => toggleCountry(key)}
+                        key={c.name}
+                        onClick={() => cycleCoalition(c.name)}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '8px 14px', cursor: 'pointer',
-                          background: isExpanded ? '#0f1a28' : '#0a1218',
-                          borderTop: '1px solid #12202e',
+                          ...countryPill,
+                          background: changed ? `${color}18` : `${color}08`,
+                          border: `1px solid ${changed ? color + '50' : color + '20'}`,
                         }}
                       >
-                        <span style={{
-                          fontSize: 10, color: '#5a7a8a', width: 12,
-                          transition: 'transform 0.15s',
-                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                        }}>
-                          ▶
+                        <span style={{ color: '#ccdae8', fontWeight: changed ? 600 : 400 }}>
+                          {c.name}
+                          {changed && <span style={{ color, marginLeft: 4, fontSize: 10 }}>*</span>}
                         </span>
-                        <span style={{ fontSize: 13, color: '#ccdae8', fontWeight: 500, flex: 1 }}>
-                          {country.name}
-                        </span>
-                        {/* Category badges */}
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {Object.entries(country.categories)
-                            .sort((a, b) => (b[1] as number) - (a[1] as number))
-                            .map(([cat, count]) => (
-                              <span key={cat} style={{
-                                fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                                background: `${CATEGORY_COLORS[cat] || '#5a7a8a'}15`,
-                                color: CATEGORY_COLORS[cat] || '#5a7a8a',
-                                border: `1px solid ${CATEGORY_COLORS[cat] || '#5a7a8a'}30`,
-                              }}>
-                                {count} {cat}
-                              </span>
-                            ))}
-                        </div>
-                        <span style={{ fontSize: 12, color: '#5a7a8a', minWidth: 60, textAlign: 'right' }}>
-                          {country.unitCount} units
+                        <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+                          {c.groupCount}g / {c.unitCount}u
                         </span>
                       </div>
+                    );
+                  })}
 
-                      {/* Expanded: unit type breakdown */}
-                      {isExpanded && typeEntries.length > 0 && (
-                        <div style={{
-                          padding: '8px 14px 10px 36px',
-                          background: '#0f1a28', borderTop: '1px solid #12202e',
-                        }}>
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                            gap: '4px 16px',
-                          }}>
-                            {typeEntries.map(([type, count]) => (
-                              <div key={type} style={{
-                                display: 'flex', justifyContent: 'space-between',
-                                fontSize: 12, padding: '2px 0',
-                              }}>
-                                <span style={{ color: '#8a9aaa' }}>{type}</span>
-                                <span style={{ color: '#ccdae8', fontWeight: 500, fontFamily: 'monospace' }}>
-                                  x{count as number}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
+                  {/* Drop zone hint */}
+                  <div style={{
+                    marginTop: 4, padding: '4px 0', textAlign: 'center',
+                    fontSize: 10, color: '#2a3a4a',
+                  }}>
+                    click country to cycle
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))
+
+          {/* Apply bar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
+            padding: '10px 0', borderTop: '1px solid #1a2a3a',
+          }}>
+            <button
+              onClick={handleApply}
+              disabled={!hasChanges}
+              style={{
+                background: hasChanges ? 'rgba(63, 185, 80, 0.15)' : 'rgba(63, 185, 80, 0.05)',
+                border: '1px solid rgba(63, 185, 80, 0.3)',
+                borderRadius: 4, color: hasChanges ? '#3fb950' : '#2a4a2a',
+                fontSize: 13, padding: '8px 20px',
+                cursor: hasChanges ? 'pointer' : 'not-allowed',
+                fontWeight: 600, fontFamily: 'inherit',
+              }}
+            >
+              {applied ? 'Changes Staged' : 'Stage Coalition Changes'}
+            </button>
+            {applied && (
+              <span style={{ fontSize: 12, color: '#3fb950' }}>
+                Changes will be applied when you download the .miz
+              </span>
+            )}
+            {hasChanges && !applied && (
+              <span style={{ fontSize: 12, color: '#d29922' }}>
+                {Array.from(assignments.entries()).filter(
+                  ([name, coal]) => initialAssignments.get(name) !== coal
+                ).length} country reassignment(s) pending
+              </span>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

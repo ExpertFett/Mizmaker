@@ -925,6 +925,168 @@ def _replace_briefing_fields(text: str, value: dict) -> str:
     return text
 
 
+def _replace_coalition_assignments(text: str, changes: dict) -> str:
+    """Move countries between coalitions in the raw mission Lua text.
+
+    changes: dict mapping country_name -> target_coalition
+    e.g. {"USA": "red", "Russia": "blue"}
+
+    DCS Lua structure:
+      ["coalition"]["blue"]["country"][N] = { ["name"] = "USA", ... }
+
+    For each country, we:
+    1. Find the [N] = { ["name"] = "X", ... }, entry block
+    2. Verify which coalition it's currently in
+    3. Remove it from the source coalition
+    4. Insert it into the target coalition's ["country"] section
+    """
+    for country_name, target_coal in changes.items():
+        if target_coal not in ("blue", "red", "neutrals"):
+            continue
+
+        # --- Step 1: Find ["name"] = "CountryName" in the text ---
+        name_pat = rf'\["name"\]\s*=\s*"{re.escape(country_name)}"'
+        name_match = re.search(name_pat, text)
+        if not name_match:
+            continue
+
+        name_pos = name_match.start()
+
+        # --- Step 2: Determine current coalition ---
+        # Find the nearest ["blue"/"red"/"neutrals"] = key before this position
+        current_coal = None
+        best_pos = -1
+        for coal in ("blue", "red", "neutrals"):
+            for m in re.finditer(rf'\["{coal}"\]\s*=', text[:name_pos]):
+                if m.start() > best_pos:
+                    best_pos = m.start()
+                    current_coal = coal
+
+        if not current_coal or current_coal == target_coal:
+            continue
+
+        # --- Step 3: Find the [N] = { ... } entry block ---
+        # Walk backward from the name match to find the opening { of this country
+        depth = 0
+        i = name_pos - 1
+        while i >= 0:
+            ch = text[i]
+            if ch == '"':
+                i -= 1
+                while i >= 0 and text[i] != '"':
+                    if i > 0 and text[i - 1] == '\\':
+                        i -= 1
+                    i -= 1
+            elif ch == '}':
+                depth += 1
+            elif ch == '{':
+                if depth == 0:
+                    break
+                depth -= 1
+            i -= 1
+        open_brace = i
+        if open_brace < 0:
+            continue
+
+        # Back up to find [N] = before the opening brace
+        prefix = text[max(0, open_brace - 120):open_brace]
+        idx_match = re.search(r'\[(\d+)\]\s*=\s*$', prefix.rstrip())
+        if not idx_match:
+            continue
+        entry_start = max(0, open_brace - 120) + idx_match.start()
+
+        # Consume leading whitespace on the line
+        while entry_start > 0 and text[entry_start - 1] in (' ', '\t'):
+            entry_start -= 1
+
+        # Find closing brace using depth counting
+        depth = 0
+        j = open_brace
+        in_str = False
+        while j < len(text):
+            ch = text[j]
+            if ch == '"' and (j == 0 or text[j - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            j += 1
+        close_brace = j
+
+        # Grab inner content (the country data between braces)
+        inner_content = text[open_brace + 1:close_brace]
+
+        # Determine end of entry including trailing comma and comment
+        entry_end = close_brace + 1
+        rest = text[entry_end:entry_end + 80]
+        trail = re.match(r'\s*,[ \t]*(--[^\n]*)?\n?', rest)
+        if trail:
+            entry_end += trail.end()
+
+        # Remove leading newline if present
+        if entry_start > 0 and text[entry_start - 1] == '\n':
+            entry_start -= 1
+
+        # --- Step 4: Remove the entry from source coalition ---
+        text = text[:entry_start] + text[entry_end:]
+
+        # --- Step 5: Find the target coalition's ["country"] section ---
+        target_coal_match = re.search(rf'\["{target_coal}"\]\s*=\s*\{{', text)
+        if not target_coal_match:
+            continue
+
+        country_match = re.search(
+            r'\["country"\]\s*=\s*\{',
+            text[target_coal_match.end():]
+        )
+        if not country_match:
+            continue
+
+        # Position of the { opening the country table
+        country_open = target_coal_match.end() + country_match.end() - 1
+
+        # Find the closing } of the country table
+        depth = 0
+        k = country_open
+        in_str = False
+        while k < len(text):
+            ch = text[k]
+            if ch == '"' and (k == 0 or text[k - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            k += 1
+        country_close = k  # Position of closing }
+
+        # --- Step 6: Determine next index and insert ---
+        country_section = text[country_open:country_close]
+        existing_indices = [
+            int(m.group(1))
+            for m in re.finditer(r'\[(\d+)\]\s*=', country_section)
+        ]
+        next_idx = max(existing_indices, default=0) + 1
+
+        # Detect indentation from existing entries or use 12 spaces
+        indent_match = re.search(r'\n(\s+)\[\d+\]\s*=', country_section)
+        indent = indent_match.group(1) if indent_match else "            "
+
+        new_entry = f"\n{indent}[{next_idx}] =\n{indent}{{{inner_content}}}, -- end of [{next_idx}]"
+
+        # Insert before the closing } of the country table
+        text = text[:country_close] + new_entry + "\n" + text[country_close:]
+
+    return text
+
+
 def _replace_forced_options(text: str, options: dict) -> str:
     """Replace or create the forcedOptions block in the mission Lua text.
 
@@ -1372,6 +1534,9 @@ def apply_unit_edits(text: str, edits: list) -> str:
                 continue
             elif field == "briefing":
                 text = _replace_briefing_fields(text, value)
+                continue
+            elif field == "coalitionReassign":
+                text = _replace_coalition_assignments(text, value)
                 continue
             elif field == "weather":
                 text = _replace_weather_block(text, value)
