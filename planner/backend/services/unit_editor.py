@@ -675,6 +675,39 @@ def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
     return text
 
 
+def _replace_icls(text: str, unit_id: int, channel: int) -> str:
+    """Replace ActivateICLS channel for a unit's waypoint task."""
+    icls_pattern = r'\["id"\]\s*=\s*"ActivateICLS"'
+    icls_pos = None
+    for m in re.finditer(icls_pattern, text):
+        region = text[m.start():m.start() + 500]
+        uid_match = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', region)
+        if uid_match:
+            icls_pos = m.start()
+            break
+
+    if icls_pos is None:
+        unit_pos = _find_unit_block_start(text, unit_id)
+        best = None
+        for m in re.finditer(icls_pattern, text):
+            if m.start() < unit_pos:
+                best = m.start()
+            else:
+                break
+        if best is None:
+            return text
+        icls_pos = best
+
+    icls_region = text[icls_pos:icls_pos + 500]
+    ch_match = re.search(r'(\["channel"\]\s*=\s*)(\d+)', icls_region)
+    if ch_match:
+        abs_s = icls_pos + ch_match.start(2)
+        abs_e = icls_pos + ch_match.end(2)
+        text = text[:abs_s] + str(channel) + text[abs_e:]
+
+    return text
+
+
 def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
                        pos: int, name_str: str) -> str:
     """Replace the callsign block for an AI unit.
@@ -1384,6 +1417,8 @@ def apply_unit_edits(text: str, edits: list) -> str:
                     int(value["channel"]), str(value.get("band", "X")),
                     str(value.get("callsign", "")),
                 )
+            elif field == "icls":
+                text = _replace_icls(text, unit_id, int(value["channel"]))
             elif field == "callsign":
                 text = _replace_callsign(
                     text, unit_id,

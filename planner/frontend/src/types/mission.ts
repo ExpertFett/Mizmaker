@@ -51,6 +51,7 @@ export interface MissionGroup {
   frequency: number;
   modulation: number;
   tacan?: { channel: number; band: string; callsign: string } | null;
+  icls?: { channel: number } | null;
   units: MissionUnit[];
   waypoints: Waypoint[];
 }

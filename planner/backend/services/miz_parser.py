@@ -366,6 +366,45 @@ def _extract_tacan_from_tasks(waypoints: list) -> dict | None:
     return None
 
 
+def _extract_icls_from_tasks(waypoints: list) -> dict | None:
+    """Recursively search waypoint task dicts for ActivateICLS params."""
+    def _search(obj):
+        if not isinstance(obj, dict):
+            return None
+        if obj.get("id") == "ActivateICLS":
+            params = obj.get("params", {})
+            ch = params.get("channel")
+            if ch:
+                return {"channel": int(ch)}
+        action = obj.get("action")
+        if isinstance(action, dict):
+            r = _search(action)
+            if r:
+                return r
+        tasks = obj.get("tasks")
+        if isinstance(tasks, dict):
+            tasks = list(tasks.values())
+        if isinstance(tasks, list):
+            for t in tasks:
+                r = _search(t)
+                if r:
+                    return r
+        params = obj.get("params")
+        if isinstance(params, dict):
+            r = _search(params)
+            if r:
+                return r
+        return None
+
+    for wp in waypoints:
+        task = wp.get("task")
+        if task and isinstance(task, dict):
+            result = _search(task)
+            if result:
+                return result
+    return None
+
+
 def _extract_group(
     group: dict,
     coalition: str,
@@ -441,6 +480,7 @@ def _extract_group(
 
     # Extract TACAN beacon data from waypoint tasks (tankers, carriers)
     tacan = _extract_tacan_from_tasks(waypoints)
+    icls = _extract_icls_from_tasks(waypoints)
 
     return {
         "groupId": group_id,
@@ -452,6 +492,7 @@ def _extract_group(
         "frequency": _num(group.get("frequency")),
         "modulation": group.get("modulation", 0),
         "tacan": tacan,
+        "icls": icls,
         "units": extracted_units,
         "waypoints": waypoints,
     }
