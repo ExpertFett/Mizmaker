@@ -65,18 +65,6 @@ const PRESETS: CoalitionPreset[] = [
     ],
   },
   {
-    id: 'pacific',
-    name: 'Pacific Theater',
-    description: 'US and allies vs China and DPRK',
-    blue: [
-      'USA', 'Japan', 'South Korea', 'Australia', 'UK', 'Canada', 'France',
-      'Philippines', 'Thailand',
-    ],
-    red: [
-      'China', 'North Korea', 'Russia',
-    ],
-  },
-  {
     id: 'middle-east',
     name: 'Middle East Conflict',
     description: 'Western coalition vs regional adversaries',
@@ -86,28 +74,6 @@ const PRESETS: CoalitionPreset[] = [
     ],
     red: [
       'Iran', 'Syria', 'Iraq', 'Russia',
-    ],
-  },
-  {
-    id: 'india-pakistan',
-    name: 'India vs Pakistan',
-    description: 'South Asian conflict scenario',
-    blue: [
-      'India', 'USA', 'UK', 'France', 'Israel',
-    ],
-    red: [
-      'Pakistan', 'China', 'North Korea',
-    ],
-  },
-  {
-    id: 'falklands',
-    name: 'Falklands War (1982)',
-    description: 'UK vs Argentina',
-    blue: [
-      'UK', 'USA',
-    ],
-    red: [
-      'Argentina',
     ],
   },
 ];
