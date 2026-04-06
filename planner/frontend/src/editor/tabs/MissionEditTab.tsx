@@ -7,9 +7,11 @@ import { BriefingTab } from './BriefingTab';
 import { MissionOptionsTab } from './MissionOptionsTab';
 import { TriggerTab } from './TriggerTab';
 import { DrawingsTab } from './DrawingsTab';
+import { BattlefieldCommandersTab } from './BattlefieldCommandersTab';
 
 const SUB_TABS = [
   { id: 'briefing', label: 'Briefing' },
+  { id: 'commanders', label: 'Commanders' },
   { id: 'options', label: 'Options' },
   { id: 'triggers', label: 'Triggers' },
   { id: 'drawings', label: 'Drawings' },
@@ -24,6 +26,7 @@ export function MissionEditTab() {
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
       {sub === 'briefing' && <BriefingTab />}
+      {sub === 'commanders' && <BattlefieldCommandersTab />}
       {sub === 'options' && <MissionOptionsTab />}
       {sub === 'triggers' && <TriggerTab />}
       {sub === 'drawings' && <DrawingsTab />}
