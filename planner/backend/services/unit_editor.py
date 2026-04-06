@@ -708,6 +708,96 @@ def _replace_icls(text: str, unit_id: int, channel: int) -> str:
     return text
 
 
+def _insert_group_wrapped_actions(text: str, group_id: int, actions: list[dict]) -> str:
+    """Insert WrappedAction tasks (SetInvisible, SetImmortal, etc.) into a group's
+    first waypoint task list.
+
+    Each action dict has: {"id": "SetInvisible", "value": true/false}
+
+    DCS Lua structure for waypoint tasks:
+        ["route"]["points"][1]["task"]["params"]["tasks"][N] = {
+            ["id"] = "WrappedAction",
+            ["params"] = { ["action"] = { ["id"] = "SetInvisible", ["params"] = { ["value"] = true } } },
+        }
+    """
+    # Find the group by groupId
+    gid_pat = rf'\["groupId"\]\s*=\s*{group_id}\b'
+    gid_match = re.search(gid_pat, text)
+    if not gid_match:
+        return text
+
+    # Search forward from the group for the route > points > [1] > task > params > tasks section
+    search_start = gid_match.start()
+    search_region = text[search_start:search_start + 20000]
+
+    # Find ["tasks"] = { within the first waypoint's task params
+    # We look for the pattern: ["route"]...["points"]...[1]...["task"]...["params"]...["tasks"] = {
+    tasks_match = re.search(r'\["tasks"\]\s*=\s*\{', search_region)
+    if not tasks_match:
+        return text
+
+    tasks_open_abs = search_start + tasks_match.end() - 1  # position of {
+
+    # Find what indices already exist inside this tasks block
+    # We need a bounded search, so find the matching closing brace
+    depth = 0
+    k = tasks_open_abs
+    in_str = False
+    while k < len(text):
+        ch = text[k]
+        if ch == '"' and (k == 0 or text[k - 1] != '\\'):
+            in_str = not in_str
+        elif not in_str:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+        k += 1
+    tasks_close_abs = k
+
+    tasks_content = text[tasks_open_abs:tasks_close_abs + 1]
+    existing_indices = [int(m.group(1)) for m in re.finditer(r'\[(\d+)\]\s*=', tasks_content)]
+    next_idx = max(existing_indices, default=0) + 1
+
+    # Detect indentation
+    indent_match = re.search(r'\n(\s+)\[\d+\]\s*=', tasks_content)
+    indent = indent_match.group(1) if indent_match else "                                "
+    inner = indent + "    "
+
+    # Build the new task entries
+    new_entries = ""
+    for action in actions:
+        action_id = action["id"]
+        lua_val = "true" if action.get("value", True) else "false"
+        new_entries += (
+            f'\n{indent}[{next_idx}] =\n'
+            f'{indent}{{\n'
+            f'{inner}["enabled"] = true,\n'
+            f'{inner}["auto"] = false,\n'
+            f'{inner}["id"] = "WrappedAction",\n'
+            f'{inner}["number"] = {next_idx},\n'
+            f'{inner}["params"] =\n'
+            f'{inner}{{\n'
+            f'{inner}    ["action"] =\n'
+            f'{inner}    {{\n'
+            f'{inner}        ["id"] = "{action_id}",\n'
+            f'{inner}        ["params"] =\n'
+            f'{inner}        {{\n'
+            f'{inner}            ["value"] = {lua_val},\n'
+            f'{inner}        }}, -- end of ["params"]\n'
+            f'{inner}    }}, -- end of ["action"]\n'
+            f'{inner}}}, -- end of ["params"]\n'
+            f'{indent}}}, -- end of [{next_idx}]'
+        )
+        next_idx += 1
+
+    # Insert before the closing } of the tasks block
+    text = text[:tasks_close_abs] + new_entries + "\n" + text[tasks_close_abs:]
+    return text
+
+
 def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
                        pos: int, name_str: str) -> str:
     """Replace the callsign block for an AI unit.
@@ -1547,6 +1637,12 @@ def apply_unit_edits(text: str, edits: list) -> str:
                     value.get("regex", False),
                     value.get("inUnits", True), value.get("inGroups", True),
                 )
+                continue
+
+            # Group-level task insertion (SetInvisible, SetImmortal, etc.)
+            if field == "groupWrappedActions":
+                group_id = edit["groupId"]
+                text = _insert_group_wrapped_actions(text, group_id, value)
                 continue
 
             # Group-level edits

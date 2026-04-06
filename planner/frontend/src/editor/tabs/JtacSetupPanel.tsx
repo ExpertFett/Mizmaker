@@ -180,6 +180,16 @@ export function JtacSetupPanel() {
           value: 'Player',
         });
       }
+
+      // Make all units in JTAC group invisible and immortal
+      addEdit({
+        groupId: config.groupId,
+        field: 'groupWrappedActions',
+        value: [
+          { id: 'SetInvisible', value: true },
+          { id: 'SetImmortal', value: true },
+        ],
+      } as any);
     }
     setApplied(true);
   }, [selectedJtacs, groundGroups, addEdit]);
@@ -196,8 +206,8 @@ export function JtacSetupPanel() {
     <div>
       <p style={{ margin: '0 0 8px', fontSize: 12, color: '#5a7a8a' }}>
         Select ground groups to designate as JTACs. They'll be renamed with "JTAC" prefix
-        (required for autolase scripts), assigned laser codes, frequencies, and set as
-        Combined Arms player slots.
+        (required for autolase scripts), assigned laser codes, frequencies, set as
+        Combined Arms player slots, and made invisible and invincible.
       </p>
 
       {/* Coalition filter */}
@@ -311,7 +321,7 @@ export function JtacSetupPanel() {
           </button>
           {applied && (
             <span style={{ fontSize: 12, color: '#3fb950' }}>
-              Groups renamed, laser codes set, CA slots enabled
+              Groups renamed, laser codes set, CA slots enabled, invisible + invincible
             </span>
           )}
         </div>
