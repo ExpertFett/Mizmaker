@@ -73,21 +73,6 @@ const btnApply: React.CSSProperties = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
-
-interface SlotEdit {
-  unitId: number;
-  skill: 'Player' | 'Average';
-}
-
-interface JtacEdit {
-  unitId: number;
-  laserCode: number;
-  frequency: number;
-}
-
-/* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
