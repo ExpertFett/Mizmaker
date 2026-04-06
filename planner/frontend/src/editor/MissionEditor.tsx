@@ -17,10 +17,12 @@ import { LiveryTab } from './tabs/LiveryTab';
 import { MissionEditTab } from './tabs/MissionEditTab';
 import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
+import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
+  { id: 'coalitions', label: 'Coalitions', icon: '⚔' },
   { id: 'threats', label: 'Threats', icon: '⚠' },
   { id: 'datalink', label: 'Datalink', icon: '📡' },
   { id: 'dtc', label: 'DTC', icon: '💾' },
@@ -176,6 +178,7 @@ export function MissionEditor() {
         {/* Editor tabs — scrollable content */}
         {!isMap && (
           <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
+            {activeTab === 'coalitions' && <CoalitionsTab />}
             {activeTab === 'threats' && <ThreatLibraryTab />}
             {activeTab === 'datalink' && <DatalinkTab />}
             {activeTab === 'dtc' && <DtcTab />}
