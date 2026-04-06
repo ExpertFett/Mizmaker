@@ -907,6 +907,24 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
     return text
 
 
+def _replace_briefing_fields(text: str, value: dict) -> str:
+    """Replace mission briefing text fields (sortie, descriptionText, blue/red task)."""
+    field_map = {
+        "sortie": "sortie",
+        "description": "descriptionText",
+        "descriptionBlueTask": "descriptionBlueTask",
+        "descriptionRedTask": "descriptionRedTask",
+    }
+    for key, lua_key in field_map.items():
+        if key not in value:
+            continue
+        new_val = str(value[key]).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+        pattern = rf'(\["{lua_key}"\]\s*=\s*)"([^"]*)"'
+        replacement = rf'\1"{new_val}"'
+        text = re.sub(pattern, replacement, text, count=1)
+    return text
+
+
 def _replace_forced_options(text: str, options: dict) -> str:
     """Replace or create the forcedOptions block in the mission Lua text.
 
@@ -1351,6 +1369,9 @@ def apply_unit_edits(text: str, edits: list) -> str:
             # Mission-level edits (no unitId needed)
             if field == "forcedOptions":
                 text = _replace_forced_options(text, value)
+                continue
+            elif field == "briefing":
+                text = _replace_briefing_fields(text, value)
                 continue
             elif field == "weather":
                 text = _replace_weather_block(text, value)

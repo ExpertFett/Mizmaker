@@ -3,11 +3,13 @@
  */
 
 import { useState } from 'react';
+import { BriefingTab } from './BriefingTab';
 import { MissionOptionsTab } from './MissionOptionsTab';
 import { TriggerTab } from './TriggerTab';
 import { DrawingsTab } from './DrawingsTab';
 
 const SUB_TABS = [
+  { id: 'briefing', label: 'Briefing' },
   { id: 'options', label: 'Options' },
   { id: 'triggers', label: 'Triggers' },
   { id: 'drawings', label: 'Drawings' },
@@ -16,11 +18,12 @@ const SUB_TABS = [
 type SubTab = (typeof SUB_TABS)[number]['id'];
 
 export function MissionEditTab() {
-  const [sub, setSub] = useState<SubTab>('options');
+  const [sub, setSub] = useState<SubTab>('briefing');
 
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
+      {sub === 'briefing' && <BriefingTab />}
       {sub === 'options' && <MissionOptionsTab />}
       {sub === 'triggers' && <TriggerTab />}
       {sub === 'drawings' && <DrawingsTab />}

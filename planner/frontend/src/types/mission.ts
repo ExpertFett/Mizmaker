@@ -107,6 +107,8 @@ export interface MissionOverviewData {
   date: string;
   start_time: number;
   description: string;
+  descriptionBlueTask: string;
+  descriptionRedTask: string;
   weather: MissionWeather;
 }
 

@@ -250,6 +250,8 @@ def _extract_overview(d: dict, theater: str) -> dict:
         "date": f"{date.get('Year', 2000)}-{date.get('Month', 1):02d}-{date.get('Day', 1):02d}",
         "start_time": d.get("start_time", 0),
         "description": d.get("descriptionText", ""),
+        "descriptionBlueTask": d.get("descriptionBlueTask", ""),
+        "descriptionRedTask": d.get("descriptionRedTask", ""),
         "weather": {
             "wind": {
                 "atGround": {"speed": _num(wind.get("atGround", {}).get("speed")), "dir": _num(wind.get("atGround", {}).get("dir"))},
