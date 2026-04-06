@@ -187,6 +187,7 @@ export function TacanTab() {
       <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>TACAN / ICLS / Beacon</h2>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5a7a8a' }}>
         Assign TACAN channels to tankers and carriers, and ICLS channels to carriers. Auto-assign avoids conflicts.
+        ACLS is enabled automatically on CVN carriers when ICLS is active — configure it in Carrier Setup if using MOOSE.
       </p>
 
       {tacanGroups.length === 0 ? (
