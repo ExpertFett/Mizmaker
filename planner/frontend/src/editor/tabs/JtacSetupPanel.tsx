@@ -104,7 +104,7 @@ export function JtacSetupPanel() {
     return groundGroups.filter((g) => g.coalition === coalFilter);
   }, [groundGroups, coalFilter]);
 
-  const toggleJtac = useCallback((groupId: number, _groupName: string) => {
+  const toggleJtac = useCallback((groupId: number) => {
     setSelectedJtacs((prev) => {
       const next = new Map(prev);
       if (next.has(groupId)) {
@@ -271,7 +271,7 @@ export function JtacSetupPanel() {
 
               {/* JTAC toggle */}
               <button
-                onClick={() => toggleJtac(group.groupId, group.groupName)}
+                onClick={() => toggleJtac(group.groupId)}
                 style={isSelected ? btnActive : btnSmall}
               >
                 {isSelected ? 'JTAC' : '+ JTAC'}

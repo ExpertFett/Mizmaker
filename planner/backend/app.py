@@ -192,39 +192,51 @@ def upload():
         dtc_flights = list(set(u["groupName"] for u in client_units))
 
     except Exception as e:
-        return jsonify({"error": f"Failed to extract mission data: {str(e)}"}), 400
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to extract mission data: {str(e)}", "trace": traceback.format_exc()}), 400
 
     # Build server-authoritative waypoint state from parsed groups
     group_waypoints = {}
     for group in data["groups"]:
         group_waypoints[group["groupName"]] = group["waypoints"]
 
-    sid, host_token = _create_session(miz_bytes, mission_text, theater, f.filename, group_waypoints)
+    try:
+        sid, host_token = _create_session(miz_bytes, mission_text, theater, f.filename, group_waypoints)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create session: {str(e)}"}), 500
 
-    return jsonify({
-        "sessionId": sid,
-        "hostToken": host_token,
-        "filename": f.filename,
-        "theater": theater,
-        # Planner map data
-        **data,
-        # 856-equivalent data
-        "clientUnits": client_units,
-        "allUnitsDonor": all_units_donor,
-        "pylonOptions": pylon_options,
-        "suggestions": suggestions,
-        "allGroupsRenamer": all_groups_renamer,
-        "liveryData": livery_data,
-        "laserClsids": sorted(LASER_CLSIDS),
-        "dtcFlights": dtc_flights,
-        "statistics": statistics,
-        "countries": countries,
-        "taskLists": {
-            "air": AIR_TASKS,
-            "ground": GROUND_TASKS,
-            "ship": SHIP_TASKS,
-        },
-    })
+    try:
+        return jsonify({
+            "sessionId": sid,
+            "hostToken": host_token,
+            "filename": f.filename,
+            "theater": theater,
+            # Planner map data
+            **data,
+            # 856-equivalent data
+            "clientUnits": client_units,
+            "allUnitsDonor": all_units_donor,
+            "pylonOptions": pylon_options,
+            "suggestions": suggestions,
+            "allGroupsRenamer": all_groups_renamer,
+            "liveryData": livery_data,
+            "laserClsids": sorted(LASER_CLSIDS, key=str),
+            "dtcFlights": dtc_flights,
+            "statistics": statistics,
+            "countries": countries,
+            "taskLists": {
+                "air": AIR_TASKS,
+                "ground": GROUND_TASKS,
+                "ship": SHIP_TASKS,
+            },
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to serialize response: {str(e)}"}), 500
 
 
 # --------------------------------------------------------------------------
@@ -461,7 +473,7 @@ def session_join(sid):
             "suggestions": suggestions,
             "allGroupsRenamer": all_groups_renamer,
             "liveryData": livery_data,
-            "laserClsids": sorted(LASER_CLSIDS),
+            "laserClsids": sorted(LASER_CLSIDS, key=str),
             "dtcFlights": dtc_flights,
             "statistics": statistics,
             "countries": countries,
