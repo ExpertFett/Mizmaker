@@ -18,6 +18,7 @@ import { MissionEditTab } from './tabs/MissionEditTab';
 import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
+import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
@@ -32,6 +33,7 @@ const TABS = [
   { id: 'weather', label: 'Weather', icon: '🌤' },
   { id: 'livery', label: 'Livery', icon: '🎨' },
   { id: 'missionEdit', label: 'Miz Edit', icon: '🔔' },
+  { id: 'debug', label: 'Debug', icon: '🔍' },
   { id: 'tools', label: 'Tools', icon: '🔧' },
   { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
@@ -188,6 +190,7 @@ export function MissionEditor() {
             {activeTab === 'weather' && <WeatherTab />}
             {activeTab === 'livery' && <LiveryTab />}
             {activeTab === 'missionEdit' && <MissionEditTab />}
+            {activeTab === 'debug' && <MissionDebugTab />}
             {activeTab === 'tools' && <ToolsTab />}
             {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
           </div>

@@ -958,6 +958,30 @@ def elevation(lat, lon):
         return jsonify({"elevation": None})
 
 
+@app.route("/api/sessions/<sid>/debug", methods=["GET"])
+def debug_mission(sid):
+    """Run debug analysis on the loaded mission."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    try:
+        from services.mission_debugger import run_debug_analysis
+
+        mission_text = session["original_mission_text"]
+        mission_dict = parse_mission_text(mission_text)
+        theater = session.get("theater", "Unknown")
+
+        data = extract_full_mission_data(mission_dict, theater)
+        client_units = find_client_units(mission_dict)
+        overview = data.get("overview", {})
+
+        issues = run_debug_analysis(data["groups"], client_units, overview, mission_dict)
+        return jsonify({"issues": issues})
+    except Exception as e:
+        return jsonify({"error": f"Debug analysis failed: {str(e)}"}), 500
+
+
 @app.route("/api/close", methods=["POST"])
 def close_session():
     body = request.get_json()
