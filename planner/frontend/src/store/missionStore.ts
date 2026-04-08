@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing, TriggerZone,
-  MissionOverviewData, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
+  MissionOverviewData, MissionOptions, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
   CountryInfo,
 } from '../types/mission';
 
@@ -20,6 +20,7 @@ interface MissionState {
   airbases: Airbase[];
   drawings: MissionDrawing[];
   triggerZones: TriggerZone[];
+  missionOptions: MissionOptions;
   clientUnits: ClientUnit[];
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   pylonOptions: Record<string, any>;
@@ -35,6 +36,7 @@ interface MissionState {
   loadMission: (data: UploadResponse) => void;
   selectGroup: (groupId: number | null) => void;
   updateGroupData: (groups: MissionGroup[], units: MissionUnit[], threats: ThreatRing[], airbases: Airbase[]) => void;
+  setMissionOptions: (opts: MissionOptions) => void;
   clear: () => void;
   selectedGroup: () => MissionGroup | undefined;
 }
@@ -54,6 +56,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   airbases: [],
   drawings: [],
   triggerZones: [],
+  missionOptions: {},
   clientUnits: [],
   allUnitsDonor: [],
   pylonOptions: {},
@@ -89,6 +92,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       airbases: data.airbases,
       drawings: data.drawings || [],
       triggerZones: data.triggerZones || [],
+      missionOptions: data.missionOptions || {},
       clientUnits: data.clientUnits || [],
       allUnitsDonor: data.allUnitsDonor || [],
       pylonOptions: data.pylonOptions || {},
@@ -108,11 +112,13 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   updateGroupData: (groups, units, threats, airbases) =>
     set({ groups, units, threats, airbases }),
 
+  setMissionOptions: (opts) => set({ missionOptions: opts }),
+
   clear: () =>
     set({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
       role: 'mission_maker' as const, filename: null, theater: null, overview: null,
-      groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [],
+      groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [], missionOptions: {},
       clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
       countries: [],

@@ -195,39 +195,51 @@ def upload():
         dtc_flights = list(set(u["groupName"] for u in client_units))
 
     except Exception as e:
-        return jsonify({"error": f"Failed to extract mission data: {str(e)}"}), 400
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to extract mission data: {str(e)}", "trace": traceback.format_exc()}), 400
 
     # Build server-authoritative waypoint state from parsed groups
     group_waypoints = {}
     for group in data["groups"]:
         group_waypoints[group["groupName"]] = group["waypoints"]
 
-    sid, host_token = _create_session(miz_bytes, mission_text, theater, f.filename, group_waypoints)
+    try:
+        sid, host_token = _create_session(miz_bytes, mission_text, theater, f.filename, group_waypoints)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to create session: {str(e)}"}), 500
 
-    return jsonify({
-        "sessionId": sid,
-        "hostToken": host_token,
-        "filename": f.filename,
-        "theater": theater,
-        # Planner map data
-        **data,
-        # 856-equivalent data
-        "clientUnits": client_units,
-        "allUnitsDonor": all_units_donor,
-        "pylonOptions": pylon_options,
-        "suggestions": suggestions,
-        "allGroupsRenamer": all_groups_renamer,
-        "liveryData": livery_data,
-        "laserClsids": sorted(LASER_CLSIDS),
-        "dtcFlights": dtc_flights,
-        "statistics": statistics,
-        "countries": countries,
-        "taskLists": {
-            "air": AIR_TASKS,
-            "ground": GROUND_TASKS,
-            "ship": SHIP_TASKS,
-        },
-    })
+    try:
+        return jsonify({
+            "sessionId": sid,
+            "hostToken": host_token,
+            "filename": f.filename,
+            "theater": theater,
+            # Planner map data
+            **data,
+            # 856-equivalent data
+            "clientUnits": client_units,
+            "allUnitsDonor": all_units_donor,
+            "pylonOptions": pylon_options,
+            "suggestions": suggestions,
+            "allGroupsRenamer": all_groups_renamer,
+            "liveryData": livery_data,
+            "laserClsids": sorted(LASER_CLSIDS, key=str),
+            "dtcFlights": dtc_flights,
+            "statistics": statistics,
+            "countries": countries,
+            "taskLists": {
+                "air": AIR_TASKS,
+                "ground": GROUND_TASKS,
+                "ship": SHIP_TASKS,
+            },
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to serialize response: {str(e)}"}), 500
 
 
 # --------------------------------------------------------------------------
@@ -504,7 +516,7 @@ def session_join(sid):
             "suggestions": suggestions,
             "allGroupsRenamer": all_groups_renamer,
             "liveryData": livery_data,
-            "laserClsids": sorted(LASER_CLSIDS),
+            "laserClsids": sorted(LASER_CLSIDS, key=str),
             "dtcFlights": dtc_flights,
             "statistics": statistics,
             "countries": countries,
@@ -996,6 +1008,30 @@ def elevation(lat, lon):
     except Exception as e:
         # SRTM tile download may have failed or timed out
         return jsonify({"elevation": None})
+
+
+@app.route("/api/sessions/<sid>/debug", methods=["GET"])
+def debug_mission(sid):
+    """Run debug analysis on the loaded mission."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    try:
+        from services.mission_debugger import run_debug_analysis
+
+        mission_text = session["original_mission_text"]
+        mission_dict = parse_mission_text(mission_text)
+        theater = session.get("theater", "Unknown")
+
+        data = extract_full_mission_data(mission_dict, theater)
+        client_units = find_client_units(mission_dict)
+        overview = data.get("overview", {})
+
+        issues = run_debug_analysis(data["groups"], client_units, overview, mission_dict)
+        return jsonify({"issues": issues})
+    except Exception as e:
+        return jsonify({"error": f"Debug analysis failed: {str(e)}"}), 500
 
 
 @app.route("/api/close", methods=["POST"])

@@ -753,6 +753,129 @@ def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
     return text
 
 
+def _replace_icls(text: str, unit_id: int, channel: int) -> str:
+    """Replace ActivateICLS channel for a unit's waypoint task."""
+    icls_pattern = r'\["id"\]\s*=\s*"ActivateICLS"'
+    icls_pos = None
+    for m in re.finditer(icls_pattern, text):
+        region = text[m.start():m.start() + 500]
+        uid_match = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', region)
+        if uid_match:
+            icls_pos = m.start()
+            break
+
+    if icls_pos is None:
+        unit_pos = _find_unit_block_start(text, unit_id)
+        best = None
+        for m in re.finditer(icls_pattern, text):
+            if m.start() < unit_pos:
+                best = m.start()
+            else:
+                break
+        if best is None:
+            return text
+        icls_pos = best
+
+    icls_region = text[icls_pos:icls_pos + 500]
+    ch_match = re.search(r'(\["channel"\]\s*=\s*)(\d+)', icls_region)
+    if ch_match:
+        abs_s = icls_pos + ch_match.start(2)
+        abs_e = icls_pos + ch_match.end(2)
+        text = text[:abs_s] + str(channel) + text[abs_e:]
+
+    return text
+
+
+def _insert_group_wrapped_actions(text: str, group_id: int, actions: list[dict]) -> str:
+    """Insert WrappedAction tasks (SetInvisible, SetImmortal, etc.) into a group's
+    first waypoint task list.
+
+    Each action dict has: {"id": "SetInvisible", "value": true/false}
+
+    DCS Lua structure for waypoint tasks:
+        ["route"]["points"][1]["task"]["params"]["tasks"][N] = {
+            ["id"] = "WrappedAction",
+            ["params"] = { ["action"] = { ["id"] = "SetInvisible", ["params"] = { ["value"] = true } } },
+        }
+    """
+    # Find the group by groupId
+    gid_pat = rf'\["groupId"\]\s*=\s*{group_id}\b'
+    gid_match = re.search(gid_pat, text)
+    if not gid_match:
+        return text
+
+    # Search forward from the group for the route > points > [1] > task > params > tasks section
+    search_start = gid_match.start()
+    search_region = text[search_start:search_start + 20000]
+
+    # Find ["tasks"] = { within the first waypoint's task params
+    # We look for the pattern: ["route"]...["points"]...[1]...["task"]...["params"]...["tasks"] = {
+    tasks_match = re.search(r'\["tasks"\]\s*=\s*\{', search_region)
+    if not tasks_match:
+        return text
+
+    tasks_open_abs = search_start + tasks_match.end() - 1  # position of {
+
+    # Find what indices already exist inside this tasks block
+    # We need a bounded search, so find the matching closing brace
+    depth = 0
+    k = tasks_open_abs
+    in_str = False
+    while k < len(text):
+        ch = text[k]
+        if ch == '"' and (k == 0 or text[k - 1] != '\\'):
+            in_str = not in_str
+        elif not in_str:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+        k += 1
+    tasks_close_abs = k
+
+    tasks_content = text[tasks_open_abs:tasks_close_abs + 1]
+    existing_indices = [int(m.group(1)) for m in re.finditer(r'\[(\d+)\]\s*=', tasks_content)]
+    next_idx = max(existing_indices, default=0) + 1
+
+    # Detect indentation
+    indent_match = re.search(r'\n(\s+)\[\d+\]\s*=', tasks_content)
+    indent = indent_match.group(1) if indent_match else "                                "
+    inner = indent + "    "
+
+    # Build the new task entries
+    new_entries = ""
+    for action in actions:
+        action_id = action["id"]
+        lua_val = "true" if action.get("value", True) else "false"
+        new_entries += (
+            f'\n{indent}[{next_idx}] =\n'
+            f'{indent}{{\n'
+            f'{inner}["enabled"] = true,\n'
+            f'{inner}["auto"] = false,\n'
+            f'{inner}["id"] = "WrappedAction",\n'
+            f'{inner}["number"] = {next_idx},\n'
+            f'{inner}["params"] =\n'
+            f'{inner}{{\n'
+            f'{inner}    ["action"] =\n'
+            f'{inner}    {{\n'
+            f'{inner}        ["id"] = "{action_id}",\n'
+            f'{inner}        ["params"] =\n'
+            f'{inner}        {{\n'
+            f'{inner}            ["value"] = {lua_val},\n'
+            f'{inner}        }}, -- end of ["params"]\n'
+            f'{inner}    }}, -- end of ["action"]\n'
+            f'{inner}}}, -- end of ["params"]\n'
+            f'{indent}}}, -- end of [{next_idx}]'
+        )
+        next_idx += 1
+
+    # Insert before the closing } of the tasks block
+    text = text[:tasks_close_abs] + new_entries + "\n" + text[tasks_close_abs:]
+    return text
+
+
 def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
                        pos: int, name_str: str) -> str:
     """Replace the callsign block for an AI unit.
@@ -949,6 +1072,234 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
     match = re.search(pattern, text)
     if match:
         text = text[:match.start(2)] + lua_val + text[match.end(2):]
+    return text
+
+
+def _replace_briefing_fields(text: str, value: dict) -> str:
+    """Replace mission briefing text fields (sortie, descriptionText, blue/red task)."""
+    field_map = {
+        "sortie": "sortie",
+        "description": "descriptionText",
+        "descriptionBlueTask": "descriptionBlueTask",
+        "descriptionRedTask": "descriptionRedTask",
+    }
+    for key, lua_key in field_map.items():
+        if key not in value:
+            continue
+        new_val = str(value[key]).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+        pattern = rf'(\["{lua_key}"\]\s*=\s*)"([^"]*)"'
+        replacement = rf'\1"{new_val}"'
+        text = re.sub(pattern, replacement, text, count=1)
+    return text
+
+
+def _replace_coalition_assignments(text: str, changes: dict) -> str:
+    """Move countries between coalitions in the raw mission Lua text.
+
+    changes: dict mapping country_name -> target_coalition
+    e.g. {"USA": "red", "Russia": "blue"}
+
+    DCS Lua structure:
+      ["coalition"]["blue"]["country"][N] = { ["name"] = "USA", ... }
+
+    For each country, we:
+    1. Find the [N] = { ["name"] = "X", ... }, entry block
+    2. Verify which coalition it's currently in
+    3. Remove it from the source coalition
+    4. Insert it into the target coalition's ["country"] section
+    """
+    for country_name, target_coal in changes.items():
+        if target_coal not in ("blue", "red", "neutrals"):
+            continue
+
+        # --- Step 1: Find ["name"] = "CountryName" in the text ---
+        name_pat = rf'\["name"\]\s*=\s*"{re.escape(country_name)}"'
+        name_match = re.search(name_pat, text)
+        if not name_match:
+            continue
+
+        name_pos = name_match.start()
+
+        # --- Step 2: Determine current coalition ---
+        # Find the nearest ["blue"/"red"/"neutrals"] = key before this position
+        current_coal = None
+        best_pos = -1
+        for coal in ("blue", "red", "neutrals"):
+            for m in re.finditer(rf'\["{coal}"\]\s*=', text[:name_pos]):
+                if m.start() > best_pos:
+                    best_pos = m.start()
+                    current_coal = coal
+
+        if not current_coal or current_coal == target_coal:
+            continue
+
+        # --- Step 3: Find the [N] = { ... } entry block ---
+        # Walk backward from the name match to find the opening { of this country
+        depth = 0
+        i = name_pos - 1
+        while i >= 0:
+            ch = text[i]
+            if ch == '"':
+                i -= 1
+                while i >= 0 and text[i] != '"':
+                    if i > 0 and text[i - 1] == '\\':
+                        i -= 1
+                    i -= 1
+            elif ch == '}':
+                depth += 1
+            elif ch == '{':
+                if depth == 0:
+                    break
+                depth -= 1
+            i -= 1
+        open_brace = i
+        if open_brace < 0:
+            continue
+
+        # Back up to find [N] = before the opening brace
+        prefix = text[max(0, open_brace - 120):open_brace]
+        idx_match = re.search(r'\[(\d+)\]\s*=\s*$', prefix.rstrip())
+        if not idx_match:
+            continue
+        entry_start = max(0, open_brace - 120) + idx_match.start()
+
+        # Consume leading whitespace on the line
+        while entry_start > 0 and text[entry_start - 1] in (' ', '\t'):
+            entry_start -= 1
+
+        # Find closing brace using depth counting
+        depth = 0
+        j = open_brace
+        in_str = False
+        while j < len(text):
+            ch = text[j]
+            if ch == '"' and (j == 0 or text[j - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            j += 1
+        close_brace = j
+
+        # Grab inner content (the country data between braces)
+        inner_content = text[open_brace + 1:close_brace]
+
+        # Determine end of entry including trailing comma and comment
+        entry_end = close_brace + 1
+        rest = text[entry_end:entry_end + 80]
+        trail = re.match(r'\s*,[ \t]*(--[^\n]*)?\n?', rest)
+        if trail:
+            entry_end += trail.end()
+
+        # Remove leading newline if present
+        if entry_start > 0 and text[entry_start - 1] == '\n':
+            entry_start -= 1
+
+        # --- Step 4: Remove the entry from source coalition ---
+        text = text[:entry_start] + text[entry_end:]
+
+        # --- Step 5: Find the target coalition's ["country"] section ---
+        target_coal_match = re.search(rf'\["{target_coal}"\]\s*=\s*\{{', text)
+        if not target_coal_match:
+            continue
+
+        country_match = re.search(
+            r'\["country"\]\s*=\s*\{',
+            text[target_coal_match.end():]
+        )
+        if not country_match:
+            continue
+
+        # Position of the { opening the country table
+        country_open = target_coal_match.end() + country_match.end() - 1
+
+        # Find the closing } of the country table
+        depth = 0
+        k = country_open
+        in_str = False
+        while k < len(text):
+            ch = text[k]
+            if ch == '"' and (k == 0 or text[k - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            k += 1
+        country_close = k  # Position of closing }
+
+        # --- Step 6: Determine next index and insert ---
+        country_section = text[country_open:country_close]
+        existing_indices = [
+            int(m.group(1))
+            for m in re.finditer(r'\[(\d+)\]\s*=', country_section)
+        ]
+        next_idx = max(existing_indices, default=0) + 1
+
+        # Detect indentation from existing entries or use 12 spaces
+        indent_match = re.search(r'\n(\s+)\[\d+\]\s*=', country_section)
+        indent = indent_match.group(1) if indent_match else "            "
+
+        new_entry = f"\n{indent}[{next_idx}] =\n{indent}{{{inner_content}}}, -- end of [{next_idx}]"
+
+        # Insert before the closing } of the country table
+        text = text[:country_close] + new_entry + "\n" + text[country_close:]
+
+    return text
+
+
+def _replace_forced_options(text: str, options: dict) -> str:
+    """Replace or create the forcedOptions block in the mission Lua text.
+
+    `options` is a flat dict of key→value pairs, e.g.:
+    {"padlock": True, "labels": 0, "externalViews": False}
+    """
+    import re
+
+    # Serialize options dict to DCS Lua format
+    lines = []
+    for k, v in sorted(options.items()):
+        if isinstance(v, bool):
+            lua_val = "true" if v else "false"
+        elif isinstance(v, (int, float)):
+            lua_val = str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+        elif isinstance(v, str):
+            lua_val = f'"{v}"'
+        else:
+            lua_val = str(v).lower() if isinstance(v, bool) else str(v)
+        lines.append(f'        ["{k}"] = {lua_val},')
+    inner = "\n".join(lines)
+    new_block = f'["forcedOptions"] =\n    {{\n{inner}\n    }}'
+
+    # Try to find and replace existing forcedOptions block
+    # Pattern: ["forcedOptions"] = { ... }, at mission root level
+    pattern = re.compile(
+        r'\["forcedOptions"\]\s*=\s*\{[^}]*\}',
+        re.DOTALL,
+    )
+    if pattern.search(text):
+        text = pattern.sub(new_block, text)
+    else:
+        # No existing block — insert before the closing of the mission table
+        # Look for the last "} -- end of mission" or just before final closing
+        # Insert right before the end of the mission root table
+        # The mission Lua typically ends with: } -- end of mission
+        insert_pattern = re.compile(r'(\n\} -- end of mission)', re.IGNORECASE)
+        if insert_pattern.search(text):
+            text = insert_pattern.sub(f'\n    {new_block},\\1', text)
+        else:
+            # Fallback: insert before the very last closing brace
+            last_brace = text.rfind("}")
+            if last_brace > 0:
+                text = text[:last_brace] + f'    {new_block},\n' + text[last_brace:]
+
     return text
 
 
@@ -1346,7 +1697,16 @@ def apply_unit_edits(text: str, edits: list) -> str:
 
         try:
             # Mission-level edits (no unitId needed)
-            if field == "weather":
+            if field == "forcedOptions":
+                text = _replace_forced_options(text, value)
+                continue
+            elif field == "briefing":
+                text = _replace_briefing_fields(text, value)
+                continue
+            elif field == "coalitionReassign":
+                text = _replace_coalition_assignments(text, value)
+                continue
+            elif field == "weather":
                 text = _replace_weather_block(text, value)
                 continue
             elif field == "findReplace":
@@ -1355,6 +1715,12 @@ def apply_unit_edits(text: str, edits: list) -> str:
                     value.get("regex", False),
                     value.get("inUnits", True), value.get("inGroups", True),
                 )
+                continue
+
+            # Group-level task insertion (SetInvisible, SetImmortal, etc.)
+            if field == "groupWrappedActions":
+                group_id = edit["groupId"]
+                text = _insert_group_wrapped_actions(text, group_id, value)
                 continue
 
             # Group-level edits
@@ -1411,6 +1777,8 @@ def apply_unit_edits(text: str, edits: list) -> str:
                     int(value["channel"]), str(value.get("band", "X")),
                     str(value.get("callsign", "")),
                 )
+            elif field == "icls":
+                text = _replace_icls(text, unit_id, int(value["channel"]))
             elif field == "callsign":
                 text = _replace_callsign(
                     text, unit_id,

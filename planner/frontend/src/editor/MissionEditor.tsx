@@ -8,37 +8,33 @@ import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
 import { ExportPanel } from '../panels/ExportPanel';
 import { PlayerGroupsButton } from '../panels/PlayerGroupsModal';
 import { DatalinkTab } from './tabs/DatalinkTab';
-import { LoadoutTab } from './tabs/LoadoutTab';
-import { LaserTab } from './tabs/LaserTab';
 import { DtcTab } from './tabs/DtcTab';
-import { LiveryTab } from './tabs/LiveryTab';
-import { WeatherTab } from './tabs/WeatherTab';
-import { RenamerTab } from './tabs/RenamerTab';
-import { BatchEditTab } from './tabs/BatchEditTab';
-import { TriggerTab } from './tabs/TriggerTab';
+import { WeaponsTab } from './tabs/WeaponsTab';
+import { RadioTab } from './tabs/RadioTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
-import { DrawingsTab } from './tabs/DrawingsTab';
-import { TacanTab } from './tabs/TacanTab';
-import { CommCardTab } from './tabs/CommCardTab';
+import { WeatherTab } from './tabs/WeatherTab';
+import { LiveryTab } from './tabs/LiveryTab';
+import { MissionEditTab } from './tabs/MissionEditTab';
+import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
+import { CoalitionsTab } from './tabs/CoalitionsTab';
+import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
   { id: 'map', label: 'Map', icon: '🗺' },
-  { id: 'datalink', label: 'Datalink', icon: '📡' },
-  { id: 'loadouts', label: 'Loadouts', icon: '💣' },
-  { id: 'laser', label: 'Laser', icon: '🎯' },
-  { id: 'livery', label: 'Livery', icon: '🎨' },
-  { id: 'weather', label: 'Weather', icon: '🌤' },
-  { id: 'rename', label: 'Rename', icon: '✏' },
-  { id: 'batch', label: 'Batch', icon: '⚡' },
-  { id: 'tacan', label: 'TACAN', icon: '📻' },
-  { id: 'commcard', label: 'Comm Card', icon: '📶' },
-  { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
-  { id: 'dtc', label: 'DTC', icon: '💾' },
-  { id: 'triggers', label: 'Triggers', icon: '🔔' },
+  { id: 'coalitions', label: 'Coalitions', icon: '⚔' },
   { id: 'threats', label: 'Threats', icon: '⚠' },
-  { id: 'drawings', label: 'Drawings', icon: '📐' },
+  { id: 'datalink', label: 'Datalink', icon: '📡' },
+  { id: 'dtc', label: 'DTC', icon: '💾' },
+  { id: 'weapons', label: 'Weapons', icon: '💣' },
+  { id: 'radio', label: 'Radio', icon: '📻' },
+  { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
+  { id: 'weather', label: 'Weather', icon: '🌤' },
+  { id: 'livery', label: 'Livery', icon: '🎨' },
+  { id: 'missionEdit', label: 'Miz Edit', icon: '🔔' },
+  { id: 'debug', label: 'Debug', icon: '🔍' },
+  { id: 'tools', label: 'Tools', icon: '🔧' },
   { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
 
@@ -184,20 +180,18 @@ export function MissionEditor() {
         {/* Editor tabs — scrollable content */}
         {!isMap && (
           <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
-            {activeTab === 'datalink' && <DatalinkTab />}
-            {activeTab === 'loadouts' && <LoadoutTab />}
-            {activeTab === 'laser' && <LaserTab />}
-            {activeTab === 'livery' && <LiveryTab />}
-            {activeTab === 'weather' && <WeatherTab />}
-            {activeTab === 'rename' && <RenamerTab />}
-            {activeTab === 'batch' && <BatchEditTab />}
-            {activeTab === 'tacan' && <TacanTab />}
-            {activeTab === 'commcard' && <CommCardTab />}
-            {activeTab === 'kneeboard' && <KneeboardTab />}
-            {activeTab === 'dtc' && <DtcTab />}
-            {activeTab === 'triggers' && <TriggerTab />}
+            {activeTab === 'coalitions' && <CoalitionsTab />}
             {activeTab === 'threats' && <ThreatLibraryTab />}
-            {activeTab === 'drawings' && <DrawingsTab />}
+            {activeTab === 'datalink' && <DatalinkTab />}
+            {activeTab === 'dtc' && <DtcTab />}
+            {activeTab === 'weapons' && <WeaponsTab />}
+            {activeTab === 'radio' && <RadioTab />}
+            {activeTab === 'kneeboard' && <KneeboardTab />}
+            {activeTab === 'weather' && <WeatherTab />}
+            {activeTab === 'livery' && <LiveryTab />}
+            {activeTab === 'missionEdit' && <MissionEditTab />}
+            {activeTab === 'debug' && <MissionDebugTab />}
+            {activeTab === 'tools' && <ToolsTab />}
             {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
           </div>
         )}

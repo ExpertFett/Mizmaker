@@ -30,7 +30,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export function ExportPanel() {
-  const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater } = useMissionStore();
+  const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
   const { edits, isDirty, clearEdits, injectKneeboards, kneeboardSettings } = useEditStore();
 
   const handleDownload = async () => {
@@ -39,6 +39,11 @@ export function ExportPanel() {
     const isWaypointEdit = (e: any): e is WaypointEdit =>
       'type' in e && typeof e.type === 'string' && e.type.startsWith('waypoint');
     const unitEdits = edits.filter((e) => !isWaypointEdit(e));
+
+    // Always include forcedOptions so mission options changes are saved
+    if (Object.keys(missionOptions).length > 0) {
+      unitEdits.push({ field: 'forcedOptions', value: missionOptions });
+    }
 
     // Render kneeboard PNGs if inject is enabled
     let kneeboards: { aircraft_type: string; filename: string; data: string }[] = [];

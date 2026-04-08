@@ -6,7 +6,7 @@
  * - Route Detail: map snapshot with waypoint markers + summary
  */
 
-import { useState, useEffect, useRef, createElement } from 'react';
+import { useState, useEffect, useMemo, createElement } from 'react';
 import JSZip from 'jszip';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore, type KneeboardCards } from '../../store/editStore';
@@ -19,6 +19,7 @@ import { SupportAssetsCard } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
+import { ThreatCard } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import type { Weather } from '../../utils/atmosphere';
@@ -37,6 +38,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'radioLadder', label: 'Radio Ladder', desc: 'Shared frequency reference' },
   { key: 'airbaseRef', label: 'Airbase Reference', desc: 'Airfield info, ILS, TACAN' },
   { key: 'bullseyeRef', label: 'Bullseye Reference', desc: 'Bullseye point and radials' },
+  { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
 ];
 
@@ -63,7 +65,6 @@ export function KneeboardTab() {
     playerGroups[0]?.groupId ?? null,
   );
   const [rendering, setRendering] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first player group when groups load
   useEffect(() => {
@@ -127,6 +128,10 @@ export function KneeboardTab() {
     if (cards.bullseyeRef && overview) {
       const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition });
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.threatCard) {
+      const el = createElement(ThreatCard, { threats, playerCoalition: coalition });
+      results.push({ name: 'Threat_Card.png', blob: await renderCardToBlob(el) });
     }
     if (cards.weatherBrief && overview) {
       const el = createElement(WeatherBriefCard, { overview });
@@ -372,40 +377,243 @@ export function KneeboardTab() {
         </div>
       </div>
 
-      {/* Live Preview */}
-      {selectedGroup ? (
-        <div style={{
-          border: '1px solid #1a3a5a',
-          borderRadius: 6,
-          overflow: 'hidden',
-          display: 'inline-block',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-        }}>
-          <div ref={previewRef}>
-            <RouteCard
-              group={selectedGroup}
-              weather={wx}
-              coordFormat={coordFormat}
-              speedRef={speedRef}
-              machThreshold={machThreshold}
-            />
+      {/* Live Preview Carousel */}
+      <CardCarousel
+        selectedGroup={selectedGroup}
+        playerGroups={playerGroups}
+        cards={cards}
+        groups={groups}
+        clientUnits={clientUnits}
+        threats={threats}
+        airbases={airbases}
+        theater={theater}
+        overview={overview}
+        coalition={coalition}
+        wx={wx}
+        coordFormat={coordFormat}
+        speedRef={speedRef}
+        machThreshold={machThreshold}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Card Carousel                                                       */
+/* ------------------------------------------------------------------ */
+
+interface CarouselProps {
+  selectedGroup: ReturnType<typeof useMissionStore.getState>['groups'][number] | undefined;
+  playerGroups: ReturnType<typeof useMissionStore.getState>['groups'];
+  cards: KneeboardCards;
+  groups: ReturnType<typeof useMissionStore.getState>['groups'];
+  clientUnits: ReturnType<typeof useMissionStore.getState>['clientUnits'];
+  threats: ReturnType<typeof useMissionStore.getState>['threats'];
+  airbases: ReturnType<typeof useMissionStore.getState>['airbases'];
+  theater: string;
+  overview: ReturnType<typeof useMissionStore.getState>['overview'];
+  coalition: string;
+  wx: Weather | undefined;
+  coordFormat: 'mgrs' | 'latlon';
+  speedRef: KneeboardSpeedRef;
+  machThreshold: number;
+}
+
+interface CardEntry {
+  key: string;
+  label: string;
+  element: React.ReactElement;
+}
+
+function CardCarousel({
+  selectedGroup, cards, groups, clientUnits, threats,
+  airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
+}: CarouselProps) {
+  const [cardIndex, setCardIndex] = useState(0);
+
+  // Build list of enabled cards
+  const cardList = useMemo<CardEntry[]>(() => {
+    const list: CardEntry[] = [];
+
+    if (selectedGroup) {
+      if (cards.lineup) {
+        list.push({
+          key: 'lineup', label: 'Route Card',
+          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold }),
+        });
+      }
+      if (cards.flight) {
+        list.push({
+          key: 'flight', label: 'Flight Card',
+          element: createElement(FlightCard, { group: selectedGroup, clientUnits }),
+        });
+      }
+      if (cards.comms) {
+        list.push({
+          key: 'comms', label: 'Comms Card',
+          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups }),
+        });
+      }
+      if (cards.routeDetail) {
+        list.push({
+          key: 'routeDetail', label: 'Route Detail',
+          element: createElement(RouteDetailCard, { group: selectedGroup, threats }),
+        });
+      }
+      if (cards.fuelLadder) {
+        list.push({
+          key: 'fuelLadder', label: 'Fuel Ladder',
+          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits }),
+        });
+      }
+    }
+
+    // Shared cards
+    if (cards.supportAssets) {
+      list.push({
+        key: 'supportAssets', label: 'Support Assets',
+        element: createElement(SupportAssetsCard, { groups, coalition }),
+      });
+    }
+    if (cards.radioLadder) {
+      list.push({
+        key: 'radioLadder', label: 'Radio Ladder',
+        element: createElement(RadioLadderCard, { groups, coalition }),
+      });
+    }
+    if (cards.airbaseRef) {
+      list.push({
+        key: 'airbaseRef', label: 'Airbase Reference',
+        element: createElement(AirbaseRefCard, { airbases, theater }),
+      });
+    }
+    if (cards.bullseyeRef && overview) {
+      list.push({
+        key: 'bullseyeRef', label: 'Bullseye Reference',
+        element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition }),
+      });
+    }
+    if (cards.threatCard) {
+      list.push({
+        key: 'threatCard', label: 'Threat Card',
+        element: createElement(ThreatCard, { threats, playerCoalition: coalition }),
+      });
+    }
+    if (cards.weatherBrief && overview) {
+      list.push({
+        key: 'weatherBrief', label: 'Weather Briefing',
+        element: createElement(WeatherBriefCard, { overview }),
+      });
+    }
+
+    return list;
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold]);
+
+  // Clamp index when list changes
+  useEffect(() => {
+    if (cardIndex >= cardList.length) setCardIndex(Math.max(0, cardList.length - 1));
+  }, [cardList.length, cardIndex]);
+
+  if (cardList.length === 0) {
+    return (
+      <div style={{
+        width: 600, height: 400, border: '1px dashed #1a3a5a', borderRadius: 6,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#5a7a8a', fontSize: 15,
+      }}>
+        {!selectedGroup ? 'Select a flight to preview' : 'No card types selected'}
+      </div>
+    );
+  }
+
+  const current = cardList[cardIndex];
+
+  const arrowBtn: React.CSSProperties = {
+    background: '#0f1a28',
+    border: '1px solid #1a3a5a',
+    borderRadius: 6,
+    color: '#4a8fd4',
+    cursor: 'pointer',
+    fontSize: 22,
+    fontWeight: 700,
+    width: 40,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'inherit',
+  };
+
+  const arrowDisabled: React.CSSProperties = {
+    ...arrowBtn,
+    color: '#1a2a3a',
+    cursor: 'default',
+  };
+
+  return (
+    <div>
+      {/* Nav bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 12, marginBottom: 10,
+      }}>
+        <button
+          onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
+          disabled={cardIndex === 0}
+          style={cardIndex === 0 ? arrowDisabled : arrowBtn}
+        >
+          ‹
+        </button>
+        <div style={{ textAlign: 'center', minWidth: 180 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>
+            {current.label}
+          </div>
+          <div style={{ fontSize: 11, color: '#5a7a8a' }}>
+            {cardIndex + 1} / {cardList.length}
           </div>
         </div>
-      ) : (
-        <div style={{
-          width: 600,
-          height: 400,
-          border: '1px dashed #1a3a5a',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#5a7a8a',
-          fontSize: 14,
-        }}>
-          {playerGroups.length === 0 ? 'No player flights in this mission' : rendering ? 'Rendering...' : 'Select a flight to preview'}
-        </div>
-      )}
+        <button
+          onClick={() => setCardIndex((i) => Math.min(cardList.length - 1, i + 1))}
+          disabled={cardIndex === cardList.length - 1}
+          style={cardIndex === cardList.length - 1 ? arrowDisabled : arrowBtn}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Card preview */}
+      <div style={{
+        border: '1px solid #1a3a5a',
+        borderRadius: 6,
+        overflow: 'hidden',
+        display: 'inline-block',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      }}>
+        {current.element}
+      </div>
+
+      {/* Dot indicators */}
+      <div style={{
+        display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10,
+      }}>
+        {cardList.map((c, i) => (
+          <button
+            key={c.key}
+            onClick={() => setCardIndex(i)}
+            title={c.label}
+            style={{
+              width: i === cardIndex ? 20 : 8,
+              height: 8,
+              borderRadius: 4,
+              border: 'none',
+              background: i === cardIndex ? '#4a8fd4' : '#1a2a3a',
+              cursor: 'pointer',
+              transition: 'width 0.15s, background 0.15s',
+              padding: 0,
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -177,6 +177,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)
     trigger_zones = _extract_trigger_zones(mission_dict, theater, has_projection)
+    mission_options = _extract_mission_options(mission_dict)
 
     return {
         "overview": overview,
@@ -186,6 +187,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
         "airbases": airbases,
         "drawings": drawings,
         "triggerZones": trigger_zones,
+        "missionOptions": mission_options,
     }
 
 
@@ -309,6 +311,8 @@ def _extract_overview(d: dict, theater: str) -> dict:
         "date": f"{date.get('Year', 2000)}-{date.get('Month', 1):02d}-{date.get('Day', 1):02d}",
         "start_time": d.get("start_time", 0),
         "description": d.get("descriptionText", ""),
+        "descriptionBlueTask": d.get("descriptionBlueTask", ""),
+        "descriptionRedTask": d.get("descriptionRedTask", ""),
         "weather": {
             "wind": {
                 "atGround": {"speed": _num(wind.get("atGround", {}).get("speed")), "dir": _num(wind.get("atGround", {}).get("dir"))},
@@ -334,6 +338,48 @@ def _extract_overview(d: dict, theater: str) -> dict:
             "halo_preset": wx.get("halo", {}).get("preset", "auto"),
         },
     }
+
+
+def _extract_mission_options(d: dict) -> dict:
+    """Extract forcedOptions and mission-level options from the mission dict.
+
+    DCS forcedOptions controls what players can/cannot do:
+    - labels, padlock, externalViews, birds, civTraffic, easyFlight, etc.
+    These are set in the ME under 'Mission Options'.
+    """
+    forced = d.get("forcedOptions", {})
+    if not isinstance(forced, dict):
+        forced = {}
+
+    # DCS stores these as nested dicts; flatten to simple key-value pairs
+    # Boolean fields (true/false)
+    bool_keys = [
+        "padlock", "permitCrash", "immortal", "fuel",
+        "miniHUD", "easyRadar", "easyFlight",
+        "externalViews", "birds", "userMarks", "wakeTurbulence",
+        "accidental_failures", "easyComms", "RBDAI",
+    ]
+    # Integer/enum fields
+    enum_keys = [
+        "labels", "civTraffic", "geffect", "optionsView",
+    ]
+
+    result: dict = {}
+    for k in bool_keys:
+        v = forced.get(k)
+        if v is not None:
+            result[k] = bool(v)
+    for k in enum_keys:
+        v = forced.get(k)
+        if v is not None:
+            result[k] = v
+
+    # Also grab any keys we didn't explicitly list (future-proof)
+    for k, v in forced.items():
+        if k not in result:
+            result[k] = v
+
+    return result
 
 
 def _extract_tacan_from_tasks(waypoints: list) -> dict | None:
@@ -367,6 +413,45 @@ def _extract_tacan_from_tasks(waypoints: list) -> dict | None:
                 if r:
                     return r
         # Params may contain nested structures
+        params = obj.get("params")
+        if isinstance(params, dict):
+            r = _search(params)
+            if r:
+                return r
+        return None
+
+    for wp in waypoints:
+        task = wp.get("task")
+        if task and isinstance(task, dict):
+            result = _search(task)
+            if result:
+                return result
+    return None
+
+
+def _extract_icls_from_tasks(waypoints: list) -> dict | None:
+    """Recursively search waypoint task dicts for ActivateICLS params."""
+    def _search(obj):
+        if not isinstance(obj, dict):
+            return None
+        if obj.get("id") == "ActivateICLS":
+            params = obj.get("params", {})
+            ch = params.get("channel")
+            if ch:
+                return {"channel": int(ch)}
+        action = obj.get("action")
+        if isinstance(action, dict):
+            r = _search(action)
+            if r:
+                return r
+        tasks = obj.get("tasks")
+        if isinstance(tasks, dict):
+            tasks = list(tasks.values())
+        if isinstance(tasks, list):
+            for t in tasks:
+                r = _search(t)
+                if r:
+                    return r
         params = obj.get("params")
         if isinstance(params, dict):
             r = _search(params)
@@ -458,6 +543,7 @@ def _extract_group(
 
     # Extract TACAN beacon data from waypoint tasks (tankers, carriers)
     tacan = _extract_tacan_from_tasks(waypoints)
+    icls = _extract_icls_from_tasks(waypoints)
 
     return {
         "groupId": group_id,
@@ -469,6 +555,7 @@ def _extract_group(
         "frequency": _num(group.get("frequency")),
         "modulation": group.get("modulation", 0),
         "tacan": tacan,
+        "icls": icls,
         "units": extracted_units,
         "waypoints": waypoints,
     }
