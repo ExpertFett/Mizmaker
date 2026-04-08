@@ -1,6 +1,8 @@
 services:
   planner:
-    build: .
+    build:
+      context: ..
+      dockerfile: planner/Dockerfile
     environment:
       - FLASK_ENV=production
     volumes:
