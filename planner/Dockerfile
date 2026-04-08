@@ -11,7 +11,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Build tools needed for lupa (LuaJIT compilation)
-RUN apt-get update && apt-get install -y --no-install-recommends gcc make && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
 COPY planner/backend/requirements.txt ./
