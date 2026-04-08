@@ -645,7 +645,10 @@ def find_client_units(mission: dict) -> list:
         # Extract loadout
         payload = unit.get("payload", {})
         pylons_raw = payload.get("pylons", {})
-        if isinstance(pylons_raw, dict):
+        # Lupa returns lists for sequential int-keyed tables, slpp returns dicts
+        if isinstance(pylons_raw, list):
+            pylons_raw = {i + 1: v for i, v in enumerate(pylons_raw) if isinstance(v, dict)}
+        elif isinstance(pylons_raw, dict):
             pylons_raw = {int(k): v for k, v in pylons_raw.items() if isinstance(v, dict)}
         pylons = []
         laser_code = None
