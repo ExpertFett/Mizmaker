@@ -1,29 +1,34 @@
 /**
  * Airbase Reference Card — shared mission-wide kneeboard card.
- * Shows airbases with comms, TACAN, ILS, and active runways.
+ * Shows airbases with coordinates and coalition.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, cell, th, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { forward as toMGRS } from 'mgrs';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, BORDER, BORDER_MED, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
 import type { Airbase } from '../types/mission';
-import { getAirbaseComms } from '../data/airbaseComms';
 
 interface AirbaseRefCardProps {
   airbases: Airbase[];
   theater: string;
 }
 
-function fmtFreq(f?: number): string {
-  if (f == null) return '—';
-  return f.toFixed(f % 1 === 0 ? 1 : 2);
+function fmtCoord(lat?: number, lon?: number): string {
+  if (lat == null || lon == null) return '—';
+  try { return toMGRS([lon, lat], 3); } catch { return '—'; }
+}
+
+function fmtLatLon(lat?: number, lon?: number): string {
+  if (lat == null || lon == null) return '—';
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lon >= 0 ? 'E' : 'W';
+  const la = Math.abs(lat);
+  const lo = Math.abs(lon);
+  return `${ns}${Math.floor(la)}°${((la % 1) * 60).toFixed(1)}' ${ew}${Math.floor(lo)}°${((lo % 1) * 60).toFixed(1)}'`;
 }
 
 export function AirbaseRefCard({ airbases, theater }: AirbaseRefCardProps) {
+  // Sort by name
   const sorted = [...airbases].sort((a, b) => a.name.localeCompare(b.name));
-
-  const rows = sorted.map((ab) => {
-    const comms = getAirbaseComms(ab.name);
-    return { ab, comms };
-  });
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
@@ -38,43 +43,23 @@ export function AirbaseRefCard({ airbases, theater }: AirbaseRefCardProps) {
         <thead>
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>AIRFIELD</th>
-            <th style={{ ...th, width: 58 }}>TWR</th>
-            <th style={{ ...th, width: 58 }}>ATIS</th>
-            <th style={{ ...th, width: 48 }}>TACAN</th>
-            <th style={{ ...th, width: 100 }}>ILS</th>
-            <th style={{ ...th, width: 110 }}>RWY</th>
-            <th style={{ ...th, width: 38 }}>ELEV</th>
+            <th style={{ ...th, width: 130 }}>MGRS</th>
+            <th style={{ ...th, width: 180 }}>LAT/LON</th>
+            <th style={{ ...th, width: 60 }}>SIDE</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ ab, comms }, i) => (
+          {sorted.map((ab, i) => (
             <tr key={ab.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              <td style={{ ...cell, fontWeight: 500 }}>{ab.name}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(ab.lat, ab.lon)}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtLatLon(ab.lat, ab.lon)}</td>
               <td style={{
                 ...cell,
-                fontWeight: 500,
-                fontSize: 8,
-                padding: '2px 4px',
-                color: ab.coalition === 'blue' ? ACCENT : ab.coalition === 'red' ? '#d95050' : undefined,
+                textAlign: 'center',
+                color: ab.coalition === 'blue' ? ACCENT : ab.coalition === 'red' ? '#d95050' : DIM,
               }}>
-                {ab.name}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 8, padding: '2px 3px' }}>
-                {fmtFreq(comms?.tower)}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 8, padding: '2px 3px' }}>
-                {fmtFreq(comms?.atis)}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 8, padding: '2px 3px', color: comms?.tacan ? ACCENT : DIM }}>
-                {comms?.tacan || '—'}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 7, padding: '2px 3px', color: DIM }}>
-                {comms?.ils || '—'}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 7, padding: '2px 3px' }}>
-                {comms?.runways || '—'}
-              </td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 7, padding: '2px 3px', color: DIM }}>
-                {comms?.elevation != null ? `${comms.elevation}'` : '—'}
+                {(ab.coalition || 'neutral').toUpperCase()}
               </td>
             </tr>
           ))}
@@ -87,10 +72,10 @@ export function AirbaseRefCard({ airbases, theater }: AirbaseRefCardProps) {
         </div>
       )}
 
-      <div style={{ padding: '4px 16px 20px' }}>
-        <div style={{ fontSize: 9, color: DIM, marginBottom: 3 }}>
-          Freqs in MHz AM | ELEV in ft MSL | Data: DCS defaults
-        </div>
+      {/* Notes */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, marginTop: 8 }}>
+        <div style={sectionTitle}>NOTES</div>
+        <div style={notesBox} />
       </div>
 
       <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>

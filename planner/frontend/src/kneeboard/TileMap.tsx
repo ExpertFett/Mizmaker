@@ -149,7 +149,7 @@ export function TileMap({
         height,
         overflow: 'hidden',
         borderRadius: 4,
-        background: '#060d14',
+        background: '#1a1a1a',
       }}
     >
       {/* Map tiles */}

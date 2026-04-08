@@ -93,7 +93,7 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
         </>
       )}
 
-      {/* Other flights — cap at 20 rows to prevent overflow */}
+      {/* Other flights */}
       {flights.length > 1 && (
         <>
           <div style={sectionTitle}>FLIGHT FREQUENCIES</div>
@@ -106,24 +106,17 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
               </tr>
             </thead>
             <tbody>
-              {flights.slice(0, 20).map((g, i) => (
+              {flights.map((g, i) => (
                 <tr key={g.groupId} style={{
                   background: g.groupId === group.groupId ? 'rgba(255, 165, 0, 0.12)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
                 }}>
-                  <td style={{ ...cell, fontWeight: g.groupId === group.groupId ? 600 : 400, fontSize: 9, padding: '2px 6px' }}>
+                  <td style={{ ...cell, fontWeight: g.groupId === group.groupId ? 600 : 400 }}>
                     {g.groupName}{g.groupId === group.groupId ? ' *' : ''}
                   </td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM, padding: '2px 6px' }}>{g.task || '—'}</td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 9, padding: '2px 6px' }}>{formatFreq(g.frequency, g.modulation)}</td>
+                  <td style={{ ...cell, textAlign: 'center', fontSize: 17, color: DIM }}>{g.task || '—'}</td>
+                  <td style={{ ...cell, textAlign: 'center' }}>{formatFreq(g.frequency, g.modulation)}</td>
                 </tr>
               ))}
-              {flights.length > 20 && (
-                <tr>
-                  <td colSpan={3} style={{ ...cell, textAlign: 'center', fontSize: 8, color: DIM, padding: '2px 6px' }}>
-                    +{flights.length - 20} more flights
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </>
@@ -131,7 +124,7 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
 
       {/* Mission flow */}
       <div style={sectionTitle}>MISSION FLOW</div>
-      <div style={{ padding: '4px 16px 6px', fontSize: 10, color: DIM }}>
+      <div style={{ padding: '6px 16px', fontSize: 17, color: DIM }}>
         {phases.map((p, i) => (
           <span key={i}>
             {i > 0 && <span style={{ color: ACCENT }}> → </span>}
@@ -140,11 +133,11 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
         ))}
       </div>
 
-      {/* Notes — reduced to fit */}
-      <div style={{ padding: '4px 16px 20px' }}>
-        <div style={{ fontSize: 10, color: DIM, marginBottom: 3 }}>NOTES:</div>
-        {[...Array(3)].map((_, i) => (
-          <div key={i} style={{ borderBottom: `1px solid ${BORDER}`, height: 14, marginBottom: 3 }} />
+      {/* Notes */}
+      <div style={sectionTitle}>NOTES</div>
+      <div style={notesBox}>
+        {[...Array(5)].map((_, i) => (
+          <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 20, marginBottom: 4 }} />
         ))}
       </div>
 
