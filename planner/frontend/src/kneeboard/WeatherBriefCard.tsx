@@ -6,7 +6,7 @@
 import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
   notesBox, footerStyle,
-  BORDER, BORDER_MED, TEXT, TEXT_MUTED, DIM, WARN,
+  BORDER, TEXT, TEXT_MUTED, DIM, WARN,
 } from './cardStyles';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';

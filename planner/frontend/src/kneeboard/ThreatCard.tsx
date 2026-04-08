@@ -4,7 +4,7 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, BG, TEXT_MUTED, W as CARD_W } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, BG, W as CARD_W } from './cardStyles';
 import type { ThreatRing } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';

@@ -6,7 +6,7 @@
  * Shows running fuel total with joker/bingo marks and visual gauges.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, BORDER_MED, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN } from './cardStyles';
 import type { MissionGroup, ClientUnit } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, msToKnots } from '../utils/conversions';

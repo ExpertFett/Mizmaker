@@ -4,7 +4,7 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, BORDER, BORDER_MED, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
 import type { Airbase } from '../types/mission';
 
 interface AirbaseRefCardProps {
