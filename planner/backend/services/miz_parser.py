@@ -3,7 +3,8 @@
 
 A .miz file is a ZIP archive containing Lua table files.
 The 'mission' entry holds the main mission data as a Lua table.
-We parse it with slpp, then traverse the coalition→country→category→group hierarchy.
+We parse it with Lupa (LuaJIT runtime), then traverse the
+coalition→country→category→group hierarchy.
 """
 
 import io
@@ -11,22 +12,14 @@ import json
 import zipfile
 from typing import Dict, List, Any, Optional
 
-from slpp import slpp as lua
+import lupa
 
 from services.projection import dcs_to_latlon, THEATERS
 
-# Load SAM threat ranges
-import os
-_data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-with open(os.path.join(_data_dir, "sam_threat_ranges.json")) as f:
-    SAM_THREAT_RANGES: Dict[str, int] = json.load(f)
+from reference.loader import get_sam_threat_ranges, get_airbases
 
-# Static airbase data per theater (from dcs-web-editor)
-_airbases_path = os.path.join(_data_dir, "airbases.json")
-_THEATER_AIRBASES = {}
-if os.path.exists(_airbases_path):
-    with open(_airbases_path) as f:
-        _THEATER_AIRBASES = json.load(f)
+SAM_THREAT_RANGES: Dict[str, int] = get_sam_threat_ranges()
+_THEATER_AIRBASES = get_airbases()
 
 
 def _load_theater_airbases(theater: str) -> list:
@@ -45,14 +38,82 @@ def extract_mission_from_miz(miz_bytes: bytes) -> str:
         return zf.read("mission").decode("utf-8")
 
 
+def _lua_table_to_python(lua_table):
+    """Recursively convert a Lupa Lua table to Python dicts/lists."""
+    if isinstance(lua_table, (str, int, float, bool, type(None))):
+        return lua_table
+
+    if not hasattr(lua_table, '__getitem__'):
+        return str(lua_table)
+
+    try:
+        keys = list(lua_table)
+    except Exception:
+        return {}
+
+    # Check if array (sequential int keys starting at 1)
+    is_array = all(isinstance(k, (int, float)) for k in keys) and len(keys) > 0
+    if is_array:
+        max_idx = int(max(keys))
+        result = []
+        for i in range(1, max_idx + 1):
+            try:
+                val = lua_table[i]
+                if isinstance(val, (str, int, float, bool, type(None))):
+                    result.append(val)
+                elif hasattr(val, '__getitem__'):
+                    result.append(_lua_table_to_python(val))
+                else:
+                    result.append(str(val))
+            except Exception:
+                result.append(None)
+        return result
+    else:
+        result = {}
+        for key in keys:
+            try:
+                val = lua_table[key]
+                k = str(key) if not isinstance(key, str) else key
+                if isinstance(val, (str, int, float, bool, type(None))):
+                    result[k] = val
+                elif hasattr(val, '__getitem__'):
+                    result[k] = _lua_table_to_python(val)
+                else:
+                    result[k] = str(val)
+            except Exception:
+                continue
+        return result
+
+
+def _create_sandboxed_lua():
+    """Create a Lua runtime with dangerous globals removed.
+
+    DCS .miz files are pure data (table assignments). They don't need os, io,
+    or any module system. Removing these prevents a crafted .miz from executing
+    arbitrary commands on the server.
+    """
+    lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute("""
+        os = nil
+        io = nil
+        debug = nil
+        loadfile = nil
+        dofile = nil
+        require = nil
+        package = nil
+        load = nil
+    """)
+    return lua
+
+
 def parse_mission_text(text: str) -> dict:
-    """Parse Lua mission text into a Python dict."""
-    # Strip the 'mission = ' prefix if present
-    stripped = text.strip()
-    if stripped.startswith("mission"):
-        idx = stripped.index("{")
-        stripped = stripped[idx:]
-    return lua.decode(stripped)
+    """Parse Lua mission text into a Python dict using Lupa (LuaJIT)."""
+    lua_runtime = _create_sandboxed_lua()
+    lua_runtime.execute(text)
+    mission = lua_runtime.globals().mission
+    if mission is None:
+        raise ValueError("No 'mission' table found in Lua text")
+    return _lua_table_to_python(mission)
 
 
 def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:

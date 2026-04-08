@@ -9,46 +9,20 @@ import json
 import os
 from collections import OrderedDict
 
-
-# ─── Database loading ──────────────────────────────────────────────────────
-
-def _load_weapons_db():
-    """Load the CLSID-to-name mapping."""
-    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "weapons_data.json")
-    try:
-        with open(db_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+from reference.loader import (
+    get_weapons,
+    get_weapon_weights,
+    get_pylons,
+    get_launcher_settings,
+)
 
 
-WEAPONS_DB = _load_weapons_db()
+# ─── Reference data (lazy-loaded from pydcs) ─────────────────────────────
 
-
-def _load_pylon_db():
-    """Load the per-aircraft pylon valid CLSID database."""
-    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "pylon_data.json")
-    try:
-        with open(db_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-PYLON_DB = _load_pylon_db()
-
-
-def _load_launcher_settings_db():
-    """Load the per-CLSID weapon settings database."""
-    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "launcher_settings.json")
-    try:
-        with open(db_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-LAUNCHER_SETTINGS_DB = _load_launcher_settings_db()
+WEAPONS_DB = get_weapons()
+WEAPON_WEIGHTS = get_weapon_weights()
+PYLON_DB = get_pylons()
+LAUNCHER_SETTINGS_DB = get_launcher_settings()
 
 # Set of CLSIDs that have a laser_code setting
 LASER_CLSIDS = set()
@@ -481,7 +455,8 @@ def _check_visibility(conditions: list, values: dict) -> bool:
 def get_pylon_options(aircraft_type: str) -> dict:
     """Get valid weapon options per station for an aircraft type.
 
-    Returns {station_number: [{clsid, name, category}, ...]}
+    Returns {station_number: [{clsid, name, shortName, category, weight}, ...]}
+    Enriched with weapon weights from pydcs.
     """
     pylons = PYLON_DB.get(aircraft_type, {})
     result = {}
@@ -493,6 +468,7 @@ def get_pylon_options(aircraft_type: str) -> dict:
                     "name": resolve_clsid(c),
                     "shortName": short_weapon_name(resolve_clsid(c)),
                     "category": categorize_weapon(resolve_clsid(c)),
+                    "weight": WEAPON_WEIGHTS.get(c),
                 }
                 for c in clsids
                 if c != "<CLEAN>"

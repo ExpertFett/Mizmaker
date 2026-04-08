@@ -1,8 +1,9 @@
 flask>=3.0
 flask-cors>=4.0
-slpp>=1.2
+lupa==2.0
 pyproj>=3.6
 mgrs>=1.4
 srtm.py>=0.3.7
 gunicorn>=22.0
 gevent>=24.0
+pydcs @ https://github.com/dcs-retribution/pydcs/archive/refs/heads/retribution.tar.gz

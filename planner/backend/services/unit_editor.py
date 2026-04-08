@@ -438,6 +438,84 @@ def _replace_laser_code(text: str, unit_id: int, laser_code: int) -> str:
     return text
 
 
+def _replace_payload_block(text: str, unit_id: int, payload_dict: dict) -> str:
+    """Replace the entire ["payload"] block for a unit from DB/session state.
+
+    Same approach as airboss: serialize the complete payload dict as Lua
+    and replace the block in the mission text.  Handles naked birds,
+    multi-pylon edits, and preserves fuel/chaff/flare/gun/ammo_type.
+    """
+    from services.miz_editor import _serialize_lua_value
+
+    # 1. Find unit block by unitId
+    unit_start, unit_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[unit_start:unit_end]
+
+    # 2. Find ["payload"] = { within unit block
+    payload_match = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', unit_block)
+    if not payload_match:
+        raise ValueError(f"Payload block not found in unit {unit_id}")
+
+    # 3. Brace-match to get full payload block boundaries
+    brace_pos = payload_match.end() - 1  # position of { in unit_block
+    p_depth = 1
+    p_i = brace_pos + 1
+    while p_i < len(unit_block) and p_depth > 0:
+        if unit_block[p_i] == '{':
+            p_depth += 1
+        elif unit_block[p_i] == '}':
+            p_depth -= 1
+        p_i += 1
+    # p_i is now just past the closing } of payload
+
+    # Include trailing comma and comment
+    rest = unit_block[p_i:p_i + 60]
+    trail = re.match(r',?\s*-- end of \["payload"\]', rest)
+    if trail:
+        p_i += trail.end()
+
+    # 4. Convert payload_dict to Lua-compatible structure
+    lua_payload = {}
+    for key in ("fuel", "chaff", "flare", "gun", "ammo_type"):
+        if key in payload_dict:
+            lua_payload[key] = payload_dict[key]
+
+    # Pylons: handle both array and dict formats, skip empty entries
+    raw_pylons = payload_dict.get("pylons", [])
+    pylons_dict = {}
+    if isinstance(raw_pylons, list):
+        for idx, p in enumerate(raw_pylons):
+            if p and isinstance(p, dict) and p.get("CLSID"):
+                pylons_dict[idx + 1] = p  # 1-indexed
+    elif isinstance(raw_pylons, dict):
+        for k, p in raw_pylons.items():
+            if p and isinstance(p, dict) and p.get("CLSID"):
+                pylons_dict[int(k)] = p
+    lua_payload["pylons"] = pylons_dict
+
+    # 5. Detect indentation from existing payload line
+    line_start = unit_block.rfind('\n', 0, payload_match.start())
+    indent = ''
+    if line_start >= 0:
+        for ch in unit_block[line_start + 1:payload_match.start()]:
+            if ch in ' \t':
+                indent += ch
+            else:
+                break
+    if not indent:
+        indent = '\t\t\t\t\t\t\t\t\t'
+
+    # 6. Serialize and build replacement
+    payload_lua = _serialize_lua_value(lua_payload, indent)
+    new_block = f'["payload"] = {payload_lua}, -- end of ["payload"]'
+
+    # Replace in full text
+    abs_start = unit_start + payload_match.start()
+    abs_end = unit_start + p_i
+    text = text[:abs_start] + new_block + text[abs_end:]
+    return text
+
+
 def _extract_payload_block(text: str, unit_id: int) -> str:
     """Extract the raw Lua text of a unit's payload block."""
     unit_pos = _find_unit_block_start(text, unit_id)
@@ -1339,6 +1417,8 @@ def apply_unit_edits(text: str, edits: list) -> str:
                     int(value["nameIdx"]), int(value["flight"]),
                     int(value["pos"]), str(value["name"]),
                 )
+            elif field == "payloadReplace":
+                text = _replace_payload_block(text, unit_id, value)
         except Exception as e:
             import logging
             logging.warning(f"Skipping edit {field} (unit={edit.get('unitId')}, group={edit.get('groupId')}): {e}")

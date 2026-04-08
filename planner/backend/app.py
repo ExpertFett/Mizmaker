@@ -811,11 +811,8 @@ def weather_presets():
 # Liveries (from baked livery_db.json)
 # --------------------------------------------------------------------------
 
-_livery_db_path = os.path.join(os.path.dirname(__file__), "data", "livery_db.json")
-_LIVERY_DB = {}
-if os.path.exists(_livery_db_path):
-    with open(_livery_db_path) as f:
-        _LIVERY_DB = json.load(f)
+from reference.loader import get_liveries
+_LIVERY_DB = get_liveries()
 
 
 @app.route("/api/liveries", methods=["GET"])

@@ -1,5 +1,5 @@
-# Reference materials — not part of this project
-reference/
+# Reference materials — not part of this project (top-level only)
+/reference/
 
 # Python
 __pycache__/
