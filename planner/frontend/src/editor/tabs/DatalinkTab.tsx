@@ -4,6 +4,18 @@ import { useEditStore } from '../../store/editStore';
 import type { ClientUnit, DonorInfo } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
+/* 2-char callsign abbreviation (consonant skeleton)                   */
+/* ------------------------------------------------------------------ */
+
+function abbreviateCallsign(name: string): string {
+  const clean = name.trim().toUpperCase();
+  if (clean.length <= 2) return clean;
+  const consonants = clean.replace(/[^BCDFGHJKLMNPQRSTVWXYZ]/g, '');
+  if (consonants.length >= 2) return consonants.slice(0, 2);
+  return clean.slice(0, 2);
+}
+
+/* ------------------------------------------------------------------ */
 /* Main Component                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -128,24 +140,27 @@ export function DatalinkTab() {
   }, []);
 
   const handleAutoAssignAll = useCallback(() => {
-    // Assign sequential flight numbers across all groups so nothing overlaps
-    // Flight 1 → callsign #11,12,13,14  STN 00011,00012,00013,00014
-    // Flight 2 → callsign #21,22,23,24  STN 00021,00022,00023,00024
-    let flightNum = 1;
-    for (const [, { units }] of grouped) {
+    // Use each group's own flight number from its name (e.g. "Bengal 1" → flight 1)
+    // STN uses a global counter to ensure uniqueness across all groups
+    let stnFlight = 1;
+    for (const [groupName, { units }] of grouped) {
       const lead = units[0];
-      const csLabel = lead.voiceCallsignLabel || lead.groupName.slice(0, 3).toUpperCase();
+      const csLabel = lead.voiceCallsignLabel || abbreviateCallsign(groupName);
+
+      // Extract flight number from group name (e.g. "Bengal 1" → 1, "Camelot 2" → 2)
+      const flightMatch = groupName.match(/(\d+)\s*$/);
+      const flightNum = flightMatch ? parseInt(flightMatch[1], 10) : stnFlight;
 
       for (let i = 0; i < units.length; i++) {
         const memberNum = i + 1;
         const csNumber = String(flightNum) + String(memberNum);
-        const stn = String(flightNum * 10 + memberNum).padStart(5, '0');
+        const stn = String(stnFlight * 10 + memberNum).padStart(5, '0');
 
         handleFieldChange(units[i].unitId, 'voiceCallsignLabel', csLabel);
         handleFieldChange(units[i].unitId, 'voiceCallsignNumber', csNumber);
         handleFieldChange(units[i].unitId, 'stnL16', stn);
       }
-      flightNum++;
+      stnFlight++;
     }
   }, [grouped, handleFieldChange]);
 
@@ -405,9 +420,9 @@ function UnitCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <label style={fieldLabelStyle}>CS</label>
           <input
-            defaultValue={unit.voiceCallsignLabel}
+            value={unit.voiceCallsignLabel}
             maxLength={3}
-            onBlur={(e) => onFieldChange(unit.unitId, 'voiceCallsignLabel', e.target.value)}
+            onChange={(e) => onFieldChange(unit.unitId, 'voiceCallsignLabel', e.target.value)}
             style={{ ...monoInputStyle, width: 48, ...changedStyle('voiceCallsignLabel') }}
             placeholder="ENF"
           />
@@ -417,8 +432,8 @@ function UnitCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <label style={fieldLabelStyle}>#</label>
           <input
-            defaultValue={unit.voiceCallsignNumber}
-            onBlur={(e) => onFieldChange(unit.unitId, 'voiceCallsignNumber', e.target.value)}
+            value={unit.voiceCallsignNumber}
+            onChange={(e) => onFieldChange(unit.unitId, 'voiceCallsignNumber', e.target.value)}
             style={{ ...monoInputStyle, width: 36, ...changedStyle('voiceCallsignNumber') }}
             placeholder="11"
           />
@@ -428,9 +443,9 @@ function UnitCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <label style={{ ...fieldLabelStyle, color: '#d29922' }}>STN</label>
           <input
-            defaultValue={unit.stnL16}
+            value={unit.stnL16}
             maxLength={5}
-            onBlur={(e) => onFieldChange(unit.unitId, 'stnL16', e.target.value)}
+            onChange={(e) => onFieldChange(unit.unitId, 'stnL16', e.target.value)}
             style={{ ...monoInputStyle, width: 60, color: '#d29922', ...changedStyle('stnL16') }}
             placeholder="00000"
           />

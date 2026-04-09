@@ -172,11 +172,30 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
     # Build COMM from mission radios
     comm = {"mirror_COMM1": False, "mirror_COMM2": False}
     miz_radios = flight_data.get("radios", {})
+    # Radio data may be a list (from slpp normalization) or dict
+    def _radio_get(data, key, default=None):
+        """Get from dict or list (1-indexed)."""
+        if isinstance(data, dict):
+            return data.get(key, data.get(str(key), default))
+        if isinstance(data, list):
+            idx = int(key) - 1 if isinstance(key, (int, float)) else int(key) - 1
+            return data[idx] if 0 <= idx < len(data) else default
+        return default
+
     for radio_num in (1, 2):
-        miz_radio = miz_radios.get(radio_num, {})
+        miz_radio = _radio_get(miz_radios, radio_num, {}) or {}
+        if not isinstance(miz_radio, dict):
+            miz_radio = {}
         miz_channels = miz_radio.get("channels", {})
         miz_modulations = miz_radio.get("modulations", {})
         miz_names = miz_radio.get("channelsNames", {})
+        # Normalize lists to dicts for iteration
+        if isinstance(miz_channels, list):
+            miz_channels = {i+1: v for i, v in enumerate(miz_channels) if v is not None}
+        if isinstance(miz_modulations, list):
+            miz_modulations = {i+1: v for i, v in enumerate(miz_modulations) if v is not None}
+        if isinstance(miz_names, list):
+            miz_names = {str(i+1): v for i, v in enumerate(miz_names) if v is not None}
 
         radio_comm = _make_default_comm()
         for ch_num, freq in miz_channels.items():

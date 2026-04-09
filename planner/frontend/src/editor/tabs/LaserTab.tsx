@@ -21,13 +21,24 @@ export function LaserTab() {
 
   const laserClsidSet = useMemo(() => new Set(laserClsids), [laserClsids]);
 
+  // Match laser-guided weapons by CLSID set OR by weapon name patterns
+  const LASER_NAME_PATTERNS = /GBU[-\s]?1[0246]|GBU[-\s]?24|GBU[-\s]?27|Paveway|KAB.*L|LJDAM/i;
+
+  const hasLaserWeapon = useCallback((u: ClientUnit): boolean => {
+    return u.pylons.some((p) =>
+      laserClsidSet.has(p.clsid) ||
+      LASER_NAME_PATTERNS.test(p.name) ||
+      LASER_NAME_PATTERNS.test(p.shortName)
+    );
+  }, [laserClsidSet]);
+
   // Filter to units that have laserCode or laser-guided weapons
   const laserUnits = useMemo(() => {
     return clientUnits.filter((u) => {
       if (u.laserCode !== null) return true;
-      return u.pylons.some((p) => laserClsidSet.has(p.clsid));
+      return hasLaserWeapon(u);
     });
-  }, [clientUnits, laserClsidSet]);
+  }, [clientUnits, hasLaserWeapon]);
 
   // Group by groupName, preserving order
   const grouped = useMemo(() => {
@@ -52,7 +63,7 @@ export function LaserTab() {
 
   const getLaserWeapons = useCallback((unit: ClientUnit): string[] => {
     return unit.pylons
-      .filter((p) => laserClsidSet.has(p.clsid))
+      .filter((p) => laserClsidSet.has(p.clsid) || LASER_NAME_PATTERNS.test(p.name) || LASER_NAME_PATTERNS.test(p.shortName))
       .map((p) => p.shortName);
   }, [laserClsidSet]);
 

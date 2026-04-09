@@ -66,7 +66,7 @@ export function WaypointEditPopup({
   const ref = useRef<HTMLDivElement>(null);
   const { groups, sessionId } = useMissionStore();
   const adminMode = useMapStore((s) => s.adminMode);
-  const { containerRef: dragRef, handleProps } = useDraggable();
+  const { containerRef: dragRef, handleProps } = useDraggable('waypointEditPopup');
 
   const group = groups.find((g) => g.groupId === groupId);
   const wp = group?.waypoints.find((w) => w.waypoint_number === wpIndex);

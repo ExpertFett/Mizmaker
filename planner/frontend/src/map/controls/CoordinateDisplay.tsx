@@ -6,7 +6,7 @@ export function CoordinateDisplay({
 }: {
   coordRef: RefObject<HTMLDivElement | null>;
 }) {
-  const { containerRef, handleProps } = useDraggable();
+  const { containerRef, handleProps } = useDraggable('coordinateDisplay');
 
   return (
     <div

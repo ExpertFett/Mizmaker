@@ -1,11 +1,12 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+import { registerPanel, unregisterPanel, snapToSiblings } from './panelRegistry';
 
 /**
  * Hook that makes any absolutely-positioned element draggable by its header/handle area.
- * Panels snap (dock) to screen edges when dragged within SNAP_DISTANCE pixels.
+ * Panels snap (dock) to screen edges AND to sibling panels when dragged within SNAP_DISTANCE.
  *
  * Usage:
- *   const { containerRef, handleProps, docked } = useDraggable();
+ *   const { containerRef, handleProps, docked } = useDraggable('myPanel');
  *   <div ref={containerRef} style={{ position: 'absolute', ... }}>
  *     <div {...handleProps} style={{ cursor: 'grab' }}>Drag here</div>
  *     ...
@@ -16,12 +17,23 @@ const SNAP_DISTANCE = 40; // px from edge to trigger snap
 
 export type DockEdge = 'top' | 'right' | 'bottom' | 'left' | null;
 
-export function useDraggable() {
+let panelCounter = 0;
+
+export function useDraggable(panelId?: string) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
   const [docked, setDocked] = useState<DockEdge>(null);
   const [, forceRender] = useState(0);
+  const idRef = useRef(panelId ?? `panel-${++panelCounter}`);
+
+  // Register/unregister with the shared panel registry
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    registerPanel(idRef.current, el);
+    return () => unregisterPanel(idRef.current);
+  }, []);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     // Only left mouse button
@@ -91,7 +103,6 @@ export function useDraggable() {
       if (!dragging.current || !containerRef.current) return;
       dragging.current = false;
 
-      // Check if near an edge — snap/dock
       const el = containerRef.current;
       const parentRect = el.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
       const rect = el.getBoundingClientRect();
@@ -100,7 +111,20 @@ export function useDraggable() {
       const relRight = parentRect.width - (relLeft + rect.width);
       const relBottom = parentRect.height - (relTop + rect.height);
 
-      // Find closest edge within snap distance
+      let finalLeft = relLeft;
+      let finalTop = relTop;
+
+      // 1) Check sibling panel snapping first
+      const sibSnap = snapToSiblings(
+        idRef.current,
+        rect,
+        parentRect as DOMRect,
+        SNAP_DISTANCE,
+      );
+      if (sibSnap.x !== null) finalLeft = sibSnap.x;
+      if (sibSnap.y !== null) finalTop = sibSnap.y;
+
+      // 2) Check screen edge snapping (only on axes not already snapped to a sibling)
       const edges: { edge: DockEdge; dist: number }[] = [
         { edge: 'left', dist: relLeft },
         { edge: 'right', dist: relRight },
@@ -110,20 +134,25 @@ export function useDraggable() {
       const closest = edges.reduce((a, b) => (a.dist < b.dist ? a : b));
 
       if (closest.dist <= SNAP_DISTANCE) {
-        // Snap to edge
-        if (closest.edge === 'left') {
-          el.style.left = '0px';
-        } else if (closest.edge === 'right') {
-          el.style.left = `${parentRect.width - rect.width}px`;
-        } else if (closest.edge === 'top') {
-          el.style.top = '0px';
-        } else if (closest.edge === 'bottom') {
-          el.style.top = `${parentRect.height - rect.height}px`;
+        if (sibSnap.x === null) {
+          if (closest.edge === 'left') finalLeft = 0;
+          else if (closest.edge === 'right') finalLeft = parentRect.width - rect.width;
+        }
+        if (sibSnap.y === null) {
+          if (closest.edge === 'top') finalTop = 0;
+          else if (closest.edge === 'bottom') finalTop = parentRect.height - rect.height;
         }
         setDocked(closest.edge);
       } else {
         setDocked(null);
       }
+
+      // Clamp final position
+      finalLeft = Math.max(0, Math.min(finalLeft, parentRect.width - rect.width));
+      finalTop = Math.max(0, Math.min(finalTop, parentRect.height - rect.height));
+
+      el.style.left = `${finalLeft}px`;
+      el.style.top = `${finalTop}px`;
 
       forceRender((n) => n + 1);
     };

@@ -1195,12 +1195,21 @@ def _replace_coalition_assignments(text: str, changes: dict) -> str:
         if trail:
             entry_end += trail.end()
 
-        # Remove leading newline if present
+        # Remove the entry plus its leading whitespace line, but keep a newline
+        # between the previous line and whatever follows so we don't merge
+        # a "-- end of [N]" comment with the next closing brace.
         if entry_start > 0 and text[entry_start - 1] == '\n':
             entry_start -= 1
 
         # --- Step 4: Remove the entry from source coalition ---
-        text = text[:entry_start] + text[entry_end:]
+        # Ensure a newline exists at the splice point so adjacent lines
+        # don't collapse (which would hide a } inside a -- comment).
+        before = text[:entry_start]
+        after = text[entry_end:]
+        if before and before[-1] != '\n' and after and after[0] != '\n':
+            text = before + '\n' + after
+        else:
+            text = before + after
 
         # --- Step 5: Find the target coalition's ["country"] section ---
         target_coal_match = re.search(rf'\["{target_coal}"\]\s*=\s*\{{', text)
@@ -1236,11 +1245,28 @@ def _replace_coalition_assignments(text: str, changes: dict) -> str:
         country_close = k  # Position of closing }
 
         # --- Step 6: Determine next index and insert ---
+        # Only count [N] = at depth 1 (top-level country entries), not nested ones
         country_section = text[country_open:country_close]
-        existing_indices = [
-            int(m.group(1))
-            for m in re.finditer(r'\[(\d+)\]\s*=', country_section)
-        ]
+        existing_indices = []
+        cs_depth = 0
+        cs_i = 0
+        while cs_i < len(country_section):
+            ch = country_section[cs_i]
+            if ch == '"':
+                cs_i += 1
+                while cs_i < len(country_section) and country_section[cs_i] != '"':
+                    if country_section[cs_i] == '\\':
+                        cs_i += 1
+                    cs_i += 1
+            elif ch == '{':
+                cs_depth += 1
+            elif ch == '}':
+                cs_depth -= 1
+            elif ch == '[' and cs_depth == 1:
+                idx_m = re.match(r'\[(\d+)\]\s*=', country_section[cs_i:])
+                if idx_m:
+                    existing_indices.append(int(idx_m.group(1)))
+            cs_i += 1
         next_idx = max(existing_indices, default=0) + 1
 
         # Detect indentation from existing entries or use 12 spaces
@@ -1249,8 +1275,186 @@ def _replace_coalition_assignments(text: str, changes: dict) -> str:
 
         new_entry = f"\n{indent}[{next_idx}] =\n{indent}{{{inner_content}}}, -- end of [{next_idx}]"
 
-        # Insert before the closing } of the country table
-        text = text[:country_close] + new_entry + "\n" + text[country_close:]
+        # Insert before the closing } of the country table.
+        # Find the start of the line containing country_close so we
+        # preserve its indentation (DCS ME may rely on it).
+        line_start = text.rfind('\n', 0, country_close)
+        if line_start < 0:
+            line_start = 0
+        else:
+            line_start += 1  # skip the \n itself
+        closing_line = text[line_start:country_close + 1]  # e.g. "\t\t\t}"
+        # Check if there's a comment after the }
+        after_close = text[country_close + 1:]
+        trail_m = re.match(r'[^\n]*', after_close)
+        closing_line += trail_m.group(0) if trail_m else ""
+        closing_end = country_close + 1 + (trail_m.end() if trail_m else 0)
+
+        text = text[:line_start] + new_entry + "\n" + closing_line + text[closing_end:]
+
+    # --- Also update ["coalitions"] (plural) ID mapping table ---
+    # DCS uses this separate table to determine coalition membership in the ME.
+    # Structure: ["coalitions"]["blue"] = { [1]=id, [2]=id, ... }
+    text = _update_coalitions_id_table(text, changes)
+
+    return text
+
+
+def _update_coalitions_id_table(text: str, changes: dict) -> str:
+    """Update the ["coalitions"] (plural) country-ID mapping table.
+
+    DCS missions have TWO coalition structures:
+      ["coalition"]  — contains actual unit/group data per country
+      ["coalitions"] — simple mapping of country IDs to coalitions
+
+    Both must be updated when moving a country between coalitions.
+    """
+    # Find the ["coalitions"] block
+    coalitions_match = re.search(r'\["coalitions"\]\s*=\s*\n?\s*\{', text)
+    if not coalitions_match:
+        return text
+
+    # For each country change, find its numeric ID and move it
+    for country_name, target_coal in changes.items():
+        if target_coal not in ("blue", "red", "neutrals"):
+            continue
+
+        # Find the country's numeric ID from the ["coalition"] block
+        # Look for ["name"] = "CountryName" near ["id"] = N
+        name_pat = rf'\["name"\]\s*=\s*"{re.escape(country_name)}"'
+        name_match = re.search(name_pat, text)
+        if not name_match:
+            continue
+
+        # Search nearby for ["id"] = N (within ~500 chars before/after)
+        search_start = max(0, name_match.start() - 500)
+        search_end = min(len(text), name_match.end() + 500)
+        region = text[search_start:search_end]
+        id_match = re.search(r'\["id"\]\s*=\s*(\d+)', region)
+        if not id_match:
+            continue
+        country_id = int(id_match.group(1))
+
+        # Now find and remove country_id from its current coalition in ["coalitions"]
+        coalitions_start = coalitions_match.start()
+        # Find the end of the ["coalitions"] block
+        brace_pos = text.index('{', coalitions_start)
+        depth = 0
+        k = brace_pos
+        in_str = False
+        while k < len(text):
+            ch = text[k]
+            if ch == '"' and (k == 0 or text[k-1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{': depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0: break
+            k += 1
+        coalitions_end = k + 1
+        coalitions_block = text[coalitions_start:coalitions_end]
+
+        # Find the source coalition sub-table containing country_id
+        source_coal = None
+        for coal in ("blue", "red", "neutrals"):
+            coal_pat = rf'\["{coal}"\]\s*=\s*\n?\s*\{{'
+            coal_m = re.search(coal_pat, coalitions_block)
+            if not coal_m:
+                continue
+            # Find the closing } of this sub-table
+            sub_open = coal_m.end() - 1
+            sub_depth = 0
+            si = sub_open
+            while si < len(coalitions_block):
+                if coalitions_block[si] == '{': sub_depth += 1
+                elif coalitions_block[si] == '}':
+                    sub_depth -= 1
+                    if sub_depth == 0: break
+                si += 1
+            sub_block = coalitions_block[sub_open:si + 1]
+            # Check if country_id is in this sub-table
+            if re.search(rf'=\s*{country_id}\s*,', sub_block):
+                source_coal = coal
+                break
+
+        if not source_coal or source_coal == target_coal:
+            continue
+
+        # Remove country_id from source and re-index
+        for coal in (source_coal,):
+            coal_pat = rf'(\["{coal}"\]\s*=\s*\n?\s*)\{{'
+            coal_m = re.search(coal_pat, text[coalitions_start:coalitions_end])
+            if not coal_m:
+                continue
+            abs_start = coalitions_start + coal_m.end() - 1
+            # Find closing }
+            sub_depth = 0
+            si = abs_start
+            while si < len(text):
+                if text[si] == '{': sub_depth += 1
+                elif text[si] == '}':
+                    sub_depth -= 1
+                    if sub_depth == 0: break
+                si += 1
+            sub_close = si
+
+            # Extract all IDs, remove country_id, re-index
+            sub_content = text[abs_start + 1:sub_close]
+            ids = [int(m.group(1)) for m in re.finditer(r'=\s*(\d+)', sub_content)]
+            ids = [i for i in ids if i != country_id]
+
+            # Detect indent
+            indent_m = re.search(r'\n(\s+)\[', sub_content)
+            indent = indent_m.group(1) if indent_m else "\t\t\t"
+
+            new_entries = "".join(f"\n{indent}[{i+1}] = {cid}," for i, cid in enumerate(ids))
+            close_indent = indent[:-1] if indent.endswith('\t') else indent
+            new_sub = "{" + new_entries + "\n" + close_indent + "}"
+            # Replace the sub-table
+            text = text[:abs_start] + new_sub + text[sub_close + 1:]
+
+            # Recalculate coalitions_end since text changed
+            coalitions_match2 = re.search(r'\["coalitions"\]\s*=\s*\n?\s*\{', text)
+            brace_pos2 = text.index('{', coalitions_match2.start())
+            depth2 = 0
+            k2 = brace_pos2
+            while k2 < len(text):
+                if text[k2] == '{': depth2 += 1
+                elif text[k2] == '}':
+                    depth2 -= 1
+                    if depth2 == 0: break
+                k2 += 1
+            coalitions_end = k2 + 1
+            coalitions_start = coalitions_match2.start()
+
+        # Add country_id to target coalition
+        coal_pat = rf'(\["{target_coal}"\]\s*=\s*\n?\s*)\{{'
+        coal_m = re.search(coal_pat, text[coalitions_start:coalitions_end])
+        if not coal_m:
+            continue
+        abs_start = coalitions_start + coal_m.end() - 1
+        sub_depth = 0
+        si = abs_start
+        while si < len(text):
+            if text[si] == '{': sub_depth += 1
+            elif text[si] == '}':
+                sub_depth -= 1
+                if sub_depth == 0: break
+            si += 1
+        sub_close = si
+
+        sub_content = text[abs_start + 1:sub_close]
+        ids = [int(m.group(1)) for m in re.finditer(r'=\s*(\d+)', sub_content)]
+        ids.append(country_id)
+
+        indent_m = re.search(r'\n(\s+)\[', sub_content)
+        indent = indent_m.group(1) if indent_m else "\t\t\t"
+
+        new_entries = "".join(f"\n{indent}[{i+1}] = {cid}," for i, cid in enumerate(ids))
+        close_indent = indent[:-1] if indent.endswith('\t') else indent
+        new_sub = "{" + new_entries + "\n" + close_indent + "}"
+        text = text[:abs_start] + new_sub + text[sub_close + 1:]
 
     return text
 
@@ -1264,6 +1468,8 @@ def _replace_forced_options(text: str, options: dict) -> str:
     import re
 
     # Serialize options dict to DCS Lua format
+    from services.miz_editor import _serialize_lua_value
+
     lines = []
     for k, v in sorted(options.items()):
         if isinstance(v, bool):
@@ -1273,19 +1479,31 @@ def _replace_forced_options(text: str, options: dict) -> str:
         elif isinstance(v, str):
             lua_val = f'"{v}"'
         else:
-            lua_val = str(v).lower() if isinstance(v, bool) else str(v)
+            # Nested structures (lists, dicts) — serialize as Lua tables
+            lua_val = _serialize_lua_value(v, "        ")
         lines.append(f'        ["{k}"] = {lua_val},')
     inner = "\n".join(lines)
     new_block = f'["forcedOptions"] =\n    {{\n{inner}\n    }}'
 
     # Try to find and replace existing forcedOptions block
-    # Pattern: ["forcedOptions"] = { ... }, at mission root level
-    pattern = re.compile(
-        r'\["forcedOptions"\]\s*=\s*\{[^}]*\}',
-        re.DOTALL,
-    )
-    if pattern.search(text):
-        text = pattern.sub(new_block, text)
+    # Use brace-matching to handle nested structures (e.g. optionsViewExtended)
+    fo_match = re.search(r'\["forcedOptions"\]\s*=\s*\n?\s*\{', text)
+    if fo_match:
+        fo_open = fo_match.end() - 1  # position of {
+        depth = 0
+        fi = fo_open
+        in_str = False
+        while fi < len(text):
+            ch = text[fi]
+            if ch == '"' and (fi == 0 or text[fi-1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{': depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0: break
+            fi += 1
+        text = text[:fo_match.start()] + new_block + text[fi + 1:]
     else:
         # No existing block — insert before the closing of the mission table
         # Look for the last "} -- end of mission" or just before final closing

@@ -3,16 +3,17 @@
 
 A .miz file is a ZIP archive containing Lua table files.
 The 'mission' entry holds the main mission data as a Lua table.
-We parse it with Lupa (LuaJIT runtime), then traverse the
+We parse it with SLPP (pure-Python Lua table parser), then traverse the
 coalition→country→category→group hierarchy.
 """
 
 import io
 import json
+import re
 import zipfile
 from typing import Dict, List, Any, Optional
 
-import lupa
+from slpp import slpp as lua
 
 from services.projection import dcs_to_latlon, THEATERS
 
@@ -38,82 +39,38 @@ def extract_mission_from_miz(miz_bytes: bytes) -> str:
         return zf.read("mission").decode("utf-8")
 
 
-def _lua_table_to_python(lua_table):
-    """Recursively convert a Lupa Lua table to Python dicts/lists."""
-    if isinstance(lua_table, (str, int, float, bool, type(None))):
-        return lua_table
+def _normalize_slpp_keys(obj):
+    """Recursively convert integer-keyed dicts from slpp into lists where appropriate.
 
-    if not hasattr(lua_table, '__getitem__'):
-        return str(lua_table)
-
-    try:
-        keys = list(lua_table)
-    except Exception:
-        return {}
-
-    # Check if array (sequential int keys starting at 1)
-    is_array = all(isinstance(k, (int, float)) for k in keys) and len(keys) > 0
-    if is_array:
-        max_idx = int(max(keys))
-        result = []
-        for i in range(1, max_idx + 1):
-            try:
-                val = lua_table[i]
-                if isinstance(val, (str, int, float, bool, type(None))):
-                    result.append(val)
-                elif hasattr(val, '__getitem__'):
-                    result.append(_lua_table_to_python(val))
-                else:
-                    result.append(str(val))
-            except Exception:
-                result.append(None)
-        return result
-    else:
-        result = {}
-        for key in keys:
-            try:
-                val = lua_table[key]
-                k = str(key) if not isinstance(key, str) else key
-                if isinstance(val, (str, int, float, bool, type(None))):
-                    result[k] = val
-                elif hasattr(val, '__getitem__'):
-                    result[k] = _lua_table_to_python(val)
-                else:
-                    result[k] = str(val)
-            except Exception:
-                continue
-        return result
-
-
-def _create_sandboxed_lua():
-    """Create a Lua runtime with dangerous globals removed.
-
-    DCS .miz files are pure data (table assignments). They don't need os, io,
-    or any module system. Removing these prevents a crafted .miz from executing
-    arbitrary commands on the server.
+    slpp parses sequential Lua tables as dicts with int keys {1: ..., 2: ...}.
+    The rest of the code expects lists for sequential data and dicts with string keys otherwise.
     """
-    lua = lupa.LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        os = nil
-        io = nil
-        debug = nil
-        loadfile = nil
-        dofile = nil
-        require = nil
-        package = nil
-        load = nil
-    """)
-    return lua
+    if isinstance(obj, dict):
+        # Check if all keys are ints (sequential Lua table)
+        if obj and all(isinstance(k, int) for k in obj.keys()):
+            max_key = max(obj.keys())
+            result = [_normalize_slpp_keys(obj.get(i)) for i in range(1, max_key + 1)]
+            return result
+        else:
+            return {str(k) if isinstance(k, int) else k: _normalize_slpp_keys(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_normalize_slpp_keys(item) for item in obj]
+    else:
+        return obj
 
 
 def parse_mission_text(text: str) -> dict:
-    """Parse Lua mission text into a Python dict using Lupa (LuaJIT)."""
-    lua_runtime = _create_sandboxed_lua()
-    lua_runtime.execute(text)
-    mission = lua_runtime.globals().mission
-    if mission is None:
+    """Parse Lua mission text into a Python dict using slpp."""
+    # DCS mission files look like: mission = { ... }
+    # Strip the variable assignment to get just the table
+    match = re.search(r'^mission\s*=\s*', text, re.MULTILINE)
+    if not match:
         raise ValueError("No 'mission' table found in Lua text")
-    return _lua_table_to_python(mission)
+    table_text = text[match.end():]
+    mission = lua.decode(table_text)
+    if mission is None:
+        raise ValueError("Failed to parse mission Lua table")
+    return _normalize_slpp_keys(mission)
 
 
 def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
@@ -571,6 +528,38 @@ def _num(val) -> float:
         return 0.0
 
 
+def _find_unit_position(d: dict, unit_id: int) -> Optional[tuple]:
+    """Find a unit's (x, y) position by unitId across all coalitions."""
+    coalition_data = d.get("coalition", {})
+    for side in ("blue", "red", "neutrals"):
+        side_data = coalition_data.get(side, {})
+        countries = side_data.get("country", {})
+        if isinstance(countries, dict):
+            countries = list(countries.values())
+        for country in countries:
+            if not isinstance(country, dict):
+                continue
+            for cat in ("plane", "helicopter", "vehicle", "ship", "static"):
+                cat_data = country.get(cat, {})
+                if not isinstance(cat_data, dict):
+                    continue
+                groups = cat_data.get("group", {})
+                if isinstance(groups, dict):
+                    groups = list(groups.values())
+                for group in groups:
+                    if not isinstance(group, dict):
+                        continue
+                    units = group.get("units", {})
+                    if isinstance(units, dict):
+                        units = list(units.values())
+                    for u in units:
+                        if not isinstance(u, dict):
+                            continue
+                        if u.get("unitId") == unit_id:
+                            return (_num(u.get("x")), _num(u.get("y")))
+    return None
+
+
 def _extract_trigger_zones(d: dict, theater: str, has_projection: bool) -> list:
     """Extract trigger zones from the mission dict."""
     triggers = d.get("triggers", {})
@@ -624,6 +613,8 @@ def _extract_trigger_zones(d: dict, theater: str, has_projection: bool) -> list:
             zone["lon"] = lon
 
         # Polygon vertices (type 2)
+        # When a zone has linkUnit, vertices are OFFSETS from the linked
+        # unit's position, not absolute map coordinates.
         vertices = z.get("verticies", z.get("vertices", {}))
         if vertices:
             if isinstance(vertices, dict):
@@ -631,11 +622,19 @@ def _extract_trigger_zones(d: dict, theater: str, has_projection: bool) -> list:
             else:
                 verts_list = vertices
 
+            # Determine the actual center for offset calculation
+            link_unit_id = z.get("linkUnit")
+            offset_x, offset_y = 0.0, 0.0
+            if link_unit_id is not None:
+                unit_pos = _find_unit_position(d, link_unit_id)
+                if unit_pos:
+                    offset_x, offset_y = unit_pos
+
             coords = []
             for v in verts_list:
                 if isinstance(v, dict):
-                    vx = _num(v.get("x"))
-                    vy = _num(v.get("y"))
+                    vx = _num(v.get("x")) + offset_x
+                    vy = _num(v.get("y")) + offset_y
                     if has_projection and vx and vy:
                         vlat, vlon = dcs_to_latlon(vx, vy, theater)
                         coords.append([vlat, vlon])

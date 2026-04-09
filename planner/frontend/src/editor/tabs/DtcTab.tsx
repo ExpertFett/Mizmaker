@@ -188,6 +188,14 @@ const DEFAULT_FUEL_BURN = 5800; // lbs/hr cruise for F/A-18C
 const HORNET_INTERNAL_FUEL = 10860; // lbs
 const HORNET_BINGO_DEFAULT = 3000; // lbs
 
+const BURN_PRESETS: { label: string; rate: number }[] = [
+  { label: 'Econ', rate: 3800 },
+  { label: 'Cruise', rate: 5800 },
+  { label: 'Low Alt', rate: 7200 },
+  { label: 'Mil', rate: 9500 },
+  { label: 'Combat', rate: 12000 },
+];
+
 
 /* ------------------------------------------------------------------ */
 /* DTC Templates                                                       */
@@ -423,10 +431,10 @@ export function DtcTab() {
           {subTab === 'comm' && <CommSubTab data={dtcData.COMM} onUpdate={updateComm} />}
           {subTab === 'cmds' && <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />}
           {subTab === 'waypoints' && <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />}
-          {subTab === 'nav' && <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} />}
+          {subTab === 'nav' && <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} selectedFlight={selectedFlight} />}
           {subTab === 'fuel' && <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />}
           {subTab === 'tools' && <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />}
-          {subTab === 'presets' && <PresetsSubTab dtcData={dtcData} setDtcData={setDtcData} commData={dtcData.COMM} onUpdateComm={updateComm} templateMsg={templateMsg} setTemplateMsg={setTemplateMsg} />}
+          {subTab === 'presets' && <PresetsSubTab setDtcData={setDtcData} templateMsg={templateMsg} setTemplateMsg={setTemplateMsg} />}
         </>
       )}
     </div>
@@ -505,11 +513,43 @@ function CommSubTab({ data, onUpdate }: {
 /* CMDS sub-tab                                                        */
 /* ------------------------------------------------------------------ */
 
+const CMDS_AUTOFILL: Record<string, CmdsProgram> = {
+  AUTO_1: { chaffQty: 2, chaffInterval: 0.5, flareQty: 2, flareInterval: 0.5 },
+  AUTO_2: { chaffQty: 4, chaffInterval: 1.0, flareQty: 4, flareInterval: 1.0 },
+  AUTO_3: { chaffQty: 1, chaffInterval: 1.0, flareQty: 1, flareInterval: 1.0 },
+  MAN_1: { chaffQty: 1, chaffInterval: 0.2, flareQty: 1, flareInterval: 0.2 },
+  MAN_2: { chaffQty: 6, chaffInterval: 0.5, flareQty: 0, flareInterval: 0 },
+  MAN_3: { chaffQty: 0, chaffInterval: 0, flareQty: 6, flareInterval: 0.5 },
+  MAN_4: { chaffQty: 10, chaffInterval: 0.2, flareQty: 0, flareInterval: 0 },
+  MAN_5: { chaffQty: 0, chaffInterval: 0, flareQty: 10, flareInterval: 0.2 },
+  MAN_6: { chaffQty: 2, chaffInterval: 0.5, flareQty: 2, flareInterval: 0.5 },
+  BYP: { chaffQty: 1, chaffInterval: 0.5, flareQty: 1, flareInterval: 0.5 },
+};
+
 function CmdsSubTab({ data, onUpdate }: {
   data: Record<string, CmdsProgram>;
   onUpdate: (program: string, field: keyof CmdsProgram, value: number) => void;
 }) {
+  const handleAutoFill = () => {
+    for (const [prog, vals] of Object.entries(CMDS_AUTOFILL)) {
+      onUpdate(prog, 'chaffQty', vals.chaffQty);
+      onUpdate(prog, 'chaffInterval', vals.chaffInterval);
+      onUpdate(prog, 'flareQty', vals.flareQty);
+      onUpdate(prog, 'flareInterval', vals.flareInterval);
+    }
+  };
+
   return (
+    <>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <button onClick={handleAutoFill} style={{
+        background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+        color: '#6ab4f0', padding: '5px 14px', fontSize: 12, cursor: 'pointer',
+        fontWeight: 600,
+      }}>
+        Auto Fill
+      </button>
+    </div>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8', maxWidth: 700 }}>
       <thead>
         <tr style={{ color: '#5a7a8a', borderBottom: '1px solid #1a2a3a', background: '#080f1c' }}>
@@ -565,6 +605,7 @@ function CmdsSubTab({ data, onUpdate }: {
         })}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -655,16 +696,38 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
 /* NAV sub-tab                                                         */
 /* ------------------------------------------------------------------ */
 
-function NavSubTab({ data, onUpdate }: {
+function NavSubTab({ data, onUpdate, selectedFlight }: {
   data: NavSettings;
   onUpdate: (section: 'TACAN' | 'ICLS' | 'ACLS', field: string, value: unknown) => void;
+  selectedFlight: string;
 }) {
+  const groups = useMissionStore((s) => s.groups);
   const tacan = data.TACAN;
   const icls = data.ICLS;
   const acls = data.ACLS ?? { frequency: '', enabled: false };
 
+  // Collect nav-relevant data from all mission groups
+  const navRefs = useMemo(() => {
+    const refs: { name: string; type: string; freq?: string; tacan?: string; icls?: string; isSelected?: boolean }[] = [];
+    for (const g of groups) {
+      const hasNav = g.tacan || g.icls || g.frequency;
+      if (!hasNav) continue;
+      const entry: typeof refs[0] = { name: g.groupName, type: g.category || '' };
+      if (g.frequency) {
+        const freqMhz = g.frequency >= 1e6 ? (g.frequency / 1e6).toFixed(3) : g.frequency.toFixed(3);
+        entry.freq = `${freqMhz} ${g.modulation === 1 ? 'AM' : 'FM'}`;
+      }
+      if (g.tacan) entry.tacan = `${g.tacan.channel}${g.tacan.band}${g.tacan.callsign ? ' ' + g.tacan.callsign : ''}`;
+      if (g.icls) entry.icls = `CH ${g.icls.channel}`;
+      if (g.groupName === selectedFlight) entry.isSelected = true;
+      refs.push(entry);
+    }
+    return refs;
+  }, [groups, selectedFlight]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 500 }}>
+    <div style={{ display: 'flex', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 500, flex: '1 1 auto' }}>
       {/* TACAN */}
       <fieldset style={fieldsetStyle}>
         <legend style={legendStyle}>TACAN</legend>
@@ -765,6 +828,45 @@ function NavSubTab({ data, onUpdate }: {
         </div>
       </fieldset>
     </div>
+
+    {/* Mission Nav Reference */}
+    {navRefs.length > 0 && (
+      <div style={{
+        flex: '1 1 300px', maxWidth: 420, background: '#080f1c',
+        border: '1px solid #1a2a3a', borderRadius: 6, padding: 12,
+        maxHeight: 400, overflowY: 'auto', alignSelf: 'flex-start',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          Mission Nav Data
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: '#5a7a8a', borderBottom: '1px solid #1a2a3a' }}>
+              <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Unit</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Freq</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>TACAN</th>
+              <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>ICLS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {navRefs.map((r) => (
+              <tr key={r.name} style={{
+                borderBottom: '1px solid #0f1a28',
+                background: r.isSelected ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
+              }}>
+                <td style={{ padding: '4px 6px', color: r.isSelected ? '#6ab4f0' : '#8fa8c0', fontWeight: r.isSelected ? 600 : 400 }}>
+                  {r.name}
+                </td>
+                <td style={{ padding: '4px 6px', color: '#ccdae8', fontFamily: 'monospace' }}>{r.freq || '-'}</td>
+                <td style={{ padding: '4px 6px', color: '#d29922', fontFamily: 'monospace' }}>{r.tacan || '-'}</td>
+                <td style={{ padding: '4px 6px', color: '#3fb950', fontFamily: 'monospace' }}>{r.icls || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+    </div>
   );
 }
 
@@ -773,6 +875,20 @@ function NavSubTab({ data, onUpdate }: {
 /* ------------------------------------------------------------------ */
 
 function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
+  const groups = useMissionStore((s) => s.groups);
+
+  // Find tankers in mission (groups with task "Refueling" or "Tanker")
+  const tankers = useMemo(() => {
+    return groups.filter((g) =>
+      g.task === 'Refueling' || g.task === 'Tanker' ||
+      g.groupName.toLowerCase().includes('tanker') || g.groupName.toLowerCase().includes('texaco') ||
+      g.groupName.toLowerCase().includes('shell') || g.groupName.toLowerCase().includes('arco')
+    ).map((g) => ({
+      name: g.groupName,
+      freq: g.frequency ? (g.frequency >= 1e6 ? (g.frequency / 1e6).toFixed(3) : g.frequency.toFixed(3)) + (g.modulation === 1 ? ' AM' : ' FM') : null,
+      tacan: g.tacan ? `${g.tacan.channel}${g.tacan.band}${g.tacan.callsign ? ' ' + g.tacan.callsign : ''}` : null,
+    }));
+  }, [groups]);
   const [startFuel, setStartFuel] = useState(HORNET_INTERNAL_FUEL);
   const [bingo, setBingo] = useState(HORNET_BINGO_DEFAULT);
   const [groundSpeed, setGroundSpeed] = useState(420);
@@ -843,6 +959,19 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
           <input type="number" value={burnRate} onChange={(e) => setBurnRate(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 70 }} />
         </label>
+        <div style={{ display: 'flex', gap: 3, marginLeft: 4 }}>
+          {BURN_PRESETS.map((p) => (
+            <button key={p.label} onClick={() => setBurnRate(p.rate)}
+              style={{
+                background: burnRate === p.rate ? '#1a3a5a' : '#0f1a28',
+                border: `1px solid ${burnRate === p.rate ? '#2a5a8a' : '#1a2a3a'}`,
+                borderRadius: 3, color: burnRate === p.rate ? '#6ab4f0' : '#5a7a8a',
+                fontSize: 10, padding: '3px 7px', cursor: 'pointer', fontWeight: 600,
+              }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Summary bar */}
@@ -929,6 +1058,33 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
           )}
         </div>
       </div>
+
+      {/* Tanker reference */}
+      {tankers.length > 0 && (
+        <div style={{
+          marginTop: 16, padding: 12, background: '#080f1c',
+          border: '1px solid #1a2a3a', borderRadius: 6,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+            Tankers in Mission
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {tankers.map((t) => (
+              <div key={t.name} style={{
+                padding: '8px 12px', background: '#0f1a28', borderRadius: 4,
+                border: '1px solid #1a2a3a', fontSize: 12,
+              }}>
+                <div style={{ color: '#ccdae8', fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  {t.freq && <span style={{ color: '#8fa8c0', fontFamily: 'monospace' }}>{t.freq}</span>}
+                  {t.tacan && <span style={{ color: '#d29922', fontFamily: 'monospace' }}>TCN {t.tacan}</span>}
+                  {!t.freq && !t.tacan && <span style={{ color: '#3a5a6a' }}>No freq/TACAN set</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1064,16 +1220,31 @@ function BullseyeRef({ waypoints }: { waypoints: NavPoint[] }) {
 /* Speed / Time Calculator                                             */
 /* ------------------------------------------------------------------ */
 
+function zuluToMinutes(zulu: string): number | null {
+  const m = zulu.match(/^(\d{1,2}):?(\d{2})$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function minutesToZulu(min: number): string {
+  const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
+  const m = Math.round(((min % 1440) + 1440) % 1440 % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}Z`;
+}
+
 function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
-  const [tosMinutes, setTosMinutes] = useState(30); // time-on-station in minutes from takeoff
+  const [mode, setMode] = useState<'minutes' | 'zulu_tot' | 'zulu_speed'>('zulu_tot');
+  const [tosMinutes, setTosMinutes] = useState(30);
   const [targetWp, setTargetWp] = useState(1);
+  const [departZulu, setDepartZulu] = useState('');
+  const [totZulu, setTotZulu] = useState('');
+  const [inputSpeed, setInputSpeed] = useState(420);
 
-  const result = useMemo(() => {
-    // Calculate distance from WP1 to target WP
-    let totalNm = 0;
+  // Distance from WP1 to target WP
+  const totalNm = useMemo(() => {
+    let nm = 0;
     const targetIdx = waypoints.findIndex((wp) => (wp.number ?? 0) === targetWp);
-    if (targetIdx <= 0) return null;
-
+    if (targetIdx <= 0) return 0;
     for (let i = 1; i <= targetIdx; i++) {
       const prev = waypoints[i - 1];
       const curr = waypoints[i];
@@ -1082,14 +1253,43 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
       const lat2 = parseCoord(curr.lat);
       const lon2 = parseCoord(curr.lon);
       if (lat1 !== null && lon1 !== null && lat2 !== null && lon2 !== null) {
-        totalNm += haversineNm(lat1, lon1, lat2, lon2);
+        nm += haversineNm(lat1, lon1, lat2, lon2);
       }
     }
+    return nm;
+  }, [waypoints, targetWp]);
 
-    const requiredGS = tosMinutes > 0 ? (totalNm / tosMinutes) * 60 : 0;
-    const machApprox = requiredGS / 590; // rough Mach approximation at altitude
-    return { totalNm, requiredGS, machApprox, tosMinutes };
-  }, [waypoints, tosMinutes, targetWp]);
+  const result = useMemo(() => {
+    if (totalNm <= 0) return null;
+
+    if (mode === 'minutes') {
+      if (tosMinutes <= 0) return null;
+      const gs = (totalNm / tosMinutes) * 60;
+      return { gs, mach: gs / 590, enrouteMin: tosMinutes, arrivalZulu: null, departureZulu: null };
+    }
+
+    if (mode === 'zulu_tot') {
+      const dep = zuluToMinutes(departZulu);
+      const tot = zuluToMinutes(totZulu);
+      if (dep === null || tot === null) return null;
+      let enroute = tot - dep;
+      if (enroute <= 0) enroute += 1440; // next day
+      const gs = (totalNm / enroute) * 60;
+      return { gs, mach: gs / 590, enrouteMin: enroute, arrivalZulu: minutesToZulu(tot), departureZulu: minutesToZulu(dep) };
+    }
+
+    if (mode === 'zulu_speed') {
+      const dep = zuluToMinutes(departZulu);
+      if (dep === null || inputSpeed <= 0) return null;
+      const enroute = (totalNm / inputSpeed) * 60;
+      const arrival = dep + enroute;
+      return { gs: inputSpeed, mach: inputSpeed / 590, enrouteMin: enroute, arrivalZulu: minutesToZulu(arrival), departureZulu: minutesToZulu(dep) };
+    }
+
+    return null;
+  }, [mode, totalNm, tosMinutes, departZulu, totZulu, inputSpeed]);
+
+  const modeLabel = { minutes: 'Minutes', zulu_tot: 'Zulu TOT', zulu_speed: 'Zulu + Speed' };
 
   return (
     <div>
@@ -1097,8 +1297,23 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
         Speed / Time Calculator
       </h4>
       <p style={{ color: '#5a7a8a', fontSize: 12, margin: '0 0 12px' }}>
-        Compute required ground speed to reach a waypoint at a specific time.
+        Compute required ground speed or arrival time for a waypoint.
       </p>
+
+      {/* Mode selector */}
+      <div style={{ display: 'flex', gap: 3, marginBottom: 14 }}>
+        {(['zulu_tot', 'zulu_speed', 'minutes'] as const).map((m) => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            background: mode === m ? '#1a3a5a' : '#0f1a28',
+            border: `1px solid ${mode === m ? '#2a5a8a' : '#1a2a3a'}`,
+            borderRadius: 3, color: mode === m ? '#6ab4f0' : '#5a7a8a',
+            fontSize: 11, padding: '4px 10px', cursor: 'pointer', fontWeight: 600,
+          }}>
+            {modeLabel[m]}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Target WP
@@ -1111,34 +1326,79 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
             ))}
           </select>
         </label>
-        <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-          TOS (min from launch)
-          <input type="number" value={tosMinutes} onChange={(e) => setTosMinutes(Number(e.target.value))}
-            min={1} max={300} style={{ ...monoInputStyle, width: 60 }} />
-        </label>
+
+        {mode === 'minutes' && (
+          <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Enroute (min)
+            <input type="number" value={tosMinutes} onChange={(e) => setTosMinutes(Number(e.target.value))}
+              min={1} max={300} style={{ ...monoInputStyle, width: 60 }} />
+          </label>
+        )}
+
+        {(mode === 'zulu_tot' || mode === 'zulu_speed') && (
+          <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Depart (Zulu)
+            <input value={departZulu} onChange={(e) => setDepartZulu(e.target.value)}
+              placeholder="08:00" style={{ ...monoInputStyle, width: 70 }} />
+          </label>
+        )}
+
+        {mode === 'zulu_tot' && (
+          <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            TOT (Zulu)
+            <input value={totZulu} onChange={(e) => setTotZulu(e.target.value)}
+              placeholder="08:45" style={{ ...monoInputStyle, width: 70 }} />
+          </label>
+        )}
+
+        {mode === 'zulu_speed' && (
+          <label style={{ color: '#5a7a8a', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            GS (kts)
+            <input type="number" value={inputSpeed} onChange={(e) => setInputSpeed(Number(e.target.value))}
+              min={50} max={1200} style={{ ...monoInputStyle, width: 70 }} />
+          </label>
+        )}
       </div>
 
-      {result && result.totalNm > 0 && (
+      {totalNm > 0 && (
+        <div style={{ color: '#5a7a8a', fontSize: 12, marginBottom: 8 }}>
+          Distance to target: <span style={{ color: '#ccdae8', fontFamily: 'monospace' }}>{totalNm.toFixed(1)} nm</span>
+        </div>
+      )}
+
+      {result && (
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12,
           padding: '12px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e',
         }}>
           <div>
             <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>DISTANCE</div>
-            <div style={{ color: '#ccdae8', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.totalNm.toFixed(1)} nm</div>
+            <div style={{ color: '#ccdae8', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{totalNm.toFixed(1)} nm</div>
           </div>
           <div>
-            <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>REQ GS</div>
-            <div style={{ color: '#4a8fd4', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.requiredGS.toFixed(0)} kts</div>
+            <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'GS' : 'REQ GS'}</div>
+            <div style={{ color: '#4a8fd4', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.gs.toFixed(0)} kts</div>
           </div>
           <div>
             <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>~MACH</div>
-            <div style={{ color: '#d29922', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.machApprox.toFixed(2)}</div>
+            <div style={{ color: '#d29922', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.mach.toFixed(2)}</div>
           </div>
           <div>
-            <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>TIME</div>
-            <div style={{ color: '#ccdae8', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.tosMinutes} min</div>
+            <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>ENROUTE</div>
+            <div style={{ color: '#ccdae8', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.enrouteMin.toFixed(0)} min</div>
           </div>
+          {result.departureZulu && (
+            <div>
+              <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>DEPART</div>
+              <div style={{ color: '#3fb950', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.departureZulu}</div>
+            </div>
+          )}
+          {result.arrivalZulu && (
+            <div>
+              <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'ETA' : 'TOT'}</div>
+              <div style={{ color: '#3fb950', fontSize: 16, fontWeight: 600, fontFamily: 'monospace' }}>{result.arrivalZulu}</div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1361,16 +1621,11 @@ const fieldLabelStyle: React.CSSProperties = {
 /* Presets sub-tab                                                      */
 /* ------------------------------------------------------------------ */
 
-function PresetsSubTab({ dtcData: _dtcData, setDtcData, commData, onUpdateComm, templateMsg, setTemplateMsg }: {
-  dtcData: DtcData;
+function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg }: {
   setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
-  commData: { COMM1: CommRadio; COMM2: CommRadio };
-  onUpdateComm: (radio: 'COMM1' | 'COMM2', channelKey: string, field: keyof CommChannel, value: string) => void;
   templateMsg: string;
   setTemplateMsg: (msg: string) => void;
 }) {
-  const [quickFillRadio, setQuickFillRadio] = useState<'COMM1' | 'COMM2'>('COMM1');
-
   const applyTemplate = (tpl: DtcTemplate) => {
     setDtcData((prev) => {
       if (!prev) return prev;
@@ -1395,29 +1650,6 @@ function PresetsSubTab({ dtcData: _dtcData, setDtcData, commData, onUpdateComm, 
     });
     setTemplateMsg(`Loaded "${pack.name}" → ${radio}`);
     setTimeout(() => setTemplateMsg(''), 3000);
-  };
-
-  const quickFill = (freq: typeof COMMON_FREQS[0], radio: 'COMM1' | 'COMM2') => {
-    const radioData = commData[radio] ?? {};
-    let targetCh: string | null = null;
-    for (let i = 1; i <= 20; i++) {
-      const chKey = `Channel_${i}`;
-      const ch = radioData[chKey];
-      if (!ch || !ch.frequency || ch.frequency === '0' || ch.frequency === '') {
-        targetCh = chKey;
-        break;
-      }
-    }
-    if (!targetCh) {
-      setTemplateMsg('No empty channels available');
-      setTimeout(() => setTemplateMsg(''), 2000);
-      return;
-    }
-    onUpdateComm(radio, targetCh, 'frequency', freq.freq);
-    onUpdateComm(radio, targetCh, 'modulation', freq.mod);
-    onUpdateComm(radio, targetCh, 'name', freq.name);
-    setTemplateMsg(`${freq.name} → ${radio} ${channelLabel(targetCh)}`);
-    setTimeout(() => setTemplateMsg(''), 2000);
   };
 
   return (
@@ -1485,39 +1717,6 @@ function PresetsSubTab({ dtcData: _dtcData, setDtcData, commData, onUpdateComm, 
         </div>
       </div>
 
-      {/* Quick Fill Common Frequencies */}
-      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Quick Fill
-          </span>
-          <select
-            value={quickFillRadio}
-            onChange={(e) => setQuickFillRadio(e.target.value as 'COMM1' | 'COMM2')}
-            style={{ ...selectStyle, fontSize: 11, padding: '2px 6px', borderRadius: 10 }}
-          >
-            <option value="COMM1">COMM1</option>
-            <option value="COMM2">COMM2</option>
-          </select>
-          <span style={{ color: '#3a5a6a', fontSize: 11 }}>Fills next empty channel</span>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {COMMON_FREQS.map((f) => (
-            <button
-              key={f.name}
-              title={`${f.freq} ${f.mod} → next empty ch on ${quickFillRadio}`}
-              onClick={() => quickFill(f, quickFillRadio)}
-              style={{
-                background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 6,
-                color: '#8fa8c0', cursor: 'pointer', fontSize: 12, padding: '6px 12px',
-                fontFamily: 'monospace',
-              }}
-            >
-              {f.name} <span style={{ color: '#5a7a8a' }}>{f.freq}</span>
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

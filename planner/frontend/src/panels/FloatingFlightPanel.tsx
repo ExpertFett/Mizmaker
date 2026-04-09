@@ -7,6 +7,7 @@ import { convertSpeed, computeEte, speedRefToGs, type SpeedMode } from '../utils
 import { sessionEdit, sessionUnitEdit } from '../api/client';
 import { getAircraftType, isPlayerGroup } from '../utils/groups';
 import { LauncherSettingsPanel } from '../editor/components/LauncherSettings';
+import { registerPanel, unregisterPanel, snapToSiblings } from '../map/controls/panelRegistry';
 import type { Waypoint, MissionWeather, PylonInfo } from '../types/mission';
 
 
@@ -55,6 +56,14 @@ export function FloatingFlightPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
   const [panelTab, setPanelTab] = useState<'route' | 'datalink' | 'loadout'>('route');
+
+  // Register with shared panel registry for cross-panel snapping
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    registerPanel('floatingFlightPanel', el);
+    return () => unregisterPanel('floatingFlightPanel');
+  }, []);
 
   // All hooks MUST be above this early return
   const assignedGroup = useMissionStore((s) => s.assignedGroup);
@@ -197,11 +206,21 @@ export function FloatingFlightPanel() {
     const eh = rect.height;
     let x = rect.left - parentRect.left;
     let y = rect.top - parentRect.top;
-    // Snap to edges within 40px
-    if (x <= 40) x = 0;
-    else if (x + ew >= pw - 40) x = pw - ew;
-    if (y <= 40) y = 0;
-    else if (y + eh >= ph - 40) y = ph - eh;
+
+    // Snap to sibling panels first
+    const sibSnap = snapToSiblings('floatingFlightPanel', rect, parentRect as DOMRect, 40);
+    if (sibSnap.x !== null) x = sibSnap.x;
+    if (sibSnap.y !== null) y = sibSnap.y;
+
+    // Snap to screen edges (only on axes not already snapped to a sibling)
+    if (sibSnap.x === null) {
+      if (x <= 40) x = 0;
+      else if (x + ew >= pw - 40) x = pw - ew;
+    }
+    if (sibSnap.y === null) {
+      if (y <= 40) y = 0;
+      else if (y + eh >= ph - 40) y = ph - eh;
+    }
     // Clamp to stay on screen
     x = Math.max(0, Math.min(x, pw - ew));
     y = Math.max(0, Math.min(y, ph - eh));
