@@ -5,27 +5,77 @@
 
 import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
-  notesBox, footerStyle,
+  notesBox, footerStyle, MissionDateLine,
   BORDER, TEXT, TEXT_MUTED, DIM, WARN,
 } from './cardStyles';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
+import { generateMetar } from '../utils/metar';
 
 interface WeatherBriefCardProps {
   overview: MissionOverviewData;
 }
 
 function fmtWind(layer: { speed: number; dir: number }): string {
+  // DCS stores wind direction as the "from" direction in DCS coordinates.
+  // Add 180° to convert to standard meteorological "from" reporting.
   const meteoDir = (layer.dir + 180) % 360;
   const kts = Math.round(msToKnots(layer.speed));
   if (kts === 0) return 'Calm';
   return `${Math.round(meteoDir).toString().padStart(3, '0')}°/${kts} kts`;
 }
 
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}Z`;
+/**
+ * DCS cloud preset names → friendly description (coverage + special weather).
+ * When a mission uses a preset, the legacy density field is meaningless — the
+ * preset is the source of truth.
+ */
+const CLOUD_PRESETS: Record<string, { coverage: string; rain?: boolean; storm?: boolean }> = {
+  Preset1: { coverage: 'Light Scattered 1' },
+  Preset2: { coverage: 'Light Scattered 2' },
+  Preset3: { coverage: 'High Scattered 1' },
+  Preset4: { coverage: 'High Scattered 2' },
+  Preset5: { coverage: 'Scattered 1' },
+  Preset6: { coverage: 'Scattered 2' },
+  Preset7: { coverage: 'Scattered 3' },
+  Preset8: { coverage: 'High Scattered 3' },
+  Preset9: { coverage: 'Scattered 4' },
+  Preset10: { coverage: 'Broken 1' },
+  Preset11: { coverage: 'Broken 2' },
+  Preset12: { coverage: 'Broken 3' },
+  Preset13: { coverage: 'Broken 4' },
+  Preset14: { coverage: 'Broken 5' },
+  Preset15: { coverage: 'Broken 6' },
+  Preset16: { coverage: 'Broken 7' },
+  Preset17: { coverage: 'Broken 8 (Rain)', rain: true },
+  Preset18: { coverage: 'Overcast 1' },
+  Preset19: { coverage: 'Overcast 2' },
+  Preset20: { coverage: 'Overcast 3' },
+  Preset21: { coverage: 'Overcast 4 (Rain)', rain: true },
+  Preset22: { coverage: 'Overcast 5 (Rain)', rain: true },
+  Preset23: { coverage: 'Overcast 6 (Rain)', rain: true },
+  Preset24: { coverage: 'Overcast 7 (Rain)', rain: true },
+  Preset25: { coverage: 'Overcast 8 (Rain)', rain: true },
+  Preset26: { coverage: 'Overcast 9 (Storm)', rain: true, storm: true },
+  Preset27: { coverage: 'Overcast 10 (Storm)', rain: true, storm: true },
+  RainyPreset1: { coverage: 'Overcast (Rain)', rain: true },
+  RainyPreset2: { coverage: 'Overcast (Rain Heavy)', rain: true },
+  RainyPreset3: { coverage: 'Overcast (Storm)', rain: true, storm: true },
+};
+
+function describeClouds(preset: string, density: number): { coverage: string; rain: boolean; storm: boolean } {
+  // Prefer preset when set — legacy density is unreliable with presets.
+  if (preset && preset.trim()) {
+    const known = CLOUD_PRESETS[preset];
+    if (known) return { coverage: known.coverage, rain: !!known.rain, storm: !!known.storm };
+    return { coverage: preset, rain: false, storm: false };  // unknown preset, show raw name
+  }
+  // Legacy 0-10 density scale
+  if (density <= 0) return { coverage: 'Clear', rain: false, storm: false };
+  if (density <= 2) return { coverage: `Few (${density}/10)`, rain: false, storm: false };
+  if (density <= 4) return { coverage: `Scattered (${density}/10)`, rain: false, storm: false };
+  if (density <= 7) return { coverage: `Broken (${density}/10)`, rain: false, storm: false };
+  return { coverage: `Overcast (${density}/10)`, rain: false, storm: false };
 }
 
 const rowStyle: React.CSSProperties = {
@@ -45,8 +95,12 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
   const visSM = (wx.visibility_m / 1609.34).toFixed(1);
   const tempF = Math.round(wx.temperature_c * 9 / 5 + 32);
 
-  // Flight condition
-  const ceilCheck = wx.clouds_density >= 5 ? ceilFt : 99999;
+  // Determine cloud coverage from preset (preferred) or density (legacy)
+  const cloudInfo = describeClouds(wx.clouds_preset, wx.clouds_density);
+  const hasOvercast = /Overcast|Broken/i.test(cloudInfo.coverage);
+
+  // Flight condition — use ceiling only if Broken/Overcast (per FAA convention)
+  const ceilCheck = hasOvercast ? ceilFt : 99999;
   const visCheck = wx.visibility_m / 1609.34;
   let flightCat = 'VFR';
   let catColor = '#60c080';
@@ -54,15 +108,40 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
   else if (ceilCheck < 1000 || visCheck < 3) { flightCat = 'IFR'; catColor = '#d97050'; }
   else if (ceilCheck < 3000 || visCheck < 5) { flightCat = 'MVFR'; catColor = '#d29922'; }
 
-  const precipLabel = wx.clouds_precipitation === 1 ? 'Rain' : wx.clouds_precipitation === 2 ? 'Thunderstorm' : 'None';
+  // Precipitation — preset's rain flag wins if a preset is set, else legacy iprecptns
+  let precipLabel = 'None';
+  if (cloudInfo.storm) precipLabel = 'Thunderstorm';
+  else if (cloudInfo.rain) precipLabel = 'Rain';
+  else if (!wx.clouds_preset) {
+    if (wx.clouds_precipitation === 1) precipLabel = 'Rain';
+    else if (wx.clouds_precipitation === 2) precipLabel = 'Thunderstorm';
+  }
 
   return (
     <div style={cardRoot}>
       <div style={headerStyle}>
         <div style={titleStyle}>WEATHER BRIEFING</div>
         <div style={subtitleStyle}>
-          {overview.theater} | {overview.date} | {formatTime(overview.start_time)}
+          {overview.theater}
         </div>
+        <MissionDateLine date={overview.date} startTime={overview.start_time} />
+      </div>
+
+      {/* METAR-style summary */}
+      <div style={{
+        padding: '6px 16px',
+        background: '#222',
+        fontFamily: 'monospace',
+        fontSize: 16,
+        color: TEXT,
+        letterSpacing: 0.5,
+        flexShrink: 0,
+        borderBottom: `1px solid ${BORDER}`,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {generateMetar(wx, overview.date, overview.start_time)}
       </div>
 
       {/* Flight category banner */}
@@ -114,31 +193,20 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
       <div style={sectionTitle}>CLOUDS</div>
       <div style={rowStyle}>
         <span style={lbl}>Coverage</span>
-        <span style={val}>
-          {wx.clouds_density <= 0 ? 'Clear' :
-           wx.clouds_density <= 2 ? 'Few' :
-           wx.clouds_density <= 4 ? 'Scattered' :
-           wx.clouds_density <= 7 ? 'Broken' : 'Overcast'}
-          {wx.clouds_density > 0 ? ` (${wx.clouds_density}/10)` : ''}
-        </span>
+        <span style={val}>{cloudInfo.coverage}</span>
       </div>
-      {wx.clouds_density > 0 && (
-        <>
-          <div style={rowStyle}>
-            <span style={lbl}>Base / Thickness</span>
-            <span style={val}>{ceilFt.toLocaleString()} ft / {Math.round(metersToFeet(wx.clouds_thickness)).toLocaleString()} ft</span>
-          </div>
-          {wx.clouds_preset && (
-            <div style={rowStyle}>
-              <span style={lbl}>Preset</span>
-              <span style={val}>{wx.clouds_preset}</span>
-            </div>
-          )}
-        </>
+      {(cloudInfo.coverage !== 'Clear') && ceilFt > 0 && (
+        <div style={rowStyle}>
+          <span style={lbl}>Base / Thickness</span>
+          <span style={val}>
+            {ceilFt.toLocaleString()} ft
+            {wx.clouds_thickness > 0 ? ` / ${Math.round(metersToFeet(wx.clouds_thickness)).toLocaleString()} ft` : ''}
+          </span>
+        </div>
       )}
       <div style={rowStyle}>
         <span style={lbl}>Precipitation</span>
-        <span style={{ ...val, color: wx.clouds_precipitation > 0 ? WARN : TEXT }}>{precipLabel}</span>
+        <span style={{ ...val, color: precipLabel !== 'None' ? WARN : TEXT }}>{precipLabel}</span>
       </div>
 
       {/* Visibility */}

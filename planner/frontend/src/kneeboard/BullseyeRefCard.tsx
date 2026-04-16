@@ -4,7 +4,7 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, BORDER_MED, DIM, ROW_ALT, footerStyle } from './cardStyles';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, BORDER_MED, DIM, ROW_ALT, footerStyle, MissionDateLine } from './cardStyles';
 import type { Airbase, MissionGroup, ThreatRing } from '../types/mission';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToNm } from '../utils/conversions';
@@ -70,6 +70,7 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
         <div style={subtitleStyle}>
           {theater} | {coalition.toUpperCase()} | {points.length} reference points
         </div>
+        <MissionDateLine date={overview.date} startTime={overview.start_time} />
       </div>
 
       {/* Reference points */}

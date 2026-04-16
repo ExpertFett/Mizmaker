@@ -20,6 +20,7 @@ import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
 import { ThreatCard } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
+import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
@@ -30,6 +31,7 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
   { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
   { key: 'fuelLadder', label: 'Fuel Ladder', desc: 'Fuel burn per leg, joker/bingo' },
+  { key: 'homePlate', label: 'Home Plate / Divert', desc: 'Departure field + nearest diverts' },
 ];
 
 const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
@@ -87,24 +89,28 @@ export function KneeboardTab() {
     const safeName = g.groupName.replace(/\s+/g, '_');
 
     if (cards.lineup) {
-      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold });
+      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined });
       results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.flight) {
-      const el = createElement(FlightCard, { group: g, clientUnits });
+      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined });
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.comms) {
-      const el = createElement(CommsCard, { group: g, allGroups: groups });
+      const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined });
       results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.routeDetail) {
-      const el = createElement(RouteDetailCard, { group: g, threats });
+      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined });
       results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.fuelLadder) {
-      const el = createElement(FuelLadderCard, { group: g, clientUnits });
+      const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined });
       results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el) });
+    }
+    if (cards.homePlate) {
+      const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined });
+      results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el) });
     }
     return results;
   };
@@ -113,15 +119,15 @@ export function KneeboardTab() {
   const renderSharedCards = async (): Promise<{ name: string; blob: Blob }[]> => {
     const results: { name: string; blob: Blob }[] = [];
     if (cards.supportAssets) {
-      const el = createElement(SupportAssetsCard, { groups, coalition });
+      const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined });
       results.push({ name: 'Support_Assets.png', blob: await renderCardToBlob(el) });
     }
     if (cards.radioLadder) {
-      const el = createElement(RadioLadderCard, { groups, coalition });
+      const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined });
       results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el) });
     }
     if (cards.airbaseRef) {
-      const el = createElement(AirbaseRefCard, { airbases, theater });
+      const el = createElement(AirbaseRefCard, { airbases, theater, overview: overview || undefined });
       results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.bullseyeRef && overview) {
@@ -129,7 +135,7 @@ export function KneeboardTab() {
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.threatCard) {
-      const el = createElement(ThreatCard, { threats, playerCoalition: coalition });
+      const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined });
       results.push({ name: 'Threat_Card.png', blob: await renderCardToBlob(el) });
     }
     if (cards.weatherBrief && overview) {
@@ -429,6 +435,20 @@ function CardCarousel({
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
+  const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
+
+  // Build pilot list for the Tactical C/S selector (units in selected group)
+  const pilots = useMemo(() => {
+    if (!selectedGroup) return [];
+    return clientUnits
+      .filter((u) => u.groupName === selectedGroup.groupName)
+      .map((u) => ({ unitId: u.unitId, name: u.name }));
+  }, [selectedGroup, clientUnits]);
+
+  // Reset pilot selection when group changes
+  useEffect(() => {
+    setSelectedPilotId(null);
+  }, [selectedGroup?.groupId]);
 
   // Build list of enabled cards
   const cardList = useMemo<CardEntry[]>(() => {
@@ -438,31 +458,37 @@ function CardCarousel({
       if (cards.lineup) {
         list.push({
           key: 'lineup', label: 'Route Card',
-          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold }),
+          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined }),
         });
       }
       if (cards.flight) {
         list.push({
           key: 'flight', label: 'Flight Card',
-          element: createElement(FlightCard, { group: selectedGroup, clientUnits }),
+          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined }),
         });
       }
       if (cards.comms) {
         list.push({
           key: 'comms', label: 'Comms Card',
-          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups }),
+          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups, overview: overview || undefined }),
         });
       }
       if (cards.routeDetail) {
         list.push({
           key: 'routeDetail', label: 'Route Detail',
-          element: createElement(RouteDetailCard, { group: selectedGroup, threats }),
+          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined }),
         });
       }
       if (cards.fuelLadder) {
         list.push({
           key: 'fuelLadder', label: 'Fuel Ladder',
-          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits }),
+          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits, overview: overview || undefined }),
+        });
+      }
+      if (cards.homePlate) {
+        list.push({
+          key: 'homePlate', label: 'Home Plate / Divert',
+          element: createElement(HomePlateCard, { group: selectedGroup, airbases, overview: overview || undefined }),
         });
       }
     }
@@ -471,19 +497,19 @@ function CardCarousel({
     if (cards.supportAssets) {
       list.push({
         key: 'supportAssets', label: 'Support Assets',
-        element: createElement(SupportAssetsCard, { groups, coalition }),
+        element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined }),
       });
     }
     if (cards.radioLadder) {
       list.push({
         key: 'radioLadder', label: 'Radio Ladder',
-        element: createElement(RadioLadderCard, { groups, coalition }),
+        element: createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined }),
       });
     }
     if (cards.airbaseRef) {
       list.push({
         key: 'airbaseRef', label: 'Airbase Reference',
-        element: createElement(AirbaseRefCard, { airbases, theater }),
+        element: createElement(AirbaseRefCard, { airbases, theater, overview: overview || undefined }),
       });
     }
     if (cards.bullseyeRef && overview) {
@@ -495,7 +521,7 @@ function CardCarousel({
     if (cards.threatCard) {
       list.push({
         key: 'threatCard', label: 'Threat Card',
-        element: createElement(ThreatCard, { threats, playerCoalition: coalition }),
+        element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined }),
       });
     }
     if (cards.weatherBrief && overview) {
@@ -556,6 +582,27 @@ function CardCarousel({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: 12, marginBottom: 10,
       }}>
+        {/* Tactical C/S pilot selector */}
+        {pilots.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
+            <span style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, letterSpacing: 0.5 }}>PILOT:</span>
+            <select
+              value={selectedPilotId ?? '__all__'}
+              onChange={(e) => setSelectedPilotId(e.target.value === '__all__' ? null : Number(e.target.value))}
+              style={{
+                background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 3,
+                color: selectedPilotId ? '#4a8fd4' : '#8fa8c0',
+                fontSize: 12, fontWeight: 600, padding: '3px 8px', fontFamily: 'inherit',
+              }}
+            >
+              <option value="__all__">All</option>
+              {pilots.map((p) => (
+                <option key={p.unitId} value={p.unitId}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <button
           onClick={() => setCardIndex((i) => Math.max(0, i - 1))}
           disabled={cardIndex === 0}

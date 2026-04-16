@@ -243,14 +243,27 @@ export function ThreatLibraryTab() {
   const threats = useMissionStore((s) => s.threats);
   const [viewTab, setViewTab] = useState<ViewTab>('threats');
   const [coalFilter, setCoalFilter] = useState<CoalFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [expandedSystems, setExpandedSystems] = useState<Set<string>>(new Set());
   const [expandedFlights, setExpandedFlights] = useState<Set<number>>(new Set());
 
-  // Filter threats by coalition
+  // Filter threats by coalition + search
   const filtered = useMemo(() => {
-    if (coalFilter === 'all') return threats;
-    return threats.filter((t) => t.coalition === coalFilter);
-  }, [threats, coalFilter]);
+    let list = threats;
+    if (coalFilter !== 'all') list = list.filter((t) => t.coalition === coalFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((t) => {
+        const info = lookupSamInfo(t.type);
+        return (
+          t.name.toLowerCase().includes(q) ||
+          t.type.toLowerCase().includes(q) ||
+          (info && (info.nato.toLowerCase().includes(q) || info.system.toLowerCase().includes(q)))
+        );
+      });
+    }
+    return list;
+  }, [threats, coalFilter, searchQuery]);
 
   // Group threats by system type
   const threatGroups = useMemo(() => groupThreats(filtered), [filtered]);
@@ -340,6 +353,17 @@ export function ThreatLibraryTab() {
               Route Exposure
             </TabButton>
             <div style={{ flex: 1 }} />
+            <input
+              type="text"
+              placeholder="Search threats (SA-10, Patriot, Grumble...)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+                color: '#ccdae8', fontSize: 12, padding: '4px 10px', width: 240,
+                fontFamily: 'inherit',
+              }}
+            />
             <select
               value={coalFilter}
               onChange={(e) => setCoalFilter(e.target.value as CoalFilter)}

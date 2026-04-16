@@ -83,17 +83,34 @@ def _find_unit_block_bounds(text: str, unit_id: int) -> tuple[int, int]:
 
 
 def _find_group_block_start(text: str, group_id: int) -> int:
-    """Find the position of ["groupId"] = N in the mission text.
+    """Find the position of ["groupId"] = N in an actual group definition.
 
-    This is the simple 856-style search (first occurrence).  It is used for
-    unit-level edits where groupId ambiguity is less of a problem because we
-    search near the anchor.
+    IMPORTANT: ["groupId"] = N also appears inside trigger action parameters
+    (e.g. a trigger that targets a specific group), which are NOT group
+    definitions. To disambiguate, we require the match be followed by
+    ["hidden"] or ["units"] within the next ~500 chars — those fields appear
+    right after groupId in actual group blocks but never in trigger refs.
+
+    Falls back to the first match if no "real" group is found (for backward
+    compat with 856-style unit edits where the anchor is by position).
     """
     pattern = rf'\["groupId"\]\s*=\s*{group_id}\s*,'
-    match = re.search(pattern, text)
-    if not match:
+    matches = list(re.finditer(pattern, text))
+    if not matches:
         raise ValueError(f"Group {group_id} not found in mission text")
-    return match.start()
+
+    # A real group definition has ["hidden"] as the IMMEDIATE next field after
+    # ["groupId"]. Trigger action references have "}, -- end of ..." right
+    # after. We use a tight window (~80 chars of whitespace+key) to avoid
+    # picking up the next group's ["hidden"] after a stack of closing braces.
+    real_group_next = re.compile(r'^\s*\["hidden"\]')
+    for m in matches:
+        window = text[m.end():m.end() + 80]
+        if real_group_next.match(window):
+            return m.start()
+
+    # Fallback: first match (preserves old behavior for edge cases)
+    return matches[0].start()
 
 
 # ---------------------------------------------------------------------------
@@ -394,46 +411,148 @@ def _replace_pylon_clsid(text: str, unit_id: int, pylon_num: int, new_clsid: str
     return text
 
 
+# Pylon CLSID patterns that indicate a laser-guided weapon. Matches both full
+# UUIDs (via external LASER_CLSIDS lookup) and the short-form CLSIDs DCS ME
+# sometimes writes (e.g. "{GBU-24}", "{BRU33*GBU-12}").
+_LASER_CLSID_PATTERN = re.compile(
+    r'GBU[-\s_]?1[0246]|GBU[-\s_]?24|GBU[-\s_]?27|GBU[-\s_]?28|'
+    r'Paveway|LGB|KAB[-\s_]?500L|KAB[-\s_]?1500L|LJDAM|'
+    r'AGM[-\s_]?65[EKL]|AGM[-\s_]?114[KL]|APKWS|Maverick[-\s_]?E',
+    re.IGNORECASE,
+)
+
+
+def _is_laser_pylon_clsid(clsid: str) -> bool:
+    """True if CLSID looks like a laser-guided weapon (short form or UUID-known)."""
+    if not clsid:
+        return False
+    if _LASER_CLSID_PATTERN.search(clsid):
+        return True
+    # Fallback: check pydcs LASER_CLSIDS (full UUIDs)
+    try:
+        from services.unit_extractor import LASER_CLSIDS
+        if clsid in LASER_CLSIDS:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _replace_laser_code(text: str, unit_id: int, laser_code: int) -> str:
-    """Replace laser_code in all laser-carrying pylons for a unit.
+    """Set laser_code on every laser-guided pylon for a unit.
 
-    Finds every pylon that has a ["laser_code"] setting and replaces the value.
+    If the pylon already has ["laser_code"] = NNNN, replace the value. If the
+    pylon is a laser-guided weapon but has no laser_code (or no ["settings"]
+    block at all), insert one.
     """
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_start = max(0, unit_pos - 5000)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[search_start:search_end]
+    # Use brace-matched unit bounds — NOT a ±5000-char window, which can
+    # straddle adjacent units in the same group and clobber their pylons.
+    unit_start, unit_end = _find_unit_block_bounds(text, unit_id)
 
-    # Find the pylons section
-    pylons_match = re.search(r'\["pylons"\]\s*=\s*\n?\s*\{', region)
+    # Find the pylons section WITHIN this unit's brace-matched bounds
+    pylons_match = re.search(r'\["pylons"\]\s*=\s*\n?\s*\{', text[unit_start:unit_end])
     if not pylons_match:
-        raise ValueError(f"Pylons section not found near unit {unit_id}")
+        raise ValueError(f"Pylons section not found inside unit {unit_id}")
 
     # Find the end of the pylons block via brace-matching
-    brace_pos = search_start + pylons_match.end() - 1
+    brace_pos = unit_start + pylons_match.end() - 1
     depth = 1
     i = brace_pos + 1
-    while i < len(text) and depth > 0:
+    while i < unit_end and depth > 0:
         if text[i] == '{':
             depth += 1
         elif text[i] == '}':
             depth -= 1
         i += 1
-    pylons_region_start = search_start + pylons_match.start()
+    pylons_region_start = unit_start + pylons_match.start()
     pylons_region_end = i
 
-    # Find all ["laser_code"] = NNNN within this pylons block
-    pattern = re.compile(r'(\["laser_code"\]\s*=\s*)(\d+)')
-    replacements = []
-    for m in pattern.finditer(text, pylons_region_start, pylons_region_end):
-        replacements.append((m.start(2), m.end(2)))
+    # Walk each individual pylon entry [N] = { ... }, collect edits, apply
+    # back-to-front to preserve earlier offsets.
+    edits: list[tuple[int, int, str]] = []  # (abs_start, abs_end, replacement)
+    pylon_entry_re = re.compile(r'\[\d+\]\s*=\s*\{')
+    for pe in pylon_entry_re.finditer(text, pylons_region_start, pylons_region_end):
+        # Brace-match this pylon
+        p_brace = pe.end() - 1
+        p_depth = 1
+        pj = p_brace + 1
+        while pj < pylons_region_end and p_depth > 0:
+            if text[pj] == '{':
+                p_depth += 1
+            elif text[pj] == '}':
+                p_depth -= 1
+            pj += 1
+        pylon_block = text[pe.start():pj]
+        pylon_abs_start = pe.start()
 
-    if not replacements:
-        raise ValueError(f"No laser_code settings found in pylons for unit {unit_id}")
+        # Extract CLSID to decide if this is a laser pylon
+        clsid_m = re.search(r'\["CLSID"\]\s*=\s*"([^"]*)"', pylon_block)
+        if not clsid_m:
+            continue
+        clsid = clsid_m.group(1)
+        is_laser = _is_laser_pylon_clsid(clsid)
 
-    # Replace backwards to preserve positions
-    for start, end in reversed(replacements):
-        text = text[:start] + str(laser_code) + text[end:]
+        # Case 1: pylon already has ["laser_code"] — replace regardless
+        lc_m = re.search(r'(\["laser_code"\]\s*=\s*)(\d+)', pylon_block)
+        if lc_m:
+            edits.append((
+                pylon_abs_start + lc_m.start(2),
+                pylon_abs_start + lc_m.end(2),
+                str(laser_code),
+            ))
+            continue
+
+        # No existing laser_code — only insert if we think this is laser-guided
+        if not is_laser:
+            continue
+
+        # Case 2: pylon has ["settings"] = { ... } — insert laser_code inside
+        settings_m = re.search(r'\["settings"\]\s*=\s*\n?\s*\{', pylon_block)
+        if settings_m:
+            # Brace-match settings block to find insertion point before closing brace
+            s_brace = settings_m.end() - 1
+            s_depth = 1
+            sj = s_brace + 1
+            while sj < len(pylon_block) and s_depth > 0:
+                if pylon_block[sj] == '{':
+                    s_depth += 1
+                elif pylon_block[sj] == '}':
+                    s_depth -= 1
+                sj += 1
+            settings_close = sj - 1  # position of the closing brace
+            # Figure out indent from a preceding key line inside settings
+            settings_inner = pylon_block[s_brace + 1:settings_close]
+            indent_m = re.search(r'\n([ \t]+)\["', settings_inner)
+            indent = indent_m.group(1) if indent_m else '\t\t\t\t\t\t\t\t\t\t\t'
+            insert_text = f'{indent}["laser_code"] = {laser_code},\n'
+            # Position just before the closing brace's preceding whitespace; simplest: insert before the } itself
+            insert_abs = pylon_abs_start + settings_close
+            edits.append((insert_abs, insert_abs, insert_text))
+            continue
+
+        # Case 3: no settings block — create one with just laser_code
+        # Insert before the pylon's closing brace. Use the indent of the CLSID line.
+        clsid_line_m = re.search(r'\n([ \t]+)\["CLSID"\]', pylon_block)
+        indent = clsid_line_m.group(1) if clsid_line_m else '\t\t\t\t\t\t\t\t\t\t'
+        # Find the pylon's inner indent and closing brace position
+        pylon_close = pj - 1  # position of closing brace in text
+        # Insert "\n\t\t\t\t...\t["settings"] = {..laser_code..}" before pylon_close
+        # Keep tidy: put settings on its own indented line before the `}`
+        insert_text = (
+            f'\n{indent}["settings"] = \n'
+            f'{indent}{{\n'
+            f'{indent}\t["laser_code"] = {laser_code},\n'
+            f'{indent}}}, -- end of ["settings"]\n'
+            f'{indent[:-1]}'  # slight dedent for closing brace line continuity
+        )
+        edits.append((pylon_close, pylon_close, insert_text))
+
+    if not edits:
+        raise ValueError(f"No laser-guided pylons found for unit {unit_id}")
+
+    # Apply edits back-to-front so earlier offsets stay valid
+    for start, end, replacement in sorted(edits, key=lambda e: e[0], reverse=True):
+        text = text[:start] + replacement + text[end:]
 
     return text
 
@@ -980,10 +1099,37 @@ def _replace_radio_frequency(text: str, unit_id: int, freq_hz: int) -> str:
 # ---------------------------------------------------------------------------
 
 def _replace_group_field(text: str, group_id: int, field: str, new_value) -> str:
-    """Replace a field (task, frequency, modulation) on a group."""
+    """Replace a group-level field (task, frequency, modulation) on a group.
+
+    Group-level fields like ["frequency"] appear AFTER the ["units"] block.
+    We brace-match past the units block first, then search for the field — this
+    avoids mistakenly matching unit-level ["frequency"] fields that appear
+    inside individual unit Radio blocks.
+    """
     group_pos = _find_group_block_start(text, group_id)
-    search_end = min(len(text), group_pos + 10000)
-    region = text[group_pos:search_end]
+
+    # Find and brace-match past the ["units"] block.
+    units_match = re.search(r'\["units"\]\s*=\s*\n?\s*\{', text[group_pos:group_pos + 500])
+    if not units_match:
+        # No units block — search from the group start as fallback.
+        search_start = group_pos
+    else:
+        brace_start = group_pos + units_match.end() - 1
+        depth = 1
+        i = brace_start + 1
+        while i < len(text) and depth > 0:
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+            i += 1
+        search_start = i  # just past the units block's closing brace
+
+    # Now search within the remainder of the group block. Group-level fields
+    # sit between the closing units brace and the end of the group block.
+    # Limit to 5000 chars — group-level fields cluster at the end.
+    search_end = min(len(text), search_start + 5000)
+    region = text[search_start:search_end]
 
     if isinstance(new_value, str):
         lua_val = f'"{new_value}"'
@@ -995,8 +1141,8 @@ def _replace_group_field(text: str, group_id: int, field: str, new_value) -> str
     pattern = rf'(\["{field}"\]\s*=\s*)([^,\n]+)'
     m = re.search(pattern, region)
     if m:
-        abs_start = group_pos + m.start(2)
-        abs_end = group_pos + m.end(2)
+        abs_start = search_start + m.start(2)
+        abs_end = search_start + m.end(2)
         text = text[:abs_start] + lua_val + text[abs_end:]
     return text
 
@@ -1857,8 +2003,12 @@ def _replace_weather_block(text: str, weather_data: dict) -> str:
     _log(f"TEXT SIZE: {original_len} -> {len(text)} ({len(text)-original_len:+d})")
     _log(f"=== WEATHER REPLACE END ===\n")
 
-    with open(_dbg_path, "a") as _f:
-        _f.write("\n".join(_log_lines) + "\n")
+    # Debug log write must never break the weather edit — wrap & force utf-8.
+    try:
+        with open(_dbg_path, "a", encoding="utf-8") as _f:
+            _f.write("\n".join(_log_lines) + "\n")
+    except Exception:
+        pass
 
     return text
 
@@ -2006,8 +2156,11 @@ def apply_unit_edits(text: str, edits: list) -> str:
             elif field == "payloadReplace":
                 text = _replace_payload_block(text, unit_id, value)
         except Exception as e:
-            import logging
-            logging.warning(f"Skipping edit {field} (unit={edit.get('unitId')}, group={edit.get('groupId')}): {e}")
+            import logging, traceback
+            logging.warning(
+                f"Skipping edit field={field} unit={edit.get('unitId')} group={edit.get('groupId')}: "
+                f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+            )
             continue
 
     return text

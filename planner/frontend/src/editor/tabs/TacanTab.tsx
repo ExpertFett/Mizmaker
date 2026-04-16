@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
 import { isCarrierGroup, getAirRoleLabel } from '../../utils/groups';
 
 /** Extract a number from a group name/type for TACAN channel derivation.
@@ -61,6 +62,7 @@ interface TacanRow {
 export function TacanTab() {
   const groups = useMissionStore((s) => s.groups);
   const addEdit = useEditStore((s) => s.addEdit);
+  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
   const [overrides, setOverrides] = useState<Map<number, Partial<TacanRow>>>(new Map());
   const [result, setResult] = useState('');
 
@@ -111,13 +113,48 @@ export function TacanTab() {
     let fallbackCh = 30;
     let nextIclsCh = 1;
 
-    const derived: { row: TacanRow; ch: number; cs: string; band: string }[] = [];
+    // Build SOP lookup: tanker callsign (case-insensitive first word) -> SOP entry
+    const sopTankerMap = new Map<string, { channel: number; band: 'X' | 'Y'; callsign?: string }>();
+    if (activeSop?.tankers) {
+      for (const t of activeSop.tankers) {
+        if (t.tacanChannel != null) {
+          sopTankerMap.set(
+            t.callsign.toLowerCase(),
+            { channel: t.tacanChannel, band: t.tacanBand || 'Y', callsign: t.tacanCallsign },
+          );
+        }
+      }
+    }
+
+    const derived: { row: TacanRow; ch: number; cs: string; band: string; fromSop: boolean }[] = [];
+    let sopHits = 0;
     for (const row of tacanGroups) {
-      const ch = clampChannel(deriveChannel(row.groupName, row.type, row.role));
-      const cs = row.groupName.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase()
-        || (row.role === 'carrier' ? 'CVN' : 'TKR');
-      const band = row.role === 'tanker' ? 'Y' : 'X';
-      derived.push({ row, ch, cs, band });
+      let ch = 0;
+      let cs = '';
+      let band: string = row.role === 'tanker' ? 'Y' : 'X';
+      let fromSop = false;
+
+      // For tankers, try the SOP first
+      if (row.role === 'tanker') {
+        // Match the first word of the group name against SOP tanker callsigns
+        const firstWord = row.groupName.split(/[-\s]/)[0].toLowerCase();
+        const sopTanker = sopTankerMap.get(firstWord);
+        if (sopTanker) {
+          ch = sopTanker.channel;
+          band = sopTanker.band;
+          cs = sopTanker.callsign || row.groupName.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase() || 'TKR';
+          fromSop = true;
+          sopHits++;
+        }
+      }
+
+      // Fallback to derived values if SOP didn't match
+      if (!fromSop) {
+        ch = clampChannel(deriveChannel(row.groupName, row.type, row.role));
+        cs = row.groupName.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase()
+          || (row.role === 'carrier' ? 'CVN' : 'TKR');
+      }
+      derived.push({ row, ch, cs, band, fromSop });
     }
 
     for (const { row, ch, cs, band } of derived) {
@@ -139,8 +176,11 @@ export function TacanTab() {
     }
 
     setOverrides(next);
-    setResult(`Auto-assigned ${tacanGroups.length} TACAN channels`);
-  }, [tacanGroups]);
+    setResult(
+      `Auto-assigned ${tacanGroups.length} TACAN channels` +
+      (sopHits > 0 ? ` — ${sopHits} from SOP "${activeSop!.name}"` : ''),
+    );
+  }, [tacanGroups, activeSop]);
 
   const handleApply = useCallback(() => {
     if (overrides.size === 0) { setResult('No changes to apply'); return; }
@@ -198,14 +238,24 @@ export function TacanTab() {
         <>
           <button
             onClick={handleAutoAssign}
+            title={activeSop && activeSop.tankers && activeSop.tankers.length > 0
+              ? `Tanker TACANs come from SOP "${activeSop.name}" when callsigns match. Others fall back to auto-derivation.`
+              : 'Auto-assign TACAN channels based on group name / hull number'}
             style={{
               background: '#1a3a5a', border: '1px solid #4a8fd4', borderRadius: 4,
               color: '#4a8fd4', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              padding: '8px 16px', marginBottom: 16, width: '100%',
+              padding: '8px 16px', marginBottom: 8, width: '100%',
             }}
           >
-            Auto-Assign All Channels
+            Auto-Assign All Channels{activeSop && activeSop.tankers && activeSop.tankers.length > 0 ? ' (SOP)' : ''}
           </button>
+          {activeSop && activeSop.tankers && activeSop.tankers.length > 0 && (
+            <div style={{ fontSize: 11, color: '#d29922', marginBottom: 16 }}>
+              Using SOP "{activeSop.name}" — tankers matching{' '}
+              {activeSop.tankers.filter((t) => t.tacanChannel != null).map((t) => t.callsign).join(', ')}{' '}
+              will get their SOP TACAN channel.
+            </div>
+          )}
 
           {tankers.length > 0 && (
             <>

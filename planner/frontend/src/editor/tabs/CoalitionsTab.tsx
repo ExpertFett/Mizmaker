@@ -6,7 +6,7 @@
  * Changes are staged as edits and applied on .miz download.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 
@@ -123,13 +123,15 @@ export function CoalitionsTab() {
     return map;
   }, [countries]);
 
-  const [assignments, setAssignments] = useState<Map<string, string>>(new Map(initialAssignments));
+  const [assignments, setAssignments] = useState<Map<string, string>>(() => new Map(initialAssignments));
   const [applied, setApplied] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
 
-  // Rebuild when countries change
-  useMemo(() => {
+  // Reset assignments when the underlying country list changes (new mission loaded).
+  // Using useEffect (not useMemo) because this is a side effect, not a memoized value.
+  useEffect(() => {
     setAssignments(new Map(initialAssignments));
+    setApplied(false);
   }, [initialAssignments]);
 
   // Group countries by coalition

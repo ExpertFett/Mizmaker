@@ -6,8 +6,8 @@
  * Shows running fuel total with joker/bingo marks and visual gauges.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN } from './cardStyles';
-import type { MissionGroup, ClientUnit } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN, MissionDateLine } from './cardStyles';
+import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 import { estimateFuelFlow } from './fuelModel';
@@ -15,9 +15,10 @@ import { estimateFuelFlow } from './fuelModel';
 interface FuelLadderCardProps {
   group: MissionGroup;
   clientUnits: ClientUnit[];
+  overview?: MissionOverviewData;
 }
 
-export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
+export function FuelLadderCard({ group, clientUnits, overview }: FuelLadderCardProps) {
   const airframe = getAircraftType(group);
   const unitType = group.units[0]?.type || '';
   const wps = group.waypoints;
@@ -88,6 +89,7 @@ export function FuelLadderCard({ group, clientUnits }: FuelLadderCardProps) {
         <div style={subtitleStyle}>
           {airframe} | Start: {startFuel.toLocaleString()} lbs | Physics-based estimate
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Key fuel marks */}

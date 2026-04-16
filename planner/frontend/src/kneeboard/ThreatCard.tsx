@@ -4,14 +4,15 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, BG, W as CARD_W } from './cardStyles';
-import type { ThreatRing } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, BG, W as CARD_W, MissionDateLine } from './cardStyles';
+import type { ThreatRing, MissionOverviewData } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';
 
 interface ThreatCardProps {
   threats: ThreatRing[];
   playerCoalition: string;
+  overview?: MissionOverviewData;
 }
 
 /* ---- SAM lookup (mirrors ThreatLibraryTab) ---- */
@@ -68,7 +69,7 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-export function ThreatCard({ threats, playerCoalition }: ThreatCardProps) {
+export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardProps) {
   const enemy = threats.filter((t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
 
   // Enrich with SAM info and sort by range descending
@@ -113,6 +114,7 @@ export function ThreatCard({ threats, playerCoalition }: ThreatCardProps) {
           {enriched.length} hostile system{enriched.length !== 1 ? 's' : ''} |
           {Array.from(categories.entries()).map(([cat, n]) => ` ${n} ${cat.toUpperCase()}`).join(',')}
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Threat map */}

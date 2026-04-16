@@ -691,6 +691,82 @@ def find_client_units(mission: dict) -> list:
     return clients
 
 
+# Short-form CLSID patterns for laser-guided weapons (DCS ME sometimes writes
+# these instead of full UUIDs, e.g. "{GBU-24}", "{BRU33*GBU-12}").
+import re as _re_laser
+_LASER_SHORTFORM = _re_laser.compile(
+    r'GBU[-\s_]?1[0246]|GBU[-\s_]?24|GBU[-\s_]?27|GBU[-\s_]?28|'
+    r'Paveway|LGB|KAB[-\s_]?500L|KAB[-\s_]?1500L|LJDAM|'
+    r'AGM[-\s_]?65[EKL]|AGM[-\s_]?114[KL]|APKWS|Maverick[-\s_]?E',
+    _re_laser.IGNORECASE,
+)
+
+
+def _pylon_is_laser(clsid: str) -> bool:
+    """True if CLSID is a laser-guided weapon (full UUID in LASER_CLSIDS OR short form)."""
+    if not clsid:
+        return False
+    if clsid in LASER_CLSIDS:
+        return True
+    return bool(_LASER_SHORTFORM.search(clsid))
+
+
+def find_laser_capable_units(mission: dict) -> list:
+    """Find ALL air units (client or AI) carrying laser-guided weapons or
+    with an existing laser_code set. Used by the LaserTab so mission makers
+    can edit AI flight laser codes (JTAC birds, buddy-lase flights, etc.).
+
+    Returns a list of {unitId, name, type, groupName, coalition, isClient,
+    pylons[], laserCode} — a subset of find_client_units' shape.
+    """
+    out = []
+    for coal_name, _country, _cat, group, unit in _iter_units(mission):
+        payload = unit.get("payload", {})
+        pylons_raw = payload.get("pylons", {})
+        if isinstance(pylons_raw, list):
+            pylons_raw = {i + 1: v for i, v in enumerate(pylons_raw) if isinstance(v, dict)}
+        elif isinstance(pylons_raw, dict):
+            pylons_raw = {int(k): v for k, v in pylons_raw.items() if isinstance(v, dict)}
+
+        pylons = []
+        laser_code = None
+        has_laser_weapon = False
+        for pnum in sorted(pylons_raw.keys()):
+            p = pylons_raw[pnum]
+            clsid = p.get("CLSID", "")
+            full_name = resolve_clsid(clsid)
+            pylons.append({
+                "number": pnum,
+                "clsid": clsid,
+                "name": full_name,
+                "shortName": short_weapon_name(full_name),
+            })
+            if _pylon_is_laser(clsid):
+                has_laser_weapon = True
+            if laser_code is None:
+                settings = p.get("settings", {})
+                if isinstance(settings, dict) and "laser_code" in settings:
+                    try:
+                        laser_code = int(settings["laser_code"])
+                    except (TypeError, ValueError):
+                        pass
+
+        if not has_laser_weapon and laser_code is None:
+            continue
+
+        out.append({
+            "unitId": int(unit.get("unitId", 0)),
+            "name": unit.get("name", "?"),
+            "type": unit.get("type", "?"),
+            "groupName": group.get("name", "?"),
+            "coalition": coal_name,
+            "isClient": unit.get("skill") == "Client",
+            "pylons": pylons,
+            "laserCode": laser_code,
+        })
+    return out
+
+
 # ─── Donor selection ───────────────────────────────────────────────────────
 
 def get_all_units_for_donor_selection(mission: dict) -> list:

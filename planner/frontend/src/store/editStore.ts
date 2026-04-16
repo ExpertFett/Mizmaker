@@ -8,6 +8,7 @@ export interface KneeboardCards {
   comms: boolean;
   routeDetail: boolean;
   fuelLadder: boolean;
+  homePlate: boolean;
   // Shared mission cards
   supportAssets: boolean;
   radioLadder: boolean;
@@ -42,7 +43,7 @@ export const useEditStore = create<EditState>((set) => ({
   kneeboardSettings: {
     coordFormat: 'mgrs', speedRef: 'auto', machThreshold: 18000,
     cards: {
-      lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true,
+      lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
     },
   },

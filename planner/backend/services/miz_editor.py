@@ -242,13 +242,19 @@ def replace_group_waypoints(text: str, group_name: str, waypoints: List[Dict]) -
 
 
 def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
-               kneeboards: list = None) -> bytes:
+               kneeboards: list = None, new_dictionary_text: str | None = None,
+               new_options_text: str | None = None) -> bytes:
     """Repack a .miz archive with the edited mission text and optional kneeboards.
 
     kneeboards: list of dicts with keys:
         aircraft_type: str  (e.g. "FA-18C_hornet")
         filename: str       (e.g. "Bengal_1_Route.png")
         data: bytes         (raw PNG bytes)
+    new_dictionary_text: if provided, overwrites l10n/DEFAULT/dictionary. Used
+        for briefing-text edits (DCS stores user-facing strings there via
+        DictKey_* references from the mission file).
+    new_options_text: if provided, overwrites the `options` file. Used for
+        forcedOptions edits (DCS ME displays these from options/difficulty).
     """
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
@@ -256,6 +262,10 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
             for item in zin.infolist():
                 if item.filename == "mission":
                     zout.writestr(item, new_mission_text.encode("utf-8"))
+                elif new_dictionary_text is not None and item.filename == "l10n/DEFAULT/dictionary":
+                    zout.writestr(item, new_dictionary_text.encode("utf-8"))
+                elif new_options_text is not None and item.filename == "options":
+                    zout.writestr(item, new_options_text.encode("utf-8"))
                 else:
                     zout.writestr(item, zin.read(item.filename))
 
@@ -269,3 +279,213 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                         path = f"KNEEBOARD/{kb['aircraft_type']}/IMAGES/{kb['filename']}"
                     zout.writestr(path, kb["data"])
     return output.getvalue()
+
+
+def _escape_lua_string(s: str) -> str:
+    """Escape a string for safe insertion inside Lua double-quoted literals."""
+    return s.replace('\\', '\\\\').replace('"', '\\"').replace('\r\n', '\n').replace('\n', '\\\n')
+
+
+def apply_briefing_edits_to_dictionary(
+    mission_text: str, dictionary_text: str, edits: list,
+) -> str:
+    """Rewrite the DCS dictionary file to reflect briefing edits.
+
+    DCS stores user-facing briefing strings in ``l10n/DEFAULT/dictionary`` with
+    keys like ``["DictKey_sortie_5"] = "actual text"``, and the mission file
+    only holds the DictKey reference. Replacing the mission-file reference
+    alone doesn't change what the player sees in DCS, so we need to update
+    the dictionary entry instead.
+
+    For each briefing edit, resolve the DictKey from the mission file and
+    replace the matching entry in the dictionary. Missing DictKey references
+    or entries are silently skipped.
+    """
+    import re as _re
+
+    # field -> lua key in mission
+    field_to_mission_key = {
+        "sortie": "sortie",
+        "description": "descriptionText",
+        "descriptionBlueTask": "descriptionBlueTask",
+        "descriptionRedTask": "descriptionRedTask",
+    }
+
+    # Collect the LAST briefing edit's values (later edits override earlier)
+    briefing_values: dict = {}
+    for edit in edits:
+        if edit.get("field") != "briefing":
+            continue
+        val = edit.get("value") or {}
+        briefing_values.update({k: v for k, v in val.items() if k in field_to_mission_key})
+
+    if not briefing_values:
+        return dictionary_text
+
+    for field, new_val in briefing_values.items():
+        mission_key = field_to_mission_key[field]
+        # Find the DictKey reference in the mission file:
+        # ["sortie"] = "DictKey_sortie_5"
+        m = _re.search(rf'\["{mission_key}"\]\s*=\s*"(DictKey_[^"]+)"', mission_text)
+        if not m:
+            # Mission file has literal text (no DictKey); apply_unit_edits
+            # already handled it — no dictionary update needed.
+            continue
+        dict_key = m.group(1)
+
+        # The frontend may have already escaped \n into "\\n" (Lua-form). DCS
+        # dictionaries, however, are written as raw Lua string literals with
+        # literal backslash-newline for multi-line. We normalize to a list of
+        # Python-level \n then re-escape for Lua.
+        raw_value = str(new_val).replace('\\n', '\n')
+        escaped = _escape_lua_string(raw_value)
+
+        # Replace: ["DictKey_..."] = "..."
+        key_pattern = _re.compile(
+            rf'(\["{_re.escape(dict_key)}"\]\s*=\s*)"((?:\\.|[^"\\])*)"',
+            _re.DOTALL,
+        )
+        replacement = rf'\g<1>"{escaped}"'
+        new_dict_text, n = key_pattern.subn(replacement, dictionary_text, count=1)
+        if n == 0:
+            # Dictionary entry missing — append one inside the closing brace
+            closing = _re.search(r'\}\s*--\s*end of dictionary\s*$', dictionary_text)
+            if not closing:
+                closing = _re.search(r'\}\s*$', dictionary_text)
+            if closing:
+                insertion = f'\t["{dict_key}"] = "{escaped}",\n'
+                new_dict_text = dictionary_text[:closing.start()] + insertion + dictionary_text[closing.start():]
+        dictionary_text = new_dict_text
+
+    return dictionary_text
+
+
+def extract_dictionary_from_miz(miz_bytes: bytes) -> str | None:
+    """Read the l10n/DEFAULT/dictionary text from a .miz. Returns None if absent."""
+    with zipfile.ZipFile(io.BytesIO(miz_bytes), "r") as zf:
+        try:
+            return zf.read("l10n/DEFAULT/dictionary").decode("utf-8")
+        except KeyError:
+            return None
+
+
+def extract_options_from_miz(miz_bytes: bytes) -> str | None:
+    """Read the options text from a .miz. Returns None if absent."""
+    with zipfile.ZipFile(io.BytesIO(miz_bytes), "r") as zf:
+        try:
+            return zf.read("options").decode("utf-8")
+        except KeyError:
+            return None
+
+
+# Whitelist of forcedOptions fields to mirror into options/difficulty.
+# NOT listed: "birds" (bool in forcedOptions vs int count in difficulty),
+# "optionsViewExtended" (complex nested, not in difficulty), "civTraffic"
+# (sometimes enum int in forcedOptions vs string in difficulty).
+_DIFFICULTY_SYNCABLE_KEYS = {
+    # plain booleans
+    "padlock", "permitCrash", "immortal", "fuel", "miniHUD",
+    "easyFlight", "externalViews", "userMarks", "wakeTurbulence",
+    "accidental_failures", "RBDAI", "easyRadar",
+    # enums — only mirrored if existing difficulty value has matching type
+    "labels", "geffect", "optionsView",
+}
+
+# forcedOptions field name → options/difficulty field name (rename cases only).
+_FORCED_TO_DIFFICULTY_RENAMES = {
+    "easyComms": "easyCommunication",
+}
+
+
+def _lua_literal_kind(lua_literal: str) -> str:
+    """Classify a captured Lua RHS literal as 'bool', 'int', 'float', 'string', or 'other'."""
+    s = lua_literal.strip().rstrip(',')
+    if s in ("true", "false"):
+        return "bool"
+    if s.startswith('"') and s.endswith('"'):
+        return "string"
+    try:
+        int(s)
+        return "int"
+    except ValueError:
+        pass
+    try:
+        float(s)
+        return "float"
+    except ValueError:
+        pass
+    return "other"
+
+
+def apply_forced_options_to_options_file(options_text: str, forced_options: dict) -> str:
+    """Sync forcedOptions values into the `options` file's ["difficulty"] block.
+
+    DCS ME reads flags from options/difficulty for display. We write into each
+    matching key but only if the value type matches the existing difficulty
+    entry — this prevents corrupting enum fields (e.g. older missions store
+    geffect as a string "realistic", newer ones as an int).
+    """
+    import re as _re
+
+    diff_match = _re.search(r'\["difficulty"\]\s*=\s*\n?\s*\{', options_text)
+    if not diff_match:
+        return options_text
+
+    # Brace-match the difficulty block
+    brace_start = options_text.index('{', diff_match.start())
+    depth = 1
+    i = brace_start + 1
+    while i < len(options_text) and depth > 0:
+        ch = options_text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    diff_end = i
+
+    diff_text = options_text[brace_start:diff_end]
+    new_diff_text = diff_text
+
+    for fo_key, value in forced_options.items():
+        is_rename = fo_key in _FORCED_TO_DIFFICULTY_RENAMES
+        if not is_rename and fo_key not in _DIFFICULTY_SYNCABLE_KEYS:
+            continue
+        if isinstance(value, (list, dict)):
+            continue
+
+        diff_key = _FORCED_TO_DIFFICULTY_RENAMES.get(fo_key, fo_key)
+
+        pat = _re.compile(rf'(\["{_re.escape(diff_key)}"\]\s*=\s*)([^,\n]+)')
+        m = pat.search(new_diff_text)
+        if not m:
+            continue
+
+        existing_kind = _lua_literal_kind(m.group(2))
+
+        # Determine incoming value's Lua kind
+        if isinstance(value, bool):
+            incoming_kind, lua_val = "bool", ("true" if value else "false")
+        elif isinstance(value, int):
+            incoming_kind, lua_val = "int", str(value)
+        elif isinstance(value, float):
+            incoming_kind = "float"
+            lua_val = str(int(value)) if value == int(value) else str(value)
+        elif isinstance(value, str):
+            incoming_kind, lua_val = "string", f'"{value}"'
+        else:
+            continue
+
+        # Only overwrite if the type matches — otherwise we'd corrupt the
+        # difficulty block (e.g. writing int 2 where "realistic" is expected).
+        # Allow int<->float crossover since Lua doesn't distinguish.
+        kinds_match = (
+            existing_kind == incoming_kind or
+            (existing_kind in ("int", "float") and incoming_kind in ("int", "float"))
+        )
+        if not kinds_match:
+            continue
+
+        new_diff_text = new_diff_text[:m.start(2)] + lua_val + new_diff_text[m.end(2):]
+
+    return options_text[:brace_start] + new_diff_text + options_text[diff_end:]

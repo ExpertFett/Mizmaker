@@ -1,4 +1,5 @@
 /** Shared kneeboard card constants and styles — DCS Kneeboard Style Guide */
+import { createElement } from 'react';
 
 export const W = 600;
 export const H = 850;
@@ -117,3 +118,37 @@ export const value: React.CSSProperties = {
   color: TEXT,
   fontSize: 17,
 };
+
+/** Format mission start time in seconds-from-midnight as Zulu time HHMM"Z" */
+export function formatMissionTime(seconds: number | undefined | null): string {
+  if (seconds == null || isNaN(seconds)) return '----Z';
+  const h = Math.floor(seconds / 3600) % 24;
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h.toString().padStart(2, '0')}${m.toString().padStart(2, '0')}Z`;
+}
+
+const missionDateLineStyle: React.CSSProperties = {
+  fontSize: 14,
+  color: DIM,
+  marginTop: 2,
+  letterSpacing: 0.5,
+  fontFamily: FONT,
+};
+
+/**
+ * Renders a small "Theater | YYYY-MM-DD | HHMMZ" line for the kneeboard header.
+ * Pass overview from the mission store. Theater is omitted if already in subtitle.
+ */
+export function MissionDateLine(props: {
+  date?: string;
+  startTime?: number;
+  theater?: string;
+  showTheater?: boolean;
+}) {
+  const { date, startTime, theater, showTheater = false } = props;
+  const parts: string[] = [];
+  if (showTheater && theater) parts.push(theater);
+  if (date) parts.push(date);
+  parts.push(formatMissionTime(startTime));
+  return createElement('div', { style: missionDateLineStyle }, parts.join(' | '));
+}

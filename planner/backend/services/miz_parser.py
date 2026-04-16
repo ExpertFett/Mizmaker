@@ -13,7 +13,7 @@ import re
 import zipfile
 from typing import Dict, List, Any, Optional
 
-from slpp import slpp as lua
+from slpp import SLPP
 
 from services.projection import dcs_to_latlon, THEATERS
 
@@ -60,13 +60,19 @@ def _normalize_slpp_keys(obj):
 
 
 def parse_mission_text(text: str) -> dict:
-    """Parse Lua mission text into a Python dict using slpp."""
+    """Parse Lua mission text into a Python dict using slpp.
+
+    Uses a fresh SLPP() instance per call — the default `slpp.slpp` is a
+    module-level singleton with mutable parser state, which is NOT thread-safe
+    under Flask's default threaded request handler.
+    """
     # DCS mission files look like: mission = { ... }
     # Strip the variable assignment to get just the table
     match = re.search(r'^mission\s*=\s*', text, re.MULTILINE)
     if not match:
         raise ValueError("No 'mission' table found in Lua text")
     table_text = text[match.end():]
+    lua = SLPP()
     mission = lua.decode(table_text)
     if mission is None:
         raise ValueError("Failed to parse mission Lua table")

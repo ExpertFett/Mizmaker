@@ -266,6 +266,27 @@ export function MapContainer() {
     const plannerDrawingLayer = createPlannerDrawingLayer();
     layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
 
+    // Compute initial center from mission data already in store (avoids Caucasus flash on tab-switch remounts)
+    const initStore = useMissionStore.getState();
+    const initVisibleGrps = initStore.role === 'flight_lead'
+      ? initStore.groups.filter((g) => g.coalition === 'blue')
+      : initStore.groups;
+    const initCoords: [number, number][] = [];
+    for (const g of initVisibleGrps) {
+      for (const wp of g.waypoints) {
+        if (wp.lat && wp.lon) initCoords.push([wp.lon, wp.lat]);
+      }
+    }
+    let initialCenter: [number, number] = [44, 41];
+    let initialZoom = 7;
+    if (initCoords.length > 0) {
+      const lons = initCoords.map((c) => c[0]);
+      const lats = initCoords.map((c) => c[1]);
+      initialCenter = [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+    } else if (initStore.theater && THEATER_CENTERS[initStore.theater]) {
+      initialCenter = THEATER_CENTERS[initStore.theater];
+    }
+
     const map = new Map({
       target: mapRef.current,
       layers: [
@@ -274,8 +295,8 @@ export function MapContainer() {
       ],
       interactions: defaultInteractions({ doubleClickZoom: false }),
       view: new View({
-        center: fromLonLat([44, 41]),
-        zoom: 7,
+        center: fromLonLat(initialCenter),
+        zoom: initialZoom,
         maxZoom: 19,
         minZoom: 3,
       }),
@@ -283,6 +304,18 @@ export function MapContainer() {
         new ScaleLine({ units: 'nautical' }),
       ]),
     });
+
+    // If mission data is already loaded, fit to extent now (eliminates any visible flash)
+    if (initCoords.length > 1) {
+      const lons = initCoords.map((c) => c[0]);
+      const lats = initCoords.map((c) => c[1]);
+      const extent = boundingExtent([
+        fromLonLat([Math.min(...lons), Math.min(...lats)]),
+        fromLonLat([Math.max(...lons), Math.max(...lats)]),
+      ]);
+      map.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 12 });
+      hasFitted.current = true;
+    }
 
     // Click to select group — or open waypoint popup if clicking a waypoint
     map.on('click', (e) => {

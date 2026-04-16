@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 
 /* ------------------------------------------------------------------ */
@@ -83,6 +84,7 @@ function generateFreqPool(start: number, end: number, step: number): number[] {
 export function CommCardTab() {
   const groups = useMissionStore((s) => s.groups);
   const addEdit = useEditStore((s) => s.addEdit);
+  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
   const [overrides, setOverrides] = useState<Map<number, { frequency?: number; modulation?: number }>>(new Map());
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [result, setResult] = useState('');
@@ -155,6 +157,23 @@ export function CommCardTab() {
 
   const conflictCount = conflictMap.size;
 
+  // Detailed conflict breakdown — which groups share each conflicting frequency
+  const conflictDetails = useMemo(() => {
+    const rowById = new Map<number, FreqRow>();
+    for (const r of allRows) rowById.set(r.groupId, r);
+    const details: { freq: number; mod: number; members: FreqRow[] }[] = [];
+    for (const [key, ids] of conflictMap) {
+      const [freqStr, modStr] = key.split('-');
+      const freq = parseFloat(freqStr);
+      const mod = parseInt(modStr, 10);
+      const members = ids.map((id) => rowById.get(id)!).filter(Boolean);
+      details.push({ freq, mod, members });
+    }
+    // Sort by frequency ascending
+    details.sort((a, b) => a.freq - b.freq);
+    return details;
+  }, [conflictMap, allRows]);
+
   // Filter by coalition
   const filteredRows = useMemo(() => {
     if (coalitionFilter === 'all') return allRows;
@@ -194,34 +213,81 @@ export function CommCardTab() {
     const amPool = generateFreqPool(225.000, 399.975, 0.025);
     let amIdx = 0;
 
+    // Build SOP lookups (first-word callsign → SOP freq/mod)
+    const sopByCallsign = new Map<string, { freq: number; mod: number }>();
+    let sopHits = 0;
+    if (activeSop) {
+      const addSop = (cs: string, freq?: number, modStr?: string) => {
+        if (!freq || freq <= 0) return;
+        const mod = modStr === 'FM' ? 1 : 0;
+        sopByCallsign.set(cs.toLowerCase(), { freq, mod });
+      };
+      for (const t of activeSop.tankers || []) addSop(t.callsign, t.frequency, t.modulation);
+      for (const a of activeSop.supportAssets || []) addSop(a.callsign, a.frequency, a.modulation);
+      for (const f of activeSop.flights) addSop(f.callsign, f.defaultFreq, f.defaultMod);
+    }
+
+    const firstWord = (name: string) => name.split(/[-\s]/)[0].toLowerCase();
+
     // Sort: support first (preserve their freqs), then players, then AI
     const sorted = [...allRows].sort((a, b) => roleSortPriority(a.roleLabel) - roleSortPriority(b.roleLabel));
 
     for (const row of sorted) {
-      const mod = row.modulation;
+      let mod = row.modulation;
       let freq = row.frequency;
+      let fromSop = false;
+
+      // If SOP defines a freq for this callsign, use it (even if it creates a new conflict we'll
+      // resolve below)
+      const sopEntry = sopByCallsign.get(firstWord(row.groupName));
+      if (sopEntry) {
+        freq = sopEntry.freq;
+        mod = sopEntry.mod;
+        fromSop = true;
+      }
+
       if (freq <= 0) continue;
 
       const key = freqKey(freq, mod);
-      if (usedFreqs.has(key)) {
-        // Find next available AM frequency
+      const conflict = usedFreqs.has(key);
+
+      if (conflict) {
+        // SOP freqs win over auto-bumping — bump non-SOP rows off this freq below.
+        // For now, if this row is SOP-driven and we have an existing conflict, we
+        // try to bump; if not, we find next AM freq.
         while (amIdx < amPool.length && usedFreqs.has(freqKey(amPool[amIdx], mod))) amIdx++;
         if (amIdx < amPool.length) {
           freq = amPool[amIdx];
           amIdx++;
         }
-        next.set(row.groupId, { frequency: freq, modulation: mod });
       }
+
+      // Queue an override if the freq/mod differs from the row's current values
+      if (freq !== row.frequency || mod !== row.modulation) {
+        next.set(row.groupId, { frequency: freq, modulation: mod });
+        if (fromSop) sopHits++;
+      } else if (fromSop) {
+        // SOP matches what's already set — still counts as an SOP match for the result
+        sopHits++;
+      }
+
       usedFreqs.add(freqKey(freq, mod));
     }
 
     setOverrides(next);
     if (next.size === 0) {
-      setResult('No conflicts found — all frequencies are unique');
+      setResult(
+        sopHits > 0
+          ? `All frequencies already align with SOP "${activeSop!.name}"`
+          : 'No conflicts found — all frequencies are unique',
+      );
     } else {
-      setResult(`Deconflicted — ${next.size} frequency change${next.size !== 1 ? 's' : ''} proposed`);
+      setResult(
+        `Deconflicted — ${next.size} frequency change${next.size !== 1 ? 's' : ''} proposed` +
+        (sopHits > 0 ? ` (${sopHits} from SOP "${activeSop!.name}")` : ''),
+      );
     }
-  }, [allRows]);
+  }, [allRows, activeSop]);
 
   // Apply changes
   const handleApply = useCallback(() => {
@@ -276,8 +342,14 @@ export function CommCardTab() {
             <option value="blue">Blue Only</option>
             <option value="red">Red Only</option>
           </select>
-          <button onClick={handleAutoDeconflict} style={btnStyle}>
-            Auto Deconflict
+          <button
+            onClick={handleAutoDeconflict}
+            title={activeSop
+              ? `Apply SOP "${activeSop.name}" frequencies where callsigns match, then deconflict remaining groups.`
+              : 'Resolve frequency conflicts by reassigning duplicate flights to unused AM frequencies.'}
+            style={btnStyle}
+          >
+            Auto Deconflict{activeSop ? ' (SOP)' : ''}
           </button>
           {overrides.size > 0 && (
             <>
@@ -292,14 +364,56 @@ export function CommCardTab() {
         </div>
       </div>
 
-      {/* Conflict banner */}
+      {/* Conflict detail — which groups share each conflicting frequency */}
       {conflictCount > 0 && (
         <div style={{
-          padding: '8px 14px', marginBottom: 12, borderRadius: 4,
-          background: 'rgba(210, 153, 34, 0.1)', border: '1px solid #d29922',
-          color: '#d29922', fontSize: 13,
+          padding: '10px 14px', marginBottom: 12, borderRadius: 4,
+          background: 'rgba(217, 80, 80, 0.08)', border: '1px solid rgba(217, 80, 80, 0.4)',
+          fontSize: 12,
         }}>
-          {conflictCount} frequency conflict{conflictCount !== 1 ? 's' : ''} detected — multiple groups share the same frequency
+          <div style={{ color: '#d95050', fontWeight: 600, marginBottom: 8, fontSize: 13 }}>
+            {conflictCount} frequency conflict{conflictCount !== 1 ? 's' : ''} detected
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {conflictDetails.map((d) => (
+              <div key={`${d.freq}-${d.mod}`} style={{
+                display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+              }}>
+                <span style={{
+                  fontFamily: 'monospace', color: '#d95050', fontWeight: 700,
+                  minWidth: 110, fontSize: 13,
+                }}>
+                  {d.freq.toFixed(3)} {d.mod === 0 ? 'AM' : 'FM'}
+                </span>
+                <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+                  {d.members.length} groups:
+                </span>
+                <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {d.members.map((m, idx) => (
+                    <span key={m.groupId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: roleColor(m.roleLabel),
+                        border: `1px solid ${roleColor(m.roleLabel)}55`,
+                        padding: '1px 4px', borderRadius: 2,
+                      }}>
+                        {m.roleLabel}
+                      </span>
+                      <span style={{ color: '#ccdae8' }}>{m.groupName}</span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 600,
+                        color: m.coalition === 'blue' ? '#4a8fd4' : m.coalition === 'red' ? '#d95050' : '#5a7a8a',
+                      }}>
+                        ({m.coalition.toUpperCase()})
+                      </span>
+                      {idx < d.members.length - 1 && (
+                        <span style={{ color: '#3a4a5a', marginLeft: 4 }}>|</span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -1,0 +1,965 @@
+/**
+ * SOP Tab — manage squadron Standard Operating Procedures.
+ *
+ * Features:
+ *   - Library of saved SOPs (persisted to localStorage)
+ *   - Upload JSON/YAML file or image (image parsing TBD via vision AI)
+ *   - Pick active SOP — auto-assigns consult it in other tabs
+ *   - Download sample/current SOP as JSON
+ *   - View structured SOP contents
+ */
+
+import { useState, useRef, useCallback } from 'react';
+import { useSopStore } from '../../sop/sopStore';
+import { makeSampleSop } from '../../sop/sopSamples';
+import { makeId, type SOP } from '../../sop/types';
+import { importOzpAsSop } from '../../sop/ozpImport';
+
+export function SopTab() {
+  const sops = useSopStore((s) => s.sops);
+  const activeId = useSopStore((s) => s.activeId);
+  const addSop = useSopStore((s) => s.addSop);
+  const deleteSop = useSopStore((s) => s.deleteSop);
+  const setActive = useSopStore((s) => s.setActive);
+  const updateSop = useSopStore((s) => s.updateSop);
+
+  const [selectedId, setSelectedId] = useState<string | null>(activeId);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const ozpInputRef = useRef<HTMLInputElement>(null);
+
+  const selected = sops.find((s) => s.id === selectedId) || null;
+  const active = sops.find((s) => s.id === activeId) || null;
+
+  const handleJsonUpload = useCallback(async (file: File) => {
+    setImportError(null);
+    setImportInfo(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // Minimum shape check
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.flights)) {
+        throw new Error('Invalid SOP file — missing "flights" array');
+      }
+      // Assign a fresh id to avoid collisions with library
+      const sop: SOP = {
+        ...parsed,
+        id: makeId(),
+        updatedAt: Date.now(),
+      };
+      addSop(sop);
+      setSelectedId(sop.id);
+      setImportInfo(`Imported "${sop.name}"`);
+    } catch (err) {
+      setImportError(`Failed to import: ${(err as Error).message}`);
+    }
+  }, [addSop]);
+
+  const handleOzpUpload = useCallback(async (file: File) => {
+    setImportError(null);
+    setImportInfo(null);
+    try {
+      const result = await importOzpAsSop(file);
+      if (result.imageCount === 0) {
+        throw new Error('No kneeboard images found in archive');
+      }
+      addSop(result.sop);
+      setSelectedId(result.sop.id);
+      setImportInfo(
+        `Imported "${result.sop.name}" — ${result.imageCount} kneeboard images across ${result.aircraftCount} airframes. ` +
+        `Edit the SOP to fill in callsigns, comms, TACAN, and laser codes based on the attached charts.`,
+      );
+    } catch (err) {
+      setImportError(`Failed to import OZP: ${(err as Error).message}`);
+    }
+  }, [addSop]);
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    setImportError(null);
+    setImportInfo(null);
+    // Create a draft SOP with the image attached so it can be reviewed/edited.
+    // Vision-based auto-parsing requires a backend proxy to Claude's API —
+    // that's a follow-up. For now we stash the raw image on an empty SOP
+    // and prompt the user to fill in fields manually.
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1] || '';
+      const sop: SOP = {
+        id: makeId(),
+        name: `SOP from image: ${file.name}`,
+        updatedAt: Date.now(),
+        flights: [],
+        comms: [],
+        tacans: [],
+        attachment: {
+          name: file.name,
+          mimeType: file.type || 'image/*',
+          dataBase64: base64,
+        },
+      };
+      addSop(sop);
+      setSelectedId(sop.id);
+      setImportInfo(`Image stored on new SOP "${sop.name}". Auto-extraction from images requires the vision AI backend — edit fields manually for now.`);
+    };
+    reader.onerror = () => setImportError('Failed to read image');
+    reader.readAsDataURL(file);
+  }, [addSop]);
+
+  const handleDrop = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (/\.(ozp|zip)$/i.test(file.name)) {
+      handleOzpUpload(file);
+    } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|pdf)$/i.test(file.name)) {
+      handleImageUpload(file);
+    } else {
+      handleJsonUpload(file);
+    }
+  }, [handleJsonUpload, handleImageUpload, handleOzpUpload]);
+
+  const downloadJson = useCallback((sop: SOP, filename?: string) => {
+    const blob = new Blob([JSON.stringify(sop, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || `${sop.name.replace(/[^\w\d-]+/g, '_')}.sop.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleInstallSample = useCallback(() => {
+    const sample = makeSampleSop();
+    addSop(sample);
+    setSelectedId(sample.id);
+    setImportInfo('Loaded sample SOP. Edit as needed, then set as active.');
+  }, [addSop]);
+
+  const handleRename = useCallback((id: string, name: string) => {
+    const sop = sops.find((s) => s.id === id);
+    if (!sop) return;
+    updateSop({ ...sop, name });
+  }, [sops, updateSop]);
+
+  return (
+    <div style={{ maxWidth: 1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+          Squadron SOP
+        </h2>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+          Upload or compose a Standard Operating Procedures document. When an SOP is active, auto-assign buttons (callsigns, comms, TACAN, laser codes) will use its values instead of generic defaults.
+        </p>
+      </div>
+
+      {/* Active SOP banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 14px', marginBottom: 14, borderRadius: 6,
+        background: active ? 'rgba(63, 185, 80, 0.08)' : 'rgba(90, 122, 138, 0.05)',
+        border: `1px solid ${active ? 'rgba(63, 185, 80, 0.35)' : '#1a2a3a'}`,
+      }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+          color: active ? '#3fb950' : '#5a7a8a',
+          border: `1px solid ${active ? 'rgba(63, 185, 80, 0.5)' : '#2a3a4a'}`,
+          borderRadius: 3, padding: '2px 8px',
+        }}>
+          {active ? 'ACTIVE' : 'NO ACTIVE SOP'}
+        </span>
+        <span style={{ color: active ? '#ccdae8' : '#8fa8c0', fontSize: 14, fontWeight: 500 }}>
+          {active ? active.name : 'Auto-assigns will use generic DCS defaults until you activate an SOP.'}
+        </span>
+        {active && (
+          <button onClick={() => setActive(null)} style={btnGhost}>Deactivate</button>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <input
+          ref={fileInputRef} type="file" accept=".json,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleJsonUpload(f); e.target.value = ''; }}
+        />
+        <input
+          ref={imageInputRef} type="file" accept="image/*,.pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); e.target.value = ''; }}
+        />
+        <input
+          ref={ozpInputRef} type="file" accept=".ozp,.zip,application/zip"
+          style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleOzpUpload(f); e.target.value = ''; }}
+        />
+        <button onClick={() => fileInputRef.current?.click()} style={btnPrimary}>
+          Upload JSON SOP
+        </button>
+        <button onClick={() => ozpInputRef.current?.click()} style={btnSecondary}
+          title="Upload a squadron kneeboard pack (.ozp / .zip). We extract the images so you can reference them while filling in the SOP fields.">
+          Upload OZP / ZIP
+        </button>
+        <button onClick={() => imageInputRef.current?.click()} style={btnSecondary}
+          title="Upload a screenshot/photo of your SOP. Auto-extraction via vision AI is a planned follow-up; for now the image is attached and you fill fields manually.">
+          Upload Image / PDF
+        </button>
+        <button onClick={handleInstallSample} style={btnSecondary}>
+          Load Sample SOP
+        </button>
+        <button
+          onClick={() => downloadJson(makeSampleSop(), 'sample_sop_template.json')}
+          style={btnGhost}
+        >
+          Download Template
+        </button>
+      </div>
+
+      {(importError || importInfo) && (
+        <div style={{
+          padding: '8px 12px', marginBottom: 14, borderRadius: 4,
+          background: importError ? 'rgba(217, 80, 80, 0.08)' : 'rgba(74, 143, 212, 0.08)',
+          border: `1px solid ${importError ? 'rgba(217, 80, 80, 0.35)' : 'rgba(74, 143, 212, 0.35)'}`,
+          color: importError ? '#d95050' : '#4a8fd4',
+          fontSize: 13,
+        }}>
+          {importError || importInfo}
+        </div>
+      )}
+
+      {/* Drop zone (covers area under action bar) */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); }}
+        onDrop={(e) => { e.preventDefault(); handleDrop(e.dataTransfer?.files || null); }}
+        style={{
+          display: 'flex', gap: 16, alignItems: 'flex-start',
+          minHeight: 400,
+        }}
+      >
+        {/* Library panel */}
+        <div style={{
+          flexShrink: 0, width: 280,
+          background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 6,
+          padding: 8,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#8fa8c0', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
+            LIBRARY ({sops.length})
+          </div>
+          {sops.length === 0 && (
+            <div style={{ fontSize: 12, color: '#5a7a8a', padding: '12px 8px', fontStyle: 'italic' }}>
+              No SOPs yet. Upload a JSON/image or load the sample.
+            </div>
+          )}
+          {sops.map((sop) => {
+            const isActive = activeId === sop.id;
+            const isSelected = selectedId === sop.id;
+            return (
+              <div
+                key={sop.id}
+                onClick={() => setSelectedId(sop.id)}
+                style={{
+                  padding: '8px 10px', borderRadius: 4, marginBottom: 2,
+                  cursor: 'pointer',
+                  background: isSelected ? '#0f1a28' : 'transparent',
+                  borderLeft: `3px solid ${isActive ? '#3fb950' : 'transparent'}`,
+                }}
+              >
+                <div style={{ color: '#ccdae8', fontSize: 13, fontWeight: 600 }}>
+                  {sop.name}
+                </div>
+                <div style={{ color: '#5a7a8a', fontSize: 11, marginTop: 2 }}>
+                  {sop.flights.length} flights · {sop.comms.length} comms · {sop.tacans.length} tacans
+                  {isActive && <span style={{ color: '#3fb950', marginLeft: 6 }}>● active</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Detail panel */}
+        <div style={{
+          flex: 1, minWidth: 0,
+          background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 6,
+          padding: 14,
+        }}>
+          {!selected ? (
+            <div style={{
+              color: '#5a7a8a', fontSize: 13, textAlign: 'center', padding: '40px 20px',
+            }}>
+              Select an SOP from the library — or drop a file here to import.
+            </div>
+          ) : (
+            <SopDetail
+              sop={selected}
+              isActive={activeId === selected.id}
+              onRename={(name) => handleRename(selected.id, name)}
+              onActivate={() => setActive(selected.id)}
+              onDeactivate={() => setActive(null)}
+              onDelete={() => {
+                if (confirm(`Delete SOP "${selected.name}"?`)) {
+                  deleteSop(selected.id);
+                  setSelectedId(null);
+                }
+              }}
+              onDownload={() => downloadJson(selected)}
+              onUpdate={(patch) => updateSop({ ...selected, ...patch })}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Detail view                                                         */
+/* ------------------------------------------------------------------ */
+
+function SopDetail({
+  sop, isActive, onRename, onActivate, onDeactivate, onDelete, onDownload, onUpdate,
+}: {
+  sop: SOP;
+  isActive: boolean;
+  onRename: (name: string) => void;
+  onActivate: () => void;
+  onDeactivate: () => void;
+  onDelete: () => void;
+  onDownload: () => void;
+  onUpdate: (patch: Partial<SOP>) => void;
+}) {
+  const [editName, setEditName] = useState<string | null>(null);
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+      }}>
+        {editName != null ? (
+          <input
+            autoFocus
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={() => { if (editName?.trim()) onRename(editName.trim()); setEditName(null); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); }
+              if (e.key === 'Escape') { setEditName(null); }
+            }}
+            style={{
+              flex: 1, background: '#0f1a28', border: '1px solid #1a3a5a',
+              borderRadius: 3, color: '#ccdae8', fontSize: 17, fontWeight: 600,
+              padding: '4px 8px', fontFamily: 'inherit',
+            }}
+          />
+        ) : (
+          <span
+            style={{ flex: 1, color: '#ccdae8', fontSize: 17, fontWeight: 600, cursor: 'text' }}
+            onClick={() => setEditName(sop.name)}
+            title="Click to rename"
+          >
+            {sop.name}
+          </span>
+        )}
+        {isActive ? (
+          <button onClick={onDeactivate} style={btnGhost}>Deactivate</button>
+        ) : (
+          <button onClick={onActivate} style={btnPrimary}>Set Active</button>
+        )}
+        <button onClick={onDownload} style={btnGhost}>Download JSON</button>
+        <button onClick={onDelete} style={btnDanger}>Delete</button>
+      </div>
+
+      {sop.squadron && (
+        <div style={{ color: '#5a7a8a', fontSize: 12, marginBottom: 8 }}>
+          Squadron: <span style={{ color: '#8fa8c0' }}>{sop.squadron}</span>
+        </div>
+      )}
+      {sop.notes && (
+        <div style={{ color: '#5a7a8a', fontSize: 12, marginBottom: 14, whiteSpace: 'pre-wrap' }}>
+          {sop.notes}
+        </div>
+      )}
+
+      {/* Single attachment preview (legacy) */}
+      {sop.attachment && sop.attachment.mimeType.startsWith('image/') && (
+        <Section title={`ATTACHMENT (${sop.attachment.name})`}>
+          <img
+            src={`data:${sop.attachment.mimeType};base64,${sop.attachment.dataBase64}`}
+            alt={sop.attachment.name}
+            style={{ maxWidth: '100%', maxHeight: 400, border: '1px solid #1a2a3a', borderRadius: 4 }}
+          />
+          <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 6 }}>
+            Vision-based auto-extraction is not wired yet — this image is kept for reference only.
+          </div>
+        </Section>
+      )}
+
+      {/* Multi-attachment gallery (e.g. from OZP import) */}
+      {sop.attachments && sop.attachments.length > 0 && (
+        <AttachmentGallery attachments={sop.attachments} />
+      )}
+
+      {/* Flight callsigns */}
+      <FlightsEditor sop={sop} onUpdate={onUpdate} />
+
+      {/* Tankers */}
+      <TankersEditor sop={sop} onUpdate={onUpdate} />
+
+      {/* Support assets */}
+      <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
+
+      {/* Comms */}
+      <CommsEditor sop={sop} onUpdate={onUpdate} />
+
+      {/* TACANs */}
+      <TacansEditor sop={sop} onUpdate={onUpdate} />
+
+      {/* Laser code base */}
+      <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
+
+      <div style={{ color: '#3a5a6a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
+        Tip: after filling in tankers &amp; flights, set the SOP active and the auto-assigns on other tabs will use these values.
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Inline editors                                                      */
+/* ------------------------------------------------------------------ */
+
+function parseNum(v: string): number | undefined {
+  if (v.trim() === '') return undefined;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+function parseInt0(v: string): number | undefined {
+  if (v.trim() === '') return undefined;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+function FlightsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  const flights = sop.flights;
+  const update = (idx: number, patch: Partial<import('../../sop/types').SopFlightCallsign>) => {
+    const next = flights.map((f, i) => (i === idx ? { ...f, ...patch } : f));
+    onUpdate({ flights: next });
+  };
+  const add = () => onUpdate({ flights: [...flights, { callsign: '', priority: flights.length + 1 }] });
+  const remove = (idx: number) => onUpdate({ flights: flights.filter((_, i) => i !== idx) });
+
+  return (
+    <Section title={`FLIGHT CALLSIGNS (${flights.length})`}>
+      <table style={tableStyle}>
+        <thead><tr>
+          <th style={{ ...thStyle, width: 50 }}>#</th>
+          <th style={thStyle}>Callsign</th>
+          <th style={{ ...thStyle, width: 120 }}>Default Freq</th>
+          <th style={{ ...thStyle, width: 80 }}>Mod</th>
+          <th style={{ ...thStyle, width: 40 }}></th>
+        </tr></thead>
+        <tbody>
+          {flights.map((f, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <input type="number" value={f.priority ?? i + 1}
+                  onChange={(e) => update(i, { priority: parseInt0(e.target.value) })}
+                  style={{ ...inputStyle, width: 40 }} />
+              </td>
+              <td style={tdStyle}>
+                <input value={f.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
+                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} />
+              </td>
+              <td style={tdStyle}>
+                <input type="number" step="0.025" value={f.defaultFreq ?? ''}
+                  onChange={(e) => update(i, { defaultFreq: parseNum(e.target.value) })}
+                  style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }} placeholder="MHz" />
+              </td>
+              <td style={tdStyle}>
+                <select value={f.defaultMod || ''} onChange={(e) => update(i, { defaultMod: e.target.value as any || undefined })}
+                  style={{ ...inputStyle, width: 60 }}>
+                  <option value="">—</option><option value="AM">AM</option><option value="FM">FM</option>
+                </select>
+              </td>
+              <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn} title="Remove">×</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={add} style={addRowBtn}>+ Add flight callsign</button>
+    </Section>
+  );
+}
+
+function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  const tankers = sop.tankers || [];
+  const update = (idx: number, patch: Partial<import('../../sop/types').SopTanker>) => {
+    const next = tankers.map((t, i) => (i === idx ? { ...t, ...patch } : t));
+    onUpdate({ tankers: next });
+  };
+  const add = () => onUpdate({ tankers: [...tankers, { callsign: '' }] });
+  const remove = (idx: number) => onUpdate({ tankers: tankers.filter((_, i) => i !== idx) });
+
+  return (
+    <Section title={`TANKERS (${tankers.length}) — drives TACAN + Comms auto-assign`}>
+      <table style={tableStyle}>
+        <thead><tr>
+          <th style={thStyle}>Callsign</th>
+          <th style={{ ...thStyle, width: 100 }}>Freq</th>
+          <th style={{ ...thStyle, width: 70 }}>Mod</th>
+          <th style={{ ...thStyle, width: 70 }}>TACAN #</th>
+          <th style={{ ...thStyle, width: 50 }}>Band</th>
+          <th style={{ ...thStyle, width: 80 }}>TACAN CS</th>
+          <th style={{ ...thStyle, width: 40 }}></th>
+        </tr></thead>
+        <tbody>
+          {tankers.map((t, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <input value={t.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
+                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} placeholder="Texaco" />
+              </td>
+              <td style={tdStyle}>
+                <input type="number" step="0.025" value={t.frequency ?? ''}
+                  onChange={(e) => update(i, { frequency: parseNum(e.target.value) })}
+                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace' }} placeholder="MHz" />
+              </td>
+              <td style={tdStyle}>
+                <select value={t.modulation || ''} onChange={(e) => update(i, { modulation: e.target.value as any || undefined })}
+                  style={{ ...inputStyle, width: 55 }}>
+                  <option value="">—</option><option value="AM">AM</option><option value="FM">FM</option>
+                </select>
+              </td>
+              <td style={tdStyle}>
+                <input type="number" min={1} max={126} value={t.tacanChannel ?? ''}
+                  onChange={(e) => update(i, { tacanChannel: parseInt0(e.target.value) })}
+                  style={{ ...inputStyle, width: 55, fontFamily: 'monospace' }} />
+              </td>
+              <td style={tdStyle}>
+                <select value={t.tacanBand || ''} onChange={(e) => update(i, { tacanBand: e.target.value as any || undefined })}
+                  style={{ ...inputStyle, width: 45 }}>
+                  <option value="">—</option><option value="X">X</option><option value="Y">Y</option>
+                </select>
+              </td>
+              <td style={tdStyle}>
+                <input value={t.tacanCallsign ?? ''} onChange={(e) => update(i, { tacanCallsign: e.target.value || undefined })}
+                  style={{ ...inputStyle, width: 65, fontFamily: 'monospace' }} placeholder="TX1" maxLength={3} />
+              </td>
+              <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn} title="Remove">×</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={add} style={addRowBtn}>+ Add tanker</button>
+    </Section>
+  );
+}
+
+function SupportAssetsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  const assets = sop.supportAssets || [];
+  const update = (idx: number, patch: Partial<import('../../sop/types').SopSupportAsset>) => {
+    const next = assets.map((a, i) => (i === idx ? { ...a, ...patch } : a));
+    onUpdate({ supportAssets: next });
+  };
+  const add = () => onUpdate({ supportAssets: [...assets, { callsign: '' }] });
+  const remove = (idx: number) => onUpdate({ supportAssets: assets.filter((_, i) => i !== idx) });
+
+  return (
+    <Section title={`SUPPORT ASSETS (${assets.length}) — AWACS, JTAC, etc.`}>
+      <table style={tableStyle}>
+        <thead><tr>
+          <th style={thStyle}>Callsign</th>
+          <th style={{ ...thStyle, width: 110 }}>Role</th>
+          <th style={{ ...thStyle, width: 100 }}>Freq</th>
+          <th style={{ ...thStyle, width: 70 }}>Mod</th>
+          <th style={{ ...thStyle, width: 40 }}></th>
+        </tr></thead>
+        <tbody>
+          {assets.map((a, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <input value={a.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
+                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} placeholder="Magic" />
+              </td>
+              <td style={tdStyle}>
+                <input value={a.role ?? ''} onChange={(e) => update(i, { role: e.target.value || undefined })}
+                  style={{ ...inputStyle, width: '95%' }} placeholder="AWACS" />
+              </td>
+              <td style={tdStyle}>
+                <input type="number" step="0.025" value={a.frequency ?? ''}
+                  onChange={(e) => update(i, { frequency: parseNum(e.target.value) })}
+                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace' }} placeholder="MHz" />
+              </td>
+              <td style={tdStyle}>
+                <select value={a.modulation || ''} onChange={(e) => update(i, { modulation: e.target.value as any || undefined })}
+                  style={{ ...inputStyle, width: 55 }}>
+                  <option value="">—</option><option value="AM">AM</option><option value="FM">FM</option>
+                </select>
+              </td>
+              <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn}>×</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={add} style={addRowBtn}>+ Add support asset</button>
+    </Section>
+  );
+}
+
+function CommsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  const comms = sop.comms;
+  const update = (idx: number, patch: Partial<import('../../sop/types').SopCommEntry>) => {
+    const next = comms.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+    onUpdate({ comms: next });
+  };
+  const add = () => onUpdate({ comms: [...comms, { role: '', frequency: 0 }] });
+  const remove = (idx: number) => onUpdate({ comms: comms.filter((_, i) => i !== idx) });
+
+  return (
+    <Section title={`COMM FREQUENCIES (${comms.length})`}>
+      <table style={tableStyle}>
+        <thead><tr>
+          <th style={thStyle}>Role</th>
+          <th style={{ ...thStyle, width: 100 }}>Freq</th>
+          <th style={{ ...thStyle, width: 70 }}>Mod</th>
+          <th style={thStyle}>Notes</th>
+          <th style={{ ...thStyle, width: 40 }}></th>
+        </tr></thead>
+        <tbody>
+          {comms.map((c, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <input value={c.role} onChange={(e) => update(i, { role: e.target.value })}
+                  style={{ ...inputStyle, width: '95%' }} placeholder="Strike Primary" />
+              </td>
+              <td style={tdStyle}>
+                <input type="number" step="0.025" value={c.frequency || ''}
+                  onChange={(e) => update(i, { frequency: parseNum(e.target.value) ?? 0 })}
+                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace', color: '#d29922' }} />
+              </td>
+              <td style={tdStyle}>
+                <select value={c.modulation || 'AM'} onChange={(e) => update(i, { modulation: e.target.value as any })}
+                  style={{ ...inputStyle, width: 55 }}>
+                  <option value="AM">AM</option><option value="FM">FM</option>
+                </select>
+              </td>
+              <td style={tdStyle}>
+                <input value={c.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value || undefined })}
+                  style={{ ...inputStyle, width: '95%' }} />
+              </td>
+              <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn}>×</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={add} style={addRowBtn}>+ Add comm frequency</button>
+    </Section>
+  );
+}
+
+function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  const tacans = sop.tacans;
+  const update = (idx: number, patch: Partial<import('../../sop/types').SopTacanEntry>) => {
+    const next = tacans.map((t, i) => (i === idx ? { ...t, ...patch } : t));
+    onUpdate({ tacans: next });
+  };
+  const add = () => onUpdate({ tacans: [...tacans, { role: '', channel: 1, band: 'X' }] });
+  const remove = (idx: number) => onUpdate({ tacans: tacans.filter((_, i) => i !== idx) });
+
+  return (
+    <Section title={`TACAN (${tacans.length}) — non-tanker entries (home plate, ship, etc.)`}>
+      <table style={tableStyle}>
+        <thead><tr>
+          <th style={thStyle}>Role</th>
+          <th style={{ ...thStyle, width: 70 }}>Channel</th>
+          <th style={{ ...thStyle, width: 50 }}>Band</th>
+          <th style={{ ...thStyle, width: 90 }}>Callsign</th>
+          <th style={thStyle}>Notes</th>
+          <th style={{ ...thStyle, width: 40 }}></th>
+        </tr></thead>
+        <tbody>
+          {tacans.map((t, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <input value={t.role} onChange={(e) => update(i, { role: e.target.value })}
+                  style={{ ...inputStyle, width: '95%' }} placeholder="Home Plate" />
+              </td>
+              <td style={tdStyle}>
+                <input type="number" min={1} max={126} value={t.channel}
+                  onChange={(e) => update(i, { channel: parseInt0(e.target.value) ?? 1 })}
+                  style={{ ...inputStyle, width: 55, fontFamily: 'monospace' }} />
+              </td>
+              <td style={tdStyle}>
+                <select value={t.band} onChange={(e) => update(i, { band: e.target.value as any })}
+                  style={{ ...inputStyle, width: 45 }}>
+                  <option value="X">X</option><option value="Y">Y</option>
+                </select>
+              </td>
+              <td style={tdStyle}>
+                <input value={t.callsign ?? ''} onChange={(e) => update(i, { callsign: e.target.value || undefined })}
+                  style={{ ...inputStyle, width: 75, fontFamily: 'monospace' }} />
+              </td>
+              <td style={tdStyle}>
+                <input value={t.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value || undefined })}
+                  style={{ ...inputStyle, width: '95%' }} />
+              </td>
+              <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn}>×</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={add} style={addRowBtn}>+ Add TACAN entry</button>
+    </Section>
+  );
+}
+
+function LaserBaseEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
+  return (
+    <Section title="LASER CODES">
+      <div style={{ color: '#ccdae8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+        Base code:
+        <input type="number" min={1111} max={7777} value={sop.laserCodeBase ?? ''}
+          placeholder="1511 (default)"
+          onChange={(e) => onUpdate({ laserCodeBase: parseInt0(e.target.value) })}
+          style={{ ...inputStyle, width: 90, fontFamily: 'monospace', color: '#d29922', fontWeight: 600 }} />
+        <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+          Each digit must be 1-7. Auto-assign on the Laser tab starts from this code.
+        </span>
+      </div>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sub-components                                                       */
+/* ------------------------------------------------------------------ */
+
+function AttachmentGallery({ attachments }: { attachments: import('../../sop/types').SopAttachment[] }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(['__sop_wide__']));
+  const [zoom, setZoom] = useState<import('../../sop/types').SopAttachment | null>(null);
+
+  // Group by aircraft (empty = SOP-wide)
+  const groups = new Map<string, import('../../sop/types').SopAttachment[]>();
+  for (const a of attachments) {
+    const key = a.aircraft || '__sop_wide__';
+    let list = groups.get(key);
+    if (!list) { list = []; groups.set(key, list); }
+    list.push(a);
+  }
+  const groupKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === '__sop_wide__') return -1;
+    if (b === '__sop_wide__') return 1;
+    return a.localeCompare(b);
+  });
+
+  const toggleGroup = (k: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+
+  const totalImages = attachments.length;
+  const aircraftCount = groups.size - (groups.has('__sop_wide__') ? 1 : 0);
+
+  return (
+    <Section title={`ATTACHMENTS (${totalImages} images · ${aircraftCount} airframe${aircraftCount !== 1 ? 's' : ''})`}>
+      <div style={{ fontSize: 11, color: '#5a7a8a', marginBottom: 10 }}>
+        Imported reference charts. Auto-extraction from images (vision AI) is a planned follow-up — in the meantime, click any image to zoom.
+      </div>
+
+      {groupKeys.map((gk) => {
+        const list = groups.get(gk) || [];
+        const isSopWide = gk === '__sop_wide__';
+        const label = isSopWide ? 'SOP-wide' : gk;
+        const isExpanded = expandedGroups.has(gk);
+        return (
+          <div key={gk} style={{ marginBottom: 10, border: '1px solid #1a2a3a', borderRadius: 4 }}>
+            <div
+              onClick={() => toggleGroup(gk)}
+              style={{
+                padding: '6px 10px', cursor: 'pointer',
+                background: isExpanded ? '#0c1825' : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span style={{ color: '#5a7a8a', fontSize: 11, width: 12 }}>
+                {isExpanded ? '\u25BC' : '\u25B6'}
+              </span>
+              <span style={{
+                color: isSopWide ? '#d29922' : '#ccdae8',
+                fontWeight: 600, fontSize: 13,
+              }}>{label}</span>
+              <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+                {list.length} image{list.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {isExpanded && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                gap: 8, padding: 8,
+              }}>
+                {list.map((a, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setZoom(a)}
+                    title={a.name}
+                    style={{
+                      cursor: 'zoom-in',
+                      background: '#0c1825',
+                      border: '1px solid #1a2a3a',
+                      borderRadius: 3,
+                      overflow: 'hidden',
+                      display: 'flex', flexDirection: 'column',
+                    }}
+                  >
+                    <img
+                      src={`data:${a.mimeType};base64,${a.dataBase64}`}
+                      alt={a.name}
+                      style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }}
+                    />
+                    <div style={{
+                      fontSize: 10, color: '#8fa8c0', padding: '3px 6px',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {a.category || a.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {zoom && (
+        <div
+          onClick={() => setZoom(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40,
+            cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={`data:${zoom.mimeType};base64,${zoom.dataBase64}`}
+            alt={zoom.name}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          />
+          <div style={{
+            position: 'absolute', top: 12, left: 16, color: '#fff',
+            fontSize: 14, fontWeight: 600, textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+          }}>
+            {zoom.aircraft ? `${zoom.aircraft} · ` : ''}{zoom.name}
+          </div>
+          <div style={{
+            position: 'absolute', top: 12, right: 16, color: '#fff',
+            fontSize: 12,
+          }}>click to close</div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: '#d29922', letterSpacing: 0.5,
+        textTransform: 'uppercase', marginBottom: 6, borderBottom: '1px solid #1a2a3a',
+        paddingBottom: 4,
+      }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Empty({ label }: { label: string }) {
+  return <div style={{ fontSize: 12, color: '#5a7a8a', fontStyle: 'italic', padding: '4px 0' }}>{label}</div>;
+}
+
+/* ------------------------------------------------------------------ */
+/* Styles                                                               */
+/* ------------------------------------------------------------------ */
+
+const tableStyle: React.CSSProperties = {
+  width: '100%', borderCollapse: 'collapse', fontSize: 12,
+};
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left', padding: '4px 8px',
+  color: '#5a7a8a', fontSize: 11, fontWeight: 600,
+  borderBottom: '1px solid #1a2a3a', textTransform: 'uppercase', letterSpacing: 0.5,
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '4px 8px', color: '#8fa8c0', borderBottom: '1px solid #0f1a28',
+};
+
+const btnPrimary: React.CSSProperties = {
+  background: '#1a3a5a', border: '1px solid #4a8fd4',
+  borderRadius: 4, color: '#4a8fd4', cursor: 'pointer',
+  fontSize: 12, fontWeight: 600, padding: '6px 14px', fontFamily: 'inherit',
+};
+
+const btnSecondary: React.CSSProperties = {
+  background: 'rgba(210, 153, 34, 0.1)', border: '1px solid rgba(210, 153, 34, 0.4)',
+  borderRadius: 4, color: '#d29922', cursor: 'pointer',
+  fontSize: 12, fontWeight: 600, padding: '6px 14px', fontFamily: 'inherit',
+};
+
+const btnGhost: React.CSSProperties = {
+  background: 'transparent', border: '1px solid #2a3a4a',
+  borderRadius: 4, color: '#8fa8c0', cursor: 'pointer',
+  fontSize: 12, padding: '6px 12px', fontFamily: 'inherit',
+};
+
+const btnDanger: React.CSSProperties = {
+  background: 'transparent', border: '1px solid rgba(217, 80, 80, 0.4)',
+  borderRadius: 4, color: '#d95050', cursor: 'pointer',
+  fontSize: 12, padding: '6px 12px', fontFamily: 'inherit',
+};
+
+const inputStyle: React.CSSProperties = {
+  background: '#0f1a28',
+  border: '1px solid #1a2a3a',
+  borderRadius: 3,
+  color: '#8fa8c0',
+  fontSize: 12,
+  padding: '3px 6px',
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+
+const xBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: '#5a7a8a',
+  cursor: 'pointer',
+  fontSize: 16,
+  padding: '0 4px',
+  lineHeight: 1,
+};
+
+const addRowBtn: React.CSSProperties = {
+  marginTop: 6,
+  background: 'transparent',
+  border: '1px dashed #2a3a4a',
+  borderRadius: 3,
+  color: '#5a7a8a',
+  cursor: 'pointer',
+  fontSize: 11,
+  padding: '4px 10px',
+  fontFamily: 'inherit',
+  width: '100%',
+};

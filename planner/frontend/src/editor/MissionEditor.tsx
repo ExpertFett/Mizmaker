@@ -19,6 +19,9 @@ import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
+import { SopTab } from './tabs/SopTab';
+import { DmpiTab } from './tabs/DmpiTab';
+import { RangePlanTab } from './tabs/RangePlanTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
@@ -34,7 +37,10 @@ const TABS = [
   { id: 'livery', label: 'Livery', icon: '🎨' },
   { id: 'missionEdit', label: 'Miz Edit', icon: '🔔' },
   { id: 'debug', label: 'Debug', icon: '🔍' },
+  { id: 'dmpi', label: 'DMPI', icon: '🎯' },
+  { id: 'rangePlan', label: 'Range', icon: '📐' },
   { id: 'tools', label: 'Tools', icon: '🔧' },
+  { id: 'sop', label: 'SOP', icon: '📘' },
   { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
 
@@ -43,10 +49,20 @@ type TabId = (typeof TABS)[number]['id'];
 export function MissionEditor() {
   const [activeTab, setActiveTab] = useState<TabId>('map');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Track which editor tabs have been opened. Once mounted, we keep them in
+  // the DOM (hidden with display:none) so local useState edits survive tab
+  // switches — the previous pattern (`{activeTab === 'x' && <Tab />}`) unmounted
+  // the tab on switch and discarded any in-progress edits.
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(() => new Set(['map']));
   const sessionId = useMissionStore((s) => s.sessionId);
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
   const theater = useMissionStore((s) => s.theater);
+
+  const selectTab = (tab: TabId) => {
+    setActiveTab(tab);
+    setVisitedTabs((prev) => prev.has(tab) ? prev : new Set(prev).add(tab));
+  };
 
   // Connect SSE for real-time sync (heartbeat keepalives prevent Cloudflare 524)
   useSessionStream(sessionId, true);
@@ -119,7 +135,7 @@ export function MissionEditor() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => selectTab(tab.id)}
                 title={isCollapsed ? tab.label : undefined}
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
@@ -177,22 +193,92 @@ export function MissionEditor() {
           </>
         )}
 
-        {/* Editor tabs — scrollable content */}
+        {/* Editor tabs — scrollable content.
+            Keep each tab mounted once it's been visited so local state
+            (textareas, toggles, etc.) isn't wiped on tab switch. Inactive
+            tabs are hidden via display:none instead of unmounted. */}
         {!isMap && (
           <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
-            {activeTab === 'coalitions' && <CoalitionsTab />}
-            {activeTab === 'threats' && <ThreatLibraryTab />}
-            {activeTab === 'datalink' && <DatalinkTab />}
-            {activeTab === 'dtc' && <DtcTab />}
-            {activeTab === 'weapons' && <WeaponsTab />}
-            {activeTab === 'radio' && <RadioTab />}
-            {activeTab === 'kneeboard' && <KneeboardTab />}
-            {activeTab === 'weather' && <WeatherTab />}
-            {activeTab === 'livery' && <LiveryTab />}
-            {activeTab === 'missionEdit' && <MissionEditTab />}
-            {activeTab === 'debug' && <MissionDebugTab />}
-            {activeTab === 'tools' && <ToolsTab />}
-            {activeTab === 'upload' && <UploadPanel onLoaded={() => setActiveTab('map')} />}
+            {visitedTabs.has('coalitions') && (
+              <div style={{ display: activeTab === 'coalitions' ? 'block' : 'none' }}>
+                <CoalitionsTab />
+              </div>
+            )}
+            {visitedTabs.has('threats') && (
+              <div style={{ display: activeTab === 'threats' ? 'block' : 'none' }}>
+                <ThreatLibraryTab />
+              </div>
+            )}
+            {visitedTabs.has('datalink') && (
+              <div style={{ display: activeTab === 'datalink' ? 'block' : 'none' }}>
+                <DatalinkTab />
+              </div>
+            )}
+            {visitedTabs.has('dtc') && (
+              <div style={{ display: activeTab === 'dtc' ? 'block' : 'none' }}>
+                <DtcTab />
+              </div>
+            )}
+            {visitedTabs.has('weapons') && (
+              <div style={{ display: activeTab === 'weapons' ? 'block' : 'none' }}>
+                <WeaponsTab />
+              </div>
+            )}
+            {visitedTabs.has('radio') && (
+              <div style={{ display: activeTab === 'radio' ? 'block' : 'none' }}>
+                <RadioTab />
+              </div>
+            )}
+            {visitedTabs.has('kneeboard') && (
+              <div style={{ display: activeTab === 'kneeboard' ? 'block' : 'none' }}>
+                <KneeboardTab />
+              </div>
+            )}
+            {visitedTabs.has('weather') && (
+              <div style={{ display: activeTab === 'weather' ? 'block' : 'none' }}>
+                <WeatherTab />
+              </div>
+            )}
+            {visitedTabs.has('livery') && (
+              <div style={{ display: activeTab === 'livery' ? 'block' : 'none' }}>
+                <LiveryTab />
+              </div>
+            )}
+            {visitedTabs.has('missionEdit') && (
+              <div style={{ display: activeTab === 'missionEdit' ? 'block' : 'none' }}>
+                <MissionEditTab />
+              </div>
+            )}
+            {visitedTabs.has('debug') && (
+              <div style={{ display: activeTab === 'debug' ? 'block' : 'none' }}>
+                <MissionDebugTab />
+              </div>
+            )}
+            {visitedTabs.has('dmpi') && (
+              <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
+                <DmpiTab />
+              </div>
+            )}
+            {visitedTabs.has('rangePlan') && (
+              <div style={{ display: activeTab === 'rangePlan' ? 'block' : 'none' }}>
+                <RangePlanTab />
+              </div>
+            )}
+            {visitedTabs.has('tools') && (
+              <div style={{ display: activeTab === 'tools' ? 'block' : 'none' }}>
+                <ToolsTab />
+              </div>
+            )}
+            {visitedTabs.has('sop') && (
+              <div style={{ display: activeTab === 'sop' ? 'block' : 'none' }}>
+                <SopTab />
+              </div>
+            )}
+            {visitedTabs.has('upload') && (
+              <div style={{ display: activeTab === 'upload' ? 'block' : 'none' }}>
+                <UploadPanel onLoaded={() => selectTab('map')} />
+              </div>
+            )}
           </div>
         )}
       </div>

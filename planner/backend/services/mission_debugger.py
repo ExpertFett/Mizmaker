@@ -534,14 +534,23 @@ def _check_mission_flags(mission_dict: dict) -> list:
 
     flag_usage = defaultdict(list)  # flag_number -> [trigger descriptions]
 
-    for rule_idx, rule in triggers.items():
+    # slpp normalization converts sequential int-keyed Lua tables to Python lists.
+    # Handle both list and dict forms for trigrules / conditions / actions.
+    def _iter_items(obj):
+        if isinstance(obj, dict):
+            return obj.items()
+        if isinstance(obj, list):
+            return enumerate(obj, start=1)
+        return []
+
+    for rule_idx, rule in _iter_items(triggers):
         if not isinstance(rule, dict):
             continue
         rule_name = f"Rule {rule_idx}"
 
         # Check conditions for flag references
         conditions = rule.get("conditions", {})
-        for _, cond in conditions.items() if isinstance(conditions, dict) else []:
+        for _, cond in _iter_items(conditions):
             if not isinstance(cond, dict):
                 continue
             flag = cond.get("flag")
@@ -550,7 +559,7 @@ def _check_mission_flags(mission_dict: dict) -> list:
 
         # Check actions for flag references
         actions = rule.get("actions", {})
-        for _, act in actions.items() if isinstance(actions, dict) else []:
+        for _, act in _iter_items(actions):
             if not isinstance(act, dict):
                 continue
             flag = act.get("flag")

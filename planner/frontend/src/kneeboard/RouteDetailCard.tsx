@@ -5,14 +5,15 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox } from './cardStyles';
-import type { MissionGroup, ThreatRing } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox, MissionDateLine } from './cardStyles';
+import type { MissionGroup, ThreatRing, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, metersToNm } from '../utils/conversions';
 
 interface RouteDetailCardProps {
   group: MissionGroup;
   threats: ThreatRing[];
+  overview?: MissionOverviewData;
 }
 
 function distance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -37,7 +38,7 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
+export function RouteDetailCard({ group, threats, overview }: RouteDetailCardProps) {
   const airframe = getAircraftType(group);
   const wps = group.waypoints;
   const enemyThreats = threats.filter((t) => t.coalition !== group.coalition);
@@ -86,6 +87,7 @@ export function RouteDetailCard({ group, threats }: RouteDetailCardProps) {
         <div style={subtitleStyle}>
           {airframe} | {wps.length} waypoints | {enemyThreats.length} known threats
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Route summary with threat proximity */}

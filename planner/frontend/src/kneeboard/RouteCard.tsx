@@ -14,8 +14,10 @@
 import { forward as toMGRS } from 'mgrs';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 import { convertSpeed, type Weather, type SpeedMode } from '../utils/atmosphere';
-import type { Waypoint, MissionGroup } from '../types/mission';
+import type { Waypoint, MissionGroup, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
+import { MissionDateLine } from './cardStyles';
+import { generateMetar } from '../utils/metar';
 
 export type KneeboardSpeedRef = SpeedMode | 'auto';
 
@@ -25,6 +27,7 @@ interface RouteCardProps {
   coordFormat?: 'mgrs' | 'latlon';
   speedRef?: KneeboardSpeedRef;
   machThreshold?: number;
+  overview?: MissionOverviewData;
 }
 
 // -- Style Guide Constants --
@@ -143,7 +146,7 @@ const tdStyle: React.CSSProperties = {
 
 // -- Component --
 
-export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'auto', machThreshold = 18000 }: RouteCardProps) {
+export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'auto', machThreshold = 18000, overview }: RouteCardProps) {
   const wps = group.waypoints;
   const airframe = getAircraftType(group);
   const fmtCoord = coordFormat === 'mgrs' ? fmtMgrs : fmtLatLon;
@@ -183,6 +186,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
         <div style={{ fontSize: 17, color: TEXT_MUTED, marginTop: 4 }}>
           {airframe} | {wps.length} WP | {totalDist.toFixed(1)} nm | ETE {fmtEte(totalEta)}
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Section: Waypoints */}
@@ -289,6 +293,16 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
             margin: '12px 0 4px 0',
           }}>
             WEATHER
+          </div>
+          {/* METAR-style compact summary */}
+          <div style={{
+            fontFamily: 'monospace',
+            fontSize: 15,
+            color: TEXT_MUTED,
+            padding: '3px 0 6px',
+            letterSpacing: 0.5,
+          }}>
+            {generateMetar(weather as any, overview?.date, overview?.start_time)}
           </div>
           <table style={{
             width: '100%',

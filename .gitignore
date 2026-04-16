@@ -33,3 +33,7 @@ Thumbs.db
 # Miz files (test data)
 *.miz
 *.dtc
+
+# Debug / dev-only logs
+*.log
+planner/backend/check_fmt.py

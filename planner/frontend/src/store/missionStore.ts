@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   MissionGroup, MissionUnit, ThreatRing, Airbase, MissionDrawing, TriggerZone,
-  MissionOverviewData, MissionOptions, UploadResponse, ClientUnit, UnitEdit, GroupRenamerData,
+  MissionOverviewData, MissionOptions, UploadResponse, ClientUnit, LaserCapableUnit, UnitEdit, GroupRenamerData,
   CountryInfo,
 } from '../types/mission';
 
@@ -22,6 +22,7 @@ interface MissionState {
   triggerZones: TriggerZone[];
   missionOptions: MissionOptions;
   clientUnits: ClientUnit[];
+  laserCapableUnits: LaserCapableUnit[];
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   pylonOptions: Record<string, any>;
   suggestions: UnitEdit[];
@@ -58,6 +59,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   triggerZones: [],
   missionOptions: {},
   clientUnits: [],
+  laserCapableUnits: [],
   allUnitsDonor: [],
   pylonOptions: {},
   suggestions: [],
@@ -94,6 +96,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       triggerZones: data.triggerZones || [],
       missionOptions: data.missionOptions || {},
       clientUnits: [...(data.clientUnits || [])].sort((a, b) => a.groupName.localeCompare(b.groupName)),
+      laserCapableUnits: [...((data as any).laserCapableUnits || [])].sort((a: LaserCapableUnit, b: LaserCapableUnit) => a.groupName.localeCompare(b.groupName)),
       allUnitsDonor: [...(data.allUnitsDonor || [])].sort((a, b) => a.groupName.localeCompare(b.groupName)),
       pylonOptions: data.pylonOptions || {},
       suggestions: data.suggestions || [],
@@ -119,7 +122,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
       role: 'mission_maker' as const, filename: null, theater: null, overview: null,
       groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [], missionOptions: {},
-      clientUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
+      clientUnits: [], laserCapableUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
       countries: [],
       taskLists: { air: [], ground: [], ship: [] },

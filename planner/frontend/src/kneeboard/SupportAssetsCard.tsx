@@ -3,13 +3,14 @@
  * Shows tankers, AWACS, and other support groups with frequencies and positions.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER_MED, DIM, ACCENT, ROW_ALT, footerStyle, notesBox } from './cardStyles';
-import type { MissionGroup } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER_MED, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, MissionDateLine } from './cardStyles';
+import type { MissionGroup, MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 
 interface SupportAssetsCardProps {
   groups: MissionGroup[];
   coalition: string;
+  overview?: MissionOverviewData;
 }
 
 function formatFreq(freq: number, mod: number): string {
@@ -26,7 +27,7 @@ function formatSpeed(wp: { speed_ms: number }): string {
   return `${Math.round(msToKnots(wp.speed_ms))} kts`;
 }
 
-export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps) {
+export function SupportAssetsCard({ groups, coalition, overview }: SupportAssetsCardProps) {
   const coalitionGroups = groups.filter((g) => g.coalition === coalition);
   const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
   const awacsGroups = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
@@ -76,6 +77,7 @@ export function SupportAssetsCard({ groups, coalition }: SupportAssetsCardProps)
         <div style={subtitleStyle}>
           {coalition.toUpperCase()} coalition | {tankers.length} tanker{tankers.length !== 1 ? 's' : ''} | {awacsGroups.length} AWACS
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Tankers */}

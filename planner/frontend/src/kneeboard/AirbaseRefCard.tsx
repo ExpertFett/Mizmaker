@@ -4,12 +4,13 @@
  */
 
 import { forward as toMGRS } from 'mgrs';
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
-import type { Airbase } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, DIM, ACCENT, ROW_ALT, footerStyle, MissionDateLine } from './cardStyles';
+import type { Airbase, MissionOverviewData } from '../types/mission';
 
 interface AirbaseRefCardProps {
   airbases: Airbase[];
   theater: string;
+  overview?: MissionOverviewData;
 }
 
 function fmtCoord(lat?: number, lon?: number): string {
@@ -26,7 +27,7 @@ function fmtLatLon(lat?: number, lon?: number): string {
   return `${ns}${Math.floor(la)}°${((la % 1) * 60).toFixed(1)}' ${ew}${Math.floor(lo)}°${((lo % 1) * 60).toFixed(1)}'`;
 }
 
-export function AirbaseRefCard({ airbases, theater }: AirbaseRefCardProps) {
+export function AirbaseRefCard({ airbases, theater, overview }: AirbaseRefCardProps) {
   // Sort by name
   const sorted = [...airbases].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -37,6 +38,7 @@ export function AirbaseRefCard({ airbases, theater }: AirbaseRefCardProps) {
         <div style={subtitleStyle}>
           {theater} | {sorted.length} airfield{sorted.length !== 1 ? 's' : ''}
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} />}
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', flexShrink: 0 }}>

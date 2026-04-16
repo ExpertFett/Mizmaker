@@ -3,12 +3,13 @@
  * Master frequency reference for all flights and support assets.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, DIM, ACCENT, ROW_ALT, footerStyle } from './cardStyles';
-import type { MissionGroup } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, DIM, ACCENT, ROW_ALT, footerStyle, MissionDateLine } from './cardStyles';
+import type { MissionGroup, MissionOverviewData } from '../types/mission';
 
 interface RadioLadderCardProps {
   groups: MissionGroup[];
   coalition: string;
+  overview?: MissionOverviewData;
 }
 
 function formatFreq(freq: number, mod: number): string {
@@ -32,7 +33,7 @@ function getRoleLabel(g: MissionGroup): string {
   return task.toUpperCase() || g.category.toUpperCase();
 }
 
-export function RadioLadderCard({ groups, coalition }: RadioLadderCardProps) {
+export function RadioLadderCard({ groups, coalition, overview }: RadioLadderCardProps) {
   const coalitionGroups = groups
     .filter((g) => g.coalition === coalition && g.frequency > 0)
     .sort((a, b) => {
@@ -64,6 +65,7 @@ export function RadioLadderCard({ groups, coalition }: RadioLadderCardProps) {
         <div style={subtitleStyle}>
           {coalition.toUpperCase()} coalition | {uniqueEntries.length} frequencies
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>

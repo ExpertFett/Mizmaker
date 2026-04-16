@@ -46,7 +46,11 @@ from services.miz_parser import (
     extract_full_mission_data,
     SAM_THREAT_RANGES,
 )
-from services.miz_editor import replace_group_waypoints, repack_miz
+from services.miz_editor import (
+    replace_group_waypoints, repack_miz,
+    extract_dictionary_from_miz, apply_briefing_edits_to_dictionary,
+    extract_options_from_miz, apply_forced_options_to_options_file,
+)
 from services.unit_editor import apply_unit_edits
 from services.trigger_editor import (
     extract_triggers,
@@ -58,6 +62,7 @@ from services.trigger_editor import (
 )
 from services.unit_extractor import (
     find_client_units,
+    find_laser_capable_units,
     get_all_units_for_donor_selection,
     extract_all_groups,
     extract_livery_data,
@@ -91,7 +96,7 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=None)
 
 CORS(app)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB — kneeboard mod packs can be 50-100+ MB
 
 # In-memory session store — server is the source of truth for waypoint state
 sessions = {}
@@ -176,6 +181,7 @@ def upload():
 
         # 856-equivalent extraction (client units, loadouts, datalink, liveries, etc.)
         client_units = find_client_units(mission_dict)
+        laser_units = find_laser_capable_units(mission_dict)
         all_units_donor = get_all_units_for_donor_selection(mission_dict)
         all_groups_renamer = extract_all_groups(mission_dict)
         livery_data = extract_livery_data(mission_dict)
@@ -221,6 +227,7 @@ def upload():
             **data,
             # 856-equivalent data
             "clientUnits": client_units,
+            "laserCapableUnits": laser_units,
             "allUnitsDonor": all_units_donor,
             "pylonOptions": pylon_options,
             "suggestions": suggestions,
@@ -720,22 +727,27 @@ def download():
         if unit_edits:
             import os as _os
             _dbg = _os.path.join(_os.path.dirname(__file__), "download_debug.log")
-            # Clear weather debug log too
             _wdbg = _os.path.join(_os.path.dirname(__file__), "weather_debug.log")
-            with open(_wdbg, "w") as _f:
-                _f.write("")
-            with open(_dbg, "w") as _f:
-                _f.write(f"edits: {len(unit_edits)}\n")
-                for e in unit_edits:
-                    val = e.get('value')
-                    if e.get('field') == 'weather':
-                        _f.write(f"  WEATHER: {val}\n")
-                    else:
-                        _f.write(f"  field={e.get('field')} unitId={e.get('unitId')} value={str(val)[:200]}\n")
+            try:
+                with open(_wdbg, "w", encoding="utf-8") as _f:
+                    _f.write("")
+                with open(_dbg, "w", encoding="utf-8") as _f:
+                    _f.write(f"edits: {len(unit_edits)}\n")
+                    for e in unit_edits:
+                        val = e.get('value')
+                        if e.get('field') == 'weather':
+                            _f.write(f"  WEATHER: {val}\n")
+                        else:
+                            _f.write(f"  field={e.get('field')} unitId={e.get('unitId')} value={str(val)[:200]}\n")
+            except Exception:
+                pass
             original_len = len(mission_text)
             mission_text = apply_unit_edits(mission_text, unit_edits)
-            with open(_dbg, "a") as _f:
-                _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
+            try:
+                with open(_dbg, "a", encoding="utf-8") as _f:
+                    _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
+            except Exception:
+                pass
 
         # Decode kneeboard base64 data to raw bytes
         kneeboards = None
@@ -749,7 +761,39 @@ def download():
                     "data": base64.b64decode(kb["data"]),
                 })
 
-        miz_bytes = repack_miz(session["miz_bytes"], mission_text, kneeboards=kneeboards)
+        # 3. Briefing text lives in l10n/DEFAULT/dictionary (DCS localization
+        # mechanism). The DictKey references we need to resolve only exist in
+        # the ORIGINAL mission text — apply_unit_edits' briefing handler has
+        # already rewritten them in the working copy. Use original text for
+        # DictKey lookup so the dictionary update finds the right entries.
+        new_dictionary_text = None
+        if any(e.get("field") == "briefing" for e in unit_edits):
+            current_dict = extract_dictionary_from_miz(session["miz_bytes"])
+            if current_dict is not None:
+                new_dictionary_text = apply_briefing_edits_to_dictionary(
+                    session["original_mission_text"], current_dict, unit_edits,
+                )
+
+        # 4. forcedOptions is mirrored in the top-level `options` file's
+        # ["difficulty"] block — that's what DCS ME displays. Keep the two
+        # in sync so the user's option toggles are visible in the ME.
+        new_options_text = None
+        forced_options_edits = [e for e in unit_edits if e.get("field") == "forcedOptions"]
+        if forced_options_edits:
+            current_options = extract_options_from_miz(session["miz_bytes"])
+            if current_options is not None:
+                # Later forcedOptions edits win
+                merged: dict = {}
+                for e in forced_options_edits:
+                    merged.update(e.get("value") or {})
+                new_options_text = apply_forced_options_to_options_file(current_options, merged)
+
+        miz_bytes = repack_miz(
+            session["miz_bytes"], mission_text,
+            kneeboards=kneeboards,
+            new_dictionary_text=new_dictionary_text,
+            new_options_text=new_options_text,
+        )
 
         return send_file(
             io.BytesIO(miz_bytes),
@@ -813,6 +857,55 @@ def launcher_settings(clsid):
 # --------------------------------------------------------------------------
 # Weather presets
 # --------------------------------------------------------------------------
+
+@app.route("/api/sop/extract-archive", methods=["POST"])
+def extract_archive():
+    """Extract a squadron kneeboard mod archive (.ozp / .zip) and return each
+    image file as base64. Handles standard deflate AND method 93 (Zstandard)
+    used by CSG-3 and other DCS mod packs.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    archive_bytes = f.read()
+    if not archive_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        from services.archive_reader import read_archive
+        entries = read_archive(archive_bytes)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Archive extraction failed: {str(e)}"}), 400
+
+    IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    import base64, os
+    results = []
+    for name, body in entries:
+        lower = name.lower()
+        if not lower.endswith(IMAGE_EXT):
+            continue
+        mime = (
+            "image/png" if lower.endswith(".png") else
+            "image/jpeg" if lower.endswith((".jpg", ".jpeg")) else
+            "image/gif" if lower.endswith(".gif") else
+            "image/webp" if lower.endswith(".webp") else
+            "application/octet-stream"
+        )
+        results.append({
+            "path": name,
+            "filename": os.path.basename(name),
+            "mimeType": mime,
+            "dataBase64": base64.b64encode(body).decode("ascii"),
+        })
+
+    return jsonify({
+        "filename": f.filename,
+        "imageCount": len(results),
+        "images": results,
+    })
+
 
 @app.route("/api/weather/presets", methods=["GET"])
 def weather_presets():
@@ -1031,7 +1124,10 @@ def debug_mission(sid):
         issues = run_debug_analysis(data["groups"], client_units, overview, mission_dict)
         return jsonify({"issues": issues})
     except Exception as e:
-        return jsonify({"error": f"Debug analysis failed: {str(e)}"}), 500
+        import traceback
+        tb = traceback.format_exc()
+        print(f"DEBUG ANALYSIS ERROR:\n{tb}")
+        return jsonify({"error": f"Debug analysis failed: {str(e)}", "trace": tb}), 500
 
 
 @app.route("/api/close", methods=["POST"])

@@ -3,16 +3,19 @@
  * Shows callsigns, loadout summary, fuel/flare/chaff, datalink donors+team.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox } from './cardStyles';
-import type { MissionGroup, ClientUnit } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox, MissionDateLine } from './cardStyles';
+import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 
 interface FlightCardProps {
   group: MissionGroup;
   clientUnits: ClientUnit[];
+  overview?: MissionOverviewData;
+  /** When set, highlight this pilot's row in the crew roster. */
+  highlightUnitId?: number;
 }
 
-export function FlightCard({ group, clientUnits }: FlightCardProps) {
+export function FlightCard({ group, clientUnits, overview, highlightUnitId }: FlightCardProps) {
   const airframe = getAircraftType(group);
   const flightUnits = clientUnits.filter((cu) => cu.groupName === group.groupName);
 
@@ -36,6 +39,7 @@ export function FlightCard({ group, clientUnits }: FlightCardProps) {
         <div style={subtitleStyle}>
           {airframe} | {flightUnits.length} aircraft | {group.task || 'N/A'} | {group.frequency.toFixed(3)} MHz {group.modulation === 0 ? 'AM' : 'FM'}
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Crew roster */}
@@ -51,8 +55,13 @@ export function FlightCard({ group, clientUnits }: FlightCardProps) {
           </tr>
         </thead>
         <tbody>
-          {flightUnits.map((cu, i) => (
-            <tr key={cu.unitId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+          {flightUnits.map((cu, i) => {
+            const isHighlighted = highlightUnitId === cu.unitId;
+            return (
+            <tr key={cu.unitId} style={{
+              background: isHighlighted ? 'rgba(74, 143, 212, 0.15)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
+              borderLeft: isHighlighted ? '3px solid #4a8fd4' : '3px solid transparent',
+            }}>
               <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{i + 1}</td>
               <td style={{ ...cell, fontWeight: 600 }}>
                 {cu.voiceCallsignLabel} {cu.voiceCallsignNumber}
@@ -61,9 +70,10 @@ export function FlightCard({ group, clientUnits }: FlightCardProps) {
               <td style={{ ...cell, textAlign: 'center', color: cu.laserCode ? WARN : DIM }}>
                 {cu.laserCode || '—'}
               </td>
-              <td style={{ ...cell, fontSize: 17, color: DIM }}>{cu.name}</td>
+              <td style={{ ...cell, fontSize: 17, color: isHighlighted ? '#ccdae8' : DIM }}>{cu.name}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
 
@@ -143,9 +153,45 @@ export function FlightCard({ group, clientUnits }: FlightCardProps) {
         </>
       )}
 
+      {/* TOLD — Takeoff & Landing Data */}
+      {rep && (
+        <>
+          <div style={sectionTitle}>TOLD</div>
+          <div style={{ display: 'flex', gap: 0, flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
+            {(() => {
+              const fuel = rep.fuel || 0;
+              const storesEst = 2000;
+              const emptyWt = 25640;
+              const grossWt = emptyWt + fuel + storesEst;
+              const joker = Math.round(fuel * 0.35);
+              const bingo = Math.round(fuel * 0.20);
+              const items = [
+                { label: 'GROSS WT', value: `${Math.round(grossWt).toLocaleString()} lbs`, color: TEXT },
+                { label: 'T/O FUEL', value: `${Math.round(fuel).toLocaleString()} lbs`, color: TEXT },
+                { label: 'JOKER', value: `${joker.toLocaleString()} lbs`, color: WARN },
+                { label: 'BINGO', value: `${bingo.toLocaleString()} lbs`, color: '#d95050' },
+              ];
+              return items.map(({ label, value, color }) => (
+                <div key={label} style={{
+                  flex: 1,
+                  padding: '4px 6px',
+                  borderRight: `1px solid ${BORDER}`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 11, color: DIM, fontWeight: 600 }}>{label}</div>
+                  <div style={{ fontSize: 17, color, fontWeight: 700 }}>{value}</div>
+                </div>
+              ));
+            })()}
+          </div>
+        </>
+      )}
+
       {/* Notes */}
-      <div style={sectionTitle}>NOTES</div>
-      <div style={notesBox} />
+      <div style={{ padding: '6px 0 0', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontSize: 17, color: DIM, marginBottom: 2, fontWeight: 600 }}>NOTES</div>
+        <div style={notesBox} />
+      </div>
 
       <div style={footerStyle}>Generated by DCS Mission Planner | VMFA-224(AW)</div>
     </div>

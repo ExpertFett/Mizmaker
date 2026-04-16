@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { LauncherSettingsPanel } from '../components/LauncherSettings';
 import type { ClientUnit, PylonInfo } from '../../types/mission';
+import { LOADOUT_PRESETS, planPresetForUnit, type LoadoutPreset } from '../loadoutPresets';
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -58,6 +60,9 @@ export function LoadoutTab() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedUnits, setExpandedUnits] = useState<Set<number>>(new Set());
   const [copiedUnitId, setCopiedUnitId] = useState<number | null>(null);
+  // Track which preset was last applied per flight so we can show a badge in
+  // the group header. Session-only — not persisted to the miz.
+  const [appliedPresetByGroup, setAppliedPresetByGroup] = useState<Map<string, LoadoutPreset>>(new Map());
 
   // Snapshot originals for change tracking
   const originals = useRef<Map<number, PylonInfo[]>>(new Map());
@@ -112,6 +117,14 @@ export function LoadoutTab() {
     const selected = opts?.find((o) => o.clsid === clsid);
     if (!selected && clsid !== '') return;
 
+    // Manual pylon edit invalidates the preset badge
+    setAppliedPresetByGroup((prev) => {
+      if (!prev.has(unit.groupName)) return prev;
+      const next = new Map(prev);
+      next.delete(unit.groupName);
+      return next;
+    });
+
     addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
 
     const updated = units.map((u) => {
@@ -144,6 +157,16 @@ export function LoadoutTab() {
     const source = units.find((u) => u.unitId === sourceId);
     if (!source) return;
 
+    const target = units.find((u) => u.unitId === targetId);
+    if (target) {
+      setAppliedPresetByGroup((prev) => {
+        if (!prev.has(target.groupName)) return prev;
+        const next = new Map(prev);
+        next.delete(target.groupName);
+        return next;
+      });
+    }
+
     addEdit({ unitId: targetId, field: 'copyLoadout', value: sourceId });
 
     const updated = units.map((u) => {
@@ -152,6 +175,77 @@ export function LoadoutTab() {
     });
     useMissionStore.setState({ clientUnits: updated });
   }, [addEdit]);
+
+  /** Apply a loadout preset to every unit in a flight (per-flight, not global). */
+  const handleApplyPreset = useCallback((preset: LoadoutPreset, groupUnits: ClientUnit[]) => {
+    const { clientUnits: units } = useMissionStore.getState();
+    let changedCount = 0;
+    const updated = units.map((u) => {
+      const target = groupUnits.find((g) => g.unitId === u.unitId);
+      if (!target) return u;
+      const opts = pylonOptions[u.type] as Record<string, PylonInfo[]> | undefined;
+      if (!opts) return u;  // no pylon schema for this airframe
+
+      const plan = planPresetForUnit(preset, opts, u.pylons, u.type);
+      const newPylons: PylonInfo[] = [];
+      for (const step of plan) {
+        if (step.kept && step.clsid) {
+          // Preserve existing pylon data (shortName/category)
+          const existing = u.pylons.find((p) => p.number === step.pylon);
+          if (existing) { newPylons.push({ ...existing }); continue; }
+        }
+        if (step.kept && !step.clsid) continue;  // empty & not changed
+
+        if (!step.clsid) {
+          // Actively emptied (wipeAll). Skip; no pylon entry.
+          const orig = u.pylons.find((p) => p.number === step.pylon);
+          if (orig && orig.clsid) {
+            addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: '', settings: {} } } as any);
+            changedCount++;
+          }
+          continue;
+        }
+
+        // Install new weapon — look up full info from options
+        const optsForPylon = opts[String(step.pylon)] || [];
+        const chosen = optsForPylon.find((o) => o.clsid === step.clsid);
+        if (!chosen) continue;
+        newPylons.push({
+          number: step.pylon,
+          clsid: chosen.clsid,
+          name: chosen.name,
+          shortName: chosen.shortName,
+          category: chosen.category,
+        });
+        // Only queue an edit if this is actually a change from current
+        const current = u.pylons.find((p) => p.number === step.pylon);
+        if (!current || current.clsid !== chosen.clsid) {
+          addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: chosen.clsid, settings: {} } } as any);
+          changedCount++;
+        }
+      }
+      return { ...u, pylons: newPylons.sort((a, b) => a.number - b.number) };
+    });
+    useMissionStore.setState({ clientUnits: updated });
+    // Remember which preset was applied for each touched flight so we can show a badge
+    const touchedGroupNames = new Set(groupUnits.map((u) => u.groupName));
+    setAppliedPresetByGroup((prev) => {
+      const next = new Map(prev);
+      for (const gn of touchedGroupNames) next.set(gn, preset);
+      return next;
+    });
+    return changedCount;
+  }, [pylonOptions, addEdit]);
+
+  // Clear a preset badge when the user manually changes pylons afterwards
+  const clearPresetForGroup = useCallback((groupName: string) => {
+    setAppliedPresetByGroup((prev) => {
+      if (!prev.has(groupName)) return prev;
+      const next = new Map(prev);
+      next.delete(groupName);
+      return next;
+    });
+  }, []);
 
   const handlePasteToGroup = useCallback((sourceId: number, groupUnits: ClientUnit[]) => {
     const { clientUnits: units } = useMissionStore.getState();
@@ -273,12 +367,15 @@ export function LoadoutTab() {
           pylonOptions={pylonOptions}
           copiedUnitId={copiedUnitId}
           isPylonChanged={isPylonChanged}
+          appliedPreset={appliedPresetByGroup.get(groupName)}
           onToggleGroup={() => toggleGroup(groupName)}
           onToggleUnit={toggleUnit}
           onPylonChange={handlePylonChange}
           onCopyUnit={setCopiedUnitId}
           onPasteToUnit={handleCopyLoadout}
           onPasteToGroup={handlePasteToGroup}
+          onApplyPreset={handleApplyPreset}
+          onClearPreset={() => clearPresetForGroup(groupName)}
         />
       ))}
     </div>
@@ -324,19 +421,22 @@ interface GroupCardProps {
   pylonOptions: Record<string, any>;
   copiedUnitId: number | null;
   isPylonChanged: (unitId: number, pylonNum: number) => boolean;
+  appliedPreset?: LoadoutPreset;
   onToggleGroup: () => void;
   onToggleUnit: (id: number) => void;
   onPylonChange: (unitId: number, pylonNum: number, clsid: string) => void;
   onCopyUnit: (id: number) => void;
   onPasteToUnit: (sourceId: number, targetId: number) => void;
   onPasteToGroup: (sourceId: number, groupUnits: ClientUnit[]) => void;
+  onApplyPreset: (preset: LoadoutPreset, groupUnits: ClientUnit[]) => number;
+  onClearPreset: () => void;
 }
 
 function GroupCard({
   groupName, coalition, type, units, isExpanded, expandedUnits,
-  pylonOptions, copiedUnitId, isPylonChanged,
+  pylonOptions, copiedUnitId, isPylonChanged, appliedPreset,
   onToggleGroup, onToggleUnit, onPylonChange,
-  onCopyUnit, onPasteToUnit, onPasteToGroup,
+  onCopyUnit, onPasteToUnit, onPasteToGroup, onApplyPreset, onClearPreset,
 }: GroupCardProps) {
   const coalitionColor = coalition === 'blue' ? '#4a8fd4' : '#d95050';
   const copiedUnit = copiedUnitId ? units.find((u) => u.unitId === copiedUnitId) : null;
@@ -383,6 +483,29 @@ function GroupCard({
           {groupName}
         </span>
 
+        {/* Applied preset badge */}
+        {appliedPreset && (
+          <span
+            onClick={(e) => { e.stopPropagation(); onClearPreset(); }}
+            title={`${appliedPreset.description} — click to dismiss`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 10, fontWeight: 700,
+              color: appliedPreset.color,
+              background: `${appliedPreset.color}15`,
+              border: `1px solid ${appliedPreset.color}55`,
+              padding: '1px 7px',
+              borderRadius: 3,
+              letterSpacing: 0.5,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            {appliedPreset.label}
+            <span style={{ color: `${appliedPreset.color}aa`, fontSize: 10, fontWeight: 400 }}>×</span>
+          </span>
+        )}
+
         <span style={{ color: '#5a7a8a', fontSize: 13 }}>
           {type}
         </span>
@@ -403,6 +526,9 @@ function GroupCard({
             </span>
           ))}
         </div>
+
+        {/* Per-flight preset picker */}
+        <PresetPicker units={units} onApply={onApplyPreset} />
 
         {/* Paste to group button */}
         {canPasteToGroup && !copiedUnit && (
@@ -732,3 +858,145 @@ const pasteBtnStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   whiteSpace: 'nowrap',
 };
+
+/* ------------------------------------------------------------------ */
+/* Per-flight preset picker                                            */
+/* ------------------------------------------------------------------ */
+
+function PresetPicker({
+  units, onApply,
+}: {
+  units: ClientUnit[];
+  onApply: (preset: LoadoutPreset, groupUnits: ClientUnit[]) => number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click (accounting for the portal'd menu)
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (btnRef.current && btnRef.current.contains(target)) return;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Position the menu relative to the button whenever it opens or the window scrolls/resizes.
+  useEffect(() => {
+    if (!open) return;
+    const updatePos = () => {
+      const btn = btnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const menuWidth = 300;
+      // Prefer aligning to right edge of button
+      let left = rect.right - menuWidth;
+      if (left < 8) left = 8;
+      // Place below the button
+      let top = rect.bottom + 4;
+      // If it would overflow the viewport, place above the button
+      const estHeight = 70 * LOADOUT_PRESETS.length;
+      if (top + estHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - estHeight - 4);
+      }
+      setMenuPos({ top, left });
+    };
+    updatePos();
+    window.addEventListener('resize', updatePos);
+    window.addEventListener('scroll', updatePos, true);
+    return () => {
+      window.removeEventListener('resize', updatePos);
+      window.removeEventListener('scroll', updatePos, true);
+    };
+  }, [open]);
+
+  const apply = (preset: LoadoutPreset, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const changed = onApply(preset, units);
+    setFlash(`${preset.label}: ${changed} pylon${changed !== 1 ? 's' : ''} changed`);
+    setOpen(false);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  return (
+    <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={btnRef}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        style={{
+          background: 'rgba(210, 153, 34, 0.1)',
+          border: '1px solid rgba(210, 153, 34, 0.4)',
+          borderRadius: 4,
+          color: '#d29922',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
+          padding: '3px 10px',
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+        }}
+        title="Apply a role-based loadout preset to this flight"
+      >
+        Preset ▾
+      </button>
+      {flash && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, marginTop: 4,
+          background: '#0f1a28', border: '1px solid rgba(63, 185, 80, 0.3)',
+          borderRadius: 4, padding: '4px 8px', fontSize: 11, color: '#3fb950',
+          whiteSpace: 'nowrap', zIndex: 200, pointerEvents: 'none',
+        }}>
+          ✓ {flash}
+        </div>
+      )}
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            background: '#0a1520',
+            border: '1px solid #1a3a5a',
+            borderRadius: 6,
+            padding: 4,
+            zIndex: 9999,
+            width: 300,
+            boxShadow: '0 6px 24px rgba(0, 0, 0, 0.6)',
+          }}
+        >
+          {LOADOUT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={(e) => apply(preset, e)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                background: 'transparent',
+                border: 'none',
+                borderLeft: `3px solid ${preset.color}`,
+                color: '#ccdae8', cursor: 'pointer',
+                fontSize: 12, padding: '6px 10px',
+                fontFamily: 'inherit', borderRadius: 3,
+                marginBottom: 2,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#0f1a28'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+            >
+              <div style={{ color: preset.color, fontWeight: 700, fontSize: 12 }}>{preset.label}</div>
+              <div style={{ color: '#5a7a8a', fontSize: 11, marginTop: 1 }}>{preset.description}</div>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}

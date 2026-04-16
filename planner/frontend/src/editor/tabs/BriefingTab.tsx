@@ -133,7 +133,8 @@ function generateBriefing(store: ReturnType<typeof useMissionStore.getState>): {
   if (tankers.length > 0) {
     blueParts.push(`SUPPORT:`);
     for (const t of tankers) {
-      const freq = t.frequency ? `${(t.frequency / 1e6).toFixed(3)} MHz` : '';
+      // t.frequency is already in MHz from the backend extractor — do NOT divide
+      const freq = t.frequency ? `${t.frequency.toFixed(3)} MHz ${t.modulation === 0 ? 'AM' : 'FM'}` : '';
       const tacan = t.tacan ? `TACAN ${t.tacan.channel}${t.tacan.band}` : '';
       blueParts.push(`  - ${t.groupName}: ${t.units[0]?.type || 'Tanker'} ${[freq, tacan].filter(Boolean).join(' / ')}`);
     }

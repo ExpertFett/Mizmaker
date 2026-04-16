@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
 
 const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
 
@@ -34,6 +35,7 @@ export function BatchEditTab() {
   const units = useMissionStore((s) => s.units);
   const liveryData = useMissionStore((s) => s.liveryData) as { type: string; units: { livery_id: string }[]; liveries: string[] }[];
   const addEdit = useEditStore((s) => s.addEdit);
+  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
 
   const [country, setCountry] = useState('');
   const [checkedTypes, setCheckedTypes] = useState<Set<string>>(new Set());
@@ -360,11 +362,28 @@ export function BatchEditTab() {
                   const gn = u.groupName || `g${u.groupId}`;
                   if (!groupOrder.includes(gn)) groupOrder.push(gn);
                 }
+
+                // Build the source pool: SOP callsigns if active, else DCS defaults.
+                // For SOP callsigns, we reuse a DCS nameIdx (cycled) for voice
+                // compatibility since DCS maps voice to its enum, and override
+                // the display name.
+                const sopFlights = activeSop?.flights ?? [];
+                const usingSop = sopFlights.length > 0;
+                const pool: { nameIdx: number; name: string }[] = usingSop
+                  ? sopFlights
+                      .slice()
+                      .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+                      .map((f, i) => ({
+                        nameIdx: CALLSIGN_NAMES[i % CALLSIGN_NAMES.length].idx,
+                        name: f.callsign,
+                      }))
+                  : CALLSIGN_NAMES.map((c) => ({ nameIdx: c.idx, name: c.name }));
+
                 const groupCs = new Map<string, { nameIdx: number; name: string; flight: number }>();
                 for (let i = 0; i < groupOrder.length; i++) {
-                  const cs = CALLSIGN_NAMES[i % CALLSIGN_NAMES.length];
-                  const flight = Math.floor(i / CALLSIGN_NAMES.length) + 1;
-                  groupCs.set(groupOrder[i], { nameIdx: cs.idx, name: cs.name, flight });
+                  const pick = pool[i % pool.length];
+                  const flight = Math.floor(i / pool.length) + 1;
+                  groupCs.set(groupOrder[i], { nameIdx: pick.nameIdx, name: pick.name, flight });
                 }
                 const posCounters = new Map<string, number>();
                 for (const u of targets) {
@@ -377,7 +396,10 @@ export function BatchEditTab() {
                     name: `${gc.name}${gc.flight}${pos}`,
                   }} as any);
                 }
-                setResult(`Callsigns assigned to ${targets.length} aircraft across ${groupOrder.length} groups`);
+                setResult(
+                  `Callsigns assigned to ${targets.length} aircraft across ${groupOrder.length} groups` +
+                  (usingSop ? ` using SOP "${activeSop!.name}"` : '')
+                );
               }}
               disabled={!country || affected === 0}
               style={{
@@ -388,10 +410,12 @@ export function BatchEditTab() {
                 fontSize: 13, fontWeight: 600, padding: '6px 14px', width: '100%',
               }}
             >
-              Auto-Assign Callsigns (aircraft only)
+              Auto-Assign Callsigns (aircraft only){activeSop && activeSop.flights.length > 0 ? ' — using SOP' : ''}
             </button>
             <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
-              Each group gets a unique callsign: Enfield 1-1, Springfield 1-1, Uzi 1-1, ...
+              {activeSop && activeSop.flights.length > 0
+                ? `Using SOP "${activeSop.name}" — ${activeSop.flights.map((f) => f.callsign).slice(0, 5).join(', ')}${activeSop.flights.length > 5 ? '...' : ''}`
+                : 'Each group gets a unique callsign: Enfield 1-1, Springfield 1-1, Uzi 1-1, ...'}
             </div>
           </div>
 

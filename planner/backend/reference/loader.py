@@ -188,13 +188,24 @@ def get_pylons() -> dict:
 
 
 def get_launcher_settings() -> dict:
-    """CLSID → {displayName, settings: [...]}."""
+    """CLSID → {displayName, settings: [...]}.
+
+    Recent pydcs versions dropped the embedded ``settings`` dicts from
+    ``Weapons``, so building from pydcs can return 0 entries even when pydcs
+    imports cleanly. Fall back to the baked ``launcher_settings.json`` in that
+    case — that file has ~3.7MB of fuse/laser/etc settings data.
+    """
     if "launcher_settings" not in _cache:
+        built = None
         try:
-            _cache["launcher_settings"] = _build_launcher_settings_from_pydcs()
+            built = _build_launcher_settings_from_pydcs()
         except ImportError:
             logger.warning("pydcs not available — falling back to launcher_settings.json")
-            _cache["launcher_settings"] = _load_json("launcher_settings.json")
+        if not built:
+            if built is not None:
+                logger.warning("pydcs returned 0 launcher settings — falling back to launcher_settings.json")
+            built = _load_json("launcher_settings.json")
+        _cache["launcher_settings"] = built
     return _cache["launcher_settings"]
 
 

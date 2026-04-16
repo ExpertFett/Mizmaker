@@ -3,20 +3,21 @@
  * Shows radio frequency, modulation, and mission phase flow based on waypoint actions.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox } from './cardStyles';
-import type { MissionGroup } from '../types/mission';
+import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, MissionDateLine } from './cardStyles';
+import type { MissionGroup, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 
 interface CommsCardProps {
   group: MissionGroup;
   allGroups: MissionGroup[];
+  overview?: MissionOverviewData;
 }
 
 function formatFreq(freq: number, mod: number): string {
   return `${freq.toFixed(3)} ${mod === 0 ? 'AM' : 'FM'}`;
 }
 
-export function CommsCard({ group, allGroups }: CommsCardProps) {
+export function CommsCard({ group, allGroups, overview }: CommsCardProps) {
   const airframe = getAircraftType(group);
 
   // Build mission phase flow from waypoint actions
@@ -53,6 +54,7 @@ export function CommsCard({ group, allGroups }: CommsCardProps) {
         <div style={subtitleStyle}>
           {airframe} | Primary: {formatFreq(group.frequency, group.modulation)}
         </div>
+        {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Primary frequency */}

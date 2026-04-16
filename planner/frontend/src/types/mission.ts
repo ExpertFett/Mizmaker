@@ -215,6 +215,18 @@ export interface ClientUnit {
   gun: number;
 }
 
+/** Laser-capable unit (client or AI). Shape subset of ClientUnit for the LaserTab. */
+export interface LaserCapableUnit {
+  unitId: number;
+  name: string;
+  type: string;
+  groupName: string;
+  coalition: string;
+  isClient: boolean;
+  pylons: PylonInfo[];
+  laserCode: number | null;
+}
+
 export interface DonorInfo {
   missionUnitId: number;
   name: string;
