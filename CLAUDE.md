@@ -18,9 +18,15 @@ One-dev (Fett + Claude) codebase.
 in-memory on the backend (2hr TTL, 20 max). Mission edits are
 regex-based surgical text replacements on the original Lua.
 
-**Branch**: `feature/supabase-migration` on both `origin`
-(`vmfa224-skunkworks/mizresearch`) and `personal` (`ExpertFett/mizmaker856`).
-Push to `personal` by default unless Fett says otherwise.
+**Branches**:
+- **`fetts-test-branch` on `personal` (`ExpertFett/mizmaker856`) — DEFAULT
+  PUSH TARGET.** Railway is wired to deploy from this branch. Any time
+  Fett says "commit it to github", "push it", "deploy", etc., the push
+  goes to `personal/fetts-test-branch` unless he explicitly redirects.
+- `feature/supabase-migration` on `personal` and `origin`
+  (`vmfa224-skunkworks/mizresearch`) — older feature branch, kept around
+  but not the deploy target. Don't push here unless Fett asks.
+- `main` on either remote — never push to main.
 
 ## Working agreements (standing orders)
 
