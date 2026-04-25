@@ -1348,11 +1348,6 @@ def audio_stream(filepath):
 
 
 # --------------------------------------------------------------------------
-# Frontend SPA catch-all
-# --------------------------------------------------------------------------
-
-@app.route("/", defaults={"path": ""})
-# --------------------------------------------------------------------------
 # Brief generator — squadron PowerPoint template token replacement.
 # Stateless: client posts the template + a resolved {token: value} dict,
 # server returns the rendered .pptx. Mission-data → token resolution
@@ -1574,6 +1569,16 @@ def brief_capabilities():
     })
 
 
+# --------------------------------------------------------------------------
+# Frontend SPA catch-all — both `/` (bare root) and `/<anything>` are
+# served from the built frontend's static directory. The two decorators
+# MUST stay stacked on the same function; if anything is inserted between
+# them, the `/` decorator orphans onto the next function and routes the
+# bare URL into the wrong handler (this happened once — a hit to `/` was
+# 500ing because it landed on `brief_scan`).
+# --------------------------------------------------------------------------
+
+@app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_frontend(path):
     # Serve actual static files (JS, CSS, images) if they exist
