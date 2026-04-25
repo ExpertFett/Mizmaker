@@ -180,8 +180,8 @@ export function BatchEditTab() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>Batch Edit</h2>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5a7a8a' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>Batch Edit</h2>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#aaaaaa' }}>
         Apply changes to multiple units at once by country and type.
       </p>
 
@@ -206,18 +206,18 @@ export function BatchEditTab() {
           {/* Step 2: Unit Types */}
           <StepHeader num={2} title="Unit Types" subtitle="empty = all" />
           {!country ? (
-            <div style={{ color: '#5a7a8a', fontSize: 13, padding: '8px 0' }}>Select a country first</div>
+            <div style={{ color: '#aaaaaa', fontSize: 13, padding: '8px 0' }}>Select a country first</div>
           ) : (
             <>
               {/* Filter pills */}
               <div style={{
                 display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap',
                 padding: '6px 8px', background: '#0a1218', borderRadius: 6,
-                border: '1px solid #12202e',
+                border: '1px solid #222222',
               }}>
                 <FilterPill label="All" active={checkedTypes.size === typeMeta.length && typeMeta.length > 0} onClick={() => selectAllTypes(true)} />
                 <FilterPill label="None" active={checkedTypes.size === 0} onClick={() => selectAllTypes(false)} />
-                <span style={{ width: 1, background: '#1a2a3a', margin: '2px 4px' }} />
+                <span style={{ width: 1, background: '#3a3a3a', margin: '2px 4px' }} />
                 <FilterPill label="✈ Planes" active={typeMeta.filter(t => t.category === 'plane').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'plane')} onClick={() => selectCategory('plane')} color="#4a8fd4" />
                 <FilterPill label="🚁 Helis" active={typeMeta.filter(t => t.category === 'helicopter').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'helicopter')} onClick={() => selectCategory('helicopter')} color="#60c080" />
                 <FilterPill label="🚗 Ground" active={typeMeta.filter(t => t.category === 'vehicle').every(t => checkedTypes.has(t.type)) && typeMeta.some(t => t.category === 'vehicle')} onClick={() => selectCategory('vehicle')} color="#d29922" />
@@ -226,11 +226,11 @@ export function BatchEditTab() {
               {/* Unit type list */}
               <div style={{
                 maxHeight: 300, overflow: 'auto', borderRadius: 6,
-                border: '1px solid #12202e', background: '#0a1218',
+                border: '1px solid #222222', background: '#0a1218',
               }}>
                 {typeMeta.map((t, i) => {
                   const checked = checkedTypes.has(t.type);
-                  const catColor = t.category === 'plane' ? '#4a8fd4' : t.category === 'helicopter' ? '#60c080' : t.category === 'vehicle' ? '#d29922' : t.category === 'ship' ? '#b07ed8' : '#5a7a8a';
+                  const catColor = t.category === 'plane' ? '#4a8fd4' : t.category === 'helicopter' ? '#60c080' : t.category === 'vehicle' ? '#d29922' : t.category === 'ship' ? '#b07ed8' : '#aaaaaa';
                   return (
                     <label
                       key={t.type}
@@ -254,11 +254,11 @@ export function BatchEditTab() {
                         border: `1px solid ${catColor}30`, fontWeight: 600,
                         minWidth: 16, textAlign: 'center',
                       }}>{CAT_ICONS[t.category] || '?'}</span>
-                      <span style={{ color: checked ? '#ccdae8' : '#8fa8c0', flex: 1, fontWeight: checked ? 500 : 400 }}>{t.type}</span>
+                      <span style={{ color: checked ? '#e0e0e0' : '#cccccc', flex: 1, fontWeight: checked ? 500 : 400 }}>{t.type}</span>
                       <span style={{
-                        color: '#5a7a8a', fontFamily: 'monospace', fontSize: 11,
-                        background: '#0f1a28', padding: '1px 6px', borderRadius: 3,
-                        border: '1px solid #1a2a3a',
+                        color: '#aaaaaa', fontFamily: "'B612 Mono', monospace", fontSize: 11,
+                        background: '#262626', padding: '1px 6px', borderRadius: 3,
+                        border: '1px solid #3a3a3a',
                       }}>{t.count}</span>
                     </label>
                   );
@@ -283,7 +283,7 @@ export function BatchEditTab() {
                 ))}
               </select>
               {checkedTypes.size > 0 && availableLiveries.length === 0 && (
-                <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+                <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 4 }}>
                   No liveries found for selected types
                 </div>
               )}
@@ -328,7 +328,7 @@ export function BatchEditTab() {
                   max={9999}
                   style={{ ...inputStyle, flex: 1 }}
                 />
-                <span style={{ color: '#5a7a8a', fontSize: 12 }}>–</span>
+                <span style={{ color: '#aaaaaa', fontSize: 12 }}>–</span>
                 <input
                   type="number"
                   value={tailMax}
@@ -340,7 +340,7 @@ export function BatchEditTab() {
                 />
               </div>
               {tailMin && affected > 0 && (
-                <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+                <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 4 }}>
                   {affected} random octal tail numbers from {tailMin} – {tailMax || parseInt(tailMin, 10) + affected * 5}
                 </div>
               )}
@@ -403,16 +403,16 @@ export function BatchEditTab() {
               }}
               disabled={!country || affected === 0}
               style={{
-                background: country && affected > 0 ? '#1a3a5a' : '#1a2a3a',
-                border: `1px solid ${country && affected > 0 ? '#4a8fd4' : '#1a2a3a'}`,
-                borderRadius: 4, color: country && affected > 0 ? '#4a8fd4' : '#5a7a8a',
+                background: country && affected > 0 ? '#4a4a4a' : '#3a3a3a',
+                border: `1px solid ${country && affected > 0 ? '#4a8fd4' : '#3a3a3a'}`,
+                borderRadius: 4, color: country && affected > 0 ? '#4a8fd4' : '#aaaaaa',
                 cursor: country && affected > 0 ? 'pointer' : 'not-allowed',
                 fontSize: 13, fontWeight: 600, padding: '6px 14px', width: '100%',
               }}
             >
               Auto-Assign Callsigns (aircraft only){activeSop && activeSop.flights.length > 0 ? ' — using SOP' : ''}
             </button>
-            <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 4 }}>
               {activeSop && activeSop.flights.length > 0
                 ? `Using SOP "${activeSop.name}" — ${activeSop.flights.map((f) => f.callsign).slice(0, 5).join(', ')}${activeSop.flights.length > 5 ? '...' : ''}`
                 : 'Each group gets a unique callsign: Enfield 1-1, Springfield 1-1, Uzi 1-1, ...'}
@@ -420,16 +420,16 @@ export function BatchEditTab() {
           </div>
 
           {/* Preview + Apply */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #1a2a3a' }}>
-            <span style={{ color: '#8fa8c0', fontSize: 14 }}>
-              <strong style={{ color: '#ccdae8' }}>{affected}</strong> unit{affected !== 1 ? 's' : ''} will be affected
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #3a3a3a' }}>
+            <span style={{ color: '#cccccc', fontSize: 14 }}>
+              <strong style={{ color: '#e0e0e0' }}>{affected}</strong> unit{affected !== 1 ? 's' : ''} will be affected
             </span>
             <button
               onClick={handleApply}
               disabled={!country || affected === 0}
               style={{
-                background: country && affected > 0 ? '#d29922' : '#1a2a3a',
-                border: 'none', borderRadius: 4, color: '#080f1c',
+                background: country && affected > 0 ? '#d29922' : '#3a3a3a',
+                border: 'none', borderRadius: 4, color: '#1a1a1a',
                 cursor: country && affected > 0 ? 'pointer' : 'not-allowed',
                 fontSize: 14, fontWeight: 600, padding: '8px 16px',
               }}
@@ -452,23 +452,23 @@ function StepHeader({ num, title, subtitle }: { num: number; title: string; subt
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: num > 1 ? 16 : 0 }}>
       <span style={{
-        width: 24, height: 24, borderRadius: '50%', background: '#1a3a5a',
+        width: 24, height: 24, borderRadius: '50%', background: '#4a4a4a',
         color: '#4a8fd4', fontWeight: 700, fontSize: 14,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>{num}</span>
-      <span style={{ color: '#ccdae8', fontWeight: 600, fontSize: 14 }}>{title}</span>
-      {subtitle && <span style={{ color: '#5a7a8a', fontSize: 12 }}>({subtitle})</span>}
+      <span style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 14 }}>{title}</span>
+      {subtitle && <span style={{ color: '#aaaaaa', fontSize: 12 }}>({subtitle})</span>}
     </div>
   );
 }
 
 function FilterPill({ label, active, onClick, color }: { label: string; active?: boolean; onClick: () => void; color?: string }) {
-  const c = color || '#8fa8c0';
+  const c = color || '#cccccc';
   return (
     <button onClick={onClick} style={{
       background: active ? `${c}20` : 'transparent',
-      border: `1px solid ${active ? `${c}50` : '#1a2a3a'}`,
-      borderRadius: 12, color: active ? c : '#5a7a8a',
+      border: `1px solid ${active ? `${c}50` : '#3a3a3a'}`,
+      borderRadius: 12, color: active ? c : '#aaaaaa',
       cursor: 'pointer', fontSize: 11, padding: '3px 10px',
       fontWeight: active ? 600 : 400,
       transition: 'all 0.15s',
@@ -477,13 +477,13 @@ function FilterPill({ label, active, onClick, color }: { label: string; active?:
 }
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 13, padding: '6px 10px', width: '100%',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '6px 10px', width: '100%',
 };
 const inputStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 13, padding: '6px 10px', fontFamily: 'monospace',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '6px 10px', fontFamily: "'B612 Mono', monospace",
 };
 const labelStyle: React.CSSProperties = {
-  display: 'block', color: '#5a7a8a', fontSize: 12, marginBottom: 4, fontWeight: 500,
+  display: 'block', color: '#aaaaaa', fontSize: 12, marginBottom: 4, fontWeight: 500,
 };

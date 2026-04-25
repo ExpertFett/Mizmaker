@@ -17,6 +17,16 @@ import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import type { Weather } from '../utils/atmosphere';
 
+/** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
+interface EditResult {
+  field: string;
+  status: 'applied' | 'noop' | 'skipped' | 'invalid';
+  unitId?: number;
+  groupId?: number;
+  reason?: string;
+  textDelta?: number;
+}
+
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -114,6 +124,19 @@ export function ExportPanel() {
         return;
       }
 
+      // Parse edit-results header (silent-failure surfacing)
+      const resultsHeader = res.headers.get('X-Edit-Results');
+      let editResults: EditResult[] = [];
+      if (resultsHeader) {
+        try {
+          const decoded = atob(resultsHeader);
+          const parsed = JSON.parse(decoded);
+          editResults = parsed.results || [];
+        } catch (e) {
+          console.warn('Failed to parse X-Edit-Results header:', e);
+        }
+      }
+
       const blob = await res.blob();
       console.log('Blob:', blob.size, 'bytes', blob.type);
 
@@ -130,6 +153,35 @@ export function ExportPanel() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       clearEdits();
+
+      // Surface any dropped / invalid edits to the user after the download kicks off.
+      // "applied" and "noop-on-already-matching-value" are fine. "skipped" means the
+      // edit threw; "invalid" means it was malformed; "noop" means the target wasn't
+      // found. All are worth showing.
+      const dropped = editResults.filter(
+        (r) => r.status === 'skipped' || r.status === 'invalid',
+      );
+      const noops = editResults.filter((r) => r.status === 'noop');
+      if (dropped.length > 0 || noops.length > 0) {
+        const lines: string[] = [];
+        if (dropped.length > 0) {
+          lines.push(`⚠️ ${dropped.length} edit${dropped.length !== 1 ? 's' : ''} were DROPPED:`);
+          for (const r of dropped.slice(0, 8)) {
+            const tag = r.unitId ? `unit ${r.unitId}` : r.groupId ? `group ${r.groupId}` : '';
+            lines.push(`  • ${r.field} ${tag} — ${r.reason || r.status}`);
+          }
+          if (dropped.length > 8) lines.push(`  …and ${dropped.length - 8} more`);
+        }
+        if (noops.length > 0) {
+          lines.push(`ℹ️ ${noops.length} edit${noops.length !== 1 ? 's' : ''} made no change:`);
+          for (const r of noops.slice(0, 5)) {
+            const tag = r.unitId ? `unit ${r.unitId}` : r.groupId ? `group ${r.groupId}` : '';
+            lines.push(`  • ${r.field} ${tag} — ${r.reason || 'no match'}`);
+          }
+          if (noops.length > 5) lines.push(`  …and ${noops.length - 5} more`);
+        }
+        alert(lines.join('\n'));
+      }
     } catch (e: any) {
       console.error('Download error:', e);
       alert(`Download error: ${e.message}`);
@@ -161,7 +213,7 @@ export function ExportPanel() {
   };
 
   return (
-    <div style={{ padding: '10px 12px', borderTop: '1px solid #1a2a3a' }}>
+    <div style={{ padding: '10px 12px', borderTop: '1px solid #3a3a3a' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
           {isDirty ? 'Download .miz *' : 'Download .miz'}
@@ -180,10 +232,10 @@ export function ExportPanel() {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: '#0f2a4a',
-  border: '1px solid #1a3a5a',
+  background: '#333333',
+  border: '1px solid #4a4a4a',
   borderRadius: 4,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   padding: '7px 10px',
   cursor: 'pointer',
   fontSize: 13,

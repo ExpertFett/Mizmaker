@@ -6,12 +6,27 @@ import App from './App';
 const style = document.createElement('style');
 style.textContent = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Sharpen the visual language — no rounded corners anywhere by default.
+     Override per-element with inline borderRadius if a curve is intentional
+     (uses !important so the 300+ existing inline borderRadius styles flatten
+     to square corners without touching every file). */
+  *, *::before, *::after { border-radius: 0 !important; }
   html { font-size: 15px; }
-  body { overflow: hidden; font-size: 15px; }
+  body {
+    overflow: hidden;
+    font-size: 15px;
+    /* B612 = Airbus cockpit display font; falls back through technical
+       sans options before generic. */
+    font-family: 'B612', 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    /* Slightly tighter tracking reads more "instrument panel". */
+    letter-spacing: 0.005em;
+  }
+  /* Tabular data — coords, frequencies, channel numbers — stays mono. */
+  pre, code, kbd, samp { font-family: 'B612 Mono', 'Consolas', monospace; }
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #0a1520; }
-  ::-webkit-scrollbar-thumb { background: #1a3a5a; border-radius: 3px; }
-  input, select, button, textarea { font-size: inherit; }
+  ::-webkit-scrollbar-track { background: #222222; }
+  ::-webkit-scrollbar-thumb { background: #4a4a4a; }
+  input, select, button, textarea { font-size: inherit; font-family: inherit; }
   input:focus, select:focus { outline: 1px solid #4a8fd4; }
   /* Hide number input spinners (the up/down arrows) */
   input[type=number]::-webkit-inner-spin-button,

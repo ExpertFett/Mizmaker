@@ -53,21 +53,21 @@ const ACTION_TYPES = [
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const card: React.CSSProperties = {
-  background: '#0e1929', border: '1px solid #1a2a3a', borderRadius: 8, padding: 14, marginBottom: 12,
+  background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 8, padding: 14, marginBottom: 12,
 };
 const label: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: '#5a7a9a', marginBottom: 6,
+  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: '#888888', marginBottom: 6,
 };
 const input: React.CSSProperties = {
-  background: '#0a1420', border: '1px solid #1a2a3a', borderRadius: 4, color: '#ccdae8',
+  background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4, color: '#e0e0e0',
   padding: '5px 8px', fontSize: 14, width: '100%', boxSizing: 'border-box',
 };
 const select: React.CSSProperties = { ...input, cursor: 'pointer' };
 const btn: React.CSSProperties = {
-  background: '#1a2a3a', border: '1px solid #2a3a4a', borderRadius: 4, color: '#8aaabe',
+  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4, color: '#cccccc',
   padding: '5px 12px', fontSize: 13, cursor: 'pointer',
 };
-const btnPrimary: React.CSSProperties = { ...btn, background: '#1a3a5a', color: '#6ab4f0', borderColor: '#2a5a8a' };
+const btnPrimary: React.CSSProperties = { ...btn, background: '#4a4a4a', color: '#6ab4f0', borderColor: '#2a5a8a' };
 const btnDanger: React.CSSProperties = { ...btn, background: '#3a1a1a', color: '#e06060', borderColor: '#5a2a2a' };
 const btnSuccess: React.CSSProperties = { ...btn, background: '#1a3a2a', color: '#60c080', borderColor: '#2a5a3a' };
 
@@ -116,7 +116,7 @@ export function TriggerTab() {
 
   const selectedRule = rules.find((r) => r.id === selectedRuleId);
 
-  if (loading) return <div style={{ padding: 20, color: '#5a7a8a' }}>Loading triggers...</div>;
+  if (loading) return <div style={{ padding: 20, color: '#aaaaaa' }}>Loading triggers...</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 500 }}>
@@ -132,14 +132,14 @@ export function TriggerTab() {
       {/* ── View Mode Toggle + Save ──────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,
-        padding: '8px 12px', background: '#0a1218', borderRadius: 6, border: '1px solid #12202e',
+        padding: '8px 12px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
       }}>
         <button
           onClick={() => setViewMode('overview')}
           style={{
-            background: viewMode === 'overview' ? '#1a3a5a' : 'transparent',
-            border: `1px solid ${viewMode === 'overview' ? '#4a8fd4' : '#1a2a3a'}`,
-            borderRadius: 14, color: viewMode === 'overview' ? '#4a8fd4' : '#5a7a8a',
+            background: viewMode === 'overview' ? '#4a4a4a' : 'transparent',
+            border: `1px solid ${viewMode === 'overview' ? '#4a8fd4' : '#3a3a3a'}`,
+            borderRadius: 14, color: viewMode === 'overview' ? '#4a8fd4' : '#aaaaaa',
             cursor: 'pointer', fontSize: 13, padding: '5px 16px', fontWeight: viewMode === 'overview' ? 600 : 400,
           }}
         >
@@ -148,9 +148,9 @@ export function TriggerTab() {
         <button
           onClick={() => setViewMode('editor')}
           style={{
-            background: viewMode === 'editor' ? '#1a3a5a' : 'transparent',
-            border: `1px solid ${viewMode === 'editor' ? '#4a8fd4' : '#1a2a3a'}`,
-            borderRadius: 14, color: viewMode === 'editor' ? '#4a8fd4' : '#5a7a8a',
+            background: viewMode === 'editor' ? '#4a4a4a' : 'transparent',
+            border: `1px solid ${viewMode === 'editor' ? '#4a8fd4' : '#3a3a3a'}`,
+            borderRadius: 14, color: viewMode === 'editor' ? '#4a8fd4' : '#aaaaaa',
             cursor: 'pointer', fontSize: 13, padding: '5px 16px', fontWeight: viewMode === 'editor' ? 600 : 400,
           }}
         >
@@ -159,9 +159,9 @@ export function TriggerTab() {
         <button
           onClick={() => setViewMode('builder')}
           style={{
-            background: viewMode === 'builder' ? '#1a3a5a' : 'transparent',
-            border: `1px solid ${viewMode === 'builder' ? '#d29922' : '#1a2a3a'}`,
-            borderRadius: 14, color: viewMode === 'builder' ? '#d29922' : '#5a7a8a',
+            background: viewMode === 'builder' ? '#4a4a4a' : 'transparent',
+            border: `1px solid ${viewMode === 'builder' ? '#d29922' : '#3a3a3a'}`,
+            borderRadius: 14, color: viewMode === 'builder' ? '#d29922' : '#aaaaaa',
             cursor: 'pointer', fontSize: 13, padding: '5px 16px', fontWeight: viewMode === 'builder' ? 600 : 400,
           }}
         >
@@ -170,8 +170,8 @@ export function TriggerTab() {
 
         <div style={{ flex: 1 }} />
 
-        <span style={{ color: '#5a7a8a', fontSize: 13 }}>
-          <strong style={{ color: '#ccdae8' }}>{rules.length}</strong> trigger{rules.length !== 1 ? 's' : ''}
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
+          <strong style={{ color: '#e0e0e0' }}>{rules.length}</strong> trigger{rules.length !== 1 ? 's' : ''}
           {flags.length > 0 && <> · <strong style={{ color: '#e0a040' }}>{flags.length}</strong> flag{flags.length !== 1 ? 's' : ''}</>}
           {audioFiles.length > 0 && <> · <strong style={{ color: '#6ab4f0' }}>{audioFiles.length}</strong> audio</>}
         </span>
@@ -215,7 +215,7 @@ export function TriggerTab() {
                     ...card,
                     marginBottom: 4,
                     cursor: 'pointer',
-                    borderColor: rule.id === selectedRuleId ? '#4a8fd4' : '#1a2a3a',
+                    borderColor: rule.id === selectedRuleId ? '#4a8fd4' : '#3a3a3a',
                     opacity: rule.enabled ? 1 : 0.5,
                     display: 'flex',
                     gap: 6,
@@ -228,7 +228,7 @@ export function TriggerTab() {
                       onClick={(e) => { e.stopPropagation(); moveRule(rule.id, 'up'); }}
                       disabled={idx === 0}
                       style={{
-                        background: 'transparent', border: 'none', color: idx === 0 ? '#1a2a3a' : '#5a7a8a',
+                        background: 'transparent', border: 'none', color: idx === 0 ? '#3a3a3a' : '#aaaaaa',
                         cursor: idx === 0 ? 'default' : 'pointer', fontSize: 10, padding: '0 2px', lineHeight: 1,
                       }}
                       title="Move up"
@@ -237,7 +237,7 @@ export function TriggerTab() {
                       onClick={(e) => { e.stopPropagation(); moveRule(rule.id, 'down'); }}
                       disabled={idx === rules.length - 1}
                       style={{
-                        background: 'transparent', border: 'none', color: idx === rules.length - 1 ? '#1a2a3a' : '#5a7a8a',
+                        background: 'transparent', border: 'none', color: idx === rules.length - 1 ? '#3a3a3a' : '#aaaaaa',
                         cursor: idx === rules.length - 1 ? 'default' : 'pointer', fontSize: 10, padding: '0 2px', lineHeight: 1,
                       }}
                       title="Move down"
@@ -245,23 +245,23 @@ export function TriggerTab() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>{rule.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>{rule.name}</div>
                       <span style={{
                         fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                        background: rule.eventType === 'once' ? '#1a2a3a' : rule.eventType === 'continuous' ? '#1a3a2a' : '#3a2a1a',
-                        color: rule.eventType === 'once' ? '#6a8aaa' : rule.eventType === 'continuous' ? '#60c080' : '#e0a040',
+                        background: rule.eventType === 'once' ? '#3a3a3a' : rule.eventType === 'continuous' ? '#1a3a2a' : '#3a2a1a',
+                        color: rule.eventType === 'once' ? '#aaaaaa' : rule.eventType === 'continuous' ? '#60c080' : '#e0a040',
                       }}>
                         {rule.eventType}
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 4 }}>
                       {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''} → {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
                     </div>
                   </div>
                 </div>
               ))}
               {rules.length === 0 && (
-                <div style={{ color: '#3a5a6a', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                <div style={{ color: '#4a4a4a', fontSize: 13, padding: 12, textAlign: 'center' }}>
                   No triggers found. Click + Add to create one.
                 </div>
               )}
@@ -280,7 +280,7 @@ export function TriggerTab() {
                 onDuplicate={() => duplicateRule(selectedRule.id)}
               />
             ) : (
-              <div style={{ color: '#3a5a6a', fontSize: 15, padding: 40, textAlign: 'center' }}>
+              <div style={{ color: '#4a4a4a', fontSize: 15, padding: 40, textAlign: 'center' }}>
                 Select a trigger to edit, or click + Add to create one.
               </div>
             )}
@@ -346,7 +346,7 @@ export function TriggerTab() {
 // ── Trigger Overview ─────────────────────────────────────────────────────
 
 const EVENT_BADGE: Record<string, { bg: string; color: string }> = {
-  once:           { bg: '#1a2a3a', color: '#6a8aaa' },
+  once:           { bg: '#3a3a3a', color: '#aaaaaa' },
   continuous:     { bg: '#1a3a2a', color: '#60c080' },
   onMissionStart: { bg: '#3a2a1a', color: '#e0a040' },
 };
@@ -434,10 +434,10 @@ function TriggerOverview({ rules, flags, onEditRule }: {
       {/* Stats bar */}
       <div style={{
         display: 'flex', gap: 16, marginBottom: 12, padding: '10px 14px',
-        background: '#0e1929', borderRadius: 6, border: '1px solid #1a2a3a', flexWrap: 'wrap',
+        background: '#1a1a1a', borderRadius: 6, border: '1px solid #3a3a3a', flexWrap: 'wrap',
       }}>
-        <OverviewStat label="Total" value={rules.length} color="#ccdae8" />
-        <OverviewStat label="Once" value={onceCount} color="#6a8aaa" />
+        <OverviewStat label="Total" value={rules.length} color="#e0e0e0" />
+        <OverviewStat label="Once" value={onceCount} color="#aaaaaa" />
         <OverviewStat label="Continuous" value={contCount} color="#60c080" />
         <OverviewStat label="Mission Start" value={startCount} color="#e0a040" />
         {disabledCount > 0 && <OverviewStat label="Disabled" value={disabledCount} color="#e06060" />}
@@ -453,9 +453,9 @@ function TriggerOverview({ rules, flags, onEditRule }: {
               key={f}
               onClick={() => setFilter(f)}
               style={{
-                background: filter === f ? '#1a2a3a' : 'transparent',
-                border: `1px solid ${filter === f ? '#4a8fd4' : '#1a2a3a'}`,
-                borderRadius: 12, color: filter === f ? '#ccdae8' : '#5a7a8a',
+                background: filter === f ? '#3a3a3a' : 'transparent',
+                border: `1px solid ${filter === f ? '#4a8fd4' : '#3a3a3a'}`,
+                borderRadius: 12, color: filter === f ? '#e0e0e0' : '#aaaaaa',
                 cursor: 'pointer', fontSize: 12, padding: '4px 12px',
                 fontWeight: filter === f ? 600 : 400,
               }}
@@ -474,13 +474,13 @@ function TriggerOverview({ rules, flags, onEditRule }: {
 
       {/* Trigger table */}
       {filtered.length === 0 ? (
-        <div style={{ color: '#3a5a6a', fontSize: 14, padding: 20, textAlign: 'center' }}>
+        <div style={{ color: '#4a4a4a', fontSize: 14, padding: 20, textAlign: 'center' }}>
           {rules.length === 0 ? 'No triggers in this mission.' : 'No triggers match your filter.'}
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#ccdae8' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #1a2a3a', background: '#080f1c' }}>
+            <tr style={{ borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
               <th style={{ ...overviewTh, width: 40 }}>#</th>
               <th style={overviewTh}>Name</th>
               <th style={{ ...overviewTh, width: 110 }}>Type</th>
@@ -502,7 +502,7 @@ function TriggerOverview({ rules, flags, onEditRule }: {
                     background: idx % 2 === 0 ? 'transparent' : '#0a1218',
                   }}
                 >
-                  <td style={{ ...overviewTd, fontFamily: 'monospace', color: '#5a7a8a', textAlign: 'center' }}>
+                  <td style={{ ...overviewTd, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', textAlign: 'center' }}>
                     {rule.id}
                   </td>
                   <td style={{ ...overviewTd, fontWeight: 600 }}>
@@ -524,10 +524,10 @@ function TriggerOverview({ rules, flags, onEditRule }: {
                   <td style={overviewTd}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {rule.conditions.length === 0 ? (
-                        <span style={{ color: '#3a5a6a', fontSize: 12, fontStyle: 'italic' }}>always</span>
+                        <span style={{ color: '#4a4a4a', fontSize: 12, fontStyle: 'italic' }}>always</span>
                       ) : (
                         rule.conditions.map((c, ci) => (
-                          <span key={ci} style={{ fontSize: 12, color: '#8aaabe', lineHeight: 1.4 }}>
+                          <span key={ci} style={{ fontSize: 12, color: '#cccccc', lineHeight: 1.4 }}>
                             {conditionSummary(c)}
                           </span>
                         ))
@@ -537,7 +537,7 @@ function TriggerOverview({ rules, flags, onEditRule }: {
                   <td style={overviewTd}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {rule.actions.length === 0 ? (
-                        <span style={{ color: '#3a5a6a', fontSize: 12, fontStyle: 'italic' }}>none</span>
+                        <span style={{ color: '#4a4a4a', fontSize: 12, fontStyle: 'italic' }}>none</span>
                       ) : (
                         rule.actions.map((a, ai) => (
                           <span key={ai} style={{ fontSize: 12, color: '#6ab4f0', lineHeight: 1.4 }}>
@@ -551,7 +551,7 @@ function TriggerOverview({ rules, flags, onEditRule }: {
                     <button
                       onClick={() => onEditRule(rule.id)}
                       style={{
-                        background: 'transparent', border: '1px solid #1a2a3a', borderRadius: 4,
+                        background: 'transparent', border: '1px solid #3a3a3a', borderRadius: 4,
                         color: '#4a8fd4', cursor: 'pointer', fontSize: 11, padding: '3px 8px',
                       }}
                       title="Edit this trigger"
@@ -572,15 +572,15 @@ function TriggerOverview({ rules, flags, onEditRule }: {
 function OverviewStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div>
-      <div style={{ color: '#5a7a8a', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
-      <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: 'monospace' }}>{value}</div>
+      <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: "'B612 Mono', monospace" }}>{value}</div>
     </div>
   );
 }
 
 const overviewTh: React.CSSProperties = {
   padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: 12,
-  color: '#5a7a8a', whiteSpace: 'nowrap',
+  color: '#aaaaaa', whiteSpace: 'nowrap',
 };
 const overviewTd: React.CSSProperties = {
   padding: '8px 10px', verticalAlign: 'top',
@@ -1231,8 +1231,8 @@ function TriggerBuilder({ onAddRules }: {
   };
 
   const previewInputStyle: React.CSSProperties = {
-    background: '#0a1420', border: '1px solid #1a2a3a', borderRadius: 3,
-    color: '#ccdae8', fontSize: 12, padding: '3px 6px', fontFamily: 'monospace',
+    background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 3,
+    color: '#e0e0e0', fontSize: 12, padding: '3px 6px', fontFamily: "'B612 Mono', monospace",
     boxSizing: 'border-box' as const,
   };
 
@@ -1241,13 +1241,13 @@ function TriggerBuilder({ onAddRules }: {
       {/* Left: Input */}
       <div style={{ width: 360, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{
-          padding: '12px 16px', background: '#0e1929', borderRadius: 6,
-          border: '1px solid #1a2a3a',
+          padding: '12px 16px', background: '#1a1a1a', borderRadius: 6,
+          border: '1px solid #3a3a3a',
         }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#ccdae8', marginBottom: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#e0e0e0', marginBottom: 4 }}>
             Trigger Builder
           </div>
-          <div style={{ fontSize: 12, color: '#5a7a8a', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: '#aaaaaa', lineHeight: 1.5 }}>
             Describe your scenario in plain language. Use quotes for group/zone names.
             Chain steps with newlines or semicolons.
           </div>
@@ -1258,8 +1258,8 @@ function TriggerBuilder({ onAddRules }: {
           onChange={(e) => handleInputChange(e.target.value)}
           placeholder={'e.g. After 5 minutes, activate group "SA-6 Battery"\nWhen player enters zone "AO", send message "Warning"'}
           style={{
-            background: '#0a1420', border: '1px solid #1a2a3a', borderRadius: 6,
-            color: '#ccdae8', fontSize: 14, padding: '14px 16px', width: '100%',
+            background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 6,
+            color: '#e0e0e0', fontSize: 14, padding: '14px 16px', width: '100%',
             boxSizing: 'border-box' as const,
             fontFamily: 'inherit', resize: 'vertical', minHeight: 120,
             lineHeight: 1.6, flex: 1,
@@ -1268,10 +1268,10 @@ function TriggerBuilder({ onAddRules }: {
 
         {/* Examples */}
         <div style={{
-          padding: '10px 14px', background: '#0e1929', borderRadius: 6,
-          border: '1px solid #1a2a3a',
+          padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
+          border: '1px solid #3a3a3a',
         }}>
-          <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
             Examples — click to try
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1280,8 +1280,8 @@ function TriggerBuilder({ onAddRules }: {
                 key={i}
                 onClick={() => handleInputChange(ex)}
                 style={{
-                  background: 'transparent', border: '1px solid #12202e',
-                  borderRadius: 4, color: '#6a8a9a', fontSize: 12,
+                  background: 'transparent', border: '1px solid #222222',
+                  borderRadius: 4, color: '#aaaaaa', fontSize: 12,
                   padding: '5px 10px', cursor: 'pointer', textAlign: 'left',
                   lineHeight: 1.4,
                 }}
@@ -1297,16 +1297,16 @@ function TriggerBuilder({ onAddRules }: {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
         {/* Header with complexity meter + Add button */}
         <div style={{
-          padding: '12px 16px', background: '#0e1929', borderRadius: 6,
-          border: '1px solid #1a2a3a',
+          padding: '12px 16px', background: '#1a1a1a', borderRadius: 6,
+          border: '1px solid #3a3a3a',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#ccdae8' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>
                 Implementation Plan
               </div>
-              <div style={{ fontSize: 11, color: '#5a7a8a' }}>
+              <div style={{ fontSize: 11, color: '#aaaaaa' }}>
                 {!plan
                   ? 'Type a scenario to see the full plan'
                   : `${plan.steps.length} step${plan.steps.length !== 1 ? 's' : ''} · ${preview.length} trigger${preview.length !== 1 ? 's' : ''}`}
@@ -1321,7 +1321,7 @@ function TriggerBuilder({ onAddRules }: {
                       key={lvl}
                       style={{
                         width: 6, height: 16 + lvl * 3, borderRadius: 2,
-                        background: lvl <= plan.complexity ? plan.complexityColor : '#1a2a3a',
+                        background: lvl <= plan.complexity ? plan.complexityColor : '#3a3a3a',
                         transition: 'background 0.2s',
                       }}
                     />
@@ -1351,7 +1351,7 @@ function TriggerBuilder({ onAddRules }: {
           {!plan && (
             <div style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#2a3a4a', fontSize: 14,
+              color: '#3a3a3a', fontSize: 14,
             }}>
               Implementation plan will appear here
             </div>
@@ -1377,7 +1377,7 @@ function TriggerBuilder({ onAddRules }: {
                 }}>
                   <div style={{
                     width: 24, height: 24, borderRadius: '50%',
-                    background: step.warnings.length > 0 ? '#1a1a0e' : '#0e1929',
+                    background: step.warnings.length > 0 ? '#1a1a0e' : '#1a1a1a',
                     border: `2px solid ${step.warnings.length > 0 ? '#d29922' : stepMeta.color}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 12, flexShrink: 0,
@@ -1387,7 +1387,7 @@ function TriggerBuilder({ onAddRules }: {
                   {!isLast && (
                     <div style={{
                       width: 2, flex: 1, minHeight: 8,
-                      background: `linear-gradient(${stepMeta.color}40, ${STEP_ICONS[plan.steps[si + 1]?.type]?.color || '#1a2a3a'}40)`,
+                      background: `linear-gradient(${stepMeta.color}40, ${STEP_ICONS[plan.steps[si + 1]?.type]?.color || '#3a3a3a'}40)`,
                     }} />
                   )}
                 </div>
@@ -1407,13 +1407,13 @@ function TriggerBuilder({ onAddRules }: {
                     }}
                   >
                     <span style={{
-                      fontSize: 9, color: '#4a6a7a', fontWeight: 600,
+                      fontSize: 9, color: '#555555', fontWeight: 600,
                       textTransform: 'uppercase', letterSpacing: 1, minWidth: 90,
                     }}>
                       {STEP_LABELS[step.type]}
                     </span>
                     <span style={{
-                      fontSize: 13, color: '#ccdae8', fontWeight: 500,
+                      fontSize: 13, color: '#e0e0e0', fontWeight: 500,
                       flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {step.label}
@@ -1423,7 +1423,7 @@ function TriggerBuilder({ onAddRules }: {
                         {'\u26A0'} {step.warnings.length}
                       </span>
                     )}
-                    <span style={{ fontSize: 10, color: '#3a5a6a', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>
+                    <span style={{ fontSize: 10, color: '#4a4a4a', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>
                       {'\u25B6'}
                     </span>
                   </div>
@@ -1432,15 +1432,15 @@ function TriggerBuilder({ onAddRules }: {
                   {isExpanded && (
                     <div style={{
                       background: '#0a1218', borderRadius: 6, padding: '10px 12px',
-                      border: '1px solid #12202e', marginTop: 4, marginBottom: 8,
+                      border: '1px solid #222222', marginTop: 4, marginBottom: 8,
                     }}>
                       {/* Details key-value pairs */}
                       {!isTriggerStep && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {Object.entries(step.details).map(([k, v]) => (
                             <div key={k} style={{ display: 'flex', gap: 8, fontSize: 12 }}>
-                              <span style={{ color: '#4a6a7a', fontWeight: 600, minWidth: 80, textTransform: 'uppercase', fontSize: 10, paddingTop: 2 }}>{k}</span>
-                              <span style={{ color: v.includes('Needs') || v.includes('not exist') ? '#d29922' : v.includes('Already') ? '#60c080' : '#8aaabe' }}>
+                              <span style={{ color: '#555555', fontWeight: 600, minWidth: 80, textTransform: 'uppercase', fontSize: 10, paddingTop: 2 }}>{k}</span>
+                              <span style={{ color: v.includes('Needs') || v.includes('not exist') ? '#d29922' : v.includes('Already') ? '#60c080' : '#cccccc' }}>
                                 {v}
                               </span>
                             </div>
@@ -1455,18 +1455,18 @@ function TriggerBuilder({ onAddRules }: {
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {/* Trigger name + type */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6, borderBottom: '1px solid #12202e' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6, borderBottom: '1px solid #222222' }}>
                               <input
                                 value={trigger.name}
                                 onChange={(e) => updateTrigger(trigIdx, { name: e.target.value })}
                                 style={{
                                   ...previewInputStyle,
                                   fontWeight: 600, fontSize: 13, fontFamily: 'inherit',
-                                  color: trigger.name.startsWith('[Unparsed]') ? '#e06060' : '#ccdae8',
+                                  color: trigger.name.startsWith('[Unparsed]') ? '#e06060' : '#e0e0e0',
                                   background: 'transparent', border: '1px solid transparent',
                                   padding: '2px 6px', flex: 1,
                                 }}
-                                onFocus={(e) => { e.currentTarget.style.borderColor = '#1a3a5a'; }}
+                                onFocus={(e) => { e.currentTarget.style.borderColor = '#4a4a4a'; }}
                                 onBlur={(e) => { e.currentTarget.style.borderColor = 'transparent'; }}
                               />
                               <select
@@ -1482,7 +1482,7 @@ function TriggerBuilder({ onAddRules }: {
                                 <option value="continuous">continuous</option>
                                 <option value="onMissionStart">onMissionStart</option>
                               </select>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#5a7a8a', cursor: 'pointer' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#aaaaaa', cursor: 'pointer' }}>
                                 <input
                                   type="checkbox"
                                   checked={trigger.enabled}
@@ -1502,22 +1502,22 @@ function TriggerBuilder({ onAddRules }: {
                             {/* Conditions */}
                             {trigger.conditions.length > 0 && (
                               <div>
-                                <div style={{ fontSize: 10, fontWeight: 600, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                                <div style={{ fontSize: 10, fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
                                   Conditions ({trigger.conditions.length})
                                 </div>
                                 {trigger.conditions.map((c, ci) => {
                                   const params = getParamEntries(c.params);
                                   return (
                                     <div key={ci} style={{
-                                      background: '#0a1420', borderRadius: 4, padding: '6px 8px',
+                                      background: '#1a1a1a', borderRadius: 4, padding: '6px 8px',
                                       marginBottom: ci < trigger.conditions.length - 1 ? 4 : 0,
-                                      border: '1px solid #12202e',
+                                      border: '1px solid #222222',
                                     }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: params.length > 0 ? 4 : 0 }}>
-                                        <span style={{ fontSize: 12, color: '#8aaabe', fontWeight: 600 }}>
+                                        <span style={{ fontSize: 12, color: '#cccccc', fontWeight: 600 }}>
                                           {conditionSummary(c)}
                                         </span>
-                                        <span style={{ fontSize: 10, color: '#3a5a6a', fontFamily: 'monospace' }}>
+                                        <span style={{ fontSize: 10, color: '#4a4a4a', fontFamily: "'B612 Mono', monospace" }}>
                                           {c.type}
                                         </span>
                                       </div>
@@ -1525,7 +1525,7 @@ function TriggerBuilder({ onAddRules }: {
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                           {params.map(([k, v]) => (
                                             <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                              <span style={{ fontSize: 10, color: '#4a6a7a', fontWeight: 600, textTransform: 'uppercase' }}>{k}</span>
+                                              <span style={{ fontSize: 10, color: '#555555', fontWeight: 600, textTransform: 'uppercase' }}>{k}</span>
                                               <input
                                                 value={v}
                                                 onChange={(e) => {
@@ -1548,22 +1548,22 @@ function TriggerBuilder({ onAddRules }: {
                             {/* Actions */}
                             {trigger.actions.length > 0 && (
                               <div>
-                                <div style={{ fontSize: 10, fontWeight: 600, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+                                <div style={{ fontSize: 10, fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
                                   Actions ({trigger.actions.length})
                                 </div>
                                 {trigger.actions.map((a, ai) => {
                                   const params = getParamEntries(a.params);
                                   return (
                                     <div key={ai} style={{
-                                      background: '#0a1420', borderRadius: 4, padding: '6px 8px',
+                                      background: '#1a1a1a', borderRadius: 4, padding: '6px 8px',
                                       marginBottom: ai < trigger.actions.length - 1 ? 4 : 0,
-                                      border: '1px solid #12202e',
+                                      border: '1px solid #222222',
                                     }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: params.length > 0 ? 4 : 0 }}>
                                         <span style={{ fontSize: 12, color: '#6ab4f0', fontWeight: 600 }}>
                                           {actionSummary(a)}
                                         </span>
-                                        <span style={{ fontSize: 10, color: '#3a5a6a', fontFamily: 'monospace' }}>
+                                        <span style={{ fontSize: 10, color: '#4a4a4a', fontFamily: "'B612 Mono', monospace" }}>
                                           {a.type}
                                         </span>
                                       </div>
@@ -1571,7 +1571,7 @@ function TriggerBuilder({ onAddRules }: {
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                           {params.map(([k, v]) => (
                                             <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                              <span style={{ fontSize: 10, color: '#4a6a7a', fontWeight: 600, textTransform: 'uppercase' }}>{k}</span>
+                                              <span style={{ fontSize: 10, color: '#555555', fontWeight: 600, textTransform: 'uppercase' }}>{k}</span>
                                               {k === 'text' || k === 'lua' ? (
                                                 <textarea
                                                   value={v}
@@ -1601,7 +1601,7 @@ function TriggerBuilder({ onAddRules }: {
                             )}
 
                             {trigger.conditions.length === 0 && trigger.actions.length === 0 && !trigger.name.startsWith('[Unparsed]') && (
-                              <div style={{ fontSize: 12, color: '#3a5a6a', fontStyle: 'italic' }}>
+                              <div style={{ fontSize: 12, color: '#4a4a4a', fontStyle: 'italic' }}>
                                 No conditions or actions — will run on mission start
                               </div>
                             )}
@@ -1611,7 +1611,7 @@ function TriggerBuilder({ onAddRules }: {
 
                       {/* Warnings */}
                       {step.warnings.length > 0 && (
-                        <div style={{ marginTop: isTriggerStep ? 8 : 6, paddingTop: 6, borderTop: '1px solid #12202e' }}>
+                        <div style={{ marginTop: isTriggerStep ? 8 : 6, paddingTop: 6, borderTop: '1px solid #222222' }}>
                           {step.warnings.map((w, wi) => (
                             <div key={wi} style={{
                               fontSize: 11, color: '#d29922', display: 'flex', alignItems: 'flex-start', gap: 6,
@@ -1673,7 +1673,7 @@ function RuleEditor({
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#8aaabe', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#cccccc', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={rule.enabled}
@@ -1697,7 +1697,7 @@ function RuleEditor({
           }}>+ Add</button>
         </div>
         {rule.conditions.length === 0 && (
-          <div style={{ color: '#3a5a6a', fontSize: 13, padding: 8 }}>No conditions — trigger will always fire.</div>
+          <div style={{ color: '#4a4a4a', fontSize: 13, padding: 8 }}>No conditions — trigger will always fire.</div>
         )}
         {rule.conditions.map((cond, i) => (
           <ConditionRow
@@ -1724,7 +1724,7 @@ function RuleEditor({
           }}>+ Add</button>
         </div>
         {rule.actions.length === 0 && (
-          <div style={{ color: '#3a5a6a', fontSize: 13, padding: 8 }}>No actions defined.</div>
+          <div style={{ color: '#4a4a4a', fontSize: 13, padding: 8 }}>No actions defined.</div>
         )}
         {rule.actions.map((act, i) => (
           <ActionRow
@@ -1764,7 +1764,7 @@ function ConditionRow({
   return (
     <div style={{
       display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0',
-      borderBottom: '1px solid #152030', flexWrap: 'wrap',
+      borderBottom: '1px solid #222222', flexWrap: 'wrap',
     }}>
       <select
         style={{ ...select, width: 180 }}
@@ -1822,7 +1822,7 @@ function ConditionRow({
             value={(condition.params.flag as string) || ''}
             onChange={(e) => updateParam('flag', e.target.value)}
           />
-          <span style={{ color: '#5a7a8a', fontSize: 13 }}>=</span>
+          <span style={{ color: '#aaaaaa', fontSize: 13 }}>=</span>
           <input
             style={{ ...input, width: 100 }}
             placeholder="Flag 2"
@@ -1955,7 +1955,7 @@ function ActionRow({
   return (
     <div style={{
       display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0',
-      borderBottom: '1px solid #152030', flexWrap: 'wrap',
+      borderBottom: '1px solid #222222', flexWrap: 'wrap',
     }}>
       <select
         style={{ ...select, width: 180 }}
@@ -2143,20 +2143,20 @@ function FlagPanel({ flags }: { flags: { flagId: string; setBy: string[]; readBy
     <div style={card}>
       <div style={label}>Flags ({flags.length})</div>
       {flags.length === 0 ? (
-        <div style={{ color: '#3a5a6a', fontSize: 13 }}>No flags in use.</div>
+        <div style={{ color: '#4a4a4a', fontSize: 13 }}>No flags in use.</div>
       ) : (
         <div style={{ maxHeight: 250, overflow: 'auto' }}>
           <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1a2a3a' }}>
-                <th style={{ textAlign: 'left', padding: 4, color: '#5a7a8a' }}>Flag</th>
-                <th style={{ textAlign: 'left', padding: 4, color: '#5a7a8a' }}>Set By</th>
-                <th style={{ textAlign: 'left', padding: 4, color: '#5a7a8a' }}>Read By</th>
+              <tr style={{ borderBottom: '1px solid #3a3a3a' }}>
+                <th style={{ textAlign: 'left', padding: 4, color: '#aaaaaa' }}>Flag</th>
+                <th style={{ textAlign: 'left', padding: 4, color: '#aaaaaa' }}>Set By</th>
+                <th style={{ textAlign: 'left', padding: 4, color: '#aaaaaa' }}>Read By</th>
               </tr>
             </thead>
             <tbody>
               {flags.map((f) => (
-                <tr key={f.flagId} style={{ borderBottom: '1px solid #101a25' }}>
+                <tr key={f.flagId} style={{ borderBottom: '1px solid #1a1a1a' }}>
                   <td style={{ padding: 4, color: '#e0a040', fontWeight: 600 }}>{f.flagId}</td>
                   <td style={{ padding: 4, color: '#60c080', fontSize: 12 }}>{f.setBy.join(', ') || '—'}</td>
                   <td style={{ padding: 4, color: '#6ab4f0', fontSize: 12 }}>{f.readBy.join(', ') || '—'}</td>
@@ -2246,23 +2246,23 @@ function AudioManager({
       {audioError && <div style={{ color: '#e06060', fontSize: 12, marginBottom: 6 }}>{audioError}</div>}
 
       {audioFiles.length === 0 ? (
-        <div style={{ color: '#3a5a6a', fontSize: 13 }}>No audio files in .miz</div>
+        <div style={{ color: '#4a4a4a', fontSize: 13 }}>No audio files in .miz</div>
       ) : (
         <div style={{ maxHeight: 300, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
           {audioFiles.map((af) => (
             <div key={af.path} style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
-              background: '#0a1420', borderRadius: 4, fontSize: 13,
+              background: '#1a1a1a', borderRadius: 4, fontSize: 13,
             }}>
               <button
                 style={{ ...btn, padding: '2px 6px', fontSize: 11 }}
                 onClick={() => handlePlay(af.path)}
                 title="Preview"
               >▶</button>
-              <div style={{ flex: 1, color: '#ccdae8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ flex: 1, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {af.filename}
               </div>
-              <span style={{ color: '#5a7a8a', fontSize: 11 }}>{formatSize(af.sizeBytes)}</span>
+              <span style={{ color: '#aaaaaa', fontSize: 11 }}>{formatSize(af.sizeBytes)}</span>
               <button
                 style={{ ...btnDanger, padding: '2px 6px', fontSize: 11 }}
                 onClick={() => handleDelete(af.path)}
@@ -2670,7 +2670,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   carrier:   { label: 'Carrier',   color: '#4a8fd4' },
   ground:    { label: 'Ground',    color: '#60c080' },
   air:       { label: 'Air',       color: '#d29922' },
-  utility:   { label: 'Utility',   color: '#8fa8c0' },
+  utility:   { label: 'Utility',   color: '#cccccc' },
 };
 
 function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: string) => void }) {
@@ -2689,7 +2689,7 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
         onClick={() => setExpanded(!expanded)}
       >
         <div style={label}>Scripts Library ({SCRIPT_LIBRARY.length})</div>
-        <span style={{ color: '#5a7a8a', fontSize: 12 }}>{expanded ? '▼' : '▶'}</span>
+        <span style={{ color: '#aaaaaa', fontSize: 12 }}>{expanded ? '▼' : '▶'}</span>
       </div>
 
       {expanded && (
@@ -2700,9 +2700,9 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
               onClick={() => setFilter(null)}
               style={{
                 ...btn, padding: '3px 8px', fontSize: 11,
-                background: !filter ? '#1a3a5a' : '#0f1a28',
-                borderColor: !filter ? '#4a8fd4' : '#1a2a3a',
-                color: !filter ? '#ccdae8' : '#5a7a8a',
+                background: !filter ? '#4a4a4a' : '#262626',
+                borderColor: !filter ? '#4a8fd4' : '#3a3a3a',
+                color: !filter ? '#e0e0e0' : '#aaaaaa',
               }}
             >All</button>
             {Object.entries(CATEGORY_META).map(([id, meta]) => (
@@ -2711,9 +2711,9 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
                 onClick={() => setFilter(filter === id ? null : id)}
                 style={{
                   ...btn, padding: '3px 8px', fontSize: 11,
-                  background: filter === id ? 'rgba(255,255,255,0.06)' : '#0f1a28',
-                  borderColor: filter === id ? meta.color : '#1a2a3a',
-                  color: filter === id ? meta.color : '#5a7a8a',
+                  background: filter === id ? 'rgba(255,255,255,0.06)' : '#262626',
+                  borderColor: filter === id ? meta.color : '#3a3a3a',
+                  color: filter === id ? meta.color : '#aaaaaa',
                 }}
               >{meta.label}</button>
             ))}
@@ -2726,8 +2726,8 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
               const isPreview = previewId === script.id;
               return (
                 <div key={script.id} style={{
-                  background: '#0a1420', borderRadius: 6, padding: '8px 10px',
-                  border: '1px solid #152030',
+                  background: '#1a1a1a', borderRadius: 6, padding: '8px 10px',
+                  border: '1px solid #222222',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
@@ -2736,7 +2736,7 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
                       color: cat.color, border: `1px solid ${cat.color}33`,
                       fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
                     }}>{cat.label}</span>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#ccdae8' }}>{script.name}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>{script.name}</span>
                     {script.url && (
                       <a
                         href={script.url}
@@ -2747,7 +2747,7 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
                       >docs</a>
                     )}
                   </div>
-                  <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 4, lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 4, lineHeight: 1.4 }}>
                     {script.description}
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -2763,8 +2763,8 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
                   {isPreview && (
                     <pre style={{
                       marginTop: 6, padding: 8, background: '#060d16', borderRadius: 4,
-                      fontSize: 11, color: '#8aaabe', overflow: 'auto', maxHeight: 200,
-                      border: '1px solid #152030', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                      fontSize: 11, color: '#cccccc', overflow: 'auto', maxHeight: 200,
+                      border: '1px solid #222222', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                     }}>{script.lua}</pre>
                   )}
                 </div>

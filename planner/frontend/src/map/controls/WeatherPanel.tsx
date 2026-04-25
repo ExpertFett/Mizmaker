@@ -42,7 +42,7 @@ export function WeatherPanel({
           zIndex: 10000,
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 4,
-          border: '1px solid #1a3a5a',
+          border: '1px solid #4a4a4a',
           borderRight: 'none',
         }}
         title="Show mission info"
@@ -50,7 +50,7 @@ export function WeatherPanel({
         <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
         <span style={{
           writingMode: 'vertical-lr',
-          color: '#5a7a8a', fontSize: 10, fontWeight: 600,
+          color: '#aaaaaa', fontSize: 10, fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>MISSION</span>
       </div>
@@ -68,7 +68,7 @@ export function WeatherPanel({
         padding: 0,
         zIndex: 1000,
         fontSize: 13,
-        color: '#ccdae8',
+        color: '#e0e0e0',
         minWidth: 170,
         overflow: 'hidden',
         display: collapsed ? 'none' : 'block',
@@ -84,13 +84,13 @@ export function WeatherPanel({
           ...handleProps.style,
           flex: 1,
           padding: '4px 14px 2px',
-          fontSize: 9, color: '#3a5a6a', textAlign: 'center', letterSpacing: 2,
+          fontSize: 9, color: '#4a4a4a', textAlign: 'center', letterSpacing: 2,
           userSelect: 'none',
         }}>⠿</div>
         <button
           onClick={() => setCollapsed(true)}
           style={{
-            background: 'none', border: 'none', color: '#3a5a6a',
+            background: 'none', border: 'none', color: '#4a4a4a',
             cursor: 'pointer', fontSize: 11, padding: '3px 8px',
             lineHeight: 1,
           }}
@@ -99,42 +99,42 @@ export function WeatherPanel({
       </div>
           <div style={{ padding: '8px 14px 10px' }}>
             {/* Mission time */}
-            <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
-              <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+            <div style={{ marginBottom: 6, borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
+              <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
                 Mission
               </div>
-              <div style={{ fontFamily: 'monospace', fontSize: 14 }}>
+              <div style={{ fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
                 {overview.date} {formatTime(overview.start_time)}L
               </div>
             </div>
 
             {/* Weather */}
-            <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
-              <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+            <div style={{ marginBottom: 6, borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
+              <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
                 Weather
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', fontSize: 13, fontFamily: 'monospace' }}>
-                <span style={{ color: '#5a7a8a' }}>QNH</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', fontSize: 13, fontFamily: "'B612 Mono', monospace" }}>
+                <span style={{ color: '#aaaaaa' }}>QNH</span>
                 <span>{wx.qnh_inhg} inHg / {wx.qnh_hpa} hPa</span>
 
-                <span style={{ color: '#5a7a8a' }}>Temp</span>
+                <span style={{ color: '#aaaaaa' }}>Temp</span>
                 <span>{wx.temperature_c}°C / {Math.round(wx.temperature_c * 9/5 + 32)}°F</span>
 
-                <span style={{ color: '#5a7a8a' }}>Wind</span>
+                <span style={{ color: '#aaaaaa' }}>Wind</span>
                 <span>{formatWind(windGnd)}</span>
 
-                <span style={{ color: '#5a7a8a' }}>@FL200</span>
+                <span style={{ color: '#aaaaaa' }}>@FL200</span>
                 <span>{formatWind(wx.wind.at2000)}</span>
 
-                <span style={{ color: '#5a7a8a' }}>@FL260</span>
+                <span style={{ color: '#aaaaaa' }}>@FL260</span>
                 <span>{formatWind(wx.wind.at8000)}</span>
 
-                <span style={{ color: '#5a7a8a' }}>Vis</span>
+                <span style={{ color: '#aaaaaa' }}>Vis</span>
                 <span>{wx.visibility_m >= 10000 ? `${(wx.visibility_m / 1000).toFixed(0)}km` : `${wx.visibility_m}m`}</span>
 
                 {wx.clouds_base_m > 0 && (
                   <>
-                    <span style={{ color: '#5a7a8a' }}>Clouds</span>
+                    <span style={{ color: '#aaaaaa' }}>Clouds</span>
                     <span>{Math.round(metersToFeet(wx.clouds_base_m))}ft{wx.clouds_preset ? ` (${wx.clouds_preset})` : ''}</span>
                   </>
                 )}
@@ -155,7 +155,7 @@ export function WeatherPanel({
 
                 {(wx.turbulence ?? 0) > 0 && (
                   <>
-                    <span style={{ color: '#5a7a8a' }}>Turb</span>
+                    <span style={{ color: '#aaaaaa' }}>Turb</span>
                     <span>{wx.turbulence}</span>
                   </>
                 )}
@@ -163,8 +163,8 @@ export function WeatherPanel({
             </div>
 
             {/* Speed mode toggle */}
-            <div style={{ marginBottom: 6, borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
-              <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+            <div style={{ marginBottom: 6, borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
+              <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
                 Speed Display
               </div>
               <div style={{ display: 'flex', gap: 3 }}>
@@ -174,10 +174,10 @@ export function WeatherPanel({
                     onClick={() => setSpeedMode(sm.id)}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: 12,
-                      background: speedMode === sm.id ? '#1a3a5a' : '#0f1a28',
-                      border: `1px solid ${speedMode === sm.id ? '#4a8fd4' : '#1a2a3a'}`,
+                      background: speedMode === sm.id ? '#4a4a4a' : '#262626',
+                      border: `1px solid ${speedMode === sm.id ? '#4a8fd4' : '#3a3a3a'}`,
                       borderRadius: 3,
-                      color: speedMode === sm.id ? '#ccdae8' : '#5a7a8a',
+                      color: speedMode === sm.id ? '#e0e0e0' : '#aaaaaa',
                       cursor: 'pointer', fontWeight: speedMode === sm.id ? 600 : 400,
                     }}
                   >
@@ -189,15 +189,15 @@ export function WeatherPanel({
 
             {/* Cursor coordinates */}
             <div>
-              <div style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
+              <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>
                 Cursor
               </div>
               <div
                 ref={coordRef}
                 style={{
-                  color: '#8fa8c0',
+                  color: '#cccccc',
                   fontSize: 12,
-                  fontFamily: 'monospace',
+                  fontFamily: "'B612 Mono', monospace",
                   lineHeight: 1.6,
                   minHeight: 20,
                 }}

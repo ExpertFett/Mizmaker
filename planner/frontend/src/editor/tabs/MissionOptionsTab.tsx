@@ -84,7 +84,7 @@ const sectionStyle: React.CSSProperties = { marginBottom: 20 };
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: 12, fontWeight: 600, color: '#4a8fd4', textTransform: 'uppercase',
-  letterSpacing: 1, padding: '6px 0', borderBottom: '1px solid #1a3a5a', marginBottom: 8,
+  letterSpacing: 1, padding: '6px 0', borderBottom: '1px solid #4a4a4a', marginBottom: 8,
 };
 
 const rowStyle: React.CSSProperties = {
@@ -95,8 +95,8 @@ const rowStyle: React.CSSProperties = {
 const altRow: React.CSSProperties = { ...rowStyle, background: 'rgba(74, 143, 212, 0.04)' };
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
+  background: '#262626', border: '1px solid #4a4a4a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
   fontFamily: 'inherit', minWidth: 140,
 };
 
@@ -127,22 +127,22 @@ function TriToggle({ value, onChange }: {
       {/* Track */}
       <div style={{
         width: 44, height: 22, borderRadius: 11, position: 'relative',
-        background: isOn ? 'rgba(63, 185, 80, 0.25)' : isOff ? 'rgba(217, 80, 80, 0.2)' : '#1a2a3a',
-        border: `1px solid ${isOn ? 'rgba(63, 185, 80, 0.4)' : isOff ? 'rgba(217, 80, 80, 0.3)' : '#2a3a4a'}`,
+        background: isOn ? 'rgba(63, 185, 80, 0.25)' : isOff ? 'rgba(217, 80, 80, 0.2)' : '#3a3a3a',
+        border: `1px solid ${isOn ? 'rgba(63, 185, 80, 0.4)' : isOff ? 'rgba(217, 80, 80, 0.3)' : '#3a3a3a'}`,
         transition: 'all 0.15s',
       }}>
         {/* Knob */}
         <div style={{
           width: 16, height: 16, borderRadius: '50%', position: 'absolute', top: 2,
           left: isOn ? 24 : isUnset ? 12 : 2,
-          background: isOn ? '#3fb950' : isOff ? '#d95050' : '#5a7a8a',
+          background: isOn ? '#3fb950' : isOff ? '#d95050' : '#aaaaaa',
           transition: 'all 0.15s',
         }} />
       </div>
       {/* Label */}
       <span style={{
         fontSize: 11, fontWeight: 600, minWidth: 55,
-        color: isOn ? '#3fb950' : isOff ? '#d95050' : '#5a7a8a',
+        color: isOn ? '#3fb950' : isOff ? '#d95050' : '#aaaaaa',
       }}>
         {isOn ? 'ON' : isOff ? 'OFF' : 'NOT SET'}
       </span>
@@ -181,14 +181,14 @@ export function MissionOptionsTab() {
 
   return (
     <div style={{ maxWidth: 700 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#ccdae8', marginBottom: 4 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#e0e0e0', marginBottom: 4 }}>
         Mission Options
       </h2>
-      <p style={{ fontSize: 12, color: '#5a7a8a', marginBottom: 4 }}>
+      <p style={{ fontSize: 12, color: '#aaaaaa', marginBottom: 4 }}>
         Force options for all players in this mission. Changes are written to the .miz on export.
-        {overview?.sortie && <span> &mdash; <strong style={{ color: '#ccdae8' }}>{overview.sortie}</strong></span>}
+        {overview?.sortie && <span> &mdash; <strong style={{ color: '#e0e0e0' }}>{overview.sortie}</strong></span>}
       </p>
-      <p style={{ fontSize: 11, color: '#5a7a8a', marginBottom: 20 }}>
+      <p style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 20 }}>
         <strong style={{ color: '#4a8fd4' }}>NOT SET</strong> = uses each player's local settings &nbsp;|&nbsp;
         <strong style={{ color: '#3fb950' }}>ON</strong> = forced enabled &nbsp;|&nbsp;
         <strong style={{ color: '#d95050' }}>OFF</strong> = forced disabled
@@ -201,7 +201,7 @@ export function MissionOptionsTab() {
             <div style={sectionTitleStyle}>{cat}</div>
             {defs.map((def, i) => (
               <div key={def.key} style={i % 2 === 0 ? rowStyle : altRow}>
-                <span style={{ color: '#ccdae8' }}>{def.label}</span>
+                <span style={{ color: '#e0e0e0' }}>{def.label}</span>
                 {def.format === 'bool' ? (
                   <TriToggle
                     value={missionOptions[def.key] as boolean | undefined}

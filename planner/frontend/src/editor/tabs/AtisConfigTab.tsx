@@ -29,13 +29,13 @@ interface AtisEntry {
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  background: '#0c1824', border: '1px solid #1a3a5a', borderRadius: 6,
+  background: '#1a1a1a', border: '1px solid #4a4a4a', borderRadius: 6,
   padding: 12, marginBottom: 8,
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a3a5a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 12, padding: '4px 8px', fontFamily: 'inherit',
+  background: '#262626', border: '1px solid #4a4a4a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 12, padding: '4px 8px', fontFamily: 'inherit',
 };
 
 const selectStyle: React.CSSProperties = {
@@ -348,12 +348,12 @@ export function AtisConfigTab() {
 
   return (
     <div style={{ maxWidth: 700 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#ccdae8', marginBottom: 4 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#e0e0e0', marginBottom: 4 }}>
         ATIS Configurator
       </h2>
-      <p style={{ fontSize: 12, color: '#5a7a8a', marginBottom: 16 }}>
+      <p style={{ fontSize: 12, color: '#aaaaaa', marginBottom: 16 }}>
         Configure SRS ATIS broadcasts for airbases.
-        A <strong style={{ color: '#ccdae8' }}>STTS.lua</strong> DO_SCRIPT_FILE trigger will be added automatically if not already present.
+        A <strong style={{ color: '#e0e0e0' }}>STTS.lua</strong> DO_SCRIPT_FILE trigger will be added automatically if not already present.
       </p>
 
       {existingAtis && !added && (
@@ -389,8 +389,8 @@ export function AtisConfigTab() {
       {entries.length === 0 && (
         <div style={{
           padding: '24px 16px', background: 'rgba(74, 143, 212, 0.04)',
-          borderRadius: 6, border: '1px solid #1a3a5a', textAlign: 'center',
-          color: '#5a7a8a', fontSize: 13,
+          borderRadius: 6, border: '1px solid #4a4a4a', textAlign: 'center',
+          color: '#aaaaaa', fontSize: 13,
         }}>
           No ATIS stations configured. Select an airbase above to add one.
         </div>
@@ -402,7 +402,7 @@ export function AtisConfigTab() {
           <div key={entry.airbaseName} style={{
             ...cardStyle,
             opacity: entry.enabled ? 1 : 0.5,
-            borderColor: entry.enabled ? '#1a3a5a' : '#12202e',
+            borderColor: entry.enabled ? '#4a4a4a' : '#222222',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -412,19 +412,19 @@ export function AtisConfigTab() {
                   onChange={(e) => handleUpdate(entry.airbaseName, { enabled: e.target.checked })}
                   style={checkboxStyle}
                 />
-                <strong style={{ color: '#ccdae8', fontSize: 14 }}>{entry.airbaseName}</strong>
+                <strong style={{ color: '#e0e0e0', fontSize: 14 }}>{entry.airbaseName}</strong>
                 {comms?.runways && (
-                  <span style={{ fontSize: 11, color: '#5a7a8a' }}>RWY {comms.runways}</span>
+                  <span style={{ fontSize: 11, color: '#aaaaaa' }}>RWY {comms.runways}</span>
                 )}
                 {comms?.elevation != null && (
-                  <span style={{ fontSize: 11, color: '#5a7a8a' }}>{comms.elevation}ft</span>
+                  <span style={{ fontSize: 11, color: '#aaaaaa' }}>{comms.elevation}ft</span>
                 )}
               </div>
               <button style={btnDanger} onClick={() => handleRemove(entry.airbaseName)}>Remove</button>
             </div>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 11, color: '#5a7a8a', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Freq (MHz):
                 <input
                   type="text"
@@ -434,7 +434,7 @@ export function AtisConfigTab() {
                 />
               </label>
 
-              <label style={{ fontSize: 11, color: '#5a7a8a', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Mod:
                 <select
                   value={entry.modulation}
@@ -446,7 +446,7 @@ export function AtisConfigTab() {
                 </select>
               </label>
 
-              <label style={{ fontSize: 11, color: '#5a7a8a', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Coalition:
                 <select
                   value={entry.coalition}
@@ -484,12 +484,12 @@ export function AtisConfigTab() {
       {/* Script preview */}
       {entries.length > 0 && activeCount > 0 && (
         <details style={{ marginTop: 16 }}>
-          <summary style={{ fontSize: 12, color: '#5a7a8a', cursor: 'pointer' }}>
+          <summary style={{ fontSize: 12, color: '#aaaaaa', cursor: 'pointer' }}>
             Preview generated script ({script.split('\n').length} lines)
           </summary>
           <pre style={{
             marginTop: 8, padding: 12, background: '#060d14', borderRadius: 4,
-            border: '1px solid #1a3a5a', fontSize: 10, color: '#8fa8c0',
+            border: '1px solid #4a4a4a', fontSize: 10, color: '#cccccc',
             overflow: 'auto', maxHeight: 300, whiteSpace: 'pre-wrap',
           }}>
             {script}

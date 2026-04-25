@@ -224,14 +224,14 @@ export function TacanTab() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>TACAN / ICLS / Beacon</h2>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#5a7a8a' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>TACAN / ICLS / Beacon</h2>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#aaaaaa' }}>
         Assign TACAN channels to tankers and carriers, and ICLS channels to carriers. Auto-assign avoids conflicts.
         ACLS is enabled automatically on CVN carriers when ICLS is active — configure it in Carrier Setup if using MOOSE.
       </p>
 
       {tacanGroups.length === 0 ? (
-        <div style={{ color: '#5a7a8a', fontSize: 14, padding: '24px 0', textAlign: 'center' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 14, padding: '24px 0', textAlign: 'center' }}>
           No tankers or carriers found in this mission.
         </div>
       ) : (
@@ -242,7 +242,7 @@ export function TacanTab() {
               ? `Tanker TACANs come from SOP "${activeSop.name}" when callsigns match. Others fall back to auto-derivation.`
               : 'Auto-assign TACAN channels based on group name / hull number'}
             style={{
-              background: '#1a3a5a', border: '1px solid #4a8fd4', borderRadius: 4,
+              background: '#4a4a4a', border: '1px solid #4a8fd4', borderRadius: 4,
               color: '#4a8fd4', cursor: 'pointer', fontSize: 13, fontWeight: 600,
               padding: '8px 16px', marginBottom: 8, width: '100%',
             }}
@@ -275,20 +275,20 @@ export function TacanTab() {
             </>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #1a2a3a', marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #3a3a3a', marginTop: 16 }}>
             <button
               onClick={handleApply}
               disabled={overrides.size === 0}
               style={{
-                background: overrides.size > 0 ? '#d29922' : '#1a2a3a',
-                border: 'none', borderRadius: 4, color: '#080f1c',
+                background: overrides.size > 0 ? '#d29922' : '#3a3a3a',
+                border: 'none', borderRadius: 4, color: '#1a1a1a',
                 cursor: overrides.size > 0 ? 'pointer' : 'not-allowed',
                 fontSize: 14, fontWeight: 600, padding: '8px 16px',
               }}
             >
               Apply Changes
             </button>
-            <span style={{ color: '#5a7a8a', fontSize: 13 }}>
+            <span style={{ color: '#aaaaaa', fontSize: 13 }}>
               {overrides.size} group{overrides.size !== 1 ? 's' : ''} modified
             </span>
           </div>
@@ -328,10 +328,10 @@ function TacanRowEditor({
   return (
     <div style={rowStyle}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: '#ccdae8', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {row.groupName}
         </div>
-        <div style={{ color: '#5a7a8a', fontSize: 11 }}>{row.type}</div>
+        <div style={{ color: '#aaaaaa', fontSize: 11 }}>{row.type}</div>
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <label style={fieldLabelInline}>CH</label>
@@ -375,10 +375,10 @@ function CarrierRowEditor({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: '#ccdae8', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {row.groupName}
           </div>
-          <div style={{ color: '#5a7a8a', fontSize: 11 }}>{row.type}</div>
+          <div style={{ color: '#aaaaaa', fontSize: 11 }}>{row.type}</div>
         </div>
       </div>
 
@@ -424,14 +424,14 @@ function CarrierRowEditor({
             min={1} max={20}
             style={chInputStyle}
           />
-          <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+          <span style={{ color: '#aaaaaa', fontSize: 11 }}>
             (1-20)
           </span>
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ ...beaconLabel, opacity: 0.4 }}>ICLS</span>
-          <span style={{ color: '#5a7a8a', fontSize: 11 }}>N/A (LHA/LHD)</span>
+          <span style={{ color: '#aaaaaa', fontSize: 11 }}>N/A (LHA/LHD)</span>
         </div>
       )}
     </div>
@@ -444,24 +444,24 @@ function CarrierRowEditor({
 
 const rowStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-  background: '#0a1218', borderRadius: 6, border: '1px solid #12202e', marginBottom: 6,
+  background: '#0a1218', borderRadius: 6, border: '1px solid #222222', marginBottom: 6,
 };
 
-const fieldLabelInline: React.CSSProperties = { color: '#5a7a8a', fontSize: 11 };
+const fieldLabelInline: React.CSSProperties = { color: '#aaaaaa', fontSize: 11 };
 
 const chInputStyle: React.CSSProperties = {
-  width: 52, background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 13, padding: '4px 6px', fontFamily: 'monospace', textAlign: 'center',
+  width: 52, background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '4px 6px', fontFamily: "'B612 Mono', monospace", textAlign: 'center',
 };
 
 const bandSelectStyle: React.CSSProperties = {
-  width: 42, background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
+  width: 42, background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
   fontSize: 13, padding: '4px 2px', fontWeight: 600,
 };
 
 const csInputStyle: React.CSSProperties = {
-  width: 48, background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 13, padding: '4px 6px', fontFamily: 'monospace', textAlign: 'center',
+  width: 48, background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '4px 6px', fontFamily: "'B612 Mono', monospace", textAlign: 'center',
 };
 
 const beaconLabel: React.CSSProperties = {

@@ -10,8 +10,18 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
-# Build tools needed for lupa (LuaJIT compilation)
-RUN apt-get update && apt-get install -y --no-install-recommends gcc make libc6-dev && rm -rf /var/lib/apt/lists/*
+# Build tools needed for lupa (LuaJIT compilation), plus LibreOffice for
+# PPTX → PDF/PNG/JPG conversion in the brief generator. We use the impress
+# component only (smaller than the full suite) plus the JRE that pptx
+# import requires. Ghostscript helps with PDF→PNG raster conversion.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc make libc6-dev \
+        libreoffice-impress \
+        libreoffice-core \
+        default-jre-headless \
+        fonts-liberation \
+        ghostscript \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
 COPY planner/backend/requirements.txt ./

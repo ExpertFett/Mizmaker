@@ -387,7 +387,7 @@ export function AegisSetupPanel() {
 
   if (totalVehicleGroups === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 16 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 16 }}>
         No ground vehicle groups found in this mission.
       </div>
     );
@@ -401,7 +401,7 @@ export function AegisSetupPanel() {
           <div style={{ fontSize: 15, fontWeight: 600, color: '#d95050', marginBottom: 4 }}>
             AEGIS IADS Auto-Setup
           </div>
-          <div style={{ fontSize: 13, color: '#5a7a8a' }}>
+          <div style={{ fontSize: 13, color: '#aaaaaa' }}>
             Auto-renames SAM, EWR, and support groups to AEGIS-compatible naming format.
             Sectors are auto-assigned based on geographic position.
           </div>
@@ -434,7 +434,7 @@ export function AegisSetupPanel() {
       </div>
 
       {vehicleGroups.length === 0 ? (
-        <div style={{ color: '#5a7a8a', fontSize: 14, padding: '16px 0' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 14, padding: '16px 0' }}>
           No vehicle groups for this coalition. Try a different filter above.
         </div>
       ) : (
@@ -442,22 +442,22 @@ export function AegisSetupPanel() {
       {/* Stats bar */}
       <div style={{
         display: 'flex', gap: 12, marginBottom: 16, padding: '10px 14px',
-        background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 4,
+        background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
         flexWrap: 'wrap', alignItems: 'center',
       }}>
-        <div style={{ fontSize: 13, color: '#5a7a8a' }}>
-          <strong style={{ color: '#ccdae8' }}>{assignments.length}</strong> AEGIS groups identified
+        <div style={{ fontSize: 13, color: '#aaaaaa' }}>
+          <strong style={{ color: '#e0e0e0' }}>{assignments.length}</strong> AEGIS groups identified
           {unmatchedGroups.length > 0 && (
-            <span style={{ color: '#5a7a8a', marginLeft: 8 }}>({unmatchedGroups.length} unmatched)</span>
+            <span style={{ color: '#aaaaaa', marginLeft: 8 }}>({unmatchedGroups.length} unmatched)</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           {Array.from(roleStats).map(([role, count]) => (
             <span key={role} style={{ fontSize: 12, color: ROLE_COLORS[role] }}>{role}: {count}</span>
           ))}
-          <span style={{ color: '#2a3a4a' }}>|</span>
+          <span style={{ color: '#3a3a3a' }}>|</span>
           {Array.from(sectorStats).map(([sector, count]) => (
-            <span key={sector} style={{ fontSize: 12, color: SECTOR_COLORS[sector] || '#5a7a8a' }}>{sector}: {count}</span>
+            <span key={sector} style={{ fontSize: 12, color: SECTOR_COLORS[sector] || '#aaaaaa' }}>{sector}: {count}</span>
           ))}
         </div>
       </div>
@@ -465,19 +465,19 @@ export function AegisSetupPanel() {
       {/* AEGIS naming reference */}
       <div style={{
         marginBottom: 16, padding: '8px 14px',
-        background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-        fontSize: 12, color: '#5a7a8a', lineHeight: 1.8,
+        background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+        fontSize: 12, color: '#aaaaaa', lineHeight: 1.8,
       }}>
-        <strong style={{ color: '#8fa8c0' }}>AEGIS Format:</strong>{' '}
+        <strong style={{ color: '#cccccc' }}>AEGIS Format:</strong>{' '}
         <code style={{ color: '#d95050' }}>SAM-TYPE-SECTOR[-ID]</code>{' '}
         <code style={{ color: '#4a8fd4' }}>EW-SECTOR[-ID]</code>{' '}
         <code style={{ color: '#d29922' }}>PD-TYPE-SECTOR[-ID]</code>{' '}
         <code style={{ color: '#c090d0' }}>PWR-TARGET</code>{' '}
         <code style={{ color: '#3fb950' }}>CMD-SECTOR[-ID]</code>
         <br />
-        <strong style={{ color: '#8fa8c0' }}>Suffixes:</strong>{' '}
-        <code style={{ color: '#ccdae8' }}>-NEZ30</code> / <code style={{ color: '#ccdae8' }}>-WEZ45</code> = zone override,{' '}
-        <code style={{ color: '#ccdae8' }}>-ACT50</code> = activation range (nm)
+        <strong style={{ color: '#cccccc' }}>Suffixes:</strong>{' '}
+        <code style={{ color: '#e0e0e0' }}>-NEZ30</code> / <code style={{ color: '#e0e0e0' }}>-WEZ45</code> = zone override,{' '}
+        <code style={{ color: '#e0e0e0' }}>-ACT50</code> = activation range (nm)
       </div>
 
       {/* Assignment cards */}
@@ -496,30 +496,30 @@ export function AegisSetupPanel() {
 
       {/* Unmatched groups toggle */}
       {unmatchedGroups.length > 0 && (
-        <div style={{ marginTop: 12, border: '1px solid #1a2a3a', borderRadius: 4, background: '#0a1520' }}>
+        <div style={{ marginTop: 12, border: '1px solid #3a3a3a', borderRadius: 4, background: '#222222' }}>
           <div
             onClick={() => setShowUnmatched(!showUnmatched)}
             style={{ padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
           >
-            <span style={{ color: '#5a7a8a', fontSize: 13 }}>{showUnmatched ? '\u25BC' : '\u25B6'}</span>
-            <span style={{ fontSize: 13, color: '#5a7a8a' }}>
+            <span style={{ color: '#aaaaaa', fontSize: 13 }}>{showUnmatched ? '\u25BC' : '\u25B6'}</span>
+            <span style={{ fontSize: 13, color: '#aaaaaa' }}>
               {unmatchedGroups.length} unmatched vehicle group{unmatchedGroups.length !== 1 ? 's' : ''} (no AEGIS system detected)
             </span>
           </div>
           {showUnmatched && (
-            <div style={{ padding: '4px 14px 10px', borderTop: '1px solid #1a2a3a' }}>
+            <div style={{ padding: '4px 14px 10px', borderTop: '1px solid #3a3a3a' }}>
               {unmatchedGroups.map((g) => (
                 <div key={g.groupId} style={{
-                  padding: '4px 0', fontSize: 13, color: '#5a7a8a',
+                  padding: '4px 0', fontSize: 13, color: '#aaaaaa',
                   display: 'flex', gap: 10, alignItems: 'center',
                 }}>
                   <span style={{
                     background: g.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-                    color: '#080f1c', fontSize: 11, fontWeight: 700,
+                    color: '#1a1a1a', fontSize: 11, fontWeight: 700,
                     padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
                   }}>{g.coalition}</span>
-                  <span style={{ color: '#8fa8c0' }}>{g.groupName}</span>
-                  <span style={{ color: '#3a5a6a', fontSize: 12 }}>
+                  <span style={{ color: '#cccccc' }}>{g.groupName}</span>
+                  <span style={{ color: '#4a4a4a', fontSize: 12 }}>
                     {g.units.map((u) => u.type).join(', ')}
                   </span>
                 </div>
@@ -532,10 +532,10 @@ export function AegisSetupPanel() {
       {/* Apply button */}
       <div style={{
         marginTop: 20, padding: '14px',
-        background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 4,
+        background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
-        <div style={{ fontSize: 13, color: '#5a7a8a' }}>
+        <div style={{ fontSize: 13, color: '#aaaaaa' }}>
           {applied
             ? 'AEGIS names queued! Download your .miz to save changes.'
             : `Ready to rename ${assignments.length} groups to AEGIS format.`}
@@ -580,10 +580,10 @@ function AegisCard({
   onUpdateActivationRange, onUpdateLinkedSam,
 }: AegisCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const borderColor = ROLE_COLORS[a.role] || '#1a2a3a';
+  const borderColor = ROLE_COLORS[a.role] || '#3a3a3a';
 
   return (
-    <div style={{ marginBottom: 8, border: '1px solid #1a2a3a', borderRadius: 4, background: '#0a1520' }}>
+    <div style={{ marginBottom: 8, border: '1px solid #3a3a3a', borderRadius: 4, background: '#222222' }}>
       {/* Main row */}
       <div style={{
         padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
@@ -593,7 +593,7 @@ function AegisCard({
       >
         <span style={{
           background: a.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-          color: '#080f1c', fontSize: 11, fontWeight: 700,
+          color: '#1a1a1a', fontSize: 11, fontWeight: 700,
           padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
         }}>{a.coalition}</span>
 
@@ -603,28 +603,28 @@ function AegisCard({
         }}>{a.role}</span>
 
         <span style={{
-          color: SECTOR_COLORS[a.sector] || '#5a7a8a', fontSize: 11, fontWeight: 600,
-          border: `1px solid ${SECTOR_COLORS[a.sector] || '#1a2a3a'}`, padding: '1px 6px', borderRadius: 3,
+          color: SECTOR_COLORS[a.sector] || '#aaaaaa', fontSize: 11, fontWeight: 600,
+          border: `1px solid ${SECTOR_COLORS[a.sector] || '#3a3a3a'}`, padding: '1px 6px', borderRadius: 3,
         }}>{a.sector}</span>
 
-        <span style={{ fontSize: 12, color: '#8fa8c0', minWidth: 120 }}>{a.systemDisplayName}</span>
+        <span style={{ fontSize: 12, color: '#cccccc', minWidth: 120 }}>{a.systemDisplayName}</span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
-          <span style={{ color: '#5a7a8a', fontSize: 13, textDecoration: 'line-through' }}>{a.originalName}</span>
-          <span style={{ color: '#5a7a8a' }}>&rarr;</span>
-          <span style={{ color: '#ccdae8', fontSize: 14, fontWeight: 600, fontFamily: 'monospace' }}>{a.newGroupName}</span>
+          <span style={{ color: '#aaaaaa', fontSize: 13, textDecoration: 'line-through' }}>{a.originalName}</span>
+          <span style={{ color: '#aaaaaa' }}>&rarr;</span>
+          <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{a.newGroupName}</span>
         </div>
 
         {a.role === 'SAM' && a.wez > 0 && (
-          <span style={{ fontSize: 11, color: '#5a7a8a' }}>WEZ:{a.wez}nm NEZ:{a.nez}nm</span>
+          <span style={{ fontSize: 11, color: '#aaaaaa' }}>WEZ:{a.wez}nm NEZ:{a.nez}nm</span>
         )}
-        <span style={{ color: '#5a7a8a', fontSize: 13 }}>{'\u25BC'}</span>
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>{'\u25BC'}</span>
       </div>
 
       {/* Expanded options */}
       {expanded && (
         <div style={{
-          padding: '10px 14px', borderTop: '1px solid #1a2a3a',
+          padding: '10px 14px', borderTop: '1px solid #3a3a3a',
           display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start',
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -647,7 +647,7 @@ function AegisCard({
               <option value="PWR">PWR</option>
               <option value="CMD">CMD</option>
             </select>
-            <span style={{ fontSize: 11, color: '#3a5a6a' }}>{ROLE_DESCRIPTIONS[a.role]}</span>
+            <span style={{ fontSize: 11, color: '#4a4a4a' }}>{ROLE_DESCRIPTIONS[a.role]}</span>
           </div>
 
           {a.role === 'SAM' && (
@@ -691,7 +691,7 @@ function AegisCard({
                   placeholder="nm"
                   style={{ ...numInputStyle, width: 55 }}
                 />
-                <span style={{ fontSize: 11, color: '#5a7a8a' }}>nm</span>
+                <span style={{ fontSize: 11, color: '#aaaaaa' }}>nm</span>
               </div>
             </div>
           )}
@@ -711,8 +711,8 @@ function AegisCard({
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
               {a.units.map((u) => (
                 <span key={u.unitId} style={{
-                  fontSize: 11, color: '#8fa8c0', background: '#0f1a28',
-                  padding: '2px 6px', borderRadius: 3, border: '1px solid #1a2a3a',
+                  fontSize: 11, color: '#cccccc', background: '#262626',
+                  padding: '2px 6px', borderRadius: 3, border: '1px solid #3a3a3a',
                 }}>{u.type}</span>
               ))}
             </div>
@@ -744,20 +744,20 @@ function reindexSectors(assignments: AegisAssignment[]): AegisAssignment[] {
 /* ------------------------------------------------------------------ */
 
 const btnStyle: React.CSSProperties = {
-  background: '#1a2a3a', border: '1px solid #2a3a4a', borderRadius: 4,
+  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
   color: '#4a8fd4', cursor: 'pointer', fontSize: 13, padding: '6px 12px', fontFamily: 'inherit',
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-  color: '#ccdae8', fontSize: 13, padding: '6px 8px', outline: 'none', fontFamily: 'inherit',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '6px 8px', outline: 'none', fontFamily: 'inherit',
 };
 
 const numInputStyle: React.CSSProperties = {
-  background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 3,
-  color: '#ccdae8', fontSize: 13, padding: '4px 6px', outline: 'none', fontFamily: 'inherit',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+  color: '#e0e0e0', fontSize: 13, padding: '4px 6px', outline: 'none', fontFamily: 'inherit',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+  fontSize: 11, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
 };

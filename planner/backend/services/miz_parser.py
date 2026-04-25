@@ -17,16 +17,104 @@ from slpp import SLPP
 
 from services.projection import dcs_to_latlon, THEATERS
 
-from reference.loader import get_sam_threat_ranges, get_airbases
+from reference.loader import get_sam_threat_ranges, get_airbases, get_lotatc_airbases
 
 SAM_THREAT_RANGES: Dict[str, int] = get_sam_threat_ranges()
 _THEATER_AIRBASES = get_airbases()
+_LOTATC_AIRBASES = get_lotatc_airbases()
+
+# Cache enriched airbase lists by theater so we only walk pydcs once.
+_AIRBASE_CACHE: Dict[str, list] = {}
+
+
+def _load_pydcs_airports(theater: str) -> list:
+    """
+    Query pydcs for this theater's airports and project to lat/lon.
+    pydcs has richer airbase data than our JSON for Normandy, TheChannel,
+    and Falklands (which are missing from data/airbases.json entirely).
+    Returns [] for any theater pydcs doesn't know about.
+    """
+    try:
+        from dcs import terrain as _terrain
+        cls = getattr(_terrain, theater, None)
+        if cls is None:
+            return []
+        t = cls()
+        airports = getattr(t, "airports", None)
+        if not airports:
+            return []
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("pydcs airport load failed for %s: %s", theater, e)
+        return []
+
+    if theater not in THEATERS:
+        return []
+
+    out = []
+    for ap in airports.values():
+        pos = getattr(ap, "position", None)
+        if pos is None:
+            continue
+        try:
+            lat, lon = dcs_to_latlon(pos.x, pos.y, theater)
+        except Exception:
+            continue
+        out.append({"name": ap.name, "lat": lat, "lon": lon, "coalition": "neutral"})
+    return out
 
 
 def _load_theater_airbases(theater: str) -> list:
-    """Load airbase positions from static data for this theater."""
-    raw = _THEATER_AIRBASES.get(theater, [])
-    return [{"name": ab["name"], "lat": ab.get("lat"), "lon": ab.get("lon"), "coalition": "neutral"} for ab in raw]
+    """
+    Load airbase positions for this theater.
+
+    Merge strategy (pydcs ∪ static JSON) — pydcs is authoritative for
+    position; the JSON fills in any airbases pydcs doesn't know about.
+    Theaters neither source covers (Kola, Afghanistan, Iraq, Sinai,
+    GermanyCW, SouthEastAsia, TopEndAustralia) return [] and we log
+    once so it's visible in server logs.
+    """
+    if theater in _AIRBASE_CACHE:
+        return _AIRBASE_CACHE[theater]
+
+    pydcs_bases = _load_pydcs_airports(theater)
+    json_raw = _THEATER_AIRBASES.get(theater, [])
+    json_bases = [
+        {"name": ab["name"], "lat": ab.get("lat"), "lon": ab.get("lon"), "coalition": "neutral"}
+        for ab in json_raw
+    ]
+    lotatc_raw = _LOTATC_AIRBASES.get(theater, [])
+    lotatc_bases = [
+        {"name": ab["name"], "lat": ab["lat"], "lon": ab["lon"], "coalition": "neutral"}
+        for ab in lotatc_raw
+    ]
+
+    # Merge order — pydcs > airbases.json > LotAtc. pydcs is authoritative
+    # for theaters it covers; airbases.json fills in known gaps; LotAtc is
+    # the last-resort source for newer theaters (Kola, GermanyCW, SinaiMap)
+    # neither of the others has data for. Earlier sources win on name
+    # collision so authoritative data isn't overwritten.
+    by_name: Dict[str, dict] = {}
+    for ab in lotatc_bases:
+        by_name[ab["name"]] = ab
+    for ab in json_bases:
+        if ab.get("lat") is None or ab.get("lon") is None:
+            continue
+        by_name[ab["name"]] = ab
+    for ab in pydcs_bases:
+        by_name[ab["name"]] = ab
+
+    merged = sorted(by_name.values(), key=lambda x: x["name"])
+    _AIRBASE_CACHE[theater] = merged
+
+    if not merged:
+        import logging
+        logging.getLogger(__name__).warning(
+            "No airbase data for theater '%s' — map will show no airfields. "
+            "pydcs, airbases.json, and airbases_lotatc.json all returned empty.",
+            theater,
+        )
+    return merged
 
 
 CATEGORIES = ["plane", "helicopter", "vehicle", "ship", "static"]

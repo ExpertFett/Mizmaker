@@ -142,7 +142,7 @@ const PRESET_CATEGORIES: Record<string, { label: string; color: string }> = {
   precip:   { label: 'Precipitation',       color: '#4a8fd4' },
   extreme:  { label: 'Extreme / Hazardous', color: '#d95050' },
   carrier:  { label: 'Carrier Ops',         color: '#b07ed8' },
-  regional: { label: 'Regional / Seasonal', color: '#8aaabe' },
+  regional: { label: 'Regional / Seasonal', color: '#cccccc' },
 };
 
 const ADVANCED_PRESETS: AdvancedPreset[] = [
@@ -649,7 +649,7 @@ export function WeatherTab() {
 
   if (!weather) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No weather data available for this mission.
       </div>
     );
@@ -660,22 +660,22 @@ export function WeatherTab() {
       {/* Header with mode toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Weather Editor
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
             {mode === 'simple'
               ? 'Pick a preset or cloud layer. Switch to Advanced for full control.'
               : 'Full control over all weather parameters.'}
           </p>
         </div>
-        <div style={{ display: 'flex', background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden' }}>
           <button
             onClick={() => setMode('simple')}
             style={{
               padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
-              background: mode === 'simple' ? '#1a3a5a' : 'transparent',
-              color: mode === 'simple' ? '#ccdae8' : '#5a7a8a', fontWeight: mode === 'simple' ? 600 : 400,
+              background: mode === 'simple' ? '#4a4a4a' : 'transparent',
+              color: mode === 'simple' ? '#e0e0e0' : '#aaaaaa', fontWeight: mode === 'simple' ? 600 : 400,
             }}
           >
             Simple
@@ -684,8 +684,8 @@ export function WeatherTab() {
             onClick={() => setMode('advanced')}
             style={{
               padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
-              background: mode === 'advanced' ? '#1a3a5a' : 'transparent',
-              color: mode === 'advanced' ? '#ccdae8' : '#5a7a8a', fontWeight: mode === 'advanced' ? 600 : 400,
+              background: mode === 'advanced' ? '#4a4a4a' : 'transparent',
+              color: mode === 'advanced' ? '#e0e0e0' : '#aaaaaa', fontWeight: mode === 'advanced' ? 600 : 400,
             }}
           >
             Advanced
@@ -741,7 +741,7 @@ function SimpleMode({
 
       {/* DCS Cloud Preset dropdown */}
       <Section title="DCS Cloud Layer" changed={hasChanges}>
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#5a7a8a' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#aaaaaa' }}>
           DCS uses named cloud presets that override manual density/thickness. Select a preset to set cloud layers automatically.
         </p>
         <select
@@ -784,7 +784,7 @@ function SimpleMode({
             ['at8000', '26,000 ft'],
           ] as const).map(([layer, label]) => (
             <div key={layer} style={cardStyle}>
-              <div style={{ fontSize: 13, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <label style={fieldLabelStyle}>
                   Speed (m/s)
@@ -866,7 +866,7 @@ function SimpleMode({
             Start Time
             <input type="text" value={formatTime(weather.start_time)} placeholder="HH:MM"
               onChange={(e) => update({ start_time: parseTime(e.target.value) })}
-              style={{ ...numInputStyle, width: 80, fontFamily: 'monospace' }} />
+              style={{ ...numInputStyle, width: 80, fontFamily: "'B612 Mono', monospace" }} />
           </label>
         </div>
       </Section>
@@ -925,7 +925,7 @@ function AdvancedMode({
                       background: '#0a1218',
                       border: `1px solid ${catMeta.color}30`,
                       borderRadius: 6,
-                      color: '#8fa8c0',
+                      color: '#cccccc',
                       cursor: 'pointer',
                       fontSize: 12,
                       padding: '6px 12px',
@@ -954,7 +954,7 @@ function AdvancedMode({
             ['at8000', '8,000m / 26,000 ft'],
           ] as const).map(([layer, label]) => (
             <div key={layer} style={cardStyle}>
-              <div style={{ fontSize: 13, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabelStyle}>
                   Speed (m/s)
@@ -1141,7 +1141,7 @@ function AdvancedMode({
             Start Time
             <input type="text" value={formatTime(weather.start_time)} placeholder="HH:MM"
               onChange={(e) => update({ start_time: parseTime(e.target.value) })}
-              style={{ ...numInputStyle, width: 80, fontFamily: 'monospace', ...(hasChanges ? changedBorder : {}) }} />
+              style={{ ...numInputStyle, width: 80, fontFamily: "'B612 Mono', monospace", ...(hasChanges ? changedBorder : {}) }} />
           </label>
         </div>
       </Section>
@@ -1158,16 +1158,16 @@ function Section({ title, changed: _changed, children }: { title: string; change
   return (
     <div style={{
       marginBottom: 20,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       <div style={{
         padding: '8px 14px',
-        borderBottom: '1px solid #1a2a3a',
+        borderBottom: '1px solid #3a3a3a',
         fontSize: 14,
         fontWeight: 600,
-        color: '#8fa8c0',
+        color: '#cccccc',
       }}>
         {title}
       </div>
@@ -1251,7 +1251,7 @@ function WeatherSummary({ weather }: { weather: WeatherState }) {
 
   return (
     <div style={{
-      background: '#080f1c', border: '1px solid #1a2a3a', borderRadius: 6,
+      background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 6,
       padding: '12px 16px', marginBottom: 16,
       display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
     }}>
@@ -1262,7 +1262,7 @@ function WeatherSummary({ weather }: { weather: WeatherState }) {
         minWidth: 60,
       }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: fc.color }}>{fc.label}</div>
-        <div style={{ fontSize: 10, color: '#5a7a8a', marginTop: 2 }}>Flight Rules</div>
+        <div style={{ fontSize: 10, color: '#aaaaaa', marginTop: 2 }}>Flight Rules</div>
       </div>
 
       {/* Key stats */}
@@ -1278,9 +1278,9 @@ function WeatherSummary({ weather }: { weather: WeatherState }) {
 
       {/* METAR string */}
       <div style={{
-        fontFamily: 'monospace', fontSize: 12, color: '#6a8a9a',
+        fontFamily: "'B612 Mono', monospace", fontSize: 12, color: '#aaaaaa',
         background: '#0a1218', padding: '6px 10px', borderRadius: 4,
-        border: '1px solid #12202e', width: '100%', letterSpacing: 0.5,
+        border: '1px solid #222222', width: '100%', letterSpacing: 0.5,
       }}>
         {metar}
       </div>
@@ -1291,8 +1291,8 @@ function WeatherSummary({ weather }: { weather: WeatherState }) {
 function StatChip({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: warn ? '#d29922' : '#ccdae8' }}>{value}</div>
-      <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: warn ? '#d29922' : '#e0e0e0' }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
     </div>
   );
 }
@@ -1323,8 +1323,8 @@ function TimeOfDayButtons({ current, onSelect }: { current: number; onSelect: (s
             onClick={() => onSelect(tp.seconds)}
             style={{
               background: active ? 'rgba(74, 143, 212, 0.15)' : '#0a1218',
-              border: `1px solid ${active ? 'rgba(74, 143, 212, 0.4)' : '#1a2a3a'}`,
-              borderRadius: 12, color: active ? '#4a8fd4' : '#6a8a9a',
+              border: `1px solid ${active ? 'rgba(74, 143, 212, 0.4)' : '#3a3a3a'}`,
+              borderRadius: 12, color: active ? '#4a8fd4' : '#aaaaaa',
               cursor: 'pointer', fontSize: 11, padding: '4px 10px',
               fontWeight: active ? 600 : 400, fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 4,
@@ -1368,13 +1368,13 @@ function WindRose({ speed, dir }: { speed: number; dir: number }) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {/* Compass ring */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1a2a3a" strokeWidth={1.5} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#3a3a3a" strokeWidth={1.5} />
         {/* Cardinal labels */}
         {[['N', 0], ['E', 90], ['S', 180], ['W', 270]].map(([lbl, deg]) => {
           const a = ((Number(deg) - 90) * Math.PI) / 180;
           return (
             <text key={lbl as string} x={cx + (r + 7) * Math.cos(a)} y={cy + (r + 7) * Math.sin(a)}
-              fill="#5a7a8a" fontSize={8} fontWeight={600} textAnchor="middle" dominantBaseline="central">
+              fill="#aaaaaa" fontSize={8} fontWeight={600} textAnchor="middle" dominantBaseline="central">
               {lbl as string}
             </text>
           );
@@ -1386,7 +1386,7 @@ function WindRose({ speed, dir }: { speed: number; dir: number }) {
           return (
             <line key={d} x1={cx + inner * Math.cos(a)} y1={cy + inner * Math.sin(a)}
               x2={cx + r * Math.cos(a)} y2={cy + r * Math.sin(a)}
-              stroke="#2a3a4a" strokeWidth={d % 90 === 0 ? 1.5 : 0.5} />
+              stroke="#3a3a3a" strokeWidth={d % 90 === 0 ? 1.5 : 0.5} />
           );
         })}
         {/* Wind arrow */}
@@ -1397,9 +1397,9 @@ function WindRose({ speed, dir }: { speed: number; dir: number }) {
           </>
         )}
         {/* Center dot */}
-        <circle cx={cx} cy={cy} r={2} fill="#5a7a8a" />
+        <circle cx={cx} cy={cy} r={2} fill="#aaaaaa" />
       </svg>
-      <div style={{ fontSize: 11, color: '#8fa8c0', marginTop: 2, fontFamily: 'monospace' }}>
+      <div style={{ fontSize: 11, color: '#cccccc', marginTop: 2, fontFamily: "'B612 Mono', monospace" }}>
         {kts > 0 ? `${String(Math.round(dir)).padStart(3, '0')}/${kts}kt` : 'Calm'}
       </div>
     </div>
@@ -1433,7 +1433,7 @@ function CrosswindCalculator({ weather }: { weather: WeatherState }) {
       </label>
       <div style={{
         display: 'flex', gap: 20, padding: '8px 16px',
-        background: '#0a1218', borderRadius: 6, border: '1px solid #12202e',
+        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{
@@ -1442,16 +1442,16 @@ function CrosswindCalculator({ weather }: { weather: WeatherState }) {
           }}>
             {Math.abs(headwind)} kt
           </div>
-          <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>
             {headwind >= 0 ? 'Headwind' : 'Tailwind'}
           </div>
         </div>
-        <div style={{ width: 1, background: '#1a2a3a' }} />
+        <div style={{ width: 1, background: '#3a3a3a' }} />
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: crosswind > 15 ? '#d95050' : crosswind > 10 ? '#d29922' : '#ccdae8' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: crosswind > 15 ? '#d95050' : crosswind > 10 ? '#d29922' : '#e0e0e0' }}>
             {crosswind} kt {crossDir}
           </div>
-          <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase' }}>Crosswind</div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>Crosswind</div>
         </div>
       </div>
       {crosswind > 25 && (
@@ -1473,14 +1473,14 @@ function QnhDisplay({ mmhg }: { mmhg: number }) {
   return (
     <div style={{
       display: 'flex', gap: 12, padding: '6px 12px',
-      background: '#0a1218', borderRadius: 4, border: '1px solid #12202e',
-      fontSize: 13, fontFamily: 'monospace',
+      background: '#0a1218', borderRadius: 4, border: '1px solid #222222',
+      fontSize: 13, fontFamily: "'B612 Mono', monospace",
     }}>
-      <span style={{ color: '#8fa8c0' }}>{mmhg} <span style={{ color: '#5a7a8a', fontSize: 10 }}>mmHg</span></span>
-      <span style={{ color: '#1a2a3a' }}>|</span>
-      <span style={{ color: '#8fa8c0' }}>{inhg} <span style={{ color: '#5a7a8a', fontSize: 10 }}>inHg</span></span>
-      <span style={{ color: '#1a2a3a' }}>|</span>
-      <span style={{ color: '#8fa8c0' }}>{hpa} <span style={{ color: '#5a7a8a', fontSize: 10 }}>hPa</span></span>
+      <span style={{ color: '#cccccc' }}>{mmhg} <span style={{ color: '#aaaaaa', fontSize: 10 }}>mmHg</span></span>
+      <span style={{ color: '#3a3a3a' }}>|</span>
+      <span style={{ color: '#cccccc' }}>{inhg} <span style={{ color: '#aaaaaa', fontSize: 10 }}>inHg</span></span>
+      <span style={{ color: '#3a3a3a' }}>|</span>
+      <span style={{ color: '#cccccc' }}>{hpa} <span style={{ color: '#aaaaaa', fontSize: 10 }}>hPa</span></span>
     </div>
   );
 }
@@ -1515,27 +1515,27 @@ function DensityAltitude({ weather, fieldElevFt }: { weather: WeatherState; fiel
       </label>
       <div style={{
         display: 'flex', gap: 20, padding: '8px 16px',
-        background: '#0a1218', borderRadius: 6, border: '1px solid #12202e',
+        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
       }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#8fa8c0' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
             {Math.round(pressureAlt).toLocaleString()} ft
           </div>
-          <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase' }}>Pressure Alt</div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>Pressure Alt</div>
         </div>
-        <div style={{ width: 1, background: '#1a2a3a' }} />
+        <div style={{ width: 1, background: '#3a3a3a' }} />
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: warning }}>
             {densityAlt.toLocaleString()} ft
           </div>
-          <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase' }}>Density Alt</div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>Density Alt</div>
         </div>
-        <div style={{ width: 1, background: '#1a2a3a' }} />
+        <div style={{ width: 1, background: '#3a3a3a' }} />
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#8fa8c0' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
             {isaTemp.toFixed(1)}C
           </div>
-          <div style={{ fontSize: 10, color: '#5a7a8a', textTransform: 'uppercase' }}>ISA Temp</div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>ISA Temp</div>
         </div>
       </div>
       {densityAlt > 8000 && (
@@ -1558,10 +1558,10 @@ function DensityAltitude({ weather, fieldElevFt }: { weather: WeatherState; fiel
 const changedBorder = { borderLeft: '3px solid #3fb950' };
 
 const presetBtnStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#8fa8c0',
+  color: '#cccccc',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 12px',
@@ -1570,8 +1570,8 @@ const presetBtnStyle: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  background: '#080f1c',
-  border: '1px solid #1a2a3a',
+  background: '#1a1a1a',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
   padding: 12,
   minWidth: 140,
@@ -1582,15 +1582,15 @@ const fieldLabelStyle: React.CSSProperties = {
   flexDirection: 'column',
   gap: 4,
   fontSize: 12,
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   fontWeight: 600,
 };
 
 const numInputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 14,
   padding: '4px 6px',
   width: 90,
@@ -1599,10 +1599,10 @@ const numInputStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '6px 8px',
   width: '100%',

@@ -38,7 +38,7 @@ const cardStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  background: '#1a2a3a', border: '1px solid #2a3a4a', borderRadius: 4,
+  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
   color: '#4a8fd4', cursor: 'pointer', fontSize: 12, fontWeight: 600,
   padding: '5px 12px', fontFamily: 'inherit',
 };
@@ -46,7 +46,7 @@ const btnStyle: React.CSSProperties = {
 const btnActive: React.CSSProperties = {
   ...btnStyle,
   background: 'rgba(74, 143, 212, 0.15)', border: '1px solid rgba(74, 143, 212, 0.3)',
-  color: '#ccdae8',
+  color: '#e0e0e0',
 };
 
 const runBtnStyle: React.CSSProperties = {
@@ -116,11 +116,11 @@ export function MissionDebugTab() {
   return (
     <div style={{ maxWidth: 850 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Mission Debug
         </h2>
       </div>
-      <p style={{ margin: '0 0 14px', fontSize: 12, color: '#5a7a8a' }}>
+      <p style={{ margin: '0 0 14px', fontSize: 12, color: '#aaaaaa' }}>
         Analyze the loaded mission for frequency conflicts, TACAN/ICLS duplicates, carrier/tanker/AWACS issues,
         client flight problems, and other common misconfigurations.
       </p>
@@ -157,10 +157,10 @@ export function MissionDebugTab() {
           {/* Summary bar */}
           <div style={{
             display: 'flex', gap: 12, marginBottom: 14, padding: '10px 14px',
-            background: '#0a1520', borderRadius: 6, border: '1px solid #1a2a3a',
+            background: '#222222', borderRadius: 6, border: '1px solid #3a3a3a',
             alignItems: 'center', flexWrap: 'wrap',
           }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#ccdae8', marginRight: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginRight: 8 }}>
               Results: {issues.length} findings
             </span>
             <div style={{
@@ -174,7 +174,7 @@ export function MissionDebugTab() {
             <div style={{
               display: 'flex', gap: 4, padding: '3px 8px', borderRadius: 3,
               background: counts.warning > 0 ? 'rgba(210, 153, 34, 0.1)' : 'rgba(90, 122, 138, 0.1)',
-              color: counts.warning > 0 ? '#d29922' : '#5a7a8a',
+              color: counts.warning > 0 ? '#d29922' : '#aaaaaa',
               fontSize: 12, fontWeight: 600,
             }}>
               {counts.warning} warning{counts.warning !== 1 ? 's' : ''}
@@ -201,7 +201,7 @@ export function MissionDebugTab() {
 
           {/* Filters */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#5a7a8a', marginRight: 4 }}>Severity:</span>
+            <span style={{ fontSize: 11, color: '#aaaaaa', marginRight: 4 }}>Severity:</span>
             {(['all', 'error', 'warning', 'info'] as const).map((s) => (
               <button
                 key={s}
@@ -212,7 +212,7 @@ export function MissionDebugTab() {
               </button>
             ))}
 
-            <span style={{ fontSize: 11, color: '#5a7a8a', marginLeft: 12, marginRight: 4 }}>Category:</span>
+            <span style={{ fontSize: 11, color: '#aaaaaa', marginLeft: 12, marginRight: 4 }}>Category:</span>
             <button
               onClick={() => setCategoryFilter('all')}
               style={categoryFilter === 'all' ? btnActive : btnStyle}
@@ -261,16 +261,16 @@ export function MissionDebugTab() {
                         </span>
                         <span style={{
                           fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                          background: 'rgba(90, 122, 138, 0.15)', color: '#5a7a8a',
+                          background: 'rgba(90, 122, 138, 0.15)', color: '#aaaaaa',
                         }}>
                           {issue.category}
                         </span>
                       </div>
-                      <div style={{ color: '#8a9aaa', fontSize: 12, lineHeight: 1.4 }}>
+                      <div style={{ color: '#bbbbbb', fontSize: 12, lineHeight: 1.4 }}>
                         {issue.detail}
                       </div>
                       {(issue.groupName || issue.unitName) && (
-                        <div style={{ marginTop: 3, fontSize: 11, color: '#3a5a6a' }}>
+                        <div style={{ marginTop: 3, fontSize: 11, color: '#4a4a4a' }}>
                           {issue.groupName && <span>Group: {issue.groupName}</span>}
                           {issue.groupName && issue.unitName && <span> | </span>}
                           {issue.unitName && <span>Unit: {issue.unitName}</span>}

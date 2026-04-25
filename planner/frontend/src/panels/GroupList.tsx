@@ -8,7 +8,7 @@ import { getAircraftType, isPlayerGroup } from '../utils/groups';
 const COALITION_COLORS: Record<string, string> = {
   blue: '#4a8fd4',
   red: '#d95050',
-  neutrals: '#8fa8c0',
+  neutrals: '#cccccc',
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -33,7 +33,7 @@ export function GroupList() {
   });
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1a2a3a' }}>
+    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #3a3a3a' }}>
       <div style={{ padding: '8px 12px', display: 'flex', gap: 6 }}>
         <input
           type="text"
@@ -42,10 +42,10 @@ export function GroupList() {
           onChange={(e) => setFilter(e.target.value)}
           style={{
             flex: 1,
-            background: '#0f1a28',
-            border: '1px solid #1a2a3a',
+            background: '#262626',
+            border: '1px solid #3a3a3a',
             borderRadius: 4,
-            color: '#ccdae8',
+            color: '#e0e0e0',
             padding: '5px 8px',
             fontSize: 14,
           }}
@@ -54,10 +54,10 @@ export function GroupList() {
           value={coalitionFilter}
           onChange={(e) => setCoalitionFilter(e.target.value)}
           style={{
-            background: '#0f1a28',
-            border: '1px solid #1a2a3a',
+            background: '#262626',
+            border: '1px solid #3a3a3a',
             borderRadius: 4,
-            color: '#ccdae8',
+            color: '#e0e0e0',
             fontSize: 14,
             padding: '4px',
           }}
@@ -117,16 +117,16 @@ function GroupItem({ group, selected, onSelect }: {
     >
       <div style={{ minWidth: 0, flex: 1 }}>
         <span style={{ marginRight: 6 }}>{icon}</span>
-        <span style={{ color: '#ccdae8', fontWeight: selected ? 600 : 400, fontSize: 14 }}>
+        <span style={{ color: '#e0e0e0', fontWeight: selected ? 600 : 400, fontSize: 14 }}>
           {group.groupName}
         </span>
         {player && <span style={{ color: '#3fb950', marginLeft: 6, fontSize: 11, fontWeight: 600 }}>PLAYER</span>}
-        <div style={{ fontSize: 12, color: '#6a8a9a', marginTop: 2, marginLeft: 22 }}>
+        <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 2, marginLeft: 22 }}>
           {airframe} | {group.task}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span style={{ color: '#5a7a8a', fontSize: 12 }}>{wpCount} wp</span>
+        <span style={{ color: '#aaaaaa', fontSize: 12 }}>{wpCount} wp</span>
         <button
           onClick={handleEye}
           title={hidden ? 'Show route' : 'Hide route'}
@@ -135,7 +135,7 @@ function GroupItem({ group, selected, onSelect }: {
             border: 'none',
             cursor: 'pointer',
             fontSize: 15,
-            color: hidden ? '#3a4a5a' : '#6a8a9a',
+            color: hidden ? '#4a4a4a' : '#aaaaaa',
             padding: '0 2px',
             lineHeight: 1,
           }}

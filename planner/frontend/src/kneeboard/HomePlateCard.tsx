@@ -104,7 +104,7 @@ export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps)
           <tbody>
             <tr>
               <td style={{ ...cell, fontWeight: 600 }}>{home.name}</td>
-              <td style={{ ...cell, fontFamily: 'monospace', fontSize: 15, textAlign: 'center' }}>
+              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: 15, textAlign: 'center' }}>
                 {fmtCoord(home.lat, home.lon)}
               </td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>—</td>
@@ -134,13 +134,13 @@ export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps)
           {diverts.map((a, i) => (
             <tr key={a.name} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, fontWeight: 600 }}>{a.name}</td>
-              <td style={{ ...cell, textAlign: 'center', fontFamily: 'monospace' }}>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace" }}>
                 {Math.round(a.brg).toString().padStart(3, '0')}°
               </td>
-              <td style={{ ...cell, textAlign: 'center', fontFamily: 'monospace' }}>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace" }}>
                 {a.dist < 1 ? '<1' : Math.round(a.dist)} nm
               </td>
-              <td style={{ ...cell, fontFamily: 'monospace', fontSize: 15, textAlign: 'center' }}>
+              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: 15, textAlign: 'center' }}>
                 {fmtCoord(a.lat, a.lon)}
               </td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>—</td>

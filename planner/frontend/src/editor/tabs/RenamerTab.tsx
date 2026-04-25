@@ -165,7 +165,7 @@ export function RenamerTab() {
 
   if (allGroupsRenamer.length === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No groups available for renaming.
       </div>
     );
@@ -174,10 +174,10 @@ export function RenamerTab() {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Group &amp; Unit Renamer
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Rename groups and units. Use find &amp; replace for bulk operations.
         </p>
       </div>
@@ -197,12 +197,12 @@ export function RenamerTab() {
       {/* Find & Replace */}
       <div style={{
         marginBottom: 16,
-        border: '1px solid #1a2a3a',
+        border: '1px solid #3a3a3a',
         borderRadius: 4,
-        background: '#0a1520',
+        background: '#222222',
         padding: '12px 14px',
       }}>
-        <div style={{ fontSize: 13, color: '#8fa8c0', fontWeight: 600, marginBottom: 8 }}>Find &amp; Replace</div>
+        <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>Find &amp; Replace</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             placeholder="Find..."
@@ -216,7 +216,7 @@ export function RenamerTab() {
             onChange={(e) => setReplaceText(e.target.value)}
             style={textInputStyle}
           />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#5a7a8a', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#aaaaaa', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={useRegex}
@@ -228,7 +228,7 @@ export function RenamerTab() {
             Replace All
           </button>
           {findText && (
-            <span style={{ fontSize: 13, color: '#5a7a8a' }}>
+            <span style={{ fontSize: 13, color: '#aaaaaa' }}>
               {matchCount} match{matchCount !== 1 ? 'es' : ''}
             </span>
           )}
@@ -265,7 +265,7 @@ export function RenamerTab() {
           <option value="red">Red</option>
           <option value="neutrals">Neutral</option>
         </select>
-        <span style={{ fontSize: 13, color: '#5a7a8a' }}>
+        <span style={{ fontSize: 13, color: '#aaaaaa' }}>
           {filtered.length} group{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -313,9 +313,9 @@ function GroupCard({
   return (
     <div style={{
       marginBottom: 8,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       {/* Group header */}
       <div style={{
@@ -328,12 +328,12 @@ function GroupCard({
       }}
         onClick={onToggle}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{
           background: coalitionColor,
-          color: '#080f1c',
+          color: '#1a1a1a',
           fontSize: 11,
           fontWeight: 700,
           padding: '1px 6px',
@@ -351,10 +351,10 @@ function GroupCard({
             ...(groupChanged ? { borderLeft: '3px solid #3fb950' } : {}),
           }}
         />
-        <span style={{ color: '#5a7a8a', fontSize: 13 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
           {group.unitCount} unit{group.unitCount !== 1 ? 's' : ''}
         </span>
-        <span style={{ color: '#3a5a6a', fontSize: 12 }}>
+        <span style={{ color: '#4a4a4a', fontSize: 12 }}>
           {group.category}
         </span>
         <button
@@ -368,7 +368,7 @@ function GroupCard({
 
       {/* Expanded unit list */}
       {isExpanded && (
-        <div style={{ borderTop: '1px solid #1a2a3a', padding: '8px 14px 8px 30px' }}>
+        <div style={{ borderTop: '1px solid #3a3a3a', padding: '8px 14px 8px 30px' }}>
           {group.units.map((unit, i) => {
             const currentName = unitNames.get(unit.unitId) ?? unit.name;
             const changed = currentName !== unit.name;
@@ -378,9 +378,9 @@ function GroupCard({
                 alignItems: 'center',
                 gap: 10,
                 padding: '4px 0',
-                borderBottom: i < group.units.length - 1 ? '1px solid #0f1a28' : 'none',
+                borderBottom: i < group.units.length - 1 ? '1px solid #262626' : 'none',
               }}>
-                <span style={{ color: '#3a5a6a', fontSize: 12, width: 20, textAlign: 'right' }}>
+                <span style={{ color: '#4a4a4a', fontSize: 12, width: 20, textAlign: 'right' }}>
                   #{i + 1}
                 </span>
                 <input
@@ -391,7 +391,7 @@ function GroupCard({
                     ...(changed ? { borderLeft: '3px solid #3fb950' } : {}),
                   }}
                 />
-                <span style={{ color: '#5a7a8a', fontSize: 12 }}>{unit.type}</span>
+                <span style={{ color: '#aaaaaa', fontSize: 12 }}>{unit.type}</span>
               </div>
             );
           })}
@@ -410,9 +410,9 @@ function JtacSection() {
   return (
     <div style={{
       marginBottom: 16,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       <div
         onClick={() => setOpen(!open)}
@@ -422,16 +422,16 @@ function JtacSection() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          borderBottom: open ? '1px solid #1a2a3a' : 'none',
+          borderBottom: open ? '1px solid #3a3a3a' : 'none',
         }}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
           {open ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#3fb950' }}>
           JTAC Auto-Setup
         </span>
-        <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
           Designate ground groups as JTACs with naming, laser codes &amp; frequencies
         </span>
       </div>
@@ -453,9 +453,9 @@ function TicSection() {
   return (
     <div style={{
       marginBottom: 16,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       <div
         onClick={() => setOpen(!open)}
@@ -465,16 +465,16 @@ function TicSection() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          borderBottom: open ? '1px solid #1a2a3a' : 'none',
+          borderBottom: open ? '1px solid #3a3a3a' : 'none',
         }}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
           {open ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#d29922' }}>
           TIC Script Auto-Setup
         </span>
-        <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
           Auto-rename ground units for Troops in Contact script
         </span>
       </div>
@@ -496,9 +496,9 @@ function AegisSection() {
   return (
     <div style={{
       marginBottom: 16,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       <div
         onClick={() => setOpen(!open)}
@@ -508,16 +508,16 @@ function AegisSection() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          borderBottom: open ? '1px solid #1a2a3a' : 'none',
+          borderBottom: open ? '1px solid #3a3a3a' : 'none',
         }}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
           {open ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#d95050' }}>
           AEGIS IADS Auto-Setup
         </span>
-        <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
           Auto-rename SAM/EWR groups for AEGIS IADS script
         </span>
       </div>
@@ -539,9 +539,9 @@ function CarrierSection() {
   return (
     <div style={{
       marginBottom: 16,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 4,
-      background: '#0a1520',
+      background: '#222222',
     }}>
       <div
         onClick={() => setOpen(!open)}
@@ -551,16 +551,16 @@ function CarrierSection() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          borderBottom: open ? '1px solid #1a2a3a' : 'none',
+          borderBottom: open ? '1px solid #3a3a3a' : 'none',
         }}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
           {open ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#4a8fd4' }}>
           Carrier Control Setup
         </span>
-        <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
           Configure carriers and generate MOOSE control script
         </span>
       </div>
@@ -578,10 +578,10 @@ function CarrierSection() {
 /* ------------------------------------------------------------------ */
 
 const textInputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 14,
   padding: '6px 10px',
   outline: 'none',
@@ -590,10 +590,10 @@ const textInputStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '6px 8px',
   outline: 'none',
@@ -601,8 +601,8 @@ const selectStyle: React.CSSProperties = {
 };
 
 const actionBtnStyle: React.CSSProperties = {
-  background: '#1a2a3a',
-  border: '1px solid #2a3a4a',
+  background: '#3a3a3a',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
   color: '#4a8fd4',
   cursor: 'pointer',
@@ -612,10 +612,10 @@ const actionBtnStyle: React.CSSProperties = {
 };
 
 const groupInputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 14,
   fontWeight: 600,
   padding: '4px 8px',
@@ -625,10 +625,10 @@ const groupInputStyle: React.CSSProperties = {
 };
 
 const unitInputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '3px 6px',
   outline: 'none',
@@ -638,9 +638,9 @@ const unitInputStyle: React.CSSProperties = {
 
 const autoNameBtnStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #1a2a3a',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 12,
   padding: '3px 8px',

@@ -22,6 +22,7 @@ import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
+import { BriefGenTab } from './tabs/BriefGenTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 const TABS = [
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'rangePlan', label: 'Range', icon: '📐' },
   { id: 'tools', label: 'Tools', icon: '🔧' },
   { id: 'sop', label: 'SOP', icon: '📘' },
+  { id: 'briefGen', label: 'Brief', icon: '📝' },
   { id: 'upload', label: 'Upload', icon: '📁' },
 ] as const;
 
@@ -76,10 +78,12 @@ export function MissionEditor() {
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: '#080f1c',
+      background: '#1a1a1a',
       display: 'flex',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      color: '#ccdae8',
+      // Inherit from body (B612). Set explicitly so any portal-mounted
+      // children that escape the body cascade still get the right stack.
+      fontFamily: "'B612', 'IBM Plex Sans', 'Inter', system-ui, sans-serif",
+      color: '#e0e0e0',
       overflow: 'hidden',
     }}>
       {/* Left sidebar */}
@@ -88,8 +92,8 @@ export function MissionEditor() {
         minWidth: sidebarWidth,
         display: 'flex',
         flexDirection: 'column',
-        background: '#0a1520',
-        borderRight: '1px solid #1a2a3a',
+        background: '#222222',
+        borderRight: '1px solid #3a3a3a',
         flexShrink: 0,
         overflow: 'hidden',
         transition: 'width 0.15s, min-width 0.15s',
@@ -97,7 +101,7 @@ export function MissionEditor() {
         {/* Header */}
         <div style={{
           padding: isCollapsed ? '10px 6px' : '12px 14px',
-          borderBottom: '1px solid #1a2a3a',
+          borderBottom: '1px solid #3a3a3a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: isCollapsed ? 'center' : 'space-between',
@@ -105,8 +109,8 @@ export function MissionEditor() {
         }}>
           {!isCollapsed && (
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#ccdae8', whiteSpace: 'nowrap' }}>{theater}</div>
-              {isMap && <div style={{ fontSize: 12, color: '#5a7a8a', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
+              {isMap && <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
             </div>
           )}
           {isMap && (
@@ -116,7 +120,7 @@ export function MissionEditor() {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#5a7a8a',
+                color: '#aaaaaa',
                 cursor: 'pointer',
                 fontSize: 14,
                 padding: '2px 4px',
@@ -129,7 +133,7 @@ export function MissionEditor() {
         </div>
 
         {/* Tab buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #1a2a3a', overflow: isCollapsed ? 'hidden' : undefined }}>
+        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #3a3a3a', overflow: isCollapsed ? 'hidden' : undefined }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -141,7 +145,7 @@ export function MissionEditor() {
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
                   border: 'none',
                   borderLeft: isActive ? '3px solid #4a8fd4' : '3px solid transparent',
-                  color: isActive ? '#ccdae8' : '#5a7a8a',
+                  color: isActive ? '#e0e0e0' : '#aaaaaa',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -272,6 +276,11 @@ export function MissionEditor() {
             {visitedTabs.has('sop') && (
               <div style={{ display: activeTab === 'sop' ? 'block' : 'none' }}>
                 <SopTab />
+              </div>
+            )}
+            {visitedTabs.has('briefGen') && (
+              <div style={{ display: activeTab === 'briefGen' ? 'block' : 'none', height: '100%' }}>
+                <BriefGenTab />
               </div>
             )}
             {visitedTabs.has('upload') && (

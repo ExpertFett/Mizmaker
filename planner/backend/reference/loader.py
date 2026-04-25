@@ -227,3 +227,18 @@ def get_sam_threat_ranges() -> dict:
 def get_airbases() -> dict:
     """Per-theater airbase data."""
     return _load_json("airbases.json")
+
+
+def get_lotatc_airbases() -> dict:
+    """
+    Supplementary per-theater airbase data extracted from LotAtc tile
+    metadata. Covers theaters that pydcs and the curated airbases.json
+    don't yet have (Kola, GermanyCW, SinaiMap) plus extras for Falklands.
+    Generated from `C:\\Program Files\\LotAtc\\map\\<theater>\\airports\\*.mbtiles`
+    via the metadata `center` field. Names are ICAO-style codes.
+    Returns {} if the file is missing — this is a soft-optional source.
+    """
+    try:
+        return _load_json("airbases_lotatc.json")
+    except FileNotFoundError:
+        return {}

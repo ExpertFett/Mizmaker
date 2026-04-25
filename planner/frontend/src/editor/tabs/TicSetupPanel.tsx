@@ -22,10 +22,10 @@ const CATEGORY_COLORS: Record<TicCategory, string> = {
   tank: '#d29922',
   ifv: '#4a8fd4',
   apc: '#3fb950',
-  infantry: '#8fa8c0',
+  infantry: '#cccccc',
   airdefense: '#d95050',
   artillery: '#c090d0',
-  other: '#5a7a8a',
+  other: '#aaaaaa',
 };
 
 /** Map DCS unit type strings to TIC categories */
@@ -504,7 +504,7 @@ export function TicSetupPanel() {
 
   if (totalVehicleGroups === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 14, padding: 16 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 16 }}>
         No ground vehicle groups found in this mission.
       </div>
     );
@@ -518,7 +518,7 @@ export function TicSetupPanel() {
           <div style={{ fontSize: 15, fontWeight: 600, color: '#d29922', marginBottom: 4 }}>
             TIC Script Auto-Setup
           </div>
-          <div style={{ fontSize: 13, color: '#5a7a8a' }}>
+          <div style={{ fontSize: 13, color: '#aaaaaa' }}>
             Renames ground groups to TIC-compatible format with real-world military designations.
             Groups with the same formation name will fight together.
           </div>
@@ -553,7 +553,7 @@ export function TicSetupPanel() {
       </div>
 
       {vehicleGroups.length === 0 ? (
-        <div style={{ color: '#5a7a8a', fontSize: 14, padding: '16px 0' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 14, padding: '16px 0' }}>
           No vehicle groups for this coalition. Try a different filter above.
         </div>
       ) : (
@@ -561,12 +561,12 @@ export function TicSetupPanel() {
           {/* Stats bar */}
           <div style={{
             display: 'flex', gap: 12, marginBottom: 16, padding: '10px 14px',
-            background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 4,
+            background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
             flexWrap: 'wrap',
           }}>
-            <div style={{ fontSize: 13, color: '#5a7a8a' }}>
-              <strong style={{ color: '#ccdae8' }}>{assignments.length}</strong> groups in{' '}
-              <strong style={{ color: '#ccdae8' }}>{formationNames.size}</strong> formations
+            <div style={{ fontSize: 13, color: '#aaaaaa' }}>
+              <strong style={{ color: '#e0e0e0' }}>{assignments.length}</strong> groups in{' '}
+              <strong style={{ color: '#e0e0e0' }}>{formationNames.size}</strong> formations
             </div>
             <div style={{ display: 'flex', gap: 10, flex: 1, justifyContent: 'flex-end' }}>
               {Array.from(categoryStats).map(([cat, count]) => (
@@ -580,10 +580,10 @@ export function TicSetupPanel() {
           {/* TIC naming reference */}
           <div style={{
             marginBottom: 16, padding: '8px 14px',
-            background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 4,
-            fontSize: 12, color: '#5a7a8a',
+            background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+            fontSize: 12, color: '#aaaaaa',
           }}>
-            <strong style={{ color: '#8fa8c0' }}>TIC Format:</strong>{' '}
+            <strong style={{ color: '#cccccc' }}>TIC Format:</strong>{' '}
             <code style={{ color: '#d29922' }}>TIC:FormationName#</code> = member,{' '}
             <code style={{ color: '#3fb950' }}>TIC!FormationName#</code> = leader,{' '}
             <code style={{ color: '#4a8fd4' }}>+</code> = keep units grouped
@@ -595,9 +595,9 @@ export function TicSetupPanel() {
               key={a.groupId}
               style={{
                 marginBottom: 8,
-                border: `1px solid ${a.isLeader ? '#3fb950' : '#1a2a3a'}`,
+                border: `1px solid ${a.isLeader ? '#3fb950' : '#3a3a3a'}`,
                 borderRadius: 4,
-                background: '#0a1520',
+                background: '#222222',
               }}
             >
               <div style={{
@@ -611,7 +611,7 @@ export function TicSetupPanel() {
                 {/* Coalition badge */}
                 <span style={{
                   background: a.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-                  color: '#080f1c', fontSize: 11, fontWeight: 700,
+                  color: '#1a1a1a', fontSize: 11, fontWeight: 700,
                   padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
                 }}>
                   {a.coalition}
@@ -629,11 +629,11 @@ export function TicSetupPanel() {
 
                 {/* Original name → new name */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
-                  <span style={{ color: '#5a7a8a', fontSize: 13, textDecoration: 'line-through' }}>
+                  <span style={{ color: '#aaaaaa', fontSize: 13, textDecoration: 'line-through' }}>
                     {a.originalName}
                   </span>
-                  <span style={{ color: '#5a7a8a' }}>&rarr;</span>
-                  <span style={{ color: '#ccdae8', fontSize: 14, fontWeight: 600, fontFamily: 'monospace' }}>
+                  <span style={{ color: '#aaaaaa' }}>&rarr;</span>
+                  <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>
                     {a.newGroupName}
                   </span>
                 </div>
@@ -644,8 +644,8 @@ export function TicSetupPanel() {
                     onClick={() => toggleLeader(a.groupId)}
                     style={{
                       ...smallBtnStyle,
-                      color: a.isLeader ? '#3fb950' : '#5a7a8a',
-                      border: `1px solid ${a.isLeader ? '#3fb950' : '#1a2a3a'}`,
+                      color: a.isLeader ? '#3fb950' : '#aaaaaa',
+                      border: `1px solid ${a.isLeader ? '#3fb950' : '#3a3a3a'}`,
                     }}
                     title="Toggle formation leader (TIC! vs TIC:)"
                   >
@@ -655,8 +655,8 @@ export function TicSetupPanel() {
                     onClick={() => toggleKeepTogether(a.groupId)}
                     style={{
                       ...smallBtnStyle,
-                      color: a.keepTogether ? '#4a8fd4' : '#5a7a8a',
-                      border: `1px solid ${a.keepTogether ? '#4a8fd4' : '#1a2a3a'}`,
+                      color: a.keepTogether ? '#4a8fd4' : '#aaaaaa',
+                      border: `1px solid ${a.keepTogether ? '#4a8fd4' : '#3a3a3a'}`,
                     }}
                     title="Keep units grouped (+) or let TIC split them"
                   >
@@ -668,19 +668,19 @@ export function TicSetupPanel() {
               {/* Formation name editor */}
               <div style={{
                 padding: '6px 14px 10px',
-                borderTop: '1px solid #0f1a28',
+                borderTop: '1px solid #262626',
                 display: 'flex',
                 gap: 10,
                 alignItems: 'center',
                 flexWrap: 'wrap',
               }}>
-                <label style={{ fontSize: 12, color: '#5a7a8a', fontWeight: 600 }}>Formation:</label>
+                <label style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600 }}>Formation:</label>
                 <input
                   value={a.formationName}
                   onChange={(e) => updateFormationName(a.groupId, e.target.value)}
                   style={{
-                    background: '#0f1a28', border: '1px solid #1a2a3a', borderRadius: 3,
-                    color: '#ccdae8', fontSize: 13, padding: '3px 8px', width: 200, outline: 'none',
+                    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+                    color: '#e0e0e0', fontSize: 13, padding: '3px 8px', width: 200, outline: 'none',
                   }}
                 />
                 <span style={{
@@ -689,14 +689,14 @@ export function TicSetupPanel() {
                 }}>
                   {a.companyDesignator} Co
                 </span>
-                <span style={{ fontSize: 12, color: '#5a7a8a' }}>
+                <span style={{ fontSize: 12, color: '#aaaaaa' }}>
                   {a.unitCount} unit{a.unitCount !== 1 ? 's' : ''}:
                 </span>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {a.units.map((u) => (
                     <span key={u.unitId} style={{
-                      fontSize: 11, color: '#8fa8c0', background: '#0f1a28',
-                      padding: '2px 6px', borderRadius: 3, border: '1px solid #1a2a3a',
+                      fontSize: 11, color: '#cccccc', background: '#262626',
+                      padding: '2px 6px', borderRadius: 3, border: '1px solid #3a3a3a',
                     }}>
                       {u.newName}
                     </span>
@@ -709,10 +709,10 @@ export function TicSetupPanel() {
           {/* Apply button */}
           <div style={{
             marginTop: 20, padding: '14px',
-            background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 4,
+            background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <div style={{ fontSize: 13, color: '#5a7a8a' }}>
+            <div style={{ fontSize: 13, color: '#aaaaaa' }}>
               {applied
                 ? 'Renames queued! Download your .miz to save changes.'
                 : `Ready to rename ${assignments.length} groups to TIC format.`}
@@ -765,8 +765,8 @@ function getMajority<T>(items: T[], fallback?: T): T {
 /* ------------------------------------------------------------------ */
 
 const btnStyle: React.CSSProperties = {
-  background: '#1a2a3a',
-  border: '1px solid #2a3a4a',
+  background: '#3a3a3a',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
   color: '#4a8fd4',
   cursor: 'pointer',
@@ -785,10 +785,10 @@ const smallBtnStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#ccdae8',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '6px 8px',
   outline: 'none',

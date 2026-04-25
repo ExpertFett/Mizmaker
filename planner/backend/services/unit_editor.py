@@ -1239,6 +1239,29 @@ def _replace_briefing_fields(text: str, value: dict) -> str:
     return text
 
 
+def _find_coalition_block_bounds(text: str) -> tuple[int, int] | None:
+    """Return (start, end_exclusive) of the singular ["coalition"] = {...} block.
+
+    DCS mission files contain multiple places where "blue"/"red"/"neutrals"
+    keys appear (trigrules, groundControl roles, etc.). Coalition-editing
+    functions MUST scope their searches to the actual ["coalition"] block.
+    """
+    m = re.search(r'\["coalition"\]\s*=\s*\n?\s*\{', text)
+    if not m:
+        return None
+    brace = text.index('{', m.start())
+    depth = 1
+    i = brace + 1
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    return brace, i  # i is just past the closing }
+
+
 def _replace_coalition_assignments(text: str, changes: dict) -> str:
     """Move countries between coalitions in the raw mission Lua text.
 
@@ -1249,31 +1272,44 @@ def _replace_coalition_assignments(text: str, changes: dict) -> str:
       ["coalition"]["blue"]["country"][N] = { ["name"] = "USA", ... }
 
     For each country, we:
-    1. Find the [N] = { ["name"] = "X", ... }, entry block
-    2. Verify which coalition it's currently in
+    1. Find the country's ["name"] entry INSIDE the ["coalition"] block
+    2. Verify which coalition it's currently in (scoped to coalition block)
     3. Remove it from the source coalition
     4. Insert it into the target coalition's ["country"] section
+       (again, scoped to the coalition block — NOT the first ["red"] match,
+       which may be inside trigrules or groundControl.roles)
     """
     for country_name, target_coal in changes.items():
         if target_coal not in ("blue", "red", "neutrals"):
             continue
 
-        # --- Step 1: Find ["name"] = "CountryName" in the text ---
+        # Re-resolve the coalition block each iteration since prior edits
+        # may have shifted offsets.
+        coal_bounds = _find_coalition_block_bounds(text)
+        if not coal_bounds:
+            continue
+        coal_start, coal_end = coal_bounds
+
+        # --- Step 1: Find ["name"] = "CountryName" WITHIN the coalition block ---
         name_pat = rf'\["name"\]\s*=\s*"{re.escape(country_name)}"'
-        name_match = re.search(name_pat, text)
+        name_match = re.search(name_pat, text[coal_start:coal_end])
         if not name_match:
             continue
 
-        name_pos = name_match.start()
+        name_pos = coal_start + name_match.start()
 
         # --- Step 2: Determine current coalition ---
-        # Find the nearest ["blue"/"red"/"neutrals"] = key before this position
+        # Find the nearest ["blue"/"red"/"neutrals"] = key before this position,
+        # scoped to the coalition block only.
         current_coal = None
         best_pos = -1
         for coal in ("blue", "red", "neutrals"):
-            for m in re.finditer(rf'\["{coal}"\]\s*=', text[:name_pos]):
-                if m.start() > best_pos:
-                    best_pos = m.start()
+            # Search within coal_start..name_pos (not whole text)
+            region_before = text[coal_start:name_pos]
+            for m in re.finditer(rf'\["{coal}"\]\s*=', region_before):
+                abs_pos = coal_start + m.start()
+                if abs_pos > best_pos:
+                    best_pos = abs_pos
                     current_coal = coal
 
         if not current_coal or current_coal == target_coal:
@@ -1358,19 +1394,31 @@ def _replace_coalition_assignments(text: str, changes: dict) -> str:
             text = before + after
 
         # --- Step 5: Find the target coalition's ["country"] section ---
-        target_coal_match = re.search(rf'\["{target_coal}"\]\s*=\s*\{{', text)
+        # Re-resolve coalition bounds — prior edits above shifted offsets.
+        coal_bounds_after = _find_coalition_block_bounds(text)
+        if not coal_bounds_after:
+            continue
+        coal_start_after, coal_end_after = coal_bounds_after
+
+        # CRITICAL: scope the ["target_coal"] search to the coalition block.
+        # The un-scoped version used to land in trigrules' ["red"], corrupting
+        # the mission. Countries landed in the wrong coalition.
+        search_region = text[coal_start_after:coal_end_after]
+        target_coal_match = re.search(rf'\["{target_coal}"\]\s*=\s*\{{', search_region)
         if not target_coal_match:
             continue
+        # Convert back to absolute offsets
+        target_coal_abs_end = coal_start_after + target_coal_match.end()
 
         country_match = re.search(
             r'\["country"\]\s*=\s*\{',
-            text[target_coal_match.end():]
+            text[target_coal_abs_end:coal_end_after],
         )
         if not country_match:
             continue
 
         # Position of the { opening the country table
-        country_open = target_coal_match.end() + country_match.end() - 1
+        country_open = target_coal_abs_end + country_match.end() - 1
 
         # Find the closing } of the country table
         depth = 0
@@ -2048,7 +2096,7 @@ def _find_replace_names(text: str, find: str, replace: str, use_regex: bool,
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def apply_unit_edits(text: str, edits: list) -> str:
+def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
     """Apply surgical text replacements to the original mission Lua text.
 
     Each edit is a dict with: unitId, field, value (and sometimes groupId).
@@ -2056,111 +2104,136 @@ def apply_unit_edits(text: str, edits: list) -> str:
     teamMembers, copyLoadout, pylonChange, laserCode, groupRename, unitRename,
     livery, weather, groupTask, groupFrequency, groupModulation, skill,
     radioFrequency, onboard_num, callsign, tacan, findReplace
+
+    Returns (modified_text, results). Each result is a dict:
+      {field, status, unitId?, groupId?, reason?, textDelta?}
+    where status is one of:
+      - "applied": edit ran to completion and changed the text
+      - "noop":    edit ran but text did not change (regex didn't match,
+                   target field absent, etc.) — a likely silent failure
+      - "skipped": edit raised an exception; reason contains the message
+      - "invalid": edit was malformed (missing field/value)
+
+    This surfaces silent-failure cases to the API caller so users can
+    see when an edit they queued was dropped.
     """
+    results: list[dict] = []
     for edit in edits:
         field = edit.get("field")
         value = edit.get("value")
+        entry: dict = {"field": field or "<missing>"}
+        if edit.get("unitId") is not None:
+            entry["unitId"] = edit["unitId"]
+        if edit.get("groupId") is not None:
+            entry["groupId"] = edit["groupId"]
         if not field:
+            entry["status"] = "invalid"
+            entry["reason"] = "edit has no 'field' attribute"
+            results.append(entry)
             continue
 
+        text_before = text
+        dispatched = True  # set to False if no branch matched
         try:
             # Mission-level edits (no unitId needed)
             if field == "forcedOptions":
                 text = _replace_forced_options(text, value)
-                continue
             elif field == "briefing":
                 text = _replace_briefing_fields(text, value)
-                continue
             elif field == "coalitionReassign":
                 text = _replace_coalition_assignments(text, value)
-                continue
             elif field == "weather":
                 text = _replace_weather_block(text, value)
-                continue
             elif field == "findReplace":
                 text, _ = _find_replace_names(
                     text, value["find"], value["replace"],
                     value.get("regex", False),
                     value.get("inUnits", True), value.get("inGroups", True),
                 )
-                continue
-
-            # Group-level task insertion (SetInvisible, SetImmortal, etc.)
-            if field == "groupWrappedActions":
-                group_id = edit["groupId"]
-                text = _insert_group_wrapped_actions(text, group_id, value)
-                continue
-
             # Group-level edits
-            if field in ("groupTask", "groupFrequency", "groupModulation"):
-                group_id = edit["groupId"]
+            elif field == "groupWrappedActions":
+                text = _insert_group_wrapped_actions(text, edit["groupId"], value)
+            elif field in ("groupTask", "groupFrequency", "groupModulation"):
                 lua_field = {
                     "groupTask": "task",
                     "groupFrequency": "frequency",
                     "groupModulation": "modulation",
                 }[field]
-                text = _replace_group_field(text, group_id, lua_field, value)
-                continue
-
-            unit_id = edit.get("unitId")
-
-            if field == "voiceCallsignLabel":
-                text = _replace_prop_field(text, unit_id, "VoiceCallsignLabel", value)
+                text = _replace_group_field(text, edit["groupId"], lua_field, value)
+            # Unit-level edits
+            elif field == "voiceCallsignLabel":
+                text = _replace_prop_field(text, edit.get("unitId"), "VoiceCallsignLabel", value)
             elif field == "voiceCallsignNumber":
-                text = _replace_prop_field(text, unit_id, "VoiceCallsignNumber", value)
+                text = _replace_prop_field(text, edit.get("unitId"), "VoiceCallsignNumber", value)
             elif field == "stnL16":
-                text = _replace_prop_field(text, unit_id, "STN_L16", value)
+                text = _replace_prop_field(text, edit.get("unitId"), "STN_L16", value)
             elif field == "donors":
-                text = _replace_donors(text, unit_id, value)
+                text = _replace_donors(text, edit.get("unitId"), value)
             elif field == "teamMembers":
-                text = _replace_team_members(text, unit_id, value)
+                text = _replace_team_members(text, edit.get("unitId"), value)
             elif field == "copyLoadout":
-                text = _copy_payload_block(text, source_uid=value, target_uid=unit_id)
+                text = _copy_payload_block(text, source_uid=value, target_uid=edit.get("unitId"))
             elif field == "pylonChange":
-                text = _replace_pylon_clsid(text, unit_id, value["pylon"], value["clsid"],
+                text = _replace_pylon_clsid(text, edit.get("unitId"), value["pylon"], value["clsid"],
                                             value.get("settings"))
             elif field == "laserCode":
-                text = _replace_laser_code(text, unit_id, int(value))
+                text = _replace_laser_code(text, edit.get("unitId"), int(value))
             elif field == "groupRename":
                 text = _rename_group_and_units(text, value["groupId"],
                                                value.get("newGroupName"),
                                                value.get("unitNames", {}))
             elif field == "unitRename":
-                text = _replace_unit_name(text, unit_id, value)
+                text = _replace_unit_name(text, edit.get("unitId"), value)
             elif field == "livery":
-                text = _replace_livery(text, unit_id, value)
+                text = _replace_livery(text, edit.get("unitId"), value)
             elif field == "skill":
-                text = _replace_skill(text, unit_id, value)
+                text = _replace_skill(text, edit.get("unitId"), value)
             elif field == "lateActivation":
-                text = _replace_late_activation(text, unit_id, bool(value))
+                text = _replace_late_activation(text, edit.get("unitId"), bool(value))
             elif field == "heading":
-                text = _replace_heading(text, unit_id, float(value))
+                text = _replace_heading(text, edit.get("unitId"), float(value))
             elif field == "radioFrequency":
-                text = _replace_radio_frequency(text, unit_id, int(value))
+                text = _replace_radio_frequency(text, edit.get("unitId"), int(value))
             elif field == "onboard_num":
-                text = _replace_onboard_num(text, unit_id, str(value))
+                text = _replace_onboard_num(text, edit.get("unitId"), str(value))
             elif field == "tacan":
                 text = _replace_tacan_beacon(
-                    text, unit_id,
+                    text, edit.get("unitId"),
                     int(value["channel"]), str(value.get("band", "X")),
                     str(value.get("callsign", "")),
                 )
             elif field == "icls":
-                text = _replace_icls(text, unit_id, int(value["channel"]))
+                text = _replace_icls(text, edit.get("unitId"), int(value["channel"]))
             elif field == "callsign":
                 text = _replace_callsign(
-                    text, unit_id,
+                    text, edit.get("unitId"),
                     int(value["nameIdx"]), int(value["flight"]),
                     int(value["pos"]), str(value["name"]),
                 )
             elif field == "payloadReplace":
-                text = _replace_payload_block(text, unit_id, value)
+                text = _replace_payload_block(text, edit.get("unitId"), value)
+            else:
+                dispatched = False
+
+            # Record outcome
+            if not dispatched:
+                entry["status"] = "invalid"
+                entry["reason"] = f"unknown edit field: {field}"
+            elif text == text_before:
+                entry["status"] = "noop"
+                entry["reason"] = "target field not found or value already matches"
+            else:
+                entry["status"] = "applied"
+                entry["textDelta"] = len(text) - len(text_before)
+            results.append(entry)
         except Exception as e:
             import logging, traceback
             logging.warning(
                 f"Skipping edit field={field} unit={edit.get('unitId')} group={edit.get('groupId')}: "
                 f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
             )
-            continue
+            entry["status"] = "skipped"
+            entry["reason"] = f"{type(e).__name__}: {e}"
+            results.append(entry)
 
-    return text
+    return text, results

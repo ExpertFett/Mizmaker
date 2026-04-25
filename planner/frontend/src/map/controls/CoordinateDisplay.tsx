@@ -28,16 +28,16 @@ export function CoordinateDisplay({
         padding: '3px 12px 1px',
         background: 'rgba(20, 40, 70, 0.4)',
         borderBottom: '1px solid rgba(26, 42, 58, 0.5)',
-        fontSize: 9, color: '#3a5a6a', textAlign: 'center', letterSpacing: 2,
+        fontSize: 9, color: '#4a4a4a', textAlign: 'center', letterSpacing: 2,
         userSelect: 'none',
       }}>⠿</div>
       <div
         ref={coordRef}
         style={{
-          color: '#8fa8c0',
+          color: '#cccccc',
           padding: '4px 12px 6px',
           fontSize: 12,
-          fontFamily: 'monospace',
+          fontFamily: "'B612 Mono', monospace",
           pointerEvents: 'none',
           lineHeight: 1.6,
         }}

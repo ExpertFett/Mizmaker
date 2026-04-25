@@ -37,7 +37,7 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
       <div style={containerStyle}>
         <div style={cardStyle}>
           <h2 style={{ color: '#4a8fd4', margin: '0 0 12px' }}>Joining Session...</h2>
-          <p style={{ color: '#5a7a8a', fontSize: 14 }}>Loading mission data</p>
+          <p style={{ color: '#aaaaaa', fontSize: 14 }}>Loading mission data</p>
         </div>
       </div>
     );
@@ -48,8 +48,8 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
       <div style={containerStyle}>
         <div style={cardStyle}>
           <h2 style={{ color: '#d95050', margin: '0 0 12px' }}>Failed to Join</h2>
-          <p style={{ color: '#8fa8c0', fontSize: 14 }}>{error}</p>
-          <p style={{ color: '#5a7a8a', fontSize: 13, marginTop: 12 }}>
+          <p style={{ color: '#cccccc', fontSize: 14 }}>{error}</p>
+          <p style={{ color: '#aaaaaa', fontSize: 13, marginTop: 12 }}>
             The session may have expired or the invite link is invalid.
           </p>
         </div>
@@ -62,10 +62,10 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
 
 const containerStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  height: '100vh', background: '#080f1c', fontFamily: 'system-ui, sans-serif',
+  height: '100vh', background: '#1a1a1a', fontFamily: 'system-ui, sans-serif',
 };
 
 const cardStyle: React.CSSProperties = {
-  background: '#0a1520', border: '1px solid #1a3a5a', borderRadius: 8,
+  background: '#222222', border: '1px solid #4a4a4a', borderRadius: 8,
   padding: '30px 40px', textAlign: 'center', maxWidth: 400,
 };

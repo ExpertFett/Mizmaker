@@ -7,3 +7,8 @@ srtm.py>=0.3.7
 gunicorn>=22.0
 gevent>=24.0
 pydcs @ https://github.com/dcs-retribution/pydcs/archive/refs/heads/retribution.tar.gz
+# Brief generator — squadron PPTX template token replacement
+python-pptx>=1.0
+# PDF rasterization for PNG/JPG slide export (uses bundled libpdfium)
+pypdfium2>=4.0
+

@@ -11,7 +11,7 @@ import { isPlayerGroup, isCarrierGroup } from '../../utils/groups';
 const COALITION_COLORS: Record<string, string> = {
   blue: '#4a8fd4',
   red: '#d95050',
-  neutrals: '#8fa8c0',
+  neutrals: '#cccccc',
 };
 
 const AIR_CATEGORIES = new Set(['plane', 'helicopter']);

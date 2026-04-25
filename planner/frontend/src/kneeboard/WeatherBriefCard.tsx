@@ -131,7 +131,7 @@ export function WeatherBriefCard({ overview }: WeatherBriefCardProps) {
       <div style={{
         padding: '6px 16px',
         background: '#222',
-        fontFamily: 'monospace',
+        fontFamily: "'B612 Mono', monospace",
         fontSize: 16,
         color: TEXT,
         letterSpacing: 0.5,

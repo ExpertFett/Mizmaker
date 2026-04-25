@@ -296,7 +296,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
           </div>
           {/* METAR-style compact summary */}
           <div style={{
-            fontFamily: 'monospace',
+            fontFamily: "'B612 Mono', monospace",
             fontSize: 15,
             color: TEXT_MUTED,
             padding: '3px 0 6px',

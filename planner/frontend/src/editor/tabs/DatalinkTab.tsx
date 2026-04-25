@@ -166,7 +166,7 @@ export function DatalinkTab() {
 
   if (clientUnits.length === 0) {
     return (
-      <div style={{ color: '#5a7a8a', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No client (player) units with datalinks found in this mission.
       </div>
     );
@@ -177,17 +177,17 @@ export function DatalinkTab() {
       {/* Header */}
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Datalink &amp; Callsign Editor
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
             Click a group to expand. Edit callsigns, STN L16 addresses, donors, and team members.
           </p>
         </div>
         <button
           onClick={handleAutoAssignAll}
           style={{
-            background: '#1a3a5a', border: '1px solid #2a5a8a', borderRadius: 4,
+            background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
             color: '#6ab4f0', padding: '6px 16px', fontSize: 13, cursor: 'pointer',
             fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
           }}
@@ -197,17 +197,17 @@ export function DatalinkTab() {
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         {/* Coalition pills */}
-        <div style={{ display: 'flex', gap: 2, background: '#0a1520', borderRadius: 4, border: '1px solid #1a2a3a', padding: 2 }}>
+        <div style={{ display: 'flex', gap: 2, background: '#222222', borderRadius: 4, border: '1px solid #3a3a3a', padding: 2 }}>
           {(['all', 'blue', 'red'] as const).map((c) => (
             <button
               key={c}
               onClick={() => setCoalitionFilter(c)}
               style={{
-                background: coalitionFilter === c ? (c === 'blue' ? '#1a2a4a' : c === 'red' ? '#3a1a1a' : '#1a2a3a') : 'transparent',
+                background: coalitionFilter === c ? (c === 'blue' ? '#262626' : c === 'red' ? '#3a1a1a' : '#3a3a3a') : 'transparent',
                 border: 'none', borderRadius: 3,
                 color: coalitionFilter === c
-                  ? (c === 'blue' ? '#4a8fd4' : c === 'red' ? '#d95050' : '#ccdae8')
-                  : '#5a7a8a',
+                  ? (c === 'blue' ? '#4a8fd4' : c === 'red' ? '#d95050' : '#e0e0e0')
+                  : '#aaaaaa',
                 cursor: 'pointer', fontSize: 12, fontWeight: coalitionFilter === c ? 600 : 400,
                 padding: '4px 10px', textTransform: 'uppercase',
               }}
@@ -217,7 +217,7 @@ export function DatalinkTab() {
           ))}
         </div>
 
-        <span style={{ fontSize: 13, color: '#5a7a8a', marginLeft: 'auto' }}>
+        <span style={{ fontSize: 13, color: '#aaaaaa', marginLeft: 'auto' }}>
           {grouped.size} group{grouped.size !== 1 ? 's' : ''}, {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
         </span>
       </div>
@@ -280,9 +280,9 @@ function GroupCard({
   return (
     <div style={{
       marginBottom: 8,
-      border: '1px solid #1a2a3a',
+      border: '1px solid #3a3a3a',
       borderRadius: 6,
-      background: '#0a1520',
+      background: '#222222',
       overflow: 'hidden',
     }}>
       {/* Group header */}
@@ -295,31 +295,31 @@ function GroupCard({
           gap: 10,
           cursor: 'pointer',
           borderLeft: `3px solid ${coalitionColor}`,
-          background: isExpanded ? '#0c1825' : 'transparent',
+          background: isExpanded ? '#1a1a1a' : 'transparent',
         }}
       >
-        <span style={{ color: '#5a7a8a', fontSize: 12, userSelect: 'none', width: 12 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 12, userSelect: 'none', width: 12 }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
 
         <span style={{
           background: coalitionColor,
-          color: '#080f1c', fontSize: 10, fontWeight: 700,
+          color: '#1a1a1a', fontSize: 10, fontWeight: 700,
           padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase',
           letterSpacing: 0.5,
         }}>
           {coalition}
         </span>
 
-        <span style={{ color: '#ccdae8', fontWeight: 600, fontSize: 15 }}>
+        <span style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 15 }}>
           {groupName}
         </span>
 
-        <span style={{ color: '#5a7a8a', fontSize: 13 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
           {type}
         </span>
 
-        <span style={{ color: '#3a5a6a', fontSize: 12 }}>
+        <span style={{ color: '#4a4a4a', fontSize: 12 }}>
           {units.length} unit{units.length !== 1 ? 's' : ''}
         </span>
 
@@ -327,9 +327,9 @@ function GroupCard({
         <div style={{ display: 'flex', gap: 4, flex: 1, justifyContent: 'flex-end', overflow: 'hidden' }}>
           {callsignSummary.map((cs, i) => (
             <span key={i} style={{
-              fontSize: 11, color: '#8fa8c0', background: '#0f1a28',
-              padding: '1px 8px', borderRadius: 10, border: '1px solid #1a2a3a',
-              fontFamily: 'monospace', whiteSpace: 'nowrap',
+              fontSize: 11, color: '#cccccc', background: '#262626',
+              padding: '1px 8px', borderRadius: 10, border: '1px solid #3a3a3a',
+              fontFamily: "'B612 Mono', monospace", whiteSpace: 'nowrap',
             }}>
               {cs}
             </span>
@@ -343,7 +343,7 @@ function GroupCard({
               <span key={u.unitId} style={{
                 fontSize: 10, color: '#d29922', background: '#1a1a10',
                 padding: '1px 6px', borderRadius: 10, border: '1px solid #2a2a1a',
-                fontFamily: 'monospace', whiteSpace: 'nowrap',
+                fontFamily: "'B612 Mono', monospace", whiteSpace: 'nowrap',
               }}>
                 {u.stnL16}
               </span>
@@ -354,7 +354,7 @@ function GroupCard({
 
       {/* Expanded unit cards */}
       {isExpanded && (
-        <div style={{ borderTop: '1px solid #1a2a3a' }}>
+        <div style={{ borderTop: '1px solid #3a3a3a' }}>
           {units.map((unit) => (
             <UnitCard
               key={unit.unitId}
@@ -399,7 +399,7 @@ function UnitCard({
   return (
     <div style={{
       padding: '12px 16px 12px 32px',
-      borderBottom: '1px solid #0f1a28',
+      borderBottom: '1px solid #262626',
     }}>
       {/* Row 1: Unit name + identity fields */}
       <div style={{
@@ -407,11 +407,11 @@ function UnitCard({
         flexWrap: 'wrap',
       }}>
         {/* Unit name */}
-        <span style={{ color: '#8fa8c0', fontWeight: 500, fontSize: 14, minWidth: 100 }}>
+        <span style={{ color: '#cccccc', fontWeight: 500, fontSize: 14, minWidth: 100 }}>
           {unit.name}
         </span>
 
-        <span style={{ color: '#3a5a6a', fontSize: 12 }}>{unit.type}</span>
+        <span style={{ color: '#4a4a4a', fontSize: 12 }}>{unit.type}</span>
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
@@ -456,10 +456,10 @@ function UnitCard({
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         {/* Donors */}
         <div style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
             Donors
             {unit.donors.length > 0 && (
-              <span style={{ color: '#3a5a6a', fontWeight: 400, marginLeft: 4 }}>({unit.donors.length})</span>
+              <span style={{ color: '#4a4a4a', fontWeight: 400, marginLeft: 4 }}>({unit.donors.length})</span>
             )}
           </div>
           <TagList
@@ -474,10 +474,10 @@ function UnitCard({
 
         {/* Team Members */}
         <div style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <div style={{ fontSize: 11, color: '#5a7a8a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
             Team Members
             {unit.teamMembers.length > 0 && (
-              <span style={{ color: '#3a5a6a', fontWeight: 400, marginLeft: 4 }}>({unit.teamMembers.length})</span>
+              <span style={{ color: '#4a4a4a', fontWeight: 400, marginLeft: 4 }}>({unit.teamMembers.length})</span>
             )}
           </div>
           <TagList
@@ -539,12 +539,12 @@ function TagList({ items, onRemove, onAdd, allUnits, excludeIds, emptyText }: Ta
     <div ref={containerRef} style={{ position: 'relative' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
         {items.length === 0 && !picking && (
-          <span style={{ fontSize: 12, color: '#2a3a4a', fontStyle: 'italic' }}>{emptyText}</span>
+          <span style={{ fontSize: 12, color: '#3a3a3a', fontStyle: 'italic' }}>{emptyText}</span>
         )}
         {items.map((item) => (
           <span key={item.missionUnitId} style={tagStyle}>
-            <span style={{ color: '#ccdae8', fontSize: 12 }}>{item.name}</span>
-            <span style={{ color: '#3a5a6a', fontSize: 10, marginLeft: 2 }}>{item.type}</span>
+            <span style={{ color: '#e0e0e0', fontSize: 12 }}>{item.name}</span>
+            <span style={{ color: '#4a4a4a', fontSize: 10, marginLeft: 2 }}>{item.type}</span>
             <button
               onClick={() => onRemove(item.missionUnitId)}
               style={tagRemoveBtn}
@@ -574,10 +574,10 @@ function TagList({ items, onRemove, onAdd, allUnits, excludeIds, emptyText }: Ta
           />
           <div style={{ maxHeight: 180, overflow: 'auto' }}>
             {filtered.length === 0 && (
-              <div style={{ padding: '8px 10px', color: '#5a7a8a', fontSize: 12 }}>No matches</div>
+              <div style={{ padding: '8px 10px', color: '#aaaaaa', fontSize: 12 }}>No matches</div>
             )}
             {filtered.map((u) => {
-              const uCoalColor = u.coalition === 'blue' ? '#4a8fd4' : u.coalition === 'red' ? '#d95050' : '#5a7a8a';
+              const uCoalColor = u.coalition === 'blue' ? '#4a8fd4' : u.coalition === 'red' ? '#d95050' : '#aaaaaa';
               return (
                 <div
                   key={u.unitId}
@@ -587,16 +587,16 @@ function TagList({ items, onRemove, onAdd, allUnits, excludeIds, emptyText }: Ta
                     setSearch('');
                   }}
                   style={pickerItemStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#1a2a3a'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#3a3a3a'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <span style={{
                     width: 4, height: 4, borderRadius: '50%', background: uCoalColor,
                     flexShrink: 0,
                   }} />
-                  <span style={{ color: '#ccdae8', fontSize: 13 }}>{u.name}</span>
-                  <span style={{ color: '#5a7a8a', fontSize: 11 }}>{u.type}</span>
-                  <span style={{ color: '#3a5a6a', fontSize: 11, marginLeft: 'auto' }}>{u.groupName}</span>
+                  <span style={{ color: '#e0e0e0', fontSize: 13 }}>{u.name}</span>
+                  <span style={{ color: '#aaaaaa', fontSize: 11 }}>{u.type}</span>
+                  <span style={{ color: '#4a4a4a', fontSize: 11, marginLeft: 'auto' }}>{u.groupName}</span>
                 </div>
               );
             })}
@@ -613,17 +613,17 @@ function TagList({ items, onRemove, onAdd, allUnits, excludeIds, emptyText }: Ta
 
 const fieldLabelStyle: React.CSSProperties = {
   fontSize: 11,
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   fontWeight: 600,
   letterSpacing: 0.5,
 };
 
 const monoInputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#ccdae8',
-  fontFamily: 'monospace',
+  color: '#e0e0e0',
+  fontFamily: "'B612 Mono', monospace",
   fontSize: 14,
   padding: '5px 8px',
   outline: 'none',
@@ -634,18 +634,18 @@ const tagStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
   padding: '3px 8px',
   fontSize: 12,
-  color: '#8fa8c0',
+  color: '#cccccc',
 };
 
 const tagRemoveBtn: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 12,
   padding: '0 2px',
@@ -655,7 +655,7 @@ const tagRemoveBtn: React.CSSProperties = {
 
 const addBtnStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px dashed #1a2a3a',
+  border: '1px dashed #3a3a3a',
   borderRadius: 4,
   color: '#4a8fd4',
   cursor: 'pointer',
@@ -669,8 +669,8 @@ const pickerStyle: React.CSSProperties = {
   top: '100%',
   left: 0,
   zIndex: 10,
-  background: '#0a1520',
-  border: '1px solid #1a3a5a',
+  background: '#222222',
+  border: '1px solid #4a4a4a',
   borderRadius: 6,
   width: 300,
   marginTop: 6,
@@ -681,10 +681,10 @@ const pickerStyle: React.CSSProperties = {
 const pickerInputStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
-  background: '#0f1a28',
+  background: '#262626',
   border: 'none',
-  borderBottom: '1px solid #1a2a3a',
-  color: '#ccdae8',
+  borderBottom: '1px solid #3a3a3a',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '10px 12px',
   outline: 'none',

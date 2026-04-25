@@ -28,7 +28,7 @@ const JTAC_CAPABLE_TYPES = new Set([
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  background: '#0c1824', border: '1px solid #1a3a5a', borderRadius: 6,
+  background: '#1a1a1a', border: '1px solid #4a4a4a', borderRadius: 6,
   padding: 14, marginBottom: 12,
 };
 
@@ -40,7 +40,7 @@ const rowStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '7px 10px', borderRadius: 4, marginBottom: 3,
   fontSize: 12, background: 'rgba(74, 143, 212, 0.04)',
-  border: '1px solid #12202e',
+  border: '1px solid #222222',
 };
 
 const badgeStyle: React.CSSProperties = {
@@ -49,7 +49,7 @@ const badgeStyle: React.CSSProperties = {
 };
 
 const btnSmall: React.CSSProperties = {
-  background: '#1a2a3a', border: '1px solid #2a3a4a', borderRadius: 4,
+  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
   color: '#4a8fd4', cursor: 'pointer', fontSize: 11, fontWeight: 600,
   padding: '4px 10px', fontFamily: 'inherit',
 };
@@ -61,8 +61,8 @@ const btnActive: React.CSSProperties = {
 };
 
 const inputSmall: React.CSSProperties = {
-  width: 70, background: '#0a1218', border: '1px solid #1a2a3a',
-  borderRadius: 3, color: '#ccdae8', fontSize: 11, padding: '3px 6px',
+  width: 70, background: '#0a1218', border: '1px solid #3a3a3a',
+  borderRadius: 3, color: '#e0e0e0', fontSize: 11, padding: '3px 6px',
   fontFamily: 'inherit', textAlign: 'center',
 };
 
@@ -190,31 +190,31 @@ export function BattlefieldCommandersTab() {
   return (
     <div style={{ maxWidth: 850 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Battlefield Commanders
         </h2>
         {hasChanges && !applied && (
           <button onClick={handleReset} style={{
-            background: 'transparent', border: '1px solid #2a3a4a', borderRadius: 4,
-            color: '#5a7a8a', cursor: 'pointer', fontSize: 12,
+            background: 'transparent', border: '1px solid #3a3a3a', borderRadius: 4,
+            color: '#aaaaaa', cursor: 'pointer', fontSize: 12,
             padding: '5px 12px', fontFamily: 'inherit',
           }}>
             Reset
           </button>
         )}
       </div>
-      <p style={{ margin: '0 0 6px', fontSize: 12, color: '#5a7a8a' }}>
+      <p style={{ margin: '0 0 6px', fontSize: 12, color: '#aaaaaa' }}>
         Set up Combined Arms player slots and JTAC designations for ground and naval units.
       </p>
-      <p style={{ margin: '0 0 14px', fontSize: 11, color: '#3a5a6a' }}>
+      <p style={{ margin: '0 0 14px', fontSize: 11, color: '#4a4a4a' }}>
         Combined Arms slots let players control ground units in-game. JTAC units provide laser designation and close air support coordination.
       </p>
 
       {groundGroups.length === 0 ? (
         <div style={{
           padding: '24px 16px', background: 'rgba(74, 143, 212, 0.04)',
-          borderRadius: 6, border: '1px solid #1a3a5a', textAlign: 'center',
-          color: '#5a7a8a', fontSize: 13,
+          borderRadius: 6, border: '1px solid #4a4a4a', textAlign: 'center',
+          color: '#aaaaaa', fontSize: 13,
         }}>
           No ground or naval groups found. Upload a mission with vehicle or ship units.
         </div>
@@ -230,7 +230,7 @@ export function BattlefieldCommandersTab() {
                 <div style={{ ...sectionLabel, color, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
                   {coal === 'neutrals' ? 'NEUTRAL' : coal.toUpperCase()} FORCES
-                  <span style={{ fontSize: 11, fontWeight: 400, color: '#5a7a8a', marginLeft: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: '#aaaaaa', marginLeft: 4 }}>
                     {coalGroups.length} group{coalGroups.length !== 1 ? 's' : ''} / {coalGroups.reduce((s, g) => s + g.units.length, 0)} units
                   </span>
                 </div>
@@ -239,7 +239,7 @@ export function BattlefieldCommandersTab() {
                   <div key={group.groupId} style={{ marginBottom: 8 }}>
                     {/* Group header */}
                     <div style={{
-                      fontSize: 12, fontWeight: 600, color: '#8a9aaa',
+                      fontSize: 12, fontWeight: 600, color: '#bbbbbb',
                       padding: '4px 10px', marginBottom: 2,
                       display: 'flex', alignItems: 'center', gap: 8,
                     }}>
@@ -252,7 +252,7 @@ export function BattlefieldCommandersTab() {
                         {group.category === 'ship' ? 'NAVAL' : 'GROUND'}
                       </span>
                       {group.task && (
-                        <span style={{ fontSize: 10, color: '#3a5a6a' }}>
+                        <span style={{ fontSize: 10, color: '#4a4a4a' }}>
                           Task: {group.task}
                         </span>
                       )}
@@ -271,14 +271,14 @@ export function BattlefieldCommandersTab() {
                       return (
                         <div key={unit.unitId} style={{
                           ...rowStyle,
-                          borderColor: caChanged || jtacConfig ? '#4a8fd430' : '#12202e',
+                          borderColor: caChanged || jtacConfig ? '#4a8fd430' : '#222222',
                           background: caChanged || jtacConfig ? 'rgba(74, 143, 212, 0.06)' : 'rgba(74, 143, 212, 0.04)',
                         }}>
                           {/* Unit info */}
-                          <span style={{ color: '#ccdae8', minWidth: 140, fontWeight: 500 }}>
+                          <span style={{ color: '#e0e0e0', minWidth: 140, fontWeight: 500 }}>
                             {unit.name}
                           </span>
-                          <span style={{ color: '#5a7a8a', minWidth: 120, fontSize: 11 }}>
+                          <span style={{ color: '#aaaaaa', minWidth: 120, fontSize: 11 }}>
                             {unit.type}
                           </span>
 
@@ -286,7 +286,7 @@ export function BattlefieldCommandersTab() {
                           <span style={{
                             ...badgeStyle,
                             background: willBePlayer ? 'rgba(63, 185, 80, 0.15)' : 'rgba(90, 122, 138, 0.15)',
-                            color: willBePlayer ? '#3fb950' : '#5a7a8a',
+                            color: willBePlayer ? '#3fb950' : '#aaaaaa',
                           }}>
                             {willBePlayer ? 'PLAYER' : unit.skill}
                           </span>
@@ -313,7 +313,7 @@ export function BattlefieldCommandersTab() {
 
                               {jtacConfig && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <span style={{ fontSize: 10, color: '#5a7a8a' }}>Laser:</span>
+                                  <span style={{ fontSize: 10, color: '#aaaaaa' }}>Laser:</span>
                                   <input
                                     type="number"
                                     value={jtacConfig.laserCode}
@@ -322,7 +322,7 @@ export function BattlefieldCommandersTab() {
                                     min={1111}
                                     max={1788}
                                   />
-                                  <span style={{ fontSize: 10, color: '#5a7a8a', marginLeft: 4 }}>Freq:</span>
+                                  <span style={{ fontSize: 10, color: '#aaaaaa', marginLeft: 4 }}>Freq:</span>
                                   <input
                                     type="number"
                                     value={jtacConfig.frequency / 1e6}
@@ -330,7 +330,7 @@ export function BattlefieldCommandersTab() {
                                     style={{ ...inputSmall, width: 65 }}
                                     step={0.025}
                                   />
-                                  <span style={{ fontSize: 10, color: '#3a5a6a' }}>MHz</span>
+                                  <span style={{ fontSize: 10, color: '#4a4a4a' }}>MHz</span>
                                 </div>
                               )}
                             </>
@@ -347,7 +347,7 @@ export function BattlefieldCommandersTab() {
           {/* Apply bar */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
-            padding: '10px 0', borderTop: '1px solid #1a2a3a',
+            padding: '10px 0', borderTop: '1px solid #3a3a3a',
           }}>
             <button
               onClick={handleApply}

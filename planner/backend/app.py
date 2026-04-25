@@ -150,6 +150,23 @@ def _get_session(sid):
 
 
 # --------------------------------------------------------------------------
+# Health — liveness probe for smoke tests, dev scripts, and future uptime
+# monitoring. Cheap and side-effect-free. Also reports session count so
+# `curl /api/health` is useful for eyeballing server state.
+# --------------------------------------------------------------------------
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    with _lock:
+        n_sessions = len(sessions)
+    return jsonify({
+        "status": "ok",
+        "sessions": n_sessions,
+        "sessions_max": MAX_SESSIONS,
+    })
+
+
+# --------------------------------------------------------------------------
 # Upload — returns full mission data including 856-equivalent extraction
 # --------------------------------------------------------------------------
 
@@ -742,12 +759,16 @@ def download():
             except Exception:
                 pass
             original_len = len(mission_text)
-            mission_text = apply_unit_edits(mission_text, unit_edits)
+            mission_text, edit_results = apply_unit_edits(mission_text, unit_edits)
             try:
                 with open(_dbg, "a", encoding="utf-8") as _f:
                     _f.write(f"text changed: {original_len} -> {len(mission_text)} ({len(mission_text)-original_len:+d})\n")
+                    for r in edit_results:
+                        _f.write(f"  {r.get('status', '?').upper()}: {r}\n")
             except Exception:
                 pass
+        else:
+            edit_results = []
 
         # Decode kneeboard base64 data to raw bytes
         kneeboards = None
@@ -795,12 +816,40 @@ def download():
             new_options_text=new_options_text,
         )
 
-        return send_file(
+        resp = send_file(
             io.BytesIO(miz_bytes),
             mimetype="application/zip",
             as_attachment=True,
             download_name=session["filename"],
         )
+
+        # Surface edit results to the client so they can see when an edit
+        # they queued was silently dropped. Base64-encoded JSON in a custom
+        # header to avoid messing with the binary body. If results somehow
+        # exceed the header size limit (~8KB typical), truncate gracefully.
+        try:
+            import base64, json
+            payload = json.dumps({"results": edit_results}, separators=(",", ":"))
+            encoded = base64.b64encode(payload.encode("utf-8")).decode("ascii")
+            if len(encoded) <= 7000:
+                resp.headers["X-Edit-Results"] = encoded
+            else:
+                summary = {
+                    "results": [
+                        {"field": r.get("field"), "status": r.get("status")}
+                        for r in edit_results
+                    ],
+                    "truncated": True,
+                }
+                resp.headers["X-Edit-Results"] = base64.b64encode(
+                    json.dumps(summary, separators=(",", ":")).encode("utf-8"),
+                ).decode("ascii")
+            # Tell the browser to actually expose this custom header to JS
+            resp.headers["Access-Control-Expose-Headers"] = "X-Edit-Results"
+        except Exception:
+            pass
+
+        return resp
     except Exception as e:
         return jsonify({"error": f"Download failed: {str(e)}"}), 400
 
@@ -1303,6 +1352,228 @@ def audio_stream(filepath):
 # --------------------------------------------------------------------------
 
 @app.route("/", defaults={"path": ""})
+# --------------------------------------------------------------------------
+# Brief generator — squadron PowerPoint template token replacement.
+# Stateless: client posts the template + a resolved {token: value} dict,
+# server returns the rendered .pptx. Mission-data → token resolution
+# lives entirely in the frontend so the brief generator is independent
+# of mission-data shape changes.
+# --------------------------------------------------------------------------
+
+@app.route("/api/brief/scan", methods=["POST"])
+def brief_scan():
+    """Inspect a .pptx template and return the unique token paths it uses.
+
+    Request: multipart/form-data with field 'file' containing the .pptx.
+    Response: {"tokens": ["mission.theater", "flight[0].callsign", ...]}
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename or not f.filename.lower().endswith(".pptx"):
+        return jsonify({"error": "Template must be a .pptx file"}), 400
+    template_bytes = f.read()
+    if not template_bytes:
+        return jsonify({"error": "Empty template"}), 400
+
+    try:
+        from services.brief_renderer import scan_template
+        tokens = scan_template(template_bytes)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Scan failed: {e}"}), 500
+
+    return jsonify({"filename": f.filename, "tokens": tokens})
+
+
+@app.route("/api/brief/render", methods=["POST"])
+def brief_render():
+    """Substitute {{tokens}} in a .pptx template and return the rendered file.
+
+    Request: multipart/form-data with:
+      - 'file': the .pptx template
+      - 'values': JSON string of {token_path: substituted_value}
+      - 'format' (query param or form field): 'pptx' | 'pdf' | 'png' | 'jpg'
+        Default 'pptx'. PNG/JPG return a ZIP with one image per slide.
+    Tokens absent from `values` are left as literal `{{token}}` so the
+    user can spot what didn't get filled.
+
+    PDF/PNG/JPG paths require LibreOffice on the server. Returns 503 with
+    a helpful message if it's not installed.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename or not f.filename.lower().endswith(".pptx"):
+        return jsonify({"error": "Template must be a .pptx file"}), 400
+    template_bytes = f.read()
+    if not template_bytes:
+        return jsonify({"error": "Empty template"}), 400
+
+    values_raw = request.form.get("values", "{}")
+    try:
+        values = json.loads(values_raw)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"Bad values JSON: {e}"}), 400
+    if not isinstance(values, dict):
+        return jsonify({"error": "values must be a JSON object"}), 400
+    values = {k: ("" if v is None else str(v)) for k, v in values.items()}
+
+    # Format selection — accept from query param or form field.
+    fmt = (request.args.get("format") or request.form.get("format") or "pptx").lower()
+    if fmt not in ("pptx", "pdf", "png", "jpg"):
+        return jsonify({"error": f"Unsupported format: {fmt}"}), 400
+
+    try:
+        from services.brief_renderer import (
+            render_template, convert_pptx, LibreOfficeNotFoundError,
+        )
+        rendered_pptx = render_template(template_bytes, values)
+        out_bytes, mime = convert_pptx(rendered_pptx, fmt)
+    except LibreOfficeNotFoundError as e:
+        return jsonify({"error": str(e)}), 503
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Render failed: {e}"}), 500
+
+    base = f.filename[:-len(".pptx")] if f.filename.lower().endswith(".pptx") else f.filename
+    # PNG/JPG come back as a ZIP of per-slide images
+    if fmt in ("png", "jpg"):
+        out_name = f"{base}_brief_{fmt}.zip"
+    elif fmt == "pdf":
+        out_name = f"{base}_brief.pdf"
+    else:
+        out_name = f"{base}_brief.pptx"
+
+    return send_file(
+        io.BytesIO(out_bytes),
+        mimetype=mime,
+        as_attachment=True,
+        download_name=out_name,
+    )
+
+
+@app.route("/api/brief/build-wing", methods=["POST"])
+def brief_build_wing():
+    """Build a WingBrief from the session's parsed mission data.
+
+    Request: JSON {"sessionId": "..."}
+    Response: WingBrief dict — all sections pre-filled with sensible defaults
+    that the frontend editor displays for review/edit before render.
+    """
+    body = request.get_json(silent=True) or {}
+    sid = body.get("sessionId")
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    # Re-parse the mission to get a fresh structured view. The brief is
+    # built from the original (non-edited) mission text — edits the user
+    # has queued aren't applied here because the brief should reflect the
+    # baseline mission state.
+    try:
+        from services.miz_parser import parse_mission_text, extract_full_mission_data
+        from services.miz_editor import extract_dictionary_from_miz
+        from services.brief_builder import build_wing_brief
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        mission_data = extract_full_mission_data(mission_dict, session["theater"])
+        # Pull the dictionary so DictKey_* refs resolve to user-visible text.
+        dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
+        brief = build_wing_brief(
+            mission_data=mission_data,
+            theater=session["theater"],
+            filename=session.get("filename") or "",
+            dictionary_text=dictionary_text,
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Brief build failed: {e}"}), 500
+
+    return jsonify(brief)
+
+
+@app.route("/api/brief/render-wing", methods=["POST"])
+def brief_render_wing():
+    """Render an (edited) WingBrief dict to .pptx / .pdf / .png.zip / .jpg.zip.
+
+    Request: JSON {"brief": {...WingBrief...}, "format": "pptx|pdf|png|jpg"}
+    """
+    body = request.get_json(silent=True) or {}
+    brief = body.get("brief")
+    fmt = (body.get("format") or "pptx").lower()
+    if not isinstance(brief, dict):
+        return jsonify({"error": "brief object required"}), 400
+    if fmt not in ("pptx", "pdf", "png", "jpg"):
+        return jsonify({"error": f"Unsupported format: {fmt}"}), 400
+
+    try:
+        from services.brief_renderer import (
+            render_wing_brief, convert_pptx, LibreOfficeNotFoundError,
+        )
+        pptx_bytes = render_wing_brief(brief)
+        out_bytes, mime = convert_pptx(pptx_bytes, fmt)
+    except LibreOfficeNotFoundError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Render failed: {e}"}), 500
+
+    safe_name = (brief.get("mission_name") or "wing_brief").replace("/", "_").replace("\\", "_")
+    if fmt in ("png", "jpg"):
+        out_name = f"{safe_name}_wing_{fmt}.zip"
+    elif fmt == "pdf":
+        out_name = f"{safe_name}_wing.pdf"
+    else:
+        out_name = f"{safe_name}_wing.pptx"
+
+    return send_file(
+        io.BytesIO(out_bytes), mimetype=mime, as_attachment=True, download_name=out_name,
+    )
+
+
+@app.route("/api/brief/sample-template", methods=["GET"])
+def brief_sample_template():
+    """Return a starter .pptx template populated with every supported token.
+
+    Squadrons can download this, drop their logo + restyle in PowerPoint,
+    and re-upload as their custom template. Generated on the fly so it
+    never drifts from the documented token list.
+    """
+    from services.brief_renderer import generate_default_template
+    pptx_bytes = generate_default_template()
+    return send_file(
+        io.BytesIO(pptx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        as_attachment=True,
+        download_name="mission_brief_template.pptx",
+    )
+
+
+@app.route("/api/brief/capabilities", methods=["GET"])
+def brief_capabilities():
+    """Report which output formats this server can produce.
+
+    Used by the frontend to disable PDF/PNG/JPG options when LibreOffice
+    isn't installed (e.g. local dev), so the user gets a clear UI cue
+    instead of a surprise 503.
+    """
+    from services.brief_renderer import is_conversion_available
+    has_libreoffice = is_conversion_available()
+    return jsonify({
+        "formats": ["pptx"] + (["pdf", "png", "jpg"] if has_libreoffice else []),
+        "libreoffice": has_libreoffice,
+    })
+
+
 @app.route("/<path:path>")
 def serve_frontend(path):
     # Serve actual static files (JS, CSS, images) if they exist

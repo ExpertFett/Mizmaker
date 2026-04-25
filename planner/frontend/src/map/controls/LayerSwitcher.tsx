@@ -22,7 +22,7 @@ const BASE_MAPS = [
 ];
 
 const VIEW_MODES: { id: ViewMode; label: string; color: string }[] = [
-  { id: 'all', label: 'All', color: '#ccdae8' },
+  { id: 'all', label: 'All', color: '#e0e0e0' },
   { id: 'blue', label: 'Blue', color: '#4a8fd4' },
   { id: 'red', label: 'Red', color: '#d95050' },
   { id: 'players', label: 'Players', color: '#3fb950' },
@@ -60,7 +60,7 @@ export function LayerSwitcher() {
           zIndex: 10000,
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 4,
-          border: '1px solid #1a3a5a',
+          border: '1px solid #4a4a4a',
           borderRight: 'none',
         }}
         title="Show layers"
@@ -68,7 +68,7 @@ export function LayerSwitcher() {
         <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
         <span style={{
           writingMode: 'vertical-lr',
-          color: '#5a7a8a', fontSize: 10, fontWeight: 600,
+          color: '#aaaaaa', fontSize: 10, fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>LAYERS</span>
       </div>
@@ -104,13 +104,13 @@ export function LayerSwitcher() {
           ...handleProps.style,
           flex: 1,
           padding: '4px 14px 2px',
-          fontSize: 9, color: '#3a5a6a', textAlign: 'center', letterSpacing: 2,
+          fontSize: 9, color: '#4a4a4a', textAlign: 'center', letterSpacing: 2,
           userSelect: 'none',
         }}>⠿</div>
         <button
           onClick={() => setCollapsed(true)}
           style={{
-            background: 'none', border: 'none', color: '#3a5a6a',
+            background: 'none', border: 'none', color: '#4a4a4a',
             cursor: 'pointer', fontSize: 11, padding: '3px 8px',
             lineHeight: 1,
           }}
@@ -119,7 +119,7 @@ export function LayerSwitcher() {
       </div>
           <div style={{ padding: '8px 14px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {/* View mode */}
-            <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>View</div>
               <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                 {VIEW_MODES.map((vm) => (
@@ -128,10 +128,10 @@ export function LayerSwitcher() {
                     onClick={() => setViewMode(vm.id)}
                     style={{
                       flex: 1, padding: '4px 5px', fontSize: 12,
-                      background: viewMode === vm.id ? 'rgba(255,255,255,0.08)' : '#0f1a28',
-                      border: `1px solid ${viewMode === vm.id ? vm.color : '#1a2a3a'}`,
+                      background: viewMode === vm.id ? 'rgba(255,255,255,0.08)' : '#262626',
+                      border: `1px solid ${viewMode === vm.id ? vm.color : '#3a3a3a'}`,
                       borderRadius: 3,
-                      color: viewMode === vm.id ? vm.color : '#5a7a8a',
+                      color: viewMode === vm.id ? vm.color : '#aaaaaa',
                       cursor: 'pointer', fontWeight: viewMode === vm.id ? 600 : 400,
                     }}
                   >
@@ -142,7 +142,7 @@ export function LayerSwitcher() {
             </div>
 
             {/* Base map */}
-            <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>Base Map</div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {BASE_MAPS.map((bm) => (
@@ -151,10 +151,10 @@ export function LayerSwitcher() {
                     onClick={() => setBaseMap(bm.id)}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: 12,
-                      background: (layers.baseMap || 'dark') === bm.id ? '#1a3a5a' : '#0f1a28',
-                      border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#4a8fd4' : '#1a2a3a'}`,
+                      background: (layers.baseMap || 'dark') === bm.id ? '#4a4a4a' : '#262626',
+                      border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#4a8fd4' : '#3a3a3a'}`,
                       borderRadius: 3,
-                      color: (layers.baseMap || 'dark') === bm.id ? '#ccdae8' : '#5a7a8a',
+                      color: (layers.baseMap || 'dark') === bm.id ? '#e0e0e0' : '#aaaaaa',
                       cursor: 'pointer',
                     }}
                   >
@@ -166,7 +166,7 @@ export function LayerSwitcher() {
 
             {/* Map Language (only relevant for Street map) */}
             {(layers.baseMap || 'dark') === 'osm' && (
-              <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
+              <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
                 <div style={sectionLabel}>Labels</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {[
@@ -178,10 +178,10 @@ export function LayerSwitcher() {
                       onClick={() => setMapLang(l.id)}
                       style={{
                         flex: 1, padding: '4px 6px', fontSize: 12,
-                        background: (layers.mapLang || 'en') === l.id ? '#1a3a5a' : '#0f1a28',
-                        border: `1px solid ${(layers.mapLang || 'en') === l.id ? '#4a8fd4' : '#1a2a3a'}`,
+                        background: (layers.mapLang || 'en') === l.id ? '#4a4a4a' : '#262626',
+                        border: `1px solid ${(layers.mapLang || 'en') === l.id ? '#4a8fd4' : '#3a3a3a'}`,
                         borderRadius: 3,
-                        color: (layers.mapLang || 'en') === l.id ? '#ccdae8' : '#5a7a8a',
+                        color: (layers.mapLang || 'en') === l.id ? '#e0e0e0' : '#aaaaaa',
                         cursor: 'pointer',
                       }}
                     >
@@ -193,7 +193,7 @@ export function LayerSwitcher() {
             )}
 
             {/* Layers */}
-            <div style={{ borderBottom: '1px solid #1a2a3a', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>Layers</div>
               {OVERLAY_LAYERS.map((l) => (
                 <label key={l.id} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 13 }}>
@@ -211,10 +211,10 @@ export function LayerSwitcher() {
                   onClick={() => setMeasureMode(!measureMode)}
                   style={{
                     padding: '6px 10px', fontSize: 13,
-                    background: measureMode ? '#3a3a1a' : '#0f1a28',
-                    border: `1px solid ${measureMode ? '#d29922' : '#1a2a3a'}`,
+                    background: measureMode ? '#3a3a1a' : '#262626',
+                    border: `1px solid ${measureMode ? '#d29922' : '#3a3a3a'}`,
                     borderRadius: 4, textAlign: 'left',
-                    color: measureMode ? '#d29922' : '#ccdae8', cursor: 'pointer',
+                    color: measureMode ? '#d29922' : '#e0e0e0', cursor: 'pointer',
                   }}
                 >
                   {measureMode ? '\u{1F4CF} Measuring... (Esc)' : '\u{1F4CF} Measure'}
@@ -222,10 +222,10 @@ export function LayerSwitcher() {
 
                 <label style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                  background: adminMode ? 'rgba(210, 153, 34, 0.1)' : '#0f1a28',
-                  border: `1px solid ${adminMode ? '#d29922' : '#1a2a3a'}`,
+                  background: adminMode ? 'rgba(210, 153, 34, 0.1)' : '#262626',
+                  border: `1px solid ${adminMode ? '#d29922' : '#3a3a3a'}`,
                   borderRadius: 4, cursor: 'pointer', fontSize: 13,
-                  color: adminMode ? '#d29922' : '#ccdae8',
+                  color: adminMode ? '#d29922' : '#e0e0e0',
                 }}>
                   <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)}
                     style={{ accentColor: '#d29922' }} />
@@ -240,6 +240,6 @@ export function LayerSwitcher() {
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontSize: 11, color: '#5a7a8a', marginBottom: 4,
+  fontSize: 11, color: '#aaaaaa', marginBottom: 4,
   textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600,
 };

@@ -39,8 +39,11 @@ export function populateThreatLayer(
   source.clear();
 
   let filtered = threats;
+  // Match the literal coalition label — "Blue" means blue only, not
+  // "blue's perspective". Threats from the opposing side are still
+  // accessible via the Threats layer toggle in 'all' mode.
   if (viewMode === 'red') filtered = threats.filter((t) => t.coalition === 'red');
-  else if (viewMode === 'blue') filtered = threats.filter((t) => t.coalition === 'blue' || t.coalition === 'red');
+  else if (viewMode === 'blue') filtered = threats.filter((t) => t.coalition === 'blue');
   else if (viewMode === 'players') filtered = threats; // show all threats for players
 
   for (const t of filtered) {

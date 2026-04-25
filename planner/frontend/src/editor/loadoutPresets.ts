@@ -147,7 +147,7 @@ export const LOADOUT_PRESETS: LoadoutPreset[] = [
     id: 'clean',
     label: 'CLEAN',
     description: 'Empty every pylon',
-    color: '#5a7a8a',
+    color: '#aaaaaa',
     weapons: [],
     wipeAll: true,
   },

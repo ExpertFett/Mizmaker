@@ -58,9 +58,12 @@ const THEATER_CENTERS: Record<string, [number, number]> = {
 
 // Tile layer factories
 function createDarkLayer(): TileLayer {
+  // Use `dark_all` (not `dark_nolabels`) so city/town/country labels are
+  // visible by default — previously the map was label-free, which hid
+  // towns entirely. Airfields come from our own airbase overlay layer.
   return new TileLayer({
     source: new XYZ({
-      url: 'https://{a-d}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+      url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
       maxZoom: 20,
       attributions: '&copy; CARTO',
     }),
@@ -389,9 +392,9 @@ export function MapContainer() {
       function updateCoordDisplay() {
         if (!coordRef.current) return;
         coordRef.current.innerHTML =
-          `<span style="color:#ccdae8">${llStr}</span>` +
+          `<span style="color:#e0e0e0">${llStr}</span>` +
           `<br/><span style="color:#d29922">${mgrsStr}</span>` +
-          (dcsStr ? `<br/><span style="color:#5a7a8a">${dcsStr}</span>` : '') +
+          (dcsStr ? `<br/><span style="color:#aaaaaa">${dcsStr}</span>` : '') +
           (lastElevStr ? `<br/><span style="color:#3fb950">Elev: ${lastElevStr}</span>` : '');
       }
       updateCoordDisplay();
@@ -407,19 +410,19 @@ export function MapContainer() {
         const wp = hit.get('waypoint');
 
         if (unit) {
-          const coalColor = unit.coalition === 'blue' ? '#4a8fd4' : unit.coalition === 'red' ? '#d95050' : '#8fa8c0';
+          const coalColor = unit.coalition === 'blue' ? '#4a8fd4' : unit.coalition === 'red' ? '#d95050' : '#cccccc';
           const header = `<b style="color:${coalColor}">${unit.name}</b>`;
-          const meta = `<span style="color:#5a7a8a">${unit.coalition} &middot; ${unit.country}${unit.task ? ' &middot; ' + unit.task : ''}</span>`;
+          const meta = `<span style="color:#aaaaaa">${unit.coalition} &middot; ${unit.country}${unit.task ? ' &middot; ' + unit.task : ''}</span>`;
 
           let roster = '';
           if (unit.unitList && unit.unitList.length > 0) {
             const lines = unit.unitList.map((u: any) => {
               const skill = u.skill === 'Client' || u.skill === 'Player'
                 ? '<span style="color:#3fb950">Player</span>'
-                : `<span style="color:#5a7a8a">${u.skill || ''}</span>`;
-              return `<div style="padding:1px 0">${u.name} <span style="color:#6a8a9a">${u.type}</span> ${skill}</div>`;
+                : `<span style="color:#aaaaaa">${u.skill || ''}</span>`;
+              return `<div style="padding:1px 0">${u.name} <span style="color:#aaaaaa">${u.type}</span> ${skill}</div>`;
             });
-            roster = `<div style="margin-top:4px;border-top:1px solid #1a2a3a;padding-top:4px;max-height:200px;overflow:auto">${lines.join('')}</div>`;
+            roster = `<div style="margin-top:4px;border-top:1px solid #3a3a3a;padding-top:4px;max-height:200px;overflow:auto">${lines.join('')}</div>`;
           }
 
           tooltip.innerHTML = header + '<br/>' + meta + roster;
@@ -711,11 +714,11 @@ export function MapContainer() {
           display: 'none',
           position: 'absolute',
           background: 'rgba(10, 20, 35, 0.95)',
-          border: '1px solid #1a3a5a',
+          border: '1px solid #4a4a4a',
           borderRadius: 5,
           padding: '8px 12px',
           fontSize: 12,
-          color: '#ccdae8',
+          color: '#e0e0e0',
           pointerEvents: 'none',
           zIndex: 150,
           maxWidth: 380,

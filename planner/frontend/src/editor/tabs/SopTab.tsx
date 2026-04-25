@@ -149,10 +149,10 @@ export function SopTab() {
     <div style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#ccdae8' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Squadron SOP
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#5a7a8a' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Upload or compose a Standard Operating Procedures document. When an SOP is active, auto-assign buttons (callsigns, comms, TACAN, laser codes) will use its values instead of generic defaults.
         </p>
       </div>
@@ -162,17 +162,17 @@ export function SopTab() {
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '10px 14px', marginBottom: 14, borderRadius: 6,
         background: active ? 'rgba(63, 185, 80, 0.08)' : 'rgba(90, 122, 138, 0.05)',
-        border: `1px solid ${active ? 'rgba(63, 185, 80, 0.35)' : '#1a2a3a'}`,
+        border: `1px solid ${active ? 'rgba(63, 185, 80, 0.35)' : '#3a3a3a'}`,
       }}>
         <span style={{
           fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
-          color: active ? '#3fb950' : '#5a7a8a',
-          border: `1px solid ${active ? 'rgba(63, 185, 80, 0.5)' : '#2a3a4a'}`,
+          color: active ? '#3fb950' : '#aaaaaa',
+          border: `1px solid ${active ? 'rgba(63, 185, 80, 0.5)' : '#3a3a3a'}`,
           borderRadius: 3, padding: '2px 8px',
         }}>
           {active ? 'ACTIVE' : 'NO ACTIVE SOP'}
         </span>
-        <span style={{ color: active ? '#ccdae8' : '#8fa8c0', fontSize: 14, fontWeight: 500 }}>
+        <span style={{ color: active ? '#e0e0e0' : '#cccccc', fontSize: 14, fontWeight: 500 }}>
           {active ? active.name : 'Auto-assigns will use generic DCS defaults until you activate an SOP.'}
         </span>
         {active && (
@@ -243,14 +243,14 @@ export function SopTab() {
         {/* Library panel */}
         <div style={{
           flexShrink: 0, width: 280,
-          background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 6,
+          background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
           padding: 8,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#8fa8c0', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#cccccc', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
             LIBRARY ({sops.length})
           </div>
           {sops.length === 0 && (
-            <div style={{ fontSize: 12, color: '#5a7a8a', padding: '12px 8px', fontStyle: 'italic' }}>
+            <div style={{ fontSize: 12, color: '#aaaaaa', padding: '12px 8px', fontStyle: 'italic' }}>
               No SOPs yet. Upload a JSON/image or load the sample.
             </div>
           )}
@@ -264,14 +264,14 @@ export function SopTab() {
                 style={{
                   padding: '8px 10px', borderRadius: 4, marginBottom: 2,
                   cursor: 'pointer',
-                  background: isSelected ? '#0f1a28' : 'transparent',
+                  background: isSelected ? '#262626' : 'transparent',
                   borderLeft: `3px solid ${isActive ? '#3fb950' : 'transparent'}`,
                 }}
               >
-                <div style={{ color: '#ccdae8', fontSize: 13, fontWeight: 600 }}>
+                <div style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>
                   {sop.name}
                 </div>
-                <div style={{ color: '#5a7a8a', fontSize: 11, marginTop: 2 }}>
+                <div style={{ color: '#aaaaaa', fontSize: 11, marginTop: 2 }}>
                   {sop.flights.length} flights · {sop.comms.length} comms · {sop.tacans.length} tacans
                   {isActive && <span style={{ color: '#3fb950', marginLeft: 6 }}>● active</span>}
                 </div>
@@ -283,12 +283,12 @@ export function SopTab() {
         {/* Detail panel */}
         <div style={{
           flex: 1, minWidth: 0,
-          background: '#0a1520', border: '1px solid #1a2a3a', borderRadius: 6,
+          background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
           padding: 14,
         }}>
           {!selected ? (
             <div style={{
-              color: '#5a7a8a', fontSize: 13, textAlign: 'center', padding: '40px 20px',
+              color: '#aaaaaa', fontSize: 13, textAlign: 'center', padding: '40px 20px',
             }}>
               Select an SOP from the library — or drop a file here to import.
             </div>
@@ -350,14 +350,14 @@ function SopDetail({
               if (e.key === 'Escape') { setEditName(null); }
             }}
             style={{
-              flex: 1, background: '#0f1a28', border: '1px solid #1a3a5a',
-              borderRadius: 3, color: '#ccdae8', fontSize: 17, fontWeight: 600,
+              flex: 1, background: '#262626', border: '1px solid #4a4a4a',
+              borderRadius: 3, color: '#e0e0e0', fontSize: 17, fontWeight: 600,
               padding: '4px 8px', fontFamily: 'inherit',
             }}
           />
         ) : (
           <span
-            style={{ flex: 1, color: '#ccdae8', fontSize: 17, fontWeight: 600, cursor: 'text' }}
+            style={{ flex: 1, color: '#e0e0e0', fontSize: 17, fontWeight: 600, cursor: 'text' }}
             onClick={() => setEditName(sop.name)}
             title="Click to rename"
           >
@@ -374,12 +374,12 @@ function SopDetail({
       </div>
 
       {sop.squadron && (
-        <div style={{ color: '#5a7a8a', fontSize: 12, marginBottom: 8 }}>
-          Squadron: <span style={{ color: '#8fa8c0' }}>{sop.squadron}</span>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 8 }}>
+          Squadron: <span style={{ color: '#cccccc' }}>{sop.squadron}</span>
         </div>
       )}
       {sop.notes && (
-        <div style={{ color: '#5a7a8a', fontSize: 12, marginBottom: 14, whiteSpace: 'pre-wrap' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 14, whiteSpace: 'pre-wrap' }}>
           {sop.notes}
         </div>
       )}
@@ -390,9 +390,9 @@ function SopDetail({
           <img
             src={`data:${sop.attachment.mimeType};base64,${sop.attachment.dataBase64}`}
             alt={sop.attachment.name}
-            style={{ maxWidth: '100%', maxHeight: 400, border: '1px solid #1a2a3a', borderRadius: 4 }}
+            style={{ maxWidth: '100%', maxHeight: 400, border: '1px solid #3a3a3a', borderRadius: 4 }}
           />
-          <div style={{ fontSize: 11, color: '#5a7a8a', marginTop: 6 }}>
+          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
             Vision-based auto-extraction is not wired yet — this image is kept for reference only.
           </div>
         </Section>
@@ -421,7 +421,7 @@ function SopDetail({
       {/* Laser code base */}
       <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
 
-      <div style={{ color: '#3a5a6a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
+      <div style={{ color: '#4a4a4a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
         Tip: after filling in tankers &amp; flights, set the SOP active and the auto-assigns on other tabs will use these values.
       </div>
     </div>
@@ -473,12 +473,12 @@ function FlightsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
               </td>
               <td style={tdStyle}>
                 <input value={f.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} />
               </td>
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={f.defaultFreq ?? ''}
                   onChange={(e) => update(i, { defaultFreq: parseNum(e.target.value) })}
-                  style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }} placeholder="MHz" />
+                  style={{ ...inputStyle, width: 90, fontFamily: "'B612 Mono', monospace" }} placeholder="MHz" />
               </td>
               <td style={tdStyle}>
                 <select value={f.defaultMod || ''} onChange={(e) => update(i, { defaultMod: e.target.value as any || undefined })}
@@ -522,12 +522,12 @@ function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
             <tr key={i}>
               <td style={tdStyle}>
                 <input value={t.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} placeholder="Texaco" />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} placeholder="Texaco" />
               </td>
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={t.frequency ?? ''}
                   onChange={(e) => update(i, { frequency: parseNum(e.target.value) })}
-                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace' }} placeholder="MHz" />
+                  style={{ ...inputStyle, width: 80, fontFamily: "'B612 Mono', monospace" }} placeholder="MHz" />
               </td>
               <td style={tdStyle}>
                 <select value={t.modulation || ''} onChange={(e) => update(i, { modulation: e.target.value as any || undefined })}
@@ -538,7 +538,7 @@ function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
               <td style={tdStyle}>
                 <input type="number" min={1} max={126} value={t.tacanChannel ?? ''}
                   onChange={(e) => update(i, { tacanChannel: parseInt0(e.target.value) })}
-                  style={{ ...inputStyle, width: 55, fontFamily: 'monospace' }} />
+                  style={{ ...inputStyle, width: 55, fontFamily: "'B612 Mono', monospace" }} />
               </td>
               <td style={tdStyle}>
                 <select value={t.tacanBand || ''} onChange={(e) => update(i, { tacanBand: e.target.value as any || undefined })}
@@ -548,7 +548,7 @@ function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
               </td>
               <td style={tdStyle}>
                 <input value={t.tacanCallsign ?? ''} onChange={(e) => update(i, { tacanCallsign: e.target.value || undefined })}
-                  style={{ ...inputStyle, width: 65, fontFamily: 'monospace' }} placeholder="TX1" maxLength={3} />
+                  style={{ ...inputStyle, width: 65, fontFamily: "'B612 Mono', monospace" }} placeholder="TX1" maxLength={3} />
               </td>
               <td style={tdStyle}><button onClick={() => remove(i)} style={xBtn} title="Remove">×</button></td>
             </tr>
@@ -584,7 +584,7 @@ function SupportAssetsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Pa
             <tr key={i}>
               <td style={tdStyle}>
                 <input value={a.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#ccdae8', fontWeight: 600 }} placeholder="Magic" />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} placeholder="Magic" />
               </td>
               <td style={tdStyle}>
                 <input value={a.role ?? ''} onChange={(e) => update(i, { role: e.target.value || undefined })}
@@ -593,7 +593,7 @@ function SupportAssetsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Pa
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={a.frequency ?? ''}
                   onChange={(e) => update(i, { frequency: parseNum(e.target.value) })}
-                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace' }} placeholder="MHz" />
+                  style={{ ...inputStyle, width: 80, fontFamily: "'B612 Mono', monospace" }} placeholder="MHz" />
               </td>
               <td style={tdStyle}>
                 <select value={a.modulation || ''} onChange={(e) => update(i, { modulation: e.target.value as any || undefined })}
@@ -640,7 +640,7 @@ function CommsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SO
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={c.frequency || ''}
                   onChange={(e) => update(i, { frequency: parseNum(e.target.value) ?? 0 })}
-                  style={{ ...inputStyle, width: 80, fontFamily: 'monospace', color: '#d29922' }} />
+                  style={{ ...inputStyle, width: 80, fontFamily: "'B612 Mono', monospace", color: '#d29922' }} />
               </td>
               <td style={tdStyle}>
                 <select value={c.modulation || 'AM'} onChange={(e) => update(i, { modulation: e.target.value as any })}
@@ -692,7 +692,7 @@ function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<S
               <td style={tdStyle}>
                 <input type="number" min={1} max={126} value={t.channel}
                   onChange={(e) => update(i, { channel: parseInt0(e.target.value) ?? 1 })}
-                  style={{ ...inputStyle, width: 55, fontFamily: 'monospace' }} />
+                  style={{ ...inputStyle, width: 55, fontFamily: "'B612 Mono', monospace" }} />
               </td>
               <td style={tdStyle}>
                 <select value={t.band} onChange={(e) => update(i, { band: e.target.value as any })}
@@ -702,7 +702,7 @@ function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<S
               </td>
               <td style={tdStyle}>
                 <input value={t.callsign ?? ''} onChange={(e) => update(i, { callsign: e.target.value || undefined })}
-                  style={{ ...inputStyle, width: 75, fontFamily: 'monospace' }} />
+                  style={{ ...inputStyle, width: 75, fontFamily: "'B612 Mono', monospace" }} />
               </td>
               <td style={tdStyle}>
                 <input value={t.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value || undefined })}
@@ -721,13 +721,13 @@ function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<S
 function LaserBaseEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
   return (
     <Section title="LASER CODES">
-      <div style={{ color: '#ccdae8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ color: '#e0e0e0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
         Base code:
         <input type="number" min={1111} max={7777} value={sop.laserCodeBase ?? ''}
           placeholder="1511 (default)"
           onChange={(e) => onUpdate({ laserCodeBase: parseInt0(e.target.value) })}
-          style={{ ...inputStyle, width: 90, fontFamily: 'monospace', color: '#d29922', fontWeight: 600 }} />
-        <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+          style={{ ...inputStyle, width: 90, fontFamily: "'B612 Mono', monospace", color: '#d29922', fontWeight: 600 }} />
+        <span style={{ color: '#aaaaaa', fontSize: 11 }}>
           Each digit must be 1-7. Auto-assign on the Laser tab starts from this code.
         </span>
       </div>
@@ -770,7 +770,7 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
 
   return (
     <Section title={`ATTACHMENTS (${totalImages} images · ${aircraftCount} airframe${aircraftCount !== 1 ? 's' : ''})`}>
-      <div style={{ fontSize: 11, color: '#5a7a8a', marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 10 }}>
         Imported reference charts. Auto-extraction from images (vision AI) is a planned follow-up — in the meantime, click any image to zoom.
       </div>
 
@@ -780,23 +780,23 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
         const label = isSopWide ? 'SOP-wide' : gk;
         const isExpanded = expandedGroups.has(gk);
         return (
-          <div key={gk} style={{ marginBottom: 10, border: '1px solid #1a2a3a', borderRadius: 4 }}>
+          <div key={gk} style={{ marginBottom: 10, border: '1px solid #3a3a3a', borderRadius: 4 }}>
             <div
               onClick={() => toggleGroup(gk)}
               style={{
                 padding: '6px 10px', cursor: 'pointer',
-                background: isExpanded ? '#0c1825' : 'transparent',
+                background: isExpanded ? '#1a1a1a' : 'transparent',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              <span style={{ color: '#5a7a8a', fontSize: 11, width: 12 }}>
+              <span style={{ color: '#aaaaaa', fontSize: 11, width: 12 }}>
                 {isExpanded ? '\u25BC' : '\u25B6'}
               </span>
               <span style={{
-                color: isSopWide ? '#d29922' : '#ccdae8',
+                color: isSopWide ? '#d29922' : '#e0e0e0',
                 fontWeight: 600, fontSize: 13,
               }}>{label}</span>
-              <span style={{ color: '#5a7a8a', fontSize: 11 }}>
+              <span style={{ color: '#aaaaaa', fontSize: 11 }}>
                 {list.length} image{list.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -813,8 +813,8 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
                     title={a.name}
                     style={{
                       cursor: 'zoom-in',
-                      background: '#0c1825',
-                      border: '1px solid #1a2a3a',
+                      background: '#1a1a1a',
+                      border: '1px solid #3a3a3a',
                       borderRadius: 3,
                       overflow: 'hidden',
                       display: 'flex', flexDirection: 'column',
@@ -826,7 +826,7 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
                       style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }}
                     />
                     <div style={{
-                      fontSize: 10, color: '#8fa8c0', padding: '3px 6px',
+                      fontSize: 10, color: '#cccccc', padding: '3px 6px',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {a.category || a.name}
@@ -874,7 +874,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div style={{ marginBottom: 16 }}>
       <div style={{
         fontSize: 11, fontWeight: 700, color: '#d29922', letterSpacing: 0.5,
-        textTransform: 'uppercase', marginBottom: 6, borderBottom: '1px solid #1a2a3a',
+        textTransform: 'uppercase', marginBottom: 6, borderBottom: '1px solid #3a3a3a',
         paddingBottom: 4,
       }}>
         {title}
@@ -885,7 +885,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Empty({ label }: { label: string }) {
-  return <div style={{ fontSize: 12, color: '#5a7a8a', fontStyle: 'italic', padding: '4px 0' }}>{label}</div>;
+  return <div style={{ fontSize: 12, color: '#aaaaaa', fontStyle: 'italic', padding: '4px 0' }}>{label}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -898,16 +898,16 @@ const tableStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left', padding: '4px 8px',
-  color: '#5a7a8a', fontSize: 11, fontWeight: 600,
-  borderBottom: '1px solid #1a2a3a', textTransform: 'uppercase', letterSpacing: 0.5,
+  color: '#aaaaaa', fontSize: 11, fontWeight: 600,
+  borderBottom: '1px solid #3a3a3a', textTransform: 'uppercase', letterSpacing: 0.5,
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '4px 8px', color: '#8fa8c0', borderBottom: '1px solid #0f1a28',
+  padding: '4px 8px', color: '#cccccc', borderBottom: '1px solid #262626',
 };
 
 const btnPrimary: React.CSSProperties = {
-  background: '#1a3a5a', border: '1px solid #4a8fd4',
+  background: '#4a4a4a', border: '1px solid #4a8fd4',
   borderRadius: 4, color: '#4a8fd4', cursor: 'pointer',
   fontSize: 12, fontWeight: 600, padding: '6px 14px', fontFamily: 'inherit',
 };
@@ -919,8 +919,8 @@ const btnSecondary: React.CSSProperties = {
 };
 
 const btnGhost: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #2a3a4a',
-  borderRadius: 4, color: '#8fa8c0', cursor: 'pointer',
+  background: 'transparent', border: '1px solid #3a3a3a',
+  borderRadius: 4, color: '#cccccc', cursor: 'pointer',
   fontSize: 12, padding: '6px 12px', fontFamily: 'inherit',
 };
 
@@ -931,10 +931,10 @@ const btnDanger: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#0f1a28',
-  border: '1px solid #1a2a3a',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#8fa8c0',
+  color: '#cccccc',
   fontSize: 12,
   padding: '3px 6px',
   fontFamily: 'inherit',
@@ -944,7 +944,7 @@ const inputStyle: React.CSSProperties = {
 const xBtn: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 16,
   padding: '0 4px',
@@ -954,9 +954,9 @@ const xBtn: React.CSSProperties = {
 const addRowBtn: React.CSSProperties = {
   marginTop: 6,
   background: 'transparent',
-  border: '1px dashed #2a3a4a',
+  border: '1px dashed #3a3a3a',
   borderRadius: 3,
-  color: '#5a7a8a',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 11,
   padding: '4px 10px',
