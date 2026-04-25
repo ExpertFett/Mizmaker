@@ -170,15 +170,8 @@ const FREQ_PRESET_PACKS: FreqPresetPack[] = [
   },
 ];
 
-const COMMON_FREQS: { name: string; freq: string; mod: string }[] = [
-  { name: 'GUARD', freq: '243.000', mod: 'AM' },
-  { name: 'NATO COM', freq: '251.000', mod: 'AM' },
-  { name: 'TANKER', freq: '277.800', mod: 'AM' },
-  { name: 'MARSHAL', freq: '264.200', mod: 'AM' },
-  { name: 'TOWER', freq: '305.000', mod: 'AM' },
-  { name: 'DEPART', freq: '254.200', mod: 'AM' },
-  { name: 'UHF EMER', freq: '282.800', mod: 'AM' },
-];
+// COMMON_FREQS preset list removed — was declared for a quick-fill UI
+// that never shipped. Restore from git history if we add that feature.
 
 /* ------------------------------------------------------------------ */
 /* Fuel Planner Data                                                   */

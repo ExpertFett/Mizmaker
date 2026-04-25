@@ -884,9 +884,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Empty({ label }: { label: string }) {
-  return <div style={{ fontSize: 12, color: '#aaaaaa', fontStyle: 'italic', padding: '4px 0' }}>{label}</div>;
-}
+// `Empty` placeholder component removed — was unused after the SOP UI
+// rework. Reintroduce if we add empty-state messaging to the lists.
 
 /* ------------------------------------------------------------------ */
 /* Styles                                                               */

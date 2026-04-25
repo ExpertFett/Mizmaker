@@ -9,7 +9,7 @@
 import { forward as toMGRS } from 'mgrs';
 import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
-  cell, th, BORDER, BORDER_MED, TEXT, TEXT_MUTED, DIM, ACCENT, ROW_ALT,
+  cell, th, TEXT_MUTED, DIM, ROW_ALT,
   footerStyle, notesBox, MissionDateLine,
 } from './cardStyles';
 import type { MissionGroup, Airbase, MissionOverviewData } from '../types/mission';
@@ -26,12 +26,7 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-function fmtLatLon(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  const ns = lat >= 0 ? 'N' : 'S';
-  const ew = lon >= 0 ? 'E' : 'W';
-  return `${ns}${Math.abs(lat).toFixed(2)}° ${ew}${Math.abs(lon).toFixed(2)}°`;
-}
+// fmtLatLon helper removed — card formats coords via MGRS only (fmtCoord).
 
 /** Haversine distance in nm */
 function distNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
