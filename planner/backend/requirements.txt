@@ -1,6 +1,16 @@
 flask>=3.0
 flask-cors>=4.0
 lupa==2.0
+# SLPP — Lua table → Python dict parser. Used by services/miz_parser.py
+# to parse the mission Lua before any surgical edits. Imported at module
+# level — without it the gunicorn worker dies before serving the
+# healthcheck endpoint, which Railway interprets as a deploy failure.
+SLPP>=1.2.3
+# zstandard — used by services/archive_reader.py to decode method-93
+# (Zstandard) compressed entries in squadron OZP/ZIP kneeboard archives
+# (CSG-3 mod packs and similar). Lazy-imported, but listing it here keeps
+# the import from blowing up at runtime.
+zstandard>=0.22
 pyproj>=3.6
 mgrs>=1.4
 srtm.py>=0.3.7
