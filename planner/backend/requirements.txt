@@ -5,6 +5,8 @@ lupa==2.0
 # to parse the mission Lua before any surgical edits. Imported at module
 # level — without it the gunicorn worker dies before serving the
 # healthcheck endpoint, which Railway interprets as a deploy failure.
+# (Bumping this comment to force a Railway cache miss on the requirements
+#  layer — see commit history for context on the cache-stuck deploys.)
 SLPP>=1.2.3
 # zstandard — used by services/archive_reader.py to decode method-93
 # (Zstandard) compressed entries in squadron OZP/ZIP kneeboard archives
