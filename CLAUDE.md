@@ -18,15 +18,20 @@ One-dev (Fett + Claude) codebase.
 in-memory on the backend (2hr TTL, 20 max). Mission edits are
 regex-based surgical text replacements on the original Lua.
 
-**Branches**:
-- **`fetts-test-branch` on `personal` (`ExpertFett/mizmaker856`) — DEFAULT
-  PUSH TARGET.** Railway is wired to deploy from this branch. Any time
-  Fett says "commit it to github", "push it", "deploy", etc., the push
-  goes to `personal/fetts-test-branch` unless he explicitly redirects.
-- `feature/supabase-migration` on `personal` and `origin`
-  (`vmfa224-skunkworks/mizresearch`) — older feature branch, kept around
-  but not the deploy target. Don't push here unless Fett asks.
-- `main` on either remote — never push to main.
+**Repository + branch**:
+- Single remote: `origin` → `https://github.com/ExpertFett/Mizmaker.git`
+- Single branch: `main` — Railway deploys from here, every push triggers
+  a redeploy. There is no "feature branch" workflow right now; commits
+  go straight to `main`.
+- The old `personal` (ExpertFett/mizmaker856) and `origin`
+  (vmfa224-skunkworks/mizresearch) remotes were retired on 2026-04-25 to
+  consolidate the scattered branch state. The squadron handoff happens
+  later by Fett pushing this repo's history to the squadron repo himself
+  — don't add that remote back unless he asks.
+
+**Push rule**: when Fett says "commit it to github", "push it", "deploy",
+etc., the target is always `origin/main`. Never push to any other branch
+or remote unless he explicitly names one.
 
 ## Working agreements (standing orders)
 
