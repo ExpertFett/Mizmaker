@@ -177,6 +177,37 @@ master plan. Current phase:
 - [ ] 2.1 Read-back verification on every edit function
 - [ ] 2.2 Supabase session persistence (the named reason for this branch)
 
+## Roadmap (parked)
+
+Things we've discussed but explicitly deferred. Don't start these
+without Fett's go-ahead.
+
+- **BYOK AI features** (Bring Your Own Anthropic Key). Pattern: user
+  pastes their personal Anthropic API key in a Settings panel, key is
+  stored client-side only (browser localStorage), AI calls go directly
+  from the browser to `api.anthropic.com` using `anthropic-dangerous-
+  direct-browser-access: true`. Their key, their bill — Railway never
+  sees it. Features unlocked: smarter commander's intent (full prose
+  from scenario+threats+flights), threat narrative paragraphs, mission-
+  flow rewrite, brief-presenter speaker notes, custom template token
+  auto-mapping ("Option C" from the original brief plan). Every AI
+  feature MUST have a graceful non-AI fallback so users without keys
+  still see a working brief. Foundation effort ~2-3 hours; each feature
+  ~30 min after that. Held off until the non-AI brief workflow is
+  fully solid (post v0.4.x).
+
+- **Per-flight editor UI** (Phase 3b). Currently flight briefs are
+  auto-only — the package render rebuilds them fresh each time from
+  mission data. Editor would let mission makers tweak per-flight
+  tasking, fuel ladder, notes before render. Wait until testers ask
+  for it — they may be happy with the auto-build.
+
+- **Per-slide map images** (option #3 from the brief menu). Auto-embed
+  a route map (with threats + flight tracks) on the cover, plus a per-
+  flight route map on each flight brief. Uses the existing OL canvas
+  + html-to-canvas pipeline the kneeboard cards already use. Most
+  visually impressive single feature; medium-large effort.
+
 ## User profile (Fett)
 
 - Callsign **Fett**. Squadron **VMFA-224(AW) Bengals**. Runs a
