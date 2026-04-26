@@ -3,6 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { useSopStore } from '../../sop/sopStore';
 import { isCarrierGroup, getAirRoleLabel } from '../../utils/groups';
+import { detectCarrierIcls, allocateIcls } from '../../utils/carrierDefaults';
 
 /** Extract a number from a group name/type for TACAN channel derivation.
  *  Tankers: "Texaco 3-1" -> 31, "Shell 1-1" -> 11
@@ -111,7 +112,11 @@ export function TacanTab() {
     const next = new Map<number, Partial<TacanRow>>();
     const usedChannels = new Set<number>();
     let fallbackCh = 30;
-    let nextIclsCh = 1;
+    // ICLS allocator — looks up canonical hull values (Stennis=7, Ike=11
+    // etc.) and avoids collisions across carriers in the same mission.
+    // Replaces the old sequential 1, 2, 3… assignment that ignored
+    // squadron SOP conventions.
+    const usedIcls = new Set<number>();
 
     // Build SOP lookup: tanker callsign (case-insensitive first word) -> SOP entry
     const sopTankerMap = new Map<string, { channel: number; band: 'X' | 'Y'; callsign?: string }>();
@@ -169,8 +174,10 @@ export function TacanTab() {
 
       const partial: Partial<TacanRow> = { channel: finalCh, band, callsign: cs };
       if (row.hasIcls) {
-        partial.iclsCh = nextIclsCh;
-        nextIclsCh++;
+        const preferred = detectCarrierIcls(row.type, row.groupName);
+        const icls = allocateIcls(preferred, usedIcls);
+        usedIcls.add(icls);
+        partial.iclsCh = icls;
       }
       next.set(row.groupId, partial);
     }

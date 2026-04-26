@@ -5,6 +5,7 @@ import { useEditStore } from '../../store/editStore';
 import { LauncherSettingsPanel } from '../components/LauncherSettings';
 import type { ClientUnit, PylonInfo } from '../../types/mission';
 import { LOADOUT_PRESETS, planPresetForUnit, type LoadoutPreset } from '../loadoutPresets';
+import { isLaserPylon } from '../../utils/laserDetection';
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -149,7 +150,55 @@ export function LoadoutTab() {
       }
       return { ...u, pylons: newPylons };
     });
-    useMissionStore.setState({ clientUnits: updated });
+
+    // Keep laserCapableUnits in sync — without this, adding a laser
+    // weapon (GBU-12, Paveway, Maverick-E etc.) to a unit didn't make
+    // it appear on the LaserTab because that array is computed once at
+    // upload time and isn't auto-refreshed.
+    const { laserCapableUnits, laserClsids } = useMissionStore.getState();
+    const updatedUnit = updated.find((u) => u.unitId === unitId);
+    if (updatedUnit) {
+      const hasLaser = updatedUnit.pylons.some((p) =>
+        isLaserPylon(p.clsid, p.name, p.shortName, laserClsids));
+      const alreadyTracked = laserCapableUnits.some((u) => u.unitId === unitId);
+      let nextLaserUnits = laserCapableUnits;
+      if (hasLaser && !alreadyTracked) {
+        // Promote unit into laserCapableUnits (LaserCapableUnit shape is
+        // a strict subset of ClientUnit's, so we can adapt directly).
+        nextLaserUnits = [...laserCapableUnits, {
+          unitId: updatedUnit.unitId,
+          name: updatedUnit.name,
+          type: updatedUnit.type,
+          groupName: updatedUnit.groupName,
+          coalition: updatedUnit.coalition,
+          isClient: true,  // came from clientUnits
+          pylons: updatedUnit.pylons,
+          laserCode: updatedUnit.laserCode,
+        }];
+      } else if (alreadyTracked) {
+        // Unit already on laser list — just sync its pylons + laserCode
+        // so removing the last laser weapon doesn't keep showing the
+        // user the old laser-capable state. (We keep the entry around
+        // even if hasLaser=false but the unit had a pre-set laserCode,
+        // matching the backend's "has_laser_weapon OR laser_code" rule.)
+        const stillBelongs = hasLaser || updatedUnit.laserCode != null;
+        if (stillBelongs) {
+          nextLaserUnits = laserCapableUnits.map((u) =>
+            u.unitId === unitId
+              ? { ...u, pylons: updatedUnit.pylons, laserCode: updatedUnit.laserCode }
+              : u);
+        } else {
+          nextLaserUnits = laserCapableUnits.filter((u) => u.unitId !== unitId);
+        }
+      }
+      if (nextLaserUnits !== laserCapableUnits) {
+        useMissionStore.setState({ clientUnits: updated, laserCapableUnits: nextLaserUnits });
+      } else {
+        useMissionStore.setState({ clientUnits: updated });
+      }
+    } else {
+      useMissionStore.setState({ clientUnits: updated });
+    }
   }, [addEdit, pylonOptions]);
 
   const handleCopyLoadout = useCallback((sourceId: number, targetId: number) => {

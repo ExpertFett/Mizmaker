@@ -47,32 +47,43 @@ interface HullData {
   label: string;
   callsign: string;
   tacan: number;
+  /** Default ICLS channel for this hull (squadron SOP convention).
+   *  0 / undefined = no ICLS (LHA, LHD, surface fleet). */
+  icls?: number;
   tiwSpeed: number;
   hasIcls: boolean;
 }
 
 const HULL_DB: Record<string, HullData> = {
-  'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, tiwSpeed: 25, hasIcls: true},
-  'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, tiwSpeed: 25, hasIcls: true},
-  'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, tiwSpeed: 25, hasIcls: true},
-  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, tiwSpeed: 25, hasIcls: true},
-  'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, tiwSpeed: 25, hasIcls: true},
-  'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, tiwSpeed: 25, hasIcls: true},
-  'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, tiwSpeed: 25, hasIcls: true},
-  'CVN-77':   { label: 'CVN', callsign: 'Avenger',       tacan: 77, tiwSpeed: 25, hasIcls: true},
-  'CVN-78':   { label: 'CVN', callsign: 'Old Ironsides',  tacan: 78, tiwSpeed: 25, hasIcls: true},
-  'CVN-79':   { label: 'CVN', callsign: 'Big John',      tacan: 79, tiwSpeed: 25, hasIcls: true},
-  stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, tiwSpeed: 25, hasIcls: true},
-  vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, tiwSpeed: 25, hasIcls: true},
-  lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, tiwSpeed: 25, hasIcls: true},
-  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, tiwSpeed: 25, hasIcls: true},
-  roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, tiwSpeed: 25, hasIcls: true},
-  truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, tiwSpeed: 25, hasIcls: true},
-  forrestal:  { label: 'CV',  callsign: 'Forrestal',     tacan: 59, tiwSpeed: 25, hasIcls: true},
-  tarawa:     { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  tiwSpeed: 10, hasIcls: false},
-  'LHA-1':    { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  tiwSpeed: 10, hasIcls: false},
-  wasp:       { label: 'LHD', callsign: 'Stinger',       tacan: 1,  tiwSpeed: 10, hasIcls: false},
-  'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  tiwSpeed: 10, hasIcls: false},
+  // ICLS values follow common DCS squadron conventions (CSG-3 / Hornet
+  // School SOP-style). The exact mapping varies between squadrons but
+  // having a hull-specific default beats the old sequential 1, 2, 3...
+  // assignment that ignored real-world conventions. When two carriers
+  // in the same mission would share an ICLS, _detectIclsForCarrier()
+  // (below) increments to avoid the conflict.
+  'CVN-69':   { label: 'CVN', callsign: 'Ike',           tacan: 69, icls: 11, tiwSpeed: 25, hasIcls: true},
+  'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, icls: 9,  tiwSpeed: 25, hasIcls: true},
+  'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, icls: 9,  tiwSpeed: 25, hasIcls: true},
+  'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, icls: 7,  tiwSpeed: 25, hasIcls: true},
+  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
+  'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, icls: 7,  tiwSpeed: 25, hasIcls: true},
+  'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, icls: 11, tiwSpeed: 25, hasIcls: true},
+  'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, icls: 13, tiwSpeed: 25, hasIcls: true},
+  'CVN-77':   { label: 'CVN', callsign: 'Avenger',       tacan: 77, icls: 13, tiwSpeed: 25, hasIcls: true},
+  'CVN-78':   { label: 'CVN', callsign: 'Old Ironsides', tacan: 78, icls: 15, tiwSpeed: 25, hasIcls: true},
+  'CVN-79':   { label: 'CVN', callsign: 'Big John',      tacan: 79, icls: 17, tiwSpeed: 25, hasIcls: true},
+  stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, icls: 7,  tiwSpeed: 25, hasIcls: true},
+  vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, icls: 9,  tiwSpeed: 25, hasIcls: true},
+  lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, icls: 7,  tiwSpeed: 25, hasIcls: true},
+  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
+  roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, icls: 9,  tiwSpeed: 25, hasIcls: true},
+  truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, icls: 11, tiwSpeed: 25, hasIcls: true},
+  eisenhower: { label: 'CVN', callsign: 'Ike',           tacan: 69, icls: 11, tiwSpeed: 25, hasIcls: true},
+  forrestal:  { label: 'CV',  callsign: 'Forrestal',     tacan: 59, icls: 1,  tiwSpeed: 25, hasIcls: true},
+  tarawa:     { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
+  'LHA-1':    { label: 'LHA', callsign: 'Proud Eagle',   tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
+  wasp:       { label: 'LHD', callsign: 'Stinger',       tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
+  'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
 };
 
 function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
@@ -89,6 +100,10 @@ function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
         callsign: data.callsign,
         tacanCh: data.tacan,
         tacanCallsign: data.label,
+        // Forward the canonical ICLS for this hull. The handleDetect
+        // collision pass below dedups when a multi-carrier mission
+        // would otherwise land two carriers on the same channel.
+        iclsCh: data.icls,
         tiwSpeed: data.tiwSpeed,
         hasIcls: data.hasIcls,
         aclsEnabled: data.hasIcls,
@@ -295,11 +310,31 @@ export function CarrierSetupPanel() {
   const handleDetect = useCallback(() => {
     const result: CarrierConfig[] = [];
     let flagBase = 1;
-    let nextIclsCh = 1; // auto-increment ICLS for multi-carrier
+
+    // Track ICLS channels already assigned in this mission so two
+    // carriers don't collide on the same channel. Real-world squadron
+    // SOPs sometimes share ICLS between carriers (Stennis + Lincoln
+    // both 7) but that only works when they're far apart. In a single
+    // mission, deconflict.
+    const usedIcls = new Set<number>();
+    const nextFreeIcls = (preferred: number | undefined): number => {
+      // Walk odd channels first (1, 3, 5, …, 19), then evens, until we
+      // find one not in use. Odd-only is closer to the SOP convention
+      // (5/7/9/11/13 are the canonical carrier channels).
+      const candidates = preferred && preferred > 0
+        ? [preferred, ...[1,3,5,7,9,11,13,15,17,19,2,4,6,8,10,12,14,16,18,20].filter((c) => c !== preferred)]
+        : [1,3,5,7,9,11,13,15,17,19,2,4,6,8,10,12,14,16,18,20];
+      for (const c of candidates) {
+        if (!usedIcls.has(c)) return c;
+      }
+      return preferred || 1; // shouldn't reach here in any sane mission
+    };
 
     for (const g of carrierGroups) {
       const info = detectCarrierInfo(g);
       const hasIcls = info.hasIcls ?? true;
+      const iclsCh = hasIcls ? nextFreeIcls(info.iclsCh) : 0;
+      if (iclsCh > 0) usedIcls.add(iclsCh);
       result.push({
         groupId: g.groupId,
         groupName: g.groupName,
@@ -310,7 +345,7 @@ export function CarrierSetupPanel() {
         tacanCh: info.tacanCh || 72,
         tacanBand: 'X',
         tacanCallsign: info.tacanCallsign || 'CVN',
-        iclsCh: hasIcls ? nextIclsCh : 0,
+        iclsCh,
         aclsEnabled: info.aclsEnabled ?? hasIcls,
         hasIcls,
         tiwSpeed: info.tiwSpeed || 25,
@@ -318,7 +353,7 @@ export function CarrierSetupPanel() {
         rescueModex: 42,
         flagBase,
       });
-      if (hasIcls) nextIclsCh++;
+      // ICLS already tracked in usedIcls above — no separate counter needed.
       flagBase += 20; // 20 flags per carrier
     }
 

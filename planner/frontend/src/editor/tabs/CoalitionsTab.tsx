@@ -22,6 +22,16 @@ interface CoalitionPreset {
   red: string[];
 }
 
+// Country names MUST match DCS's exact strings (case-insensitive). When
+// a preset name doesn't match a country present in the .miz, the preset
+// silently skips it — which looks like "presets don't work" if half the
+// preset's countries are misspelled. Cross-reference any new entries
+// against `dcs.countries.country_dict` before adding.
+//
+// Notable DCS naming quirks to watch for:
+//   - 'The Netherlands' (NOT 'Netherlands')
+//   - 'United Arab Emirates' (NOT 'UAE')
+//   - Latvia / Lithuania / Estonia / Albania — DCS doesn't model these
 const PRESETS: CoalitionPreset[] = [
   {
     id: 'modern-nato-vs-russia',
@@ -29,9 +39,9 @@ const PRESETS: CoalitionPreset[] = [
     description: 'Current-era NATO alliance vs Russian Federation and allies',
     blue: [
       'USA', 'UK', 'France', 'Germany', 'Canada', 'Turkey', 'Spain', 'Italy',
-      'Norway', 'Denmark', 'Netherlands', 'Belgium', 'Greece', 'Poland',
+      'Norway', 'Denmark', 'The Netherlands', 'Belgium', 'Greece', 'Poland',
       'Czech Republic', 'Hungary', 'Romania', 'Bulgaria', 'Croatia', 'Slovakia',
-      'Slovenia', 'Latvia', 'Lithuania', 'Estonia', 'Albania', 'Portugal',
+      'Slovenia', 'Portugal',
       'Australia', 'Israel', 'Japan', 'South Korea',
     ],
     red: [
@@ -44,7 +54,7 @@ const PRESETS: CoalitionPreset[] = [
     description: 'NATO vs Warsaw Pact, circa 1985',
     blue: [
       'USA', 'UK', 'France', 'Germany', 'Canada', 'Turkey', 'Spain', 'Italy',
-      'Norway', 'Denmark', 'Netherlands', 'Belgium', 'Greece', 'Portugal',
+      'Norway', 'Denmark', 'The Netherlands', 'Belgium', 'Greece', 'Portugal',
       'Australia', 'Japan', 'South Korea', 'Israel',
     ],
     red: [
@@ -58,7 +68,7 @@ const PRESETS: CoalitionPreset[] = [
     description: 'US-led coalition vs Iraq',
     blue: [
       'USA', 'UK', 'France', 'Saudi Arabia', 'Canada', 'Italy', 'Kuwait',
-      'Egypt', 'Qatar', 'Bahrain', 'UAE', 'Oman', 'Australia',
+      'Egypt', 'Qatar', 'Bahrain', 'United Arab Emirates', 'Oman', 'Australia',
     ],
     red: [
       'Iraq', 'Russia',
@@ -69,14 +79,25 @@ const PRESETS: CoalitionPreset[] = [
     name: 'Middle East Conflict',
     description: 'Western coalition vs regional adversaries',
     blue: [
-      'USA', 'UK', 'France', 'Israel', 'Saudi Arabia', 'UAE', 'Jordan',
-      'Turkey', 'Egypt', 'Kuwait', 'Qatar', 'Bahrain',
+      'USA', 'UK', 'France', 'Israel', 'Saudi Arabia', 'United Arab Emirates',
+      'Jordan', 'Turkey', 'Egypt', 'Kuwait', 'Qatar', 'Bahrain',
     ],
     red: [
       'Iran', 'Syria', 'Iraq', 'Russia',
     ],
   },
 ];
+
+// Aliases — common names users might write that DCS spells differently.
+// applyPreset() normalizes preset country names through this map before
+// the lookup, so a preset accidentally written with "UAE" or "Netherlands"
+// still works. New aliases go here, not in the PRESETS list above.
+const COUNTRY_ALIASES: Record<string, string> = {
+  'uae': 'united arab emirates',
+  'netherlands': 'the netherlands',
+  'usa': 'usa',  // sanity — already matches
+  'us': 'usa',
+};
 
 /* ------------------------------------------------------------------ */
 /* Styles                                                              */
@@ -178,10 +199,19 @@ export function CoalitionsTab() {
   }, [assignments, moveCountry]);
 
   const applyPreset = useCallback((preset: CoalitionPreset) => {
+    // Normalize each preset name through COUNTRY_ALIASES so quirks like
+    // 'UAE' / 'Netherlands' resolve to the DCS canonical names ('United
+    // Arab Emirates' / 'The Netherlands') before we look them up. Without
+    // this, mismatched preset entries silently fail and the preset
+    // appears to do nothing.
+    const norm = (s: string) => {
+      const lower = s.toLowerCase();
+      return COUNTRY_ALIASES[lower] || lower;
+    };
     setAssignments((prev) => {
       const next = new Map(prev);
-      const blueSet = new Set(preset.blue.map((s) => s.toLowerCase()));
-      const redSet = new Set(preset.red.map((s) => s.toLowerCase()));
+      const blueSet = new Set(preset.blue.map(norm));
+      const redSet = new Set(preset.red.map(norm));
       for (const c of countries) {
         const lower = c.name.toLowerCase();
         if (blueSet.has(lower)) next.set(c.name, 'blue');
