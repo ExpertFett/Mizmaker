@@ -208,6 +208,13 @@ class WingBrief:
     # so dataclass still works for builder calls that don't pass it.
     logo_base64: str = ""
 
+    # ---- Cover hero image (optional). Base64 PNG/JPG. Rendered as the
+    # full-width background of the upper half of the cover slide — useful
+    # for a theater shot, mission area photo, or squadron art. The title
+    # text floats below (or over a dark gradient on) the image. Empty
+    # default so missions without a cover image use a text-only layout.
+    cover_image_base64: str = ""
+
 
 # ---------------------------------------------------------------------------
 # Theatre overview blurbs — one short paragraph per supported theater.

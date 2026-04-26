@@ -33,6 +33,7 @@ interface WingBrief {
   time_zulu: string;
   coalition: string;
   logo_base64: string;
+  cover_image_base64: string;
   theatre_overview: string;
   scenario: string;
   commanders_intent: string;
@@ -422,62 +423,29 @@ export function BriefGenTab() {
               </Field>
             </div>
 
-            {/* Squadron logo — uploaded image renders top-right of cover slide */}
-            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 3,
-                              textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Squadron logo (optional)
-                </div>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  style={{ display: 'none' }}
-                  id="brief-logo-input"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 2 * 1024 * 1024) {
-                      setError('Logo must be under 2MB.');
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const result = reader.result as string;
-                      // strip data:image/png;base64, prefix — backend handles either
-                      const b64 = result.includes(',') ? result.split(',')[1] : result;
-                      set('logo_base64', b64);
-                      setError(null);
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <label htmlFor="brief-logo-input" style={{ ...btnSecondary, display: 'inline-block' }}>
-                    {brief.logo_base64 ? 'Replace logo' : 'Upload logo'}
-                  </label>
-                  {brief.logo_base64 && (
-                    <button onClick={() => set('logo_base64', '')} style={btnDanger}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-              {brief.logo_base64 && (
-                <div style={{
-                  width: 100, height: 100,
-                  background: '#1a1a1a',
-                  border: '1px solid #3a3a3a',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <img
-                    src={`data:image/png;base64,${brief.logo_base64}`}
-                    alt="logo preview"
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                  />
-                </div>
-              )}
+            {/* Cover image + squadron logo — both render on the cover slide.
+                Cover image fills the upper half of the slide; logo overlays
+                top-right. Both optional. */}
+            <div style={{ marginTop: 14, display: 'grid',
+                          gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <ImageUploadField
+                label="Cover image (optional)"
+                hint="Theater shot, mission area, squadron art — fills the top of the cover slide"
+                inputId="brief-cover-image-input"
+                value={brief.cover_image_base64}
+                onChange={(b64) => set('cover_image_base64', b64)}
+                onError={setError}
+                previewAspect="wide"
+              />
+              <ImageUploadField
+                label="Squadron logo (optional)"
+                hint="Top-right corner of the cover slide"
+                inputId="brief-logo-input"
+                value={brief.logo_base64}
+                onChange={(b64) => set('logo_base64', b64)}
+                onError={setError}
+                previewAspect="square"
+              />
             </div>
           </Card>
 
@@ -850,6 +818,94 @@ function Card({ title, children, right }:
     </div>
   );
 }
+
+/**
+ * Reusable image-upload control used on the Cover card. Reads PNG/JPG/
+ * WEBP up to 2MB into base64 (sans data: prefix) and shows a preview
+ * at either square (logo) or wide (cover) aspect.
+ */
+function ImageUploadField(props: {
+  label: string;
+  hint?: string;
+  inputId: string;
+  value: string;
+  onChange: (b64: string) => void;
+  onError: (msg: string | null) => void;
+  previewAspect: 'square' | 'wide';
+}) {
+  const { label, hint, inputId, value, onChange, onError, previewAspect } = props;
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 3,
+                    textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 10, color: '#888888', marginBottom: 6 }}>
+          {hint}
+        </div>
+      )}
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: 'none' }}
+        id={inputId}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          // 4MB cap for cover (it's a hero) — 2MB for logo. Cover gets a
+          // looser cap because file dimensions matter more than logo's do.
+          const limit = previewAspect === 'wide' ? 4 * 1024 * 1024 : 2 * 1024 * 1024;
+          if (file.size > limit) {
+            onError(`Image must be under ${limit / 1024 / 1024}MB.`);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const b64 = result.includes(',') ? result.split(',')[1] : result;
+            onChange(b64);
+            onError(null);
+          };
+          reader.readAsDataURL(file);
+        }}
+      />
+      {value ? (
+        <div>
+          <div style={{
+            width: '100%',
+            aspectRatio: previewAspect === 'wide' ? '16 / 9' : '1 / 1',
+            background: '#0f0f0f', border: '1px solid #3a3a3a',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 6, overflow: 'hidden',
+          }}>
+            <img
+              src={`data:image/png;base64,${value}`}
+              alt={`${label} preview`}
+              style={{ width: '100%', height: '100%',
+                       objectFit: previewAspect === 'wide' ? 'cover' : 'contain' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <label htmlFor={inputId} style={{ ...btnSecondary, display: 'inline-block', flex: 1, textAlign: 'center' }}>
+              Replace
+            </label>
+            <button onClick={() => onChange('')} style={btnDanger}>Remove</button>
+          </div>
+        </div>
+      ) : (
+        <label htmlFor={inputId} style={{
+          ...btnSecondary, display: 'block',
+          textAlign: 'center', padding: '20px 12px',
+          border: '1px dashed #4a4a4a',
+        }}>
+          Upload image
+        </label>
+      )}
+    </div>
+  );
+}
+
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

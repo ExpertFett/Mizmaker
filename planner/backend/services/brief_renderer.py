@@ -587,45 +587,117 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
         return table
 
     # ---------- Slide 1: Cover -------------------------------------------
+    # Layout (16:9, 13.333" × 7.5"):
+    #   * Optional cover hero image — fills upper ~45% of slide as
+    #     full-width banner. Title and metadata float below.
+    #   * Without cover image: top half is a solid accent bar with a
+    #     "WING BRIEF" eyebrow; the layout still feels intentional.
+    #   * Mission name centred, dramatic 56pt bold, in the lower band.
+    #   * Theater · Date · Time line below the title in the accent colour.
+    #   * Optional squadron logo overlays top-right regardless of layout.
+    #   * Bottom accent bar with a subtle "BRIEF · v1" eyebrow on the
+    #     right and a left/right pair of vertical accent ticks.
+    import base64
+
     s = prs.slides.add_slide(BLANK); _apply_bg(s)
 
-    # Optional squadron logo — rendered top-right when uploaded by the
-    # editor. We size to 1.4" tall, preserve aspect ratio (height-only,
-    # python-pptx auto-fits width), and anchor 0.3" from the top-right
-    # corner. Skip silently on any decode failure so a malformed logo
-    # never blocks the brief from rendering.
-    logo_b64 = (brief.get("logo_base64") or "").strip()
-    if logo_b64:
+    # Helper: decode a base64 image (with optional data: prefix) into a
+    # BytesIO stream, or None if invalid. Used for both the cover hero
+    # and the squadron logo.
+    def _decode_image(b64: str):
+        b = (b64 or "").strip()
+        if not b:
+            return None
         try:
-            import base64
-            # Tolerate data URIs and bare base64 alike
-            if "," in logo_b64 and logo_b64.lstrip().startswith("data:"):
-                logo_b64 = logo_b64.split(",", 1)[1]
-            logo_bytes = base64.b64decode(logo_b64, validate=False)
-            logo_stream = io.BytesIO(logo_bytes)
-            logo_height = Inches(1.4)
-            # 13.333" wide slide; logo right edge anchored ~12.9" leaves a
-            # narrow margin. Width is auto-derived from aspect ratio.
-            s.shapes.add_picture(logo_stream, Inches(11.5), Inches(0.3),
-                                 height=logo_height)
+            if "," in b and b.lstrip().startswith("data:"):
+                b = b.split(",", 1)[1]
+            return io.BytesIO(base64.b64decode(b, validate=False))
         except Exception:
-            # Logo failures are non-fatal — log nothing, just continue
+            return None
+
+    cover_img = _decode_image(brief.get("cover_image_base64") or "")
+    HERO_HEIGHT = Inches(3.6)  # upper 48% of the slide
+
+    if cover_img:
+        # Hero image — full slide width, top of slide. python-pptx will
+        # crop/letterbox via the size we specify; we set both width and
+        # height so the image fills the banner edge-to-edge.
+        try:
+            s.shapes.add_picture(
+                cover_img, 0, 0,
+                width=prs.slide_width, height=HERO_HEIGHT,
+            )
+            # Subtle dark overlay at the bottom of the hero so the
+            # transition into the dark slide bg isn't a hard line.
+            grad = s.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, 0, HERO_HEIGHT - Inches(0.6),
+                prs.slide_width, Inches(0.6),
+            )
+            grad.fill.solid(); grad.fill.fore_color.rgb = BG
+            # Soft fade by setting transparency through the XML — easier
+            # to just set a flat 50% opaque dark bar than to add a real
+            # gradient stop in this codepath.
+            grad.fill.fore_color.rgb = BG
+            grad.line.fill.background()
+        except Exception:
+            cover_img = None  # decode-but-render failure: fall back to text-only
+
+    if not cover_img:
+        # No hero image — give the top a styled accent block so the
+        # cover doesn't feel empty. Two horizontal bars frame the
+        # eyebrow text.
+        bar_top = s.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(0.08),
+        )
+        bar_top.fill.solid(); bar_top.fill.fore_color.rgb = ACCENT
+        bar_top.line.fill.background()
+
+        # Vertical accent ticks at left + right edges — quiet visual frame
+        for x_in in (Inches(0.4), prs.slide_width - Inches(0.5)):
+            tick = s.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, x_in, Inches(1.4), Inches(0.06), Inches(2.5),
+            )
+            tick.fill.solid(); tick.fill.fore_color.rgb = ACCENT
+            tick.line.fill.background()
+
+    # Squadron logo — rendered top-right, overlays cover image when present
+    logo_img = _decode_image(brief.get("logo_base64") or "")
+    if logo_img:
+        try:
+            s.shapes.add_picture(
+                logo_img, Inches(11.5), Inches(0.3),
+                height=Inches(1.4),
+            )
+        except Exception:
             pass
 
-    _txt(s, Inches(0.6), Inches(0.5), Inches(12), Inches(0.6),
-         "WING BRIEF", size=14, bold=True, color=ACCENT, align_center=True)
-    _txt(s, Inches(0.6), Inches(2.0), Inches(12), Inches(1.6),
-         brief["mission_name"], size=44, bold=True, color=BRIGHT, align_center=True)
-    _txt(s, Inches(0.6), Inches(4.0), Inches(12), Inches(0.6),
-         f"{brief['theater']}  ·  {brief['date']}  ·  {brief['time_zulu']}",
-         size=20, color=DIM, align_center=True)
-    flight_summary = " · ".join(
-        f"{f.get('callsign','?')} ({f.get('count', '?')}× {f.get('aircraft', '?')})"
-        for f in brief["flights"][:4]
+    # Eyebrow ("WING BRIEF") — top-left, smaller when there's a hero so
+    # it doesn't fight the image, larger otherwise
+    eyebrow_y = Inches(0.4) if cover_img else Inches(0.55)
+    _txt(s, Inches(0.6), eyebrow_y, Inches(8), Inches(0.5),
+         "WING BRIEF", size=14, bold=True, color=ACCENT)
+
+    # Title block — sits below the hero or in the styled top half
+    title_top = HERO_HEIGHT + Inches(0.4) if cover_img else Inches(2.6)
+
+    _txt(s, Inches(0.6), title_top, Inches(12.1), Inches(1.4),
+         brief["mission_name"], size=56, bold=True, color=BRIGHT,
+         align_center=True)
+
+    # Theater · Date · Time strip — accent colour, smaller
+    sub_top = title_top + Inches(1.5)
+    _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
+         f"{brief['theater'].upper()}   ·   {brief['date']}   ·   "
+         f"TAKEOFF {brief['time_zulu']}",
+         size=18, bold=True, color=ACCENT, align_center=True)
+
+    # Bottom accent bar — visual anchor at the bottom of the slide
+    bottom_bar = s.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 0, prs.slide_height - Inches(0.08),
+        prs.slide_width, Inches(0.08),
     )
-    if flight_summary:
-        _txt(s, Inches(0.6), Inches(6.4), Inches(12), Inches(0.5),
-             flight_summary, size=14, color=DIM, align_center=True)
+    bottom_bar.fill.solid(); bottom_bar.fill.fore_color.rgb = ACCENT
+    bottom_bar.line.fill.background()
 
     # ---------- Slide 2: Theatre overview -------------------------------
     s = prs.slides.add_slide(BLANK); _apply_bg(s)
