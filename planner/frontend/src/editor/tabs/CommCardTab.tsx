@@ -3,6 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { useSopStore } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
+import { RadioPresetsSection } from './RadioPresetsSection';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -89,13 +90,17 @@ export function CommCardTab() {
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [result, setResult] = useState('');
 
-  // Build rows from air groups with frequency
+  // Build rows from air groups with frequency. Player flights are
+  // filtered out — they're handled by RadioPresetsSection (one card
+  // per flight, 20-channel preset table). The legacy matrix here is
+  // for tankers/AWACS/AI where a single primary freq is the model.
   const allRows = useMemo<FreqRow[]>(() => {
     const rows: FreqRow[] = [];
     for (const g of groups) {
       if (g.frequency <= 0 && g.category !== 'plane' && g.category !== 'helicopter') continue;
       if (g.category === 'vehicle' || g.category === 'static') continue;
       const player = isPlayerGroup(g);
+      if (player) continue;  // skip — handled by RadioPresetsSection
       rows.push({
         groupId: g.groupId,
         groupName: g.groupName,
@@ -322,14 +327,22 @@ export function CommCardTab() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Per-flight radio preset cards. Player flights show as preset
+          tables (20 channels each) rather than as single-freq rows in
+          the legacy frequency matrix below — that matrix only made
+          sense for tankers/AWACS/AI. */}
+      <RadioPresetsSection />
+
+      {/* Legacy frequency matrix — covers tankers, AWACS, and AI flights
+          where a single primary freq is the right model. Player flights
+          are filtered out (they're handled by RadioPresetsSection above). */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
-            Comm Card / Frequency Matrix
+            Tanker / AWACS / AI Frequencies
           </h2>
           <p style={{ margin: 0, fontSize: 13, color: '#aaaaaa' }}>
-            View and deconflict radio frequencies across all flights.
+            Single-freq groups (tankers, AWACS, AI flights). For player flights, use the preset cards above.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>

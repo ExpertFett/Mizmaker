@@ -110,6 +110,13 @@ export interface MissionOverviewData {
   descriptionBlueTask: string;
   descriptionRedTask: string;
   weather: MissionWeather;
+  /** DCS bullseye per coalition. Extracted from `coalition.{side}.bullseye`
+   *  in the mission Lua and converted to lat/lon by the backend. Empty
+   *  object when the .miz didn't define one. */
+  bullseye?: {
+    blue?: { x: number; y: number; lat?: number; lon?: number };
+    red?:  { x: number; y: number; lat?: number; lon?: number };
+  };
 }
 
 export interface MissionDrawing {
