@@ -33,6 +33,14 @@ regex-based surgical text replacements on the original Lua.
 etc., the target is always `origin/main`. Never push to any other branch
 or remote unless he explicitly names one.
 
+**Version bumping**: `planner/frontend/src/version.ts` exports a `VERSION`
+string displayed on the upload page header. **Bump the patch number on
+every commit that ships user-visible changes** — Fett uses this to know
+which build is live without hitting GitHub. The file has the convention
+documented; current version semantics are loose ("v0.4.x" for the brief-
+generator era, etc.). Don't bump for trivial doc-only or comment-only
+commits.
+
 ## Working agreements (standing orders)
 
 ### Default behaviors

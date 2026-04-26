@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
 import { setActiveTheater } from '../projection/dcsProjection';
+import { VERSION } from '../version';
 
 export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const loadMission = useMissionStore((s) => s.loadMission);
@@ -88,6 +89,12 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           </h1>
           <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks
+            <span style={{
+              marginLeft: 10, padding: '2px 6px',
+              border: '1px solid #4a4a4a', color: '#cccccc',
+              fontFamily: "'B612 Mono', monospace", fontSize: 11,
+              letterSpacing: 0.5,
+            }}>{VERSION}</span>
           </p>
         </div>
 
