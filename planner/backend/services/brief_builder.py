@@ -753,17 +753,94 @@ def _build_flights(groups: List[dict], airbases: List[dict]) -> List[Dict[str, A
     return [asdict(f) for f in out]
 
 
-def _build_threats(threats: List[dict]) -> List[Dict[str, Any]]:
-    rows: List[ThreatRow] = []
+def _bearing_distance_from_be(threat_lat: float, threat_lon: float,
+                               be_lat: float, be_lon: float) -> tuple[int, int]:
+    """Compute bearing (true, deg) and distance (nm) from bullseye to threat.
+
+    Used for the airborne-relevant 'BE 045/35' callout convention.
+    Both inputs in WGS84 degrees. Output (bearing_deg, distance_nm) ints.
+    """
+    import math
+    # Haversine for distance
+    R_NM = 3440.065  # earth radius in nm
+    la1, lo1 = math.radians(be_lat), math.radians(be_lon)
+    la2, lo2 = math.radians(threat_lat), math.radians(threat_lon)
+    dl = lo2 - lo1
+    a = (math.sin((la2 - la1) / 2) ** 2
+         + math.cos(la1) * math.cos(la2) * math.sin(dl / 2) ** 2)
+    distance_nm = 2 * R_NM * math.asin(math.sqrt(a))
+    # Bearing — initial heading from BE to threat
+    y = math.sin(dl) * math.cos(la2)
+    x = (math.cos(la1) * math.sin(la2)
+         - math.sin(la1) * math.cos(la2) * math.cos(dl))
+    bearing = (math.degrees(math.atan2(y, x)) + 360) % 360
+    return int(round(bearing)), int(round(distance_nm))
+
+
+def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List[Dict[str, Any]]:
+    """Group threats by type and label each cluster's position relative
+    to bullseye (BE 045/35nm style). Drops the per-threat row explosion
+    that made the slide unreadable on missions with dozens of red SAMs.
+
+    Output is sorted by max engagement range (biggest threat first), so
+    the strike package sees the SA-11s and SA-15s before the AAA in the
+    rendered table.
+    """
+    if not threats:
+        return []
+
+    # Bullseye for the friendly side (blue by default in our brief flow).
+    # If we don't have it, the BE column falls back to '—'.
+    be_lat = be_lon = None
+    if bullseye and isinstance(bullseye, dict):
+        blue_be = bullseye.get("blue") or {}
+        be_lat = blue_be.get("lat")
+        be_lon = blue_be.get("lon")
+
+    # Group by threat name. Within each group track count + max range +
+    # the centroid of the group's positions for a single BE callout.
+    from collections import defaultdict
+    grouped: Dict[str, dict] = defaultdict(lambda: {
+        "count": 0, "max_range_m": 0.0, "lats": [], "lons": [],
+        "type": "", "coalition": "",
+    })
     for t in threats:
+        name = t.get("name") or "Unknown"
+        g = grouped[name]
+        g["count"] += 1
+        g["max_range_m"] = max(g["max_range_m"], float(t.get("range") or 0))
+        if t.get("lat") is not None and t.get("lon") is not None:
+            g["lats"].append(float(t["lat"]))
+            g["lons"].append(float(t["lon"]))
+        g["type"] = t.get("type", "") or g["type"]
+        g["coalition"] = t.get("coalition", "") or g["coalition"]
+
+    rows: List[ThreatRow] = []
+    for name, g in grouped.items():
+        # Centroid of the group for BE callout — single point per cluster
+        if g["lats"] and g["lons"]:
+            c_lat = sum(g["lats"]) / len(g["lats"])
+            c_lon = sum(g["lons"]) / len(g["lons"])
+            if be_lat is not None and be_lon is not None:
+                bearing, dist = _bearing_distance_from_be(c_lat, c_lon, be_lat, be_lon)
+                location = f"BE {bearing:03d}/{dist}"
+            else:
+                location = f"{c_lat:.3f}, {c_lon:.3f}"
+        else:
+            location = "—"
+
+        # Display name includes count when > 1 (e.g. "SA-15 Tor M1 ×4")
+        display_name = name if g["count"] == 1 else f"{name} ×{g['count']}"
+
         rows.append(ThreatRow(
-            name=t.get("name", "Unknown"),
-            type=t.get("type", ""),
-            coalition=t.get("coalition", ""),
-            range_km=round((t.get("range") or 0) / 1000.0, 1),
-            location="",  # filled later when we add bullseye / nearest-town inference
+            name=display_name,
+            type=g["type"],
+            coalition=g["coalition"],
+            range_km=round(g["max_range_m"] / 1000.0, 1),
+            location=location,
         ))
-    rows.sort(key=lambda r: r.range_km, reverse=True)  # biggest threat first
+
+    rows.sort(key=lambda r: r.range_km, reverse=True)  # biggest first
     return [asdict(r) for r in rows]
 
 
@@ -976,7 +1053,7 @@ def build_wing_brief(
         notes="",
 
         timeline=_build_timeline(start_seconds, groups),
-        threats=_build_threats(threats),
+        threats=_build_threats(threats, overview.get("bullseye")),
         flights=_build_flights(groups, airbases),
 
         comms=_build_comms(groups),

@@ -356,6 +356,28 @@ def _extract_overview(d: dict, theater: str) -> dict:
     wind = wx.get("wind", {})
     qnh_mmhg = wx.get("qnh", 760)
 
+    # Bullseye lives in `coalition.{blue|red}.bullseye = {x, y}`. Each
+    # side gets its own bullseye in DCS; the brief uses blue's. Convert
+    # to lat/lon when we have a projection for the theater so downstream
+    # consumers (brief builder, kneeboard cards) don't need the raw x/y.
+    coalition_data = d.get("coalition", {}) or {}
+    bullseye = {}
+    for side in ("blue", "red"):
+        side_data = coalition_data.get(side) or {}
+        be = side_data.get("bullseye") or {}
+        be_x = _num(be.get("x"))
+        be_y = _num(be.get("y"))
+        if be_x or be_y:
+            entry = {"x": be_x, "y": be_y}
+            if theater in THEATERS:
+                try:
+                    lat, lon = dcs_to_latlon(be_x, be_y, theater)
+                    entry["lat"] = lat
+                    entry["lon"] = lon
+                except Exception:
+                    pass
+            bullseye[side] = entry
+
     return {
         "theater": theater,
         "sortie": d.get("sortie", ""),
@@ -364,6 +386,7 @@ def _extract_overview(d: dict, theater: str) -> dict:
         "description": d.get("descriptionText", ""),
         "descriptionBlueTask": d.get("descriptionBlueTask", ""),
         "descriptionRedTask": d.get("descriptionRedTask", ""),
+        "bullseye": bullseye,  # {"blue": {x, y, lat, lon}, "red": {...}}
         "weather": {
             "wind": {
                 "atGround": {"speed": _num(wind.get("atGround", {}).get("speed")), "dir": _num(wind.get("atGround", {}).get("dir"))},
