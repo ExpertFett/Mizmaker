@@ -588,6 +588,30 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
 
     # ---------- Slide 1: Cover -------------------------------------------
     s = prs.slides.add_slide(BLANK); _apply_bg(s)
+
+    # Optional squadron logo — rendered top-right when uploaded by the
+    # editor. We size to 1.4" tall, preserve aspect ratio (height-only,
+    # python-pptx auto-fits width), and anchor 0.3" from the top-right
+    # corner. Skip silently on any decode failure so a malformed logo
+    # never blocks the brief from rendering.
+    logo_b64 = (brief.get("logo_base64") or "").strip()
+    if logo_b64:
+        try:
+            import base64
+            # Tolerate data URIs and bare base64 alike
+            if "," in logo_b64 and logo_b64.lstrip().startswith("data:"):
+                logo_b64 = logo_b64.split(",", 1)[1]
+            logo_bytes = base64.b64decode(logo_b64, validate=False)
+            logo_stream = io.BytesIO(logo_bytes)
+            logo_height = Inches(1.4)
+            # 13.333" wide slide; logo right edge anchored ~12.9" leaves a
+            # narrow margin. Width is auto-derived from aspect ratio.
+            s.shapes.add_picture(logo_stream, Inches(11.5), Inches(0.3),
+                                 height=logo_height)
+        except Exception:
+            # Logo failures are non-fatal — log nothing, just continue
+            pass
+
     _txt(s, Inches(0.6), Inches(0.5), Inches(12), Inches(0.6),
          "WING BRIEF", size=14, bold=True, color=ACCENT, align_center=True)
     _txt(s, Inches(0.6), Inches(2.0), Inches(12), Inches(1.6),

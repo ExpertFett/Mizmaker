@@ -32,6 +32,7 @@ interface WingBrief {
   date: string;
   time_zulu: string;
   coalition: string;
+  logo_base64: string;
   theatre_overview: string;
   scenario: string;
   commanders_intent: string;
@@ -220,7 +221,7 @@ export function BriefGenTab() {
             <button onClick={() => setBrief(null)} style={btnDanger}>Discard</button>
           </div>
 
-          {/* Header card — mission name / date / time */}
+          {/* Header card — mission name / date / time + logo */}
           <Card title="Cover">
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
               <Field label="Mission name">
@@ -235,6 +236,64 @@ export function BriefGenTab() {
                 <input style={inputStyle} value={brief.time_zulu}
                        onChange={(e) => set('time_zulu', e.target.value)} />
               </Field>
+            </div>
+
+            {/* Squadron logo — uploaded image renders top-right of cover slide */}
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 3,
+                              textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Squadron logo (optional)
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: 'none' }}
+                  id="brief-logo-input"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      setError('Logo must be under 2MB.');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = reader.result as string;
+                      // strip data:image/png;base64, prefix — backend handles either
+                      const b64 = result.includes(',') ? result.split(',')[1] : result;
+                      set('logo_base64', b64);
+                      setError(null);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label htmlFor="brief-logo-input" style={{ ...btnSecondary, display: 'inline-block' }}>
+                    {brief.logo_base64 ? 'Replace logo' : 'Upload logo'}
+                  </label>
+                  {brief.logo_base64 && (
+                    <button onClick={() => set('logo_base64', '')} style={btnDanger}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              {brief.logo_base64 && (
+                <div style={{
+                  width: 100, height: 100,
+                  background: '#1a1a1a',
+                  border: '1px solid #3a3a3a',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <img
+                    src={`data:image/png;base64,${brief.logo_base64}`}
+                    alt="logo preview"
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                </div>
+              )}
             </div>
           </Card>
 

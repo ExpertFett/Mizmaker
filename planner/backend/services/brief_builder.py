@@ -148,6 +148,12 @@ class WingBrief:
     # ---- Comms (key/value list — user adds GCI / tankers / divert freq) ----
     comms: List[Dict[str, str]]       # [{label, value}, ...]
 
+    # ---- Squadron logo (optional). Base64 PNG/JPG bytes uploaded by the
+    # mission maker — rendered top-right of the cover slide if present.
+    # `data:` prefix is tolerated and stripped at render time. Default ""
+    # so dataclass still works for builder calls that don't pass it.
+    logo_base64: str = ""
+
 
 # ---------------------------------------------------------------------------
 # Theatre overview blurbs — one short paragraph per supported theater.
@@ -381,13 +387,151 @@ def _build_scenario(overview: dict, dictionary: Dict[str, str]) -> str:
     return "\n\n".join(parts)
 
 
-def _build_commanders_intent_placeholder() -> str:
-    """A starter the mission maker rewrites — gives a structure to fill."""
-    return (
+def _detect_mission_type(groups: List[dict]) -> str:
+    """Categorise the package's primary mission from blue flight tasks.
+
+    Returns one of: 'strike', 'cas', 'dca', 'sead', 'antiship', 'recon',
+    'tanker', 'mixed', 'unknown'. Used to pick a tailored commander's
+    intent template (mission makers always edit, but a mission-typed
+    starter is far more useful than a generic one).
+    """
+    from collections import Counter
+
+    role_buckets = Counter()
+    for g in groups:
+        if not _is_player_group(g):
+            continue
+        if g.get("coalition") != "blue":
+            continue
+        task = (g.get("task") or "").lower()
+        if not task:
+            continue
+        if "cas" in task:
+            role_buckets["cas"] += 1
+        elif "anti-ship" in task or "antiship" in task:
+            role_buckets["antiship"] += 1
+        elif "sead" in task or "deead" in task or "dead" in task:
+            role_buckets["sead"] += 1
+        elif "strike" in task:
+            role_buckets["strike"] += 1
+        elif "cap" in task or "intercept" in task or "escort" in task:
+            role_buckets["dca"] += 1
+        elif "reconnaissance" in task or "afac" in task or "recon" in task:
+            role_buckets["recon"] += 1
+        elif "refueling" in task or "tanker" in task:
+            role_buckets["tanker"] += 1
+
+    if not role_buckets:
+        return "unknown"
+    # Multiple distinct primary roles → mixed
+    if len([k for k in role_buckets if k != "tanker"]) > 1:
+        return "mixed"
+    return role_buckets.most_common(1)[0][0]
+
+
+_INTENT_TEMPLATES: Dict[str, str] = {
+    "strike": (
+        "Purpose: Destroy [NAMED TARGET / target set] to deny the enemy "
+        "[capability or terrain] for the duration of the operation.\n\n"
+        "Method: Single coordinated push from marshal at TOT-15. SEAD/escort "
+        "[if present] suppresses threats inside the MEZ; strike package runs "
+        "the IP-to-target leg low-to-medium and egresses on the planned "
+        "corridor. Battle damage assessment via [tasked asset].\n\n"
+        "End State: Target struck and confirmed destroyed. Strike package "
+        "RTB with all assets accounted for; AO pushed forward by [phase line]."
+    ),
+    "cas": (
+        "Purpose: Provide close air support to friendly ground forces "
+        "operating in [AREA / grid]. Maintain freedom of manoeuvre for the "
+        "ground commander.\n\n"
+        "Method: Check in with the JTAC / FAC(A) on [primary freq] at the "
+        "CAP/holding point. Work CAS 9-line on demand; observe ROE for any "
+        "danger-close calls. Hand off to follow-on flight at bingo / on "
+        "relief by next vul.\n\n"
+        "End State: Ground commander reports satisfied with on-station "
+        "support. All flights RTB safe. No friendly fire or collateral "
+        "damage incidents."
+    ),
+    "dca": (
+        "Purpose: Defend [AOR / asset] against airborne threats. Deny the "
+        "enemy the ability to penetrate friendly airspace and engage "
+        "high-value assets.\n\n"
+        "Method: Establish CAP at [station / racetrack] under GCI control. "
+        "Engage all hostile contacts inside ROE / WEZ; positive ID required "
+        "before BVR shots. Maintain mutual support and cycle pairs through "
+        "tanker as needed.\n\n"
+        "End State: No enemy aircraft penetrate the defended area. CAP "
+        "maintained until [relief / mission end]. All friendlies RTB."
+    ),
+    "sead": (
+        "Purpose: Suppress / destroy enemy SAM systems threatening the strike "
+        "package's ingress and egress corridors. Open and hold the door.\n\n"
+        "Method: Push 5-10 minutes ahead of strike. Establish SEAD orbit "
+        "outside the engagement zone of the threat ring. Trigger reactive "
+        "shots on emitting threats; pre-emptive HARM on known sites per "
+        "mission planning. Coordinate with strike lead on any threat "
+        "re-radiations.\n\n"
+        "End State: Threat picture inside MEZ degraded sufficiently to allow "
+        "strike package access. SEAD asset RTB safe; threat sites destroyed "
+        "or suppressed for the duration of the strike window."
+    ),
+    "antiship": (
+        "Purpose: Destroy / disable [SHIP CLASS / named vessel] in the "
+        "[MARITIME AOR] to deny enemy sea control of the operating area.\n\n"
+        "Method: Coordinated package with [escort / SEAD as required]. "
+        "Anti-ship ordnance employment from outside the ship's air-defence "
+        "engagement zone where possible. Deconflict with friendly shipping "
+        "via the ATO / blue-on-blue ROE.\n\n"
+        "End State: Target vessel struck and assessed as a mission kill. "
+        "Sea lines of communication contested. Package RTB with all "
+        "assets accounted for."
+    ),
+    "recon": (
+        "Purpose: Gain situational awareness of [TARGET AREA / activity] to "
+        "inform follow-on tasking. No engagement unless self-defence.\n\n"
+        "Method: Transit to the AOR; conduct [visual / sensor] reconnaissance "
+        "of the assigned target set. Report findings to [HQ / AWACS] in real "
+        "time on the recon push freq. Egress on the planned route.\n\n"
+        "End State: Target area imaged / observed. Intelligence handed to "
+        "the follow-on tasking authority. Recon asset RTB safe."
+    ),
+    "tanker": (
+        "Purpose: Provide aerial refuelling support to enable extended "
+        "on-station time and divert reserve for the strike / DCA package.\n\n"
+        "Method: Establish AAR track at [coordinate / fix]. Service receivers "
+        "in flow per the comm card; observe pre-contact / contact / post-"
+        "contact procedures. Maintain 100% give over the planned refuel "
+        "window.\n\n"
+        "End State: All scheduled receivers serviced. Tanker offload meets "
+        "or exceeds planned. Tanker RTB to [home plate]."
+    ),
+    "mixed": (
+        "Purpose: This package combines multiple mission types — author the "
+        "intent across all elements. Cover the strike objective, the DCA / "
+        "SEAD / support roles enabling it, and the desired end state for the "
+        "package as a whole.\n\n"
+        "Method: Sequence the elements (push order, mutual support, "
+        "deconfliction). Identify the priority of effort and how the "
+        "supporting flights enable the main effort.\n\n"
+        "End State: All elements complete their tasking. Package RTB safe. "
+        "Strategic objective achieved."
+    ),
+    "unknown": (
         "Purpose: Why we are flying this mission (the strategic objective).\n\n"
-        "Method: How we will accomplish it (the high-level plan in 1-2 sentences).\n\n"
+        "Method: How we will accomplish it (the high-level plan in 1-2 "
+        "sentences).\n\n"
         "End State: What the AO looks like when we are done."
-    )
+    ),
+}
+
+
+def _build_commanders_intent_placeholder(groups: List[dict]) -> str:
+    """Return a starter intent matched to the package's mission type.
+
+    The mission maker always edits this section — a mission-type-aware
+    starter makes the editing one of polish rather than from-scratch.
+    """
+    return _INTENT_TEMPLATES[_detect_mission_type(groups)]
 
 
 def _build_mission_flow_placeholder() -> str:
@@ -401,26 +545,141 @@ def _build_mission_flow_placeholder() -> str:
     )
 
 
-def _build_timeline(start_seconds: Optional[float]) -> List[Dict[str, str]]:
-    """Heuristic timeline based on mission start time. User adjusts after.
+def _waypoint_time(wp: dict, takeoff_eta: float, mission_start: float) -> Optional[float]:
+    """Convert a waypoint's ETA to absolute mission seconds.
 
-    Phase offsets (minutes from mission start time = takeoff):
-      -30  Ground ops      (preflight, brief shop, walk to jets)
-      -10  Engine start
-       0   Takeoff
-      +15  Push
-      +30  Time on target (TOT)
-      +50  Egress complete
-      +90  RTB
+    DCS stores eta_seconds as cumulative time from waypoint 0; we add the
+    delta from takeoff to mission_start to get the waypoint's absolute
+    Zulu seconds-from-midnight value the rest of the timeline uses.
     """
+    eta = wp.get("eta_seconds")
+    if eta is None:
+        return None
+    try:
+        return mission_start + (float(eta) - takeoff_eta)
+    except (TypeError, ValueError):
+        return None
+
+
+def _find_waypoint_time(
+    waypoints: List[dict],
+    name_patterns: List[str],
+    takeoff_eta: float,
+    mission_start: float,
+) -> Optional[float]:
+    """Return the Zulu time of the first waypoint whose name matches any pattern."""
+    for wp in waypoints:
+        name = (wp.get("waypoint_name") or "").lower()
+        if any(p in name for p in name_patterns):
+            t = _waypoint_time(wp, takeoff_eta, mission_start)
+            if t is not None:
+                return t
+    return None
+
+
+def _build_timeline(
+    start_seconds: Optional[float],
+    groups: Optional[List[dict]] = None,
+) -> List[Dict[str, str]]:
+    """Build a phase timeline anchored on mission start, enriched with
+    actual waypoint times when player flights have meaningfully named
+    waypoints. Falls back to heuristic offsets when names aren't recognised.
+
+    Naming conventions we look for (case-insensitive substring match):
+      Push  : "push", "marshal", "ip" (initial point — start of run-in)
+      TOT   : "tgt", "target", "tot"
+      Egress: "egress", "egr", "fence-out"
+
+    Aggregation across player flights:
+      Push    = earliest push time (first flight begins the run-in)
+      TOT     = median target time (centre of the strike window)
+      Egress  = latest egress time (last flight clear of MEZ)
+      RTB     = latest landing time across all flights (last bird home)
+
+    Pre-takeoff phases (Ground Ops, Engine Start) stay heuristic — there's
+    no waypoint data for them.
+    """
+    if start_seconds is None:
+        start_seconds = 0.0
+    groups = groups or []
+
+    # Collect named-waypoint times across all player flights
+    push_times: List[float] = []
+    tot_times: List[float] = []
+    egress_times: List[float] = []
+    rtb_times: List[float] = []
+
+    for g in groups:
+        if not _is_player_group(g):
+            continue
+        wps = g.get("waypoints") or []
+        if len(wps) < 2:
+            continue
+        # Reference: first waypoint = takeoff for this flight
+        takeoff_eta_local = float(wps[0].get("eta_seconds") or 0)
+
+        push_t = _find_waypoint_time(wps, ["push", "marshal", "ip"],
+                                     takeoff_eta_local, start_seconds)
+        tot_t  = _find_waypoint_time(wps, ["tgt", "target", "tot"],
+                                     takeoff_eta_local, start_seconds)
+        egr_t  = _find_waypoint_time(wps, ["egress", "egr", "fence-out", "fence out"],
+                                     takeoff_eta_local, start_seconds)
+        # RTB = last waypoint absolute time
+        last_wp = wps[-1]
+        rtb_t = _waypoint_time(last_wp, takeoff_eta_local, start_seconds)
+
+        if push_t is not None: push_times.append(push_t)
+        if tot_t is not None:  tot_times.append(tot_t)
+        if egr_t is not None:  egress_times.append(egr_t)
+        if rtb_t is not None:  rtb_times.append(rtb_t)
+
+    # Aggregate. Keep times as seconds-since-midnight floats so we can
+    # enforce monotonic ordering across phases before formatting.
+    def _aggregate(times: List[float], fallback_offset_min: int,
+                   aggregator) -> float:
+        if times:
+            return aggregator(times)
+        return start_seconds + fallback_offset_min * 60
+
+    def _median(xs: List[float]) -> float:
+        xs = sorted(xs); n = len(xs)
+        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+    push_t   = _aggregate(push_times,   15, min)
+    tot_t    = _aggregate(tot_times,    30, _median)
+    egress_t = _aggregate(egress_times, 50, max)
+    rtb_t    = _aggregate(rtb_times,    90, max)
+
+    # Enforce monotonic ordering. When real waypoint data gives us a
+    # tight mission (e.g. CAP loop landing 18 min after takeoff), the
+    # heuristic fallbacks for the missing phases can land AFTER RTB,
+    # which would print a nonsense timeline. Walk backward from RTB and
+    # clamp each phase to ≤ the next.
+    pts = [push_t, tot_t, egress_t, rtb_t]
+    for i in range(len(pts) - 2, -1, -1):
+        if pts[i] > pts[i + 1]:
+            pts[i] = pts[i + 1]
+    push_t, tot_t, egress_t, rtb_t = pts
+
+    # Annotate notes when waypoint data was used so the mission maker
+    # can tell what's authoritative vs. heuristic.
+    push_note = ("Coordinated push from marshal"
+                 + (" (from waypoint data)" if push_times else ""))
+    tot_note = ("Time on target — synchronised across strike package"
+                + (" (from waypoint data)" if tot_times else ""))
+    egress_note = ("All flights clear of MEZ"
+                   + (" (from waypoint data)" if egress_times else ""))
+    rtb_note = ("Recovery to home plate or alternate"
+                + (f" (from waypoint data, {len(rtb_times)} flight(s))" if rtb_times else ""))
+
     rows = [
         TimelineRow("Ground Ops", _add_minutes(start_seconds, -30), "Pre-flight, brief, walk to jets"),
         TimelineRow("Engine Start", _add_minutes(start_seconds, -10), "Sequence per ground"),
         TimelineRow("Takeoff", _format_zulu(start_seconds), "Rolling takeoff, flow takeoff per flight"),
-        TimelineRow("Push", _add_minutes(start_seconds, 15), "Coordinated push from marshal"),
-        TimelineRow("TOT", _add_minutes(start_seconds, 30), "Time on target — synchronised across strike package"),
-        TimelineRow("Egress Complete", _add_minutes(start_seconds, 50), "All flights clear of MEZ"),
-        TimelineRow("RTB", _add_minutes(start_seconds, 90), "Recovery to home plate or alternate"),
+        TimelineRow("Push", _format_zulu(push_t), push_note),
+        TimelineRow("TOT", _format_zulu(tot_t), tot_note),
+        TimelineRow("Egress Complete", _format_zulu(egress_t), egress_note),
+        TimelineRow("RTB", _format_zulu(rtb_t), rtb_note),
     ]
     return [asdict(r) for r in rows]
 
@@ -540,11 +799,11 @@ def build_wing_brief(
 
         theatre_overview=_build_theatre_overview(theater),
         scenario=_build_scenario(overview, dictionary),
-        commanders_intent=_build_commanders_intent_placeholder(),
+        commanders_intent=_build_commanders_intent_placeholder(groups),
         mission_flow=_build_mission_flow_placeholder(),
         notes="",
 
-        timeline=_build_timeline(start_seconds),
+        timeline=_build_timeline(start_seconds, groups),
         threats=_build_threats(threats),
         flights=_build_flights(groups, airbases),
 
