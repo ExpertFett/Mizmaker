@@ -1495,6 +1495,109 @@ def brief_build_wing():
     return jsonify(brief)
 
 
+@app.route("/api/brief/build-package", methods=["POST"])
+def brief_build_package():
+    """Build a complete brief package: wing brief + one per blue player flight.
+
+    Request: JSON {"sessionId": "..."}
+    Response: {"wing": WingBrief, "flights": [FlightBrief, ...]}
+    The frontend can edit the wing brief before render; in Phase 3a flight
+    briefs are rendered as auto-generated (no per-flight editor yet).
+    """
+    body = request.get_json(silent=True) or {}
+    sid = body.get("sessionId")
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    try:
+        from services.miz_parser import parse_mission_text, extract_full_mission_data
+        from services.miz_editor import extract_dictionary_from_miz
+        from services.brief_builder import build_wing_brief, build_flight_briefs
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        mission_data = extract_full_mission_data(mission_dict, session["theater"])
+        dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
+        kwargs = dict(
+            mission_data=mission_data, theater=session["theater"],
+            filename=session.get("filename") or "",
+            dictionary_text=dictionary_text,
+        )
+        wing = build_wing_brief(**kwargs)
+        flights = build_flight_briefs(**kwargs)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Package build failed: {e}"}), 500
+
+    return jsonify({"wing": wing, "flights": flights})
+
+
+@app.route("/api/brief/render-package", methods=["POST"])
+def brief_render_package():
+    """Render the wing brief + all flight briefs as a single .zip download.
+
+    Request: JSON {"wing": WingBrief, "flights": [FlightBrief, ...], "format": "pptx|pdf"}
+    Response: application/zip containing one file per brief at the chosen format.
+
+    Format support: pptx and pdf in this slice. PNG/JPG package output is
+    not yet supported — convert_pptx returns a per-slide ZIP for those
+    formats which would require nested-zip handling. Use the per-brief
+    /api/brief/render-wing endpoint for image exports.
+    """
+    body = request.get_json(silent=True) or {}
+    wing = body.get("wing")
+    flights = body.get("flights") or []
+    fmt = (body.get("format") or "pptx").lower()
+    if not isinstance(wing, dict):
+        return jsonify({"error": "wing brief object required"}), 400
+    if not isinstance(flights, list):
+        return jsonify({"error": "flights must be a list"}), 400
+    if fmt not in ("pptx", "pdf"):
+        return jsonify({"error": f"Package format must be pptx or pdf (got {fmt})"}), 400
+
+    try:
+        from services.brief_renderer import (
+            render_wing_brief, render_flight_brief, convert_pptx,
+            LibreOfficeNotFoundError,
+        )
+        import zipfile
+
+        safe_name = (wing.get("mission_name") or "brief").replace("/", "_").replace("\\", "_")
+
+        # Render every brief to pptx bytes, then convert each to the
+        # requested format. We do conversions inside the loop so a single
+        # malformed brief doesn't take down the whole package.
+        items: list[tuple[str, bytes]] = []  # (filename_in_zip, bytes)
+
+        wing_pptx = render_wing_brief(wing)
+        wing_out, _ = convert_pptx(wing_pptx, fmt)  # noqa: pptx passthrough or pdf
+        items.append((f"{safe_name}_wing.{fmt}", wing_out))
+
+        for fb in flights:
+            cs = (fb.get("callsign") or "flight").replace("/", "_").replace("\\", "_").replace(" ", "_")
+            fb_pptx = render_flight_brief(fb)
+            fb_out, _ = convert_pptx(fb_pptx, fmt)
+            items.append((f"{safe_name}_flight_{cs}.{fmt}", fb_out))
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in items:
+                zf.writestr(name, data)
+
+    except LibreOfficeNotFoundError as e:
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Package render failed: {e}"}), 500
+
+    return send_file(
+        io.BytesIO(zip_buf.getvalue()),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"{safe_name}_brief_package_{fmt}.zip",
+    )
+
+
 @app.route("/api/brief/render-wing", methods=["POST"])
 def brief_render_wing():
     """Render an (edited) WingBrief dict to .pptx / .pdf / .png.zip / .jpg.zip.

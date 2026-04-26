@@ -128,6 +128,55 @@ export function BriefGenTab() {
     }
   };
 
+  const handleRenderPackage = async () => {
+    if (!brief || !sessionId) return;
+    // Package render only supports pptx/pdf right now (per-slide image
+    // packs would need nested-zip handling we haven't built).
+    const pkgFormat: 'pptx' | 'pdf' = format === 'pdf' ? 'pdf' : 'pptx';
+    setRendering(true); setError(null);
+    try {
+      // Step 1: build the package — backend produces wing + flight briefs
+      // from current session state. We send the user's edited wing brief
+      // verbatim and let the backend regenerate flight briefs each call
+      // (flights aren't yet editable, so they're always fresh from .miz).
+      const buildRes = await fetch('/api/brief/build-package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!buildRes.ok) {
+        const err = await buildRes.json().catch(() => ({ error: 'Build failed' }));
+        throw new Error(err.error || 'Package build failed');
+      }
+      const pkg = await buildRes.json();
+      // Override the auto-built wing with the user's edited one
+      pkg.wing = brief;
+
+      // Step 2: render the whole package as a ZIP
+      const renderRes = await fetch('/api/brief/render-package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat }),
+      });
+      if (!renderRes.ok) {
+        const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
+        throw new Error(err.error || 'Package render failed');
+      }
+      const blob = await renderRes.blob();
+      const safe = (brief.mission_name || 'brief').replace(/[/\\]/g, '_');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safe}_brief_package_${pkgFormat}.zip`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRendering(false);
+    }
+  };
+
   // Brief mutators ----------------------------------------------------------
   function set<K extends keyof WingBrief>(key: K, value: WingBrief[K]) {
     setBrief((b) => (b ? { ...b, [key]: value } : null));
@@ -200,8 +249,17 @@ export function BriefGenTab() {
               onClick={handleRender}
               disabled={rendering}
               style={{ ...btnPrimary, opacity: rendering ? 0.5 : 1 }}
+              title="Download just the wing brief in the selected format"
             >
-              {rendering ? 'Rendering…' : 'Render & Download'}
+              {rendering ? 'Rendering…' : 'Wing Brief'}
+            </button>
+            <button
+              onClick={handleRenderPackage}
+              disabled={rendering || (format !== 'pptx' && format !== 'pdf')}
+              style={{ ...btnPrimary, opacity: rendering ? 0.5 : 1 }}
+              title="Download wing brief + one brief per blue flight as a single .zip (pptx or pdf only)"
+            >
+              {rendering ? 'Rendering…' : 'Wing + Flights (.zip)'}
             </button>
             <select
               value={format}

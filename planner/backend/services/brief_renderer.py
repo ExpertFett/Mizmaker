@@ -723,6 +723,190 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
     return out.getvalue()
 
 
+def render_flight_brief(brief: Dict[str, Any]) -> bytes:
+    """Render one FlightBrief dict to a compact 4-5 slide .pptx.
+
+    Slide order (per-flight, ~4 slides total):
+      1. Cover (callsign / aircraft / mission / time)
+      2. Tasking (free-text, mission-type-aware default)
+      3. Route (waypoint table)
+      4. Comms + Fuel (per-flight freq/TACAN/ICLS + joker/bingo/RTB)
+      5. Notes (only if non-empty — keeps short briefs tight)
+
+    Sized 16:9 to match the wing brief, same dark/orange palette so
+    a wing brief and per-flight brief look like one product when
+    bundled together.
+    """
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    BLANK = prs.slide_layouts[6]
+
+    BG = RGBColor(0x1A, 0x1A, 0x1A)
+    LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
+    BRIGHT = RGBColor(0xFF, 0xFF, 0xFF)
+    ACCENT = RGBColor(0xFF, 0xA5, 0x00)
+    DIM = RGBColor(0xAA, 0xAA, 0xAA)
+    TABLE_HEADER_BG = RGBColor(0x33, 0x33, 0x33)
+
+    def _bg(slide):
+        rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0,
+                                       prs.slide_width, prs.slide_height)
+        rect.fill.solid(); rect.fill.fore_color.rgb = BG
+        rect.line.fill.background()
+        spTree = rect._element.getparent()
+        spTree.remove(rect._element); spTree.insert(2, rect._element)
+
+    def _txt(slide, x, y, w, h, text, *, size=18, bold=False, color=LIGHT,
+             align_center=False, italic=False):
+        tx = slide.shapes.add_textbox(x, y, w, h)
+        tf = tx.text_frame; tf.word_wrap = True
+        lines = text.split("\n") if text else [""]
+        for i, line in enumerate(lines):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            if align_center:
+                p.alignment = PP_ALIGN.CENTER
+            r = p.add_run()
+            r.text = line
+            r.font.size = Pt(size); r.font.bold = bold; r.font.italic = italic
+            r.font.color.rgb = color; r.font.name = "Arial"
+        return tf
+
+    def _header(slide, label):
+        _txt(slide, Inches(0.6), Inches(0.4), Inches(12), Inches(0.6),
+             label, size=24, bold=True, color=ACCENT)
+        line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                       Inches(0.6), Inches(1.05),
+                                       Inches(12.1), Inches(0.04))
+        line.fill.solid(); line.fill.fore_color.rgb = ACCENT
+        line.line.fill.background()
+
+    def _table(slide, x, y, w, h, headers, rows, col_widths=None):
+        ncols = len(headers); nrows = len(rows) + 1
+        shape = slide.shapes.add_table(nrows, ncols, x, y, w, h)
+        table = shape.table
+        if col_widths:
+            for i, cw in enumerate(col_widths):
+                table.columns[i].width = cw
+        for ci, header in enumerate(headers):
+            cell = table.cell(0, ci)
+            cell.fill.solid(); cell.fill.fore_color.rgb = TABLE_HEADER_BG
+            cell.text = header
+            for p in cell.text_frame.paragraphs:
+                for r in p.runs:
+                    r.font.bold = True; r.font.color.rgb = ACCENT
+                    r.font.size = Pt(13); r.font.name = "Arial"
+        for ri, row in enumerate(rows, start=1):
+            for ci, val in enumerate(row):
+                cell = table.cell(ri, ci)
+                cell.fill.solid(); cell.fill.fore_color.rgb = BG
+                cell.text = str(val) if val is not None else ""
+                for p in cell.text_frame.paragraphs:
+                    for r in p.runs:
+                        r.font.color.rgb = LIGHT
+                        r.font.size = Pt(11); r.font.name = "Arial"
+
+    # ---------- 1: Cover ----------------------------------------------
+    s = prs.slides.add_slide(BLANK); _bg(s)
+    _txt(s, Inches(0.6), Inches(0.5), Inches(12), Inches(0.5),
+         f"FLIGHT BRIEF — {brief.get('callsign', '')}", size=14, bold=True,
+         color=ACCENT, align_center=True)
+    _txt(s, Inches(0.6), Inches(2.0), Inches(12), Inches(1.4),
+         brief.get("callsign", ""), size=56, bold=True, color=BRIGHT,
+         align_center=True)
+    _txt(s, Inches(0.6), Inches(3.6), Inches(12), Inches(0.5),
+         f"{brief.get('count', '?')}× {brief.get('aircraft', '?')}  ·  "
+         f"Role: {brief.get('role', '')}",
+         size=18, color=DIM, align_center=True)
+    _txt(s, Inches(0.6), Inches(4.4), Inches(12), Inches(0.5),
+         f"Mission: {brief.get('mission_name', '')}",
+         size=14, color=DIM, align_center=True)
+    _txt(s, Inches(0.6), Inches(5.0), Inches(12), Inches(0.5),
+         f"{brief.get('theater', '')}  ·  {brief.get('date', '')}  ·  "
+         f"Takeoff {brief.get('time_zulu', '')}",
+         size=14, color=DIM, align_center=True)
+
+    # ---------- 2: Tasking --------------------------------------------
+    s = prs.slides.add_slide(BLANK); _bg(s)
+    _header(s, "TASKING")
+    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+         brief.get("tasking", ""), size=18, color=LIGHT)
+
+    # ---------- 3: Route ----------------------------------------------
+    s = prs.slides.add_slide(BLANK); _bg(s)
+    _header(s, "ROUTE")
+    wps = brief.get("waypoints") or []
+    if wps:
+        _table(
+            s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4),
+            ["#", "Name", "Alt (ft MSL)", "Speed (kt)", "Distance (nm)", "ETA (Z)"],
+            [[w.get("number", ""), w.get("name", ""),
+              w.get("altitude_ft", ""), w.get("speed_kt", ""),
+              w.get("distance_nm", ""), w.get("eta_zulu", "")]
+             for w in wps],
+            col_widths=[Inches(0.7), Inches(3.5), Inches(2.0),
+                        Inches(2.0), Inches(2.0), Inches(1.9)],
+        )
+    else:
+        _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
+             "No waypoints in mission file.", size=18, color=DIM, italic=True)
+
+    # ---------- 4: Comms + Fuel ---------------------------------------
+    s = prs.slides.add_slide(BLANK); _bg(s)
+    _header(s, "COMMS + FUEL")
+    # Two columns side by side
+    col1_x = Inches(0.6); col1_w = Inches(6.0)
+    col2_x = Inches(7.0); col2_w = Inches(5.7)
+
+    _txt(s, col1_x, Inches(1.4), col1_w, Inches(0.4),
+         "COMMS", size=14, bold=True, color=ACCENT)
+    comms_rows = [
+        ("Primary",   f"{brief.get('frequency', '')} MHz" if brief.get('frequency') else ""),
+        ("TACAN",     brief.get("tacan", "")),
+        ("ICLS",      brief.get("icls", "")),
+        ("Home Plate", brief.get("home_plate", "")),
+        ("Divert",    brief.get("divert", "")),
+    ]
+    for i, (label, value) in enumerate(comms_rows):
+        y = Inches(1.9 + i * 0.5)
+        _txt(s, col1_x, y, Inches(2.0), Inches(0.4), label, size=13, color=DIM)
+        _txt(s, col1_x + Inches(2.2), y, Inches(3.5), Inches(0.4),
+             value or "—", size=15, color=LIGHT, bold=True)
+
+    _txt(s, col2_x, Inches(1.4), col2_w, Inches(0.4),
+         "FUEL LADDER", size=14, bold=True, color=ACCENT)
+    fuel_rows = [
+        ("Joker",  f"{brief.get('fuel_joker_lbs', 0):,} lbs"),
+        ("Bingo",  f"{brief.get('fuel_bingo_lbs', 0):,} lbs"),
+        ("RTB",    f"{brief.get('fuel_rtb_lbs', 0):,} lbs"),
+    ]
+    for i, (label, value) in enumerate(fuel_rows):
+        y = Inches(1.9 + i * 0.55)
+        _txt(s, col2_x, y, Inches(2.0), Inches(0.4), label, size=13, color=DIM)
+        _txt(s, col2_x + Inches(2.2), y, Inches(3.5), Inches(0.4),
+             value, size=18, color=LIGHT, bold=True)
+    _txt(s, col2_x, Inches(4.0), col2_w, Inches(0.4),
+         "(Edit fuel values in the editor — defaults are placeholders)",
+         size=10, color=DIM, italic=True)
+
+    # ---------- 5: Notes (only if non-empty) ---------------------------
+    notes = brief.get("notes") or ""
+    if notes.strip():
+        s = prs.slides.add_slide(BLANK); _bg(s)
+        _header(s, "NOTES / SPECIAL INSTRUCTIONS")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             notes, size=15, color=LIGHT)
+
+    out = io.BytesIO(); prs.save(out)
+    return out.getvalue()
+
+
 def _rasterize_pdf_via_ghostscript(
     pdf_bytes: bytes, target: Literal["png", "jpg"], dpi: int,
 ) -> List[bytes]:

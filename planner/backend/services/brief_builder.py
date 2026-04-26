@@ -125,6 +125,52 @@ class ThreatRow:
 
 
 @dataclass
+class WaypointRow:
+    number: int       # steerpoint index, 1-based for pilot readability
+    name: str         # waypoint name (e.g. "MARSHAL", "TGT", "RTB")
+    altitude_ft: int  # MSL feet, rounded
+    speed_kt: int     # knots ground speed, rounded
+    eta_zulu: str     # HHMM"Z" — absolute mission time at this waypoint
+    distance_nm: float  # leg distance from previous waypoint
+
+
+@dataclass
+class FlightBrief:
+    """One compact 4-5 slide brief per blue player flight.
+
+    Shares header info (mission_name, theater, date, time_zulu) with the
+    wing brief but each flight gets its own callsign/aircraft + a route
+    table from its waypoints + flight-specific comms + fuel placeholders.
+    Editable later via the same UI patterns the wing brief uses; in
+    Phase 3a we auto-build them and let the user edit only the notes.
+    """
+    # Shared header
+    mission_name: str
+    theater: str
+    date: str
+    time_zulu: str
+
+    # Flight identity
+    callsign: str
+    aircraft: str
+    count: int
+    role: str
+    home_plate: str
+    divert: str
+
+    # Tasking + content
+    tasking: str         # auto-filled from group task; user edits
+    waypoints: List[Dict[str, Any]]   # WaypointRow list
+    frequency: str
+    tacan: str
+    icls: str
+    fuel_joker_lbs: int  # placeholder — squadron-specific
+    fuel_bingo_lbs: int  # placeholder
+    fuel_rtb_lbs: int    # placeholder
+    notes: str           # special instructions for this flight, default empty
+
+
+@dataclass
 class WingBrief:
     # ---- Header (auto-filled, mostly cosmetic edits) ----
     mission_name: str
@@ -749,6 +795,132 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 # Top-level builder
 # ---------------------------------------------------------------------------
+
+def _build_tasking_text(group: dict, mission_type: str) -> str:
+    """Produce a one-paragraph tasking statement for a single flight.
+
+    Combines the DCS task name with a mission-type-aware lead-in so the
+    pilot reads something useful instead of just `Strike` or `CAP`.
+    """
+    task = (group.get("task") or "").strip()
+    if not task:
+        return ("Author the specific tasking for this flight: target / area / "
+                "ROE / hand-off / on-station time.")
+    role = _infer_role_from_task(task)
+    by_type = {
+        "strike":   f"Strike — {task}. Run the IP-to-target leg, confirm BDA, egress on planned route.",
+        "cas":      f"CAS — {task}. Check in with JTAC on the brief freq; work 9-line on demand; observe ROE on danger close.",
+        "dca":      f"DCA — {task}. Hold CAP under GCI; engage hostiles inside ROE/WEZ; positive ID before BVR.",
+        "sead":     f"SEAD — {task}. Suppress threats inside the strike package's ingress corridor; pre-emptive on known sites, reactive on emitters.",
+        "antiship": f"Anti-ship — {task}. Coordinated employment from outside vessel ADEZ where possible; deconflict with friendly shipping.",
+        "recon":    f"Recon — {task}. Transit, image/observe target area, report findings on the recon push freq, egress.",
+        "tanker":   f"Tanker — {task}. Establish AAR track; service receivers in flow per the comm card.",
+    }
+    return by_type.get(mission_type) or f"Tasking: {role or task}."
+
+
+def build_flight_briefs(
+    *,
+    mission_data: dict,
+    theater: str,
+    filename: str,
+    dictionary_text: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Build one FlightBrief per blue player flight.
+
+    Returns a list of plain dicts (one per flight) for round-trip
+    serialization. Order matches the order player flights appear in the
+    parsed mission data — that's typically the squadron's preferred order
+    when groups are named alphabetically/numerically.
+    """
+    overview = mission_data.get("overview") or {}
+    groups = mission_data.get("groups") or []
+    airbases = mission_data.get("airbases") or []
+    start_seconds = overview.get("start_time") or 0
+    dictionary = parse_dictionary(dictionary_text)
+    mission_type = _detect_mission_type(groups)
+
+    raw_sortie = overview.get("sortie") or ""
+    resolved_sortie = str(resolve_dict_key(raw_sortie, dictionary)).strip()
+    mission_name = resolved_sortie or filename or "Untitled Mission"
+    if mission_name.startswith("DictKey_"):
+        mission_name = filename or "Untitled Mission"
+
+    out: List[Dict[str, Any]] = []
+    for g in groups:
+        if not _is_player_group(g):
+            continue
+        units = g.get("units") or []
+        first = units[0] if units else {}
+        callsign = first.get("name") or g.get("groupName", "Unknown")
+        aircraft = first.get("type", "Unknown")
+
+        tacan = ""
+        if g.get("tacan"):
+            t = g["tacan"]
+            tacan = f"{t.get('channel', '')}{t.get('band', '')}"
+        icls = str(g.get("icls", {}).get("channel", "")) if g.get("icls") else ""
+        home_plate = _nearest_airbase(g, airbases)
+
+        # Best-effort divert: nearest airbase to last waypoint that isn't home plate
+        divert = ""
+        wps = g.get("waypoints") or []
+        if wps and airbases:
+            last_wp = wps[-1]
+            lat, lon = last_wp.get("lat"), last_wp.get("lon")
+            if lat is not None and lon is not None:
+                ranked = sorted(
+                    [a for a in airbases if a.get("lat") is not None and a.get("lon") is not None],
+                    key=lambda a: (lat - a["lat"]) ** 2 + (lon - a["lon"]) ** 2,
+                )
+                for a in ranked:
+                    if a["name"] != home_plate:
+                        divert = a["name"]
+                        break
+
+        # Build waypoint table — convert ETA seconds to absolute Zulu and
+        # altitude meters → feet, speed m/s → knots
+        wp_rows: List[Dict[str, Any]] = []
+        takeoff_eta = float(wps[0].get("eta_seconds", 0)) if wps else 0
+        for i, wp in enumerate(wps):
+            absolute_t = start_seconds + (float(wp.get("eta_seconds") or 0) - takeoff_eta)
+            row = WaypointRow(
+                number=i + 1,
+                name=wp.get("waypoint_name") or f"WP{i}",
+                altitude_ft=int(round((wp.get("altitude_m") or 0) * 3.28084)),
+                speed_kt=int(round((wp.get("speed_ms") or 0) * 1.94384)),
+                eta_zulu=_format_zulu(absolute_t),
+                distance_nm=round(float(wp.get("leg_distance_nm") or 0), 1),
+            )
+            wp_rows.append(asdict(row))
+
+        brief = FlightBrief(
+            mission_name=str(mission_name),
+            theater=theater,
+            date=overview.get("date") or "",
+            time_zulu=_format_zulu(start_seconds),
+
+            callsign=callsign,
+            aircraft=aircraft,
+            count=len(units),
+            role=_infer_role_from_task(g.get("task", "")),
+            home_plate=home_plate,
+            divert=divert,
+
+            tasking=_build_tasking_text(g, mission_type),
+            waypoints=wp_rows,
+            frequency=_format_freq(g.get("frequency")),
+            tacan=tacan,
+            icls=icls,
+            # Squadron-specific fuel — placeholders the editor or pilot fills
+            fuel_joker_lbs=4500,
+            fuel_bingo_lbs=3500,
+            fuel_rtb_lbs=2500,
+            notes="",
+        )
+        out.append(asdict(brief))
+    return out
+
 
 def build_wing_brief(
     *,
