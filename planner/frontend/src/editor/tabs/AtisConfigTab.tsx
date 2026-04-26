@@ -17,11 +17,29 @@ import { getAirbaseComms } from '../../data/airbaseComms';
 /* ------------------------------------------------------------------ */
 
 interface AtisEntry {
-  airbaseName: string;
-  freq: string;        // MHz
+  airbaseName: string;     // DCS internal name (key for Airbase.getByName)
+  displayName: string;     // Spoken/printed name — defaults to airbaseName,
+                           // overridable for prettier ATIS broadcast text
+                           // ('Edwards Air Force Base' vs 'KEDW' or
+                           // 'Krasnodar Pashkovsky International').
+  initials: string;        // Short identifier (ICAO / squadron code) shown
+                           // on the brief and used as the prefix in the
+                           // ATIS info text. e.g. 'EDW', 'KRR', 'BTM'.
+  freq: string;            // MHz
   modulation: 'AM' | 'FM';
-  coalition: 0 | 1 | 2; // 0=all, 1=red, 2=blue
+  coalition: 0 | 1 | 2;    // 0=all, 1=red, 2=blue
   enabled: boolean;
+}
+
+/** Build a sensible default initials string from a DCS airbase name.
+ *  'Krasnodar-Pashkovsky' -> 'KP', 'Anapa-Vityazevo' -> 'AV',
+ *  single-word names -> first 3 uppercase letters. */
+function defaultInitials(name: string): string {
+  const tokens = name.split(/[\s\-_]+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return tokens.slice(0, 3).map((t) => t[0].toUpperCase()).join('');
+  }
+  return name.slice(0, 3).toUpperCase();
 }
 
 /* ------------------------------------------------------------------ */
@@ -75,14 +93,22 @@ function generateAtisScript(entries: AtisEntry[]): string {
     const rwyLua = rwyNums.length > 0 ? `{ ${rwyNums.join(', ')} }` : '{}';
     const elev = comms?.elevation ? Math.round(comms.elevation * 0.3048) : 0; // ft to meters
 
+    // `name` stays as the DCS internal name so Airbase.getByName() finds
+    // the in-game object. `displayName` is what the broadcast says (the
+    // pretty / spoken form) — falls back to `name` if user hasn't
+    // customised. `initials` (ICAO/squadron code) prefixes the broadcast.
+    const displayName = e.displayName || e.airbaseName;
+    const initials = e.initials || defaultInitials(e.airbaseName);
     return [
       `  {`,
-      `    name       = "${e.airbaseName}",`,
-      `    freq       = "${e.freq}",`,
-      `    modulation = "${e.modulation}",`,
-      `    coalition  = ${e.coalition},`,
-      `    runways    = ${rwyLua},`,
-      `    elevation  = ${elev},`,
+      `    name        = "${e.airbaseName}",`,
+      `    displayName = "${displayName.replace(/"/g, '\\"')}",`,
+      `    initials    = "${initials.replace(/"/g, '\\"')}",`,
+      `    freq        = "${e.freq}",`,
+      `    modulation  = "${e.modulation}",`,
+      `    coalition   = ${e.coalition},`,
+      `    runways     = ${rwyLua},`,
+      `    elevation   = ${elev},`,
       `  },`,
     ].join('\n');
   });
@@ -258,6 +284,8 @@ export function AtisConfigTab() {
     const comms = getAirbaseComms(name);
     setEntries((prev) => [...prev, {
       airbaseName: name,
+      displayName: name,                  // user can override to prettier form
+      initials: defaultInitials(name),    // user can override to ICAO
       freq: comms?.atis ? comms.atis.toFixed(1) : '251.0',
       modulation: 'AM',
       coalition: 0,
@@ -412,7 +440,14 @@ export function AtisConfigTab() {
                   onChange={(e) => handleUpdate(entry.airbaseName, { enabled: e.target.checked })}
                   style={checkboxStyle}
                 />
-                <strong style={{ color: '#e0e0e0', fontSize: 14 }}>{entry.airbaseName}</strong>
+                <strong style={{ color: '#e0e0e0', fontSize: 14 }}>
+                  {entry.displayName || entry.airbaseName}
+                </strong>
+                {entry.initials && entry.initials !== entry.airbaseName.slice(0, entry.initials.length).toUpperCase() && (
+                  <span style={{ fontSize: 11, color: '#ffa500',
+                                 fontFamily: "'B612 Mono', monospace",
+                                 letterSpacing: 0.5 }}>{entry.initials}</span>
+                )}
                 {comms?.runways && (
                   <span style={{ fontSize: 11, color: '#aaaaaa' }}>RWY {comms.runways}</span>
                 )}
@@ -421,6 +456,37 @@ export function AtisConfigTab() {
                 )}
               </div>
               <button style={btnDanger} onClick={() => handleRemove(entry.airbaseName)}>Remove</button>
+            </div>
+
+            {/* Spoken/printed name + ICAO row — both backfill from
+                airbaseName when missing so existing saved entries still
+                render. Wide inputs so long names like 'Krasnodar
+                Pashkovsky International' or 'Sukhumi-Babushara' fit. */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center',
+                          flexWrap: 'wrap', marginBottom: 8 }}>
+              <label style={{ fontSize: 11, color: '#aaaaaa',
+                              display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 280 }}>
+                Spoken name:
+                <input
+                  type="text"
+                  value={entry.displayName ?? entry.airbaseName}
+                  onChange={(e) => handleUpdate(entry.airbaseName, { displayName: e.target.value })}
+                  style={{ ...inputStyle, flex: 1, minWidth: 200 }}
+                  title="Used in the ATIS broadcast text and the brief"
+                />
+              </label>
+              <label style={{ fontSize: 11, color: '#aaaaaa',
+                              display: 'flex', alignItems: 'center', gap: 4 }}>
+                Initials / ICAO:
+                <input
+                  type="text"
+                  value={entry.initials ?? defaultInitials(entry.airbaseName)}
+                  onChange={(e) => handleUpdate(entry.airbaseName, { initials: e.target.value.toUpperCase() })}
+                  maxLength={6}
+                  style={{ ...inputStyle, width: 90, fontFamily: "'B612 Mono', monospace" }}
+                  title="Short identifier (ICAO or squadron code)"
+                />
+              </label>
             </div>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -85,22 +85,46 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
     categories.set(cat, (categories.get(cat) || 0) + 1);
   }
 
-  // Map bounds
+  // Map bounds — must encompass each threat's full engagement RING,
+  // not just the threat point. With the old 'threat points + 15% pad'
+  // logic, a tightly-clustered IADS would zoom in so far that long-range
+  // rings (SA-11 at 45 km, S-300 at 120 km) extended way off the visible
+  // map. Pilots couldn't see the ground context the rings covered.
+  // Fix: compute each threat's lat/lon delta from its range in metres
+  // (≈111 km per degree latitude, scales by cos(lat) for longitude),
+  // and use the union of those extents as the bounds.
   const hasMap = enriched.length >= 1;
   let minLat = 0, maxLat = 0, minLon = 0, maxLon = 0;
   if (hasMap) {
-    const lats = enriched.map((t) => t.lat!);
-    const lons = enriched.map((t) => t.lon!);
-    minLat = Math.min(...lats);
-    maxLat = Math.max(...lats);
-    minLon = Math.min(...lons);
-    maxLon = Math.max(...lons);
-    const padLat = (maxLat - minLat) * 0.15 || 0.05;
-    const padLon = (maxLon - minLon) * 0.15 || 0.05;
-    minLat -= padLat;
-    maxLat += padLat;
-    minLon -= padLon;
-    maxLon += padLon;
+    const KM_PER_DEG_LAT = 111.0;
+    const ringExtents = enriched
+      .filter((t) => t.lat != null && t.lon != null)
+      .map((t) => {
+        const lat = t.lat!;
+        const lon = t.lon!;
+        const rangeKm = (t.range || 0) / 1000;
+        // A threat with no defined range still gets a small footprint
+        // so a single-AAA-point doesn't degenerate to a zero-size map.
+        const effectiveRangeKm = Math.max(rangeKm, 5);
+        const latDelta = effectiveRangeKm / KM_PER_DEG_LAT;
+        const lonDelta = effectiveRangeKm / (KM_PER_DEG_LAT * Math.max(Math.cos(lat * Math.PI / 180), 0.01));
+        return { lat, lon, latDelta, lonDelta };
+      });
+    if (ringExtents.length > 0) {
+      minLat = Math.min(...ringExtents.map((r) => r.lat - r.latDelta));
+      maxLat = Math.max(...ringExtents.map((r) => r.lat + r.latDelta));
+      minLon = Math.min(...ringExtents.map((r) => r.lon - r.lonDelta));
+      maxLon = Math.max(...ringExtents.map((r) => r.lon + r.lonDelta));
+      // Modest extra padding (10%) for the ground context outside the
+      // furthest ring — without this the longest-range ring touches
+      // the very edge of the map.
+      const padLat = (maxLat - minLat) * 0.10 || 0.02;
+      const padLon = (maxLon - minLon) * 0.10 || 0.02;
+      minLat -= padLat;
+      maxLat += padLat;
+      minLon -= padLon;
+      maxLon += padLon;
+    }
   }
 
   const MAP_W = CARD_W - 32;

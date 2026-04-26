@@ -18,18 +18,52 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-function fmtLatLon(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  const ns = lat >= 0 ? 'N' : 'S';
-  const ew = lon >= 0 ? 'E' : 'W';
-  const la = Math.abs(lat);
-  const lo = Math.abs(lon);
-  return `${ns}${Math.floor(la)}°${((la % 1) * 60).toFixed(1)}' ${ew}${Math.floor(lo)}°${((lo % 1) * 60).toFixed(1)}'`;
-}
-
 export function AirbaseRefCard({ airbases, theater, overview }: AirbaseRefCardProps) {
   // Sort by name
   const sorted = [...airbases].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Reformatted to fix the "too cramped" feedback:
+  // - Dropped the LAT/LON column. Squadrons reference airfields by MGRS
+  //   on the kneeboard; LAT/LON was redundant noise that took ~180px
+  //   of horizontal real estate.
+  // - Switched to a two-column layout when the list is long (> 16
+  //   airfields). For theaters like Kola (36 airfields) the old
+  //   single-column table overflowed the card height; two-column lets
+  //   us comfortably show ~30 airfields without shrinking text.
+  // - Bumped row padding for readability.
+
+  const useTwoColumns = sorted.length > 16;
+  const half = Math.ceil(sorted.length / 2);
+  const left = useTwoColumns ? sorted.slice(0, half) : sorted;
+  const right = useTwoColumns ? sorted.slice(half) : [];
+
+  const renderRow = (ab: Airbase, i: number) => (
+    <tr key={ab.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+      <td style={{ ...cell, fontWeight: 500, padding: '5px 8px' }}>{ab.name}</td>
+      <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px' }}>
+        {fmtCoord(ab.lat, ab.lon)}
+      </td>
+      <td style={{
+        ...cell, textAlign: 'center', padding: '5px 8px',
+        color: ab.coalition === 'blue' ? ACCENT : ab.coalition === 'red' ? '#d95050' : DIM,
+      }}>
+        {(ab.coalition || 'NEU').slice(0, 3).toUpperCase()}
+      </td>
+    </tr>
+  );
+
+  const renderTable = (rows: Airbase[]) => (
+    <table style={{ width: '100%', borderCollapse: 'collapse', flexShrink: 0 }}>
+      <thead>
+        <tr>
+          <th style={{ ...th, textAlign: 'left', padding: '6px 8px' }}>AIRFIELD</th>
+          <th style={{ ...th, width: useTwoColumns ? 110 : 140, padding: '6px 8px' }}>MGRS</th>
+          <th style={{ ...th, width: 50, padding: '6px 8px' }}>SIDE</th>
+        </tr>
+      </thead>
+      <tbody>{rows.map(renderRow)}</tbody>
+    </table>
+  );
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
@@ -41,32 +75,14 @@ export function AirbaseRefCard({ airbases, theater, overview }: AirbaseRefCardPr
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} />}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', flexShrink: 0 }}>
-        <thead>
-          <tr>
-            <th style={{ ...th, textAlign: 'left' }}>AIRFIELD</th>
-            <th style={{ ...th, width: 130 }}>MGRS</th>
-            <th style={{ ...th, width: 180 }}>LAT/LON</th>
-            <th style={{ ...th, width: 60 }}>SIDE</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((ab, i) => (
-            <tr key={ab.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-              <td style={{ ...cell, fontWeight: 500 }}>{ab.name}</td>
-              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(ab.lat, ab.lon)}</td>
-              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtLatLon(ab.lat, ab.lon)}</td>
-              <td style={{
-                ...cell,
-                textAlign: 'center',
-                color: ab.coalition === 'blue' ? ACCENT : ab.coalition === 'red' ? '#d95050' : DIM,
-              }}>
-                {(ab.coalition || 'neutral').toUpperCase()}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {useTwoColumns ? (
+        <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{renderTable(left)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>{renderTable(right)}</div>
+        </div>
+      ) : (
+        renderTable(sorted)
+      )}
 
       {sorted.length === 0 && (
         <div style={{ padding: '20px 16px', fontSize: 17, color: DIM, textAlign: 'center' }}>
