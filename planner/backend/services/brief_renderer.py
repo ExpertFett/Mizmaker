@@ -646,32 +646,89 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
          brief["commanders_intent"], size=16, color=LIGHT)
 
     # ---------- Slide 5: Threats ----------------------------------------
-    # Two columns to keep the slide readable on missions with many threat
-    # clusters. Each row is one threat type (already grouped + counted by
-    # the builder), labelled with its bullseye reference for an airborne-
-    # relevant position callout.
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "THREATS")
+    # Spatially-clustered threat areas, ranked by tier then engagement
+    # range. Pilots see "STRATEGIC / TACTICAL / SHORAD / AAA" at a glance
+    # before drilling into individual systems. Slide overflows to a
+    # second slide automatically when the cluster count exceeds what
+    # fits readably (~10 rows at this font size).
     threats_list = brief.get("threats") or []
-    if threats_list:
-        _txt(s, Inches(0.6), Inches(1.2), Inches(12), Inches(0.4),
-             f"{len(threats_list)} threat type(s), grouped — position is "
-             f"bearing/distance (nm) from bullseye.",
-             size=12, color=DIM, italic=True)
-        # If any group failed to compute a BE reference, hint at why.
-        if any(t.get("location", "—") == "—" for t in threats_list):
-            _txt(s, Inches(0.6), Inches(1.55), Inches(12), Inches(0.4),
-                 "(Threats with '—' position have no coords or no bullseye in the .miz.)",
-                 size=10, color=DIM, italic=True)
 
-        _table(
-            s, Inches(0.6), Inches(2.0), Inches(12.1), Inches(4.8),
-            ["Threat", "Position (BE)", "Engagement (km)"],
-            [[t.get("name", ""), t.get("location", "—"),
-              f"{t.get('range_km', 0):.0f}"] for t in threats_list],
-            col_widths=[Inches(6.0), Inches(3.0), Inches(3.1)],
+    # Tier color hints on the slide — keep palette restrained
+    TIER_COLOR = {
+        "STRATEGIC": RGBColor(0xFF, 0x55, 0x55),  # red — long-range area defence
+        "TACTICAL":  RGBColor(0xFF, 0xA5, 0x00),  # accent orange — medium SAM
+        "MIXED":     RGBColor(0xFF, 0xA5, 0x00),  # treat as tactical-leaning
+        "SHORAD":    RGBColor(0xFF, 0xD9, 0x66),  # amber — short-range
+        "MANPAD":    RGBColor(0xCC, 0xCC, 0x88),  # tan — IR threats
+        "AAA":       RGBColor(0xAA, 0xAA, 0xAA),  # neutral grey — gun-only
+        "OTHER":     RGBColor(0x88, 0x88, 0x88),  # dim — unrecognised
+    }
+
+    def _render_threats_slide(rows_for_slide, page_idx, total_pages):
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        title = "THREATS" if total_pages == 1 else f"THREATS ({page_idx}/{total_pages})"
+        _slide_header(s, title)
+
+        if page_idx == 1:
+            # Lead-line on first page only
+            tier_count = sum(1 for r in threats_list)
+            _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
+                 f"{tier_count} threat area(s) — position is bearing/distance (nm) "
+                 f"from bullseye; WEZ is max engagement range in cluster.",
+                 size=11, color=DIM, italic=True)
+
+        # Render rows as styled bands (not a real table — gives us per-row
+        # tier coloring and bigger fonts than a python-pptx table allows).
+        # Layout: TIER | COMPOSITION | POSITION | WEZ
+        TOP = Inches(1.7) if page_idx == 1 else Inches(1.3)
+        ROW_H = Inches(0.55)
+        # Header band
+        _txt(s, Inches(0.6), TOP, Inches(1.6), ROW_H,
+             "TIER", size=12, bold=True, color=ACCENT)
+        _txt(s, Inches(2.4), TOP, Inches(6.0), ROW_H,
+             "COMPOSITION", size=12, bold=True, color=ACCENT)
+        _txt(s, Inches(8.6), TOP, Inches(2.0), ROW_H,
+             "POSITION", size=12, bold=True, color=ACCENT)
+        _txt(s, Inches(10.8), TOP, Inches(2.0), ROW_H,
+             "WEZ", size=12, bold=True, color=ACCENT)
+        # Underline below header
+        underline = s.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, Inches(0.6), TOP + Inches(0.5),
+            Inches(12.1), Inches(0.025),
         )
+        underline.fill.solid(); underline.fill.fore_color.rgb = RGBColor(0x55, 0x55, 0x55)
+        underline.line.fill.background()
+
+        for i, t in enumerate(rows_for_slide):
+            y = TOP + Inches(0.7) + ROW_H * i
+            tier = t.get("tier") or "OTHER"
+            tier_color = TIER_COLOR.get(tier, LIGHT)
+            wez_km = t.get("range_km", 0)
+            wez_nm = t.get("range_nm", 0)
+
+            _txt(s, Inches(0.6), y, Inches(1.7), ROW_H,
+                 tier, size=14, bold=True, color=tier_color)
+            _txt(s, Inches(2.4), y, Inches(6.0), ROW_H,
+                 t.get("composition") or t.get("name") or "?",
+                 size=14, color=LIGHT)
+            _txt(s, Inches(8.6), y, Inches(2.0), ROW_H,
+                 t.get("location", "—"),
+                 size=14, color=LIGHT, bold=True)
+            _txt(s, Inches(10.8), y, Inches(2.0), ROW_H,
+                 f"{wez_nm:.0f} nm  ({wez_km:.0f} km)" if wez_nm > 0 else "—",
+                 size=13, color=LIGHT)
+
+    if threats_list:
+        ROWS_PER_SLIDE = 9  # comfortable read at this font size
+        n = len(threats_list)
+        total_pages = (n + ROWS_PER_SLIDE - 1) // ROWS_PER_SLIDE
+        for page_idx in range(1, total_pages + 1):
+            start = (page_idx - 1) * ROWS_PER_SLIDE
+            _render_threats_slide(threats_list[start:start + ROWS_PER_SLIDE],
+                                  page_idx, total_pages)
     else:
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "THREATS")
         _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
              "No surface threats detected in this mission.",
              size=18, color=DIM, italic=True)

@@ -117,11 +117,19 @@ class FlightRow:
 
 @dataclass
 class ThreatRow:
-    name: str         # "SA-15 Tor M1"
-    type: str         # "SAM"
+    """One row on the threats slide — represents a spatial cluster, not
+    an individual emplacement. Built by _build_threats() which groups
+    nearby threats into a single 'threat area' so 8× AAA at one airfield
+    doesn't take 8 rows on the slide.
+    """
+    tier: str         # "STRATEGIC" / "TACTICAL" / "SHORAD" / "MANPAD" / "AAA" / "MIXED"
+    composition: str  # "1× SA-11 + 4× ZSU-23" — what's actually in the cluster
+    name: str         # primary threat for sort/display fallback (kept for compat)
+    type: str         # "SAM" / "AAA" / etc — top tier in cluster
     coalition: str    # "red"
-    range_km: float   # 12.0
-    location: str     # "Vicinity of Apatity"
+    range_km: float   # max engagement range across the cluster
+    range_nm: float   # same in nm
+    location: str     # "BE 045/35" or "—"
 
 
 @dataclass
@@ -753,6 +761,66 @@ def _build_flights(groups: List[dict], airbases: List[dict]) -> List[Dict[str, A
     return [asdict(f) for f in out]
 
 
+# Threat tier classification — name-pattern based, ordered by capability.
+# Pilots care about tier first, individual model second. The brief slide
+# leads with tier so the strategic/tactical SAMs are obvious before the
+# AAA noise.
+#
+# Patterns are case-insensitive substrings of the DCS unit name. First
+# match wins, so list specific names before generic ones (e.g. "SA-10"
+# before "SA-1" would matter — we're careful with order).
+
+_TIER_PATTERNS: List[tuple[str, List[str]]] = [
+    ("STRATEGIC", [
+        # Long-range area-defence: 100+ km tier
+        "S-300", "Patriot", "MIM-104",
+        "SA-10", "SA-12", "SA-20", "SA-21",
+    ]),
+    ("TACTICAL", [
+        # Medium-range SAMs: 20-60km tier
+        "SA-2", "SA-3", "SA-6", "SA-11", "SA-17",
+        "Buk", "Kub", "S-125", "Hawk",
+        # MR/SR overlaps that are still capable
+    ]),
+    ("SHORAD", [
+        # Short-range air defence: 5-15km
+        "SA-8", "SA-9", "SA-13", "SA-15", "SA-19",
+        "Tor", "Strela", "Osa", "Roland", "Avenger", "Linebacker",
+        "Tunguska", "rapier", "NASAMS",
+    ]),
+    ("MANPAD", [
+        # Man-portable IR — short range, low altitude
+        "SA-7", "SA-14", "SA-16", "SA-18", "SA-24",
+        "Igla", "Stinger", "Manpad",
+    ]),
+    ("AAA", [
+        # Anti-aircraft artillery, gun-only
+        "ZSU", "ZU-23", "Vulcan", "Shilka", "Bofors",
+        "Flak", "Oerlikon", "AA gun", "AAA",
+    ]),
+]
+
+
+def _classify_threat_tier(name: str) -> str:
+    """Return the tier label for a threat name. Falls back to 'OTHER'
+    when no pattern matches so unrecognised systems still show up
+    rather than getting filtered silently.
+    """
+    n = (name or "").lower()
+    for tier, patterns in _TIER_PATTERNS:
+        for p in patterns:
+            if p.lower() in n:
+                return tier
+    return "OTHER"
+
+
+# Tier sort order — higher number = more dangerous, sorted desc on the slide
+_TIER_RANK: Dict[str, int] = {
+    "STRATEGIC": 5, "TACTICAL": 4, "SHORAD": 3,
+    "MANPAD": 2, "AAA": 1, "OTHER": 0, "MIXED": 4,
+}
+
+
 def _bearing_distance_from_be(threat_lat: float, threat_lon: float,
                                be_lat: float, be_lon: float) -> tuple[int, int]:
     """Compute bearing (true, deg) and distance (nm) from bullseye to threat.
@@ -777,70 +845,136 @@ def _bearing_distance_from_be(threat_lat: float, threat_lon: float,
     return int(round(bearing)), int(round(distance_nm))
 
 
-def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List[Dict[str, Any]]:
-    """Group threats by type and label each cluster's position relative
-    to bullseye (BE 045/35nm style). Drops the per-threat row explosion
-    that made the slide unreadable on missions with dozens of red SAMs.
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Distance between two lat/lon points in km. Used for spatial clustering."""
+    import math
+    R = 6371.0
+    la1, lo1, la2, lo2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dl = lo2 - lo1
+    a = (math.sin((la2 - la1) / 2) ** 2
+         + math.cos(la1) * math.cos(la2) * math.sin(dl / 2) ** 2)
+    return 2 * R * math.asin(math.sqrt(a))
 
-    Output is sorted by max engagement range (biggest threat first), so
-    the strike package sees the SA-11s and SA-15s before the AAA in the
-    rendered table.
+
+# Threats this close to each other are treated as one "threat area" on
+# the slide. 10 km is a typical airbase / IADS site footprint — keeps
+# co-located AAA + SAM systems on one row, but separates true clusters.
+_CLUSTER_RADIUS_KM = 10.0
+
+
+def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List[Dict[str, Any]]:
+    """Spatial-cluster threats into 'threat areas' for the slide.
+
+    Threats within `_CLUSTER_RADIUS_KM` of each other become one row
+    regardless of type — a typical airfield IADS (1× SA-11 + 4× SA-15
+    + 6× ZU-23) collapses to a single 'IADS complex' row instead of
+    11 individual rows. Each row reports:
+
+      tier        — highest-tier threat in the cluster (STRATEGIC / TACTICAL
+                    / SHORAD / MANPAD / AAA / OTHER), or MIXED when ≥2 tiers
+                    coexist — that's the 'this is a layered defence' signal
+      composition — 'N× Type' summary, e.g. '1× SA-11 + 4× SA-15 + 6× ZU-23'
+      position    — bullseye reference of the cluster centroid
+      WEZ         — max engagement range across the cluster, in km AND nm
+
+    Sorted by tier rank desc, then by range desc within a tier.
     """
     if not threats:
         return []
 
-    # Bullseye for the friendly side (blue by default in our brief flow).
-    # If we don't have it, the BE column falls back to '—'.
+    # Bullseye for blue side (the brief audience). Falls back to "—" if
+    # the .miz didn't define one.
     be_lat = be_lon = None
     if bullseye and isinstance(bullseye, dict):
         blue_be = bullseye.get("blue") or {}
         be_lat = blue_be.get("lat")
         be_lon = blue_be.get("lon")
 
-    # Group by threat name. Within each group track count + max range +
-    # the centroid of the group's positions for a single BE callout.
-    from collections import defaultdict
-    grouped: Dict[str, dict] = defaultdict(lambda: {
-        "count": 0, "max_range_m": 0.0, "lats": [], "lons": [],
-        "type": "", "coalition": "",
-    })
+    # Single-link spatial clustering. For each threat, find a cluster
+    # whose centroid is within radius; otherwise start a new cluster.
+    # Centroids update as members are added (running average).
+    clusters: List[dict] = []
     for t in threats:
-        name = t.get("name") or "Unknown"
-        g = grouped[name]
-        g["count"] += 1
-        g["max_range_m"] = max(g["max_range_m"], float(t.get("range") or 0))
-        if t.get("lat") is not None and t.get("lon") is not None:
-            g["lats"].append(float(t["lat"]))
-            g["lons"].append(float(t["lon"]))
-        g["type"] = t.get("type", "") or g["type"]
-        g["coalition"] = t.get("coalition", "") or g["coalition"]
+        lat = t.get("lat"); lon = t.get("lon")
+        # Threats with no coords get a cluster of their own — better
+        # than dropping them silently.
+        if lat is None or lon is None:
+            clusters.append({"members": [t], "lats": [], "lons": []})
+            continue
+        lat = float(lat); lon = float(lon)
+        placed = False
+        for c in clusters:
+            if not c["lats"]:
+                continue  # cluster of coord-less threats — don't merge in
+            cen_lat = sum(c["lats"]) / len(c["lats"])
+            cen_lon = sum(c["lons"]) / len(c["lons"])
+            if _haversine_km(lat, lon, cen_lat, cen_lon) <= _CLUSTER_RADIUS_KM:
+                c["members"].append(t)
+                c["lats"].append(lat)
+                c["lons"].append(lon)
+                placed = True
+                break
+        if not placed:
+            clusters.append({"members": [t], "lats": [lat], "lons": [lon]})
 
+    # Translate clusters into ThreatRow records
+    from collections import Counter
     rows: List[ThreatRow] = []
-    for name, g in grouped.items():
-        # Centroid of the group for BE callout — single point per cluster
-        if g["lats"] and g["lons"]:
-            c_lat = sum(g["lats"]) / len(g["lats"])
-            c_lon = sum(g["lons"]) / len(g["lons"])
+    for c in clusters:
+        members = c["members"]
+        if not members:
+            continue
+
+        # Count by name to build the composition string
+        name_counts = Counter(m.get("name") or "Unknown" for m in members)
+        composition = " + ".join(
+            f"{cnt}× {name}" for name, cnt in name_counts.most_common()
+        )
+
+        # Tier — set of tiers across the cluster. If >1 distinct tier,
+        # it's a layered defence; flag as MIXED but track the highest.
+        tiers = {_classify_threat_tier(m.get("name") or "") for m in members}
+        if not tiers:
+            top_tier = "OTHER"
+        else:
+            top_tier = max(tiers, key=lambda t: _TIER_RANK.get(t, 0))
+        cluster_tier = "MIXED" if len([t for t in tiers if t != "OTHER"]) > 1 else top_tier
+
+        # Range — biggest engagement zone in the cluster
+        max_range_m = max(float(m.get("range") or 0) for m in members)
+        range_km = max_range_m / 1000.0
+        range_nm = max_range_m / 1852.0  # nm for the airborne audience
+
+        # Position — bearing/distance from bullseye to cluster centroid
+        if c["lats"] and c["lons"]:
+            cen_lat = sum(c["lats"]) / len(c["lats"])
+            cen_lon = sum(c["lons"]) / len(c["lons"])
             if be_lat is not None and be_lon is not None:
-                bearing, dist = _bearing_distance_from_be(c_lat, c_lon, be_lat, be_lon)
+                bearing, dist = _bearing_distance_from_be(cen_lat, cen_lon, be_lat, be_lon)
                 location = f"BE {bearing:03d}/{dist}"
             else:
-                location = f"{c_lat:.3f}, {c_lon:.3f}"
+                location = f"{cen_lat:.3f}, {cen_lon:.3f}"
         else:
             location = "—"
 
-        # Display name includes count when > 1 (e.g. "SA-15 Tor M1 ×4")
-        display_name = name if g["count"] == 1 else f"{name} ×{g['count']}"
+        # Primary name + type — used as tiebreakers and for legacy fields
+        primary_name = name_counts.most_common(1)[0][0]
+        primary_type = members[0].get("type", "")
+        coalition = members[0].get("coalition", "red")
 
         rows.append(ThreatRow(
-            name=display_name,
-            type=g["type"],
-            coalition=g["coalition"],
-            range_km=round(g["max_range_m"] / 1000.0, 1),
+            tier=cluster_tier,
+            composition=composition,
+            name=primary_name,
+            type=primary_type,
+            coalition=coalition,
+            range_km=round(range_km, 1),
+            range_nm=round(range_nm, 1),
             location=location,
         ))
 
-    rows.sort(key=lambda r: r.range_km, reverse=True)  # biggest first
+    # Sort: highest tier first, then biggest range first within tier
+    rows.sort(key=lambda r: (-_TIER_RANK.get(r.tier, 0), -r.range_km))
     return [asdict(r) for r in rows]
 
 
