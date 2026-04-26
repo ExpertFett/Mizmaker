@@ -1495,6 +1495,49 @@ def brief_build_wing():
     return jsonify(brief)
 
 
+@app.route("/api/brief/preview-wing", methods=["POST"])
+def brief_preview_wing():
+    """Render an (edited) WingBrief to per-slide PNGs for the editor's
+    inline preview pane. Returns a JSON array of base64 PNGs (one per
+    slide) so the frontend can display without zip-parsing client-side.
+
+    Request: JSON {"brief": {...WingBrief...}, "dpi": 100 (optional)}
+    Response: {"slides": ["<base64 png>", ...]}
+
+    Requires LibreOffice on the server — returns 503 with a helpful
+    message when unavailable.
+    """
+    body = request.get_json(silent=True) or {}
+    brief = body.get("brief")
+    dpi = int(body.get("dpi") or 100)
+    if not isinstance(brief, dict):
+        return jsonify({"error": "brief object required"}), 400
+    # Cap DPI to something reasonable — preview doesn't need print quality
+    dpi = max(60, min(dpi, 200))
+
+    try:
+        from services.brief_renderer import (
+            render_wing_brief, convert_pptx, _rasterize_pdf,
+            LibreOfficeNotFoundError,
+        )
+        # PPTX → PDF (LibreOffice) → per-page PNG (pypdfium2). Skip the
+        # zip-bundling that the public PNG export does — the editor needs
+        # the raw slide images.
+        pptx_bytes = render_wing_brief(brief)
+        pdf_bytes, _ = convert_pptx(pptx_bytes, "pdf")
+        slide_pngs = _rasterize_pdf(pdf_bytes, "png", dpi=dpi)
+    except LibreOfficeNotFoundError as e:
+        return jsonify({"error": str(e), "needs_libreoffice": True}), 503
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Preview render failed: {e}"}), 500
+
+    import base64
+    return jsonify({
+        "slides": [base64.b64encode(b).decode("ascii") for b in slide_pngs],
+    })
+
+
 @app.route("/api/brief/build-package", methods=["POST"])
 def brief_build_package():
     """Build a complete brief package: wing brief + one per blue player flight.

@@ -65,6 +65,15 @@ export function BriefGenTab() {
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
 
+  // Inline preview pane state. Slides come from the server as base64 PNGs
+  // rendered via LibreOffice → pypdfium2. Empty until user clicks Preview.
+  // Edits don't auto-refresh — user clicks Refresh after a batch of edits
+  // to avoid burning CPU on every keystroke.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSlides, setPreviewSlides] = useState<string[]>([]);
+  const [previewIdx, setPreviewIdx] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const probeCapabilities = () => {
     fetch('/api/brief/capabilities')
       .then((r) => (r.ok ? r.json() : null))
@@ -95,6 +104,37 @@ export function BriefGenTab() {
       setError(e.message);
     } finally {
       setBuilding(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (!brief) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/brief/preview-wing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brief, dpi: 100 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Preview failed' }));
+        if (err.needs_libreoffice) {
+          throw new Error('Preview requires LibreOffice on the server. ' +
+            'Locally: install it and restart the backend. ' +
+            'Production: should be installed via Dockerfile.');
+        }
+        throw new Error(err.error || 'Preview failed');
+      }
+      const data = await res.json();
+      setPreviewSlides(data.slides || []);
+      setPreviewIdx(0);
+    } catch (e: any) {
+      setError(e.message);
+      setPreviewOpen(false);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -275,9 +315,95 @@ export function BriefGenTab() {
               ))}
             </select>
             <button onClick={handleBuild} style={btnSecondary}>Rebuild from mission</button>
+            <button
+              onClick={handlePreview}
+              disabled={previewLoading}
+              style={{
+                ...btnSecondary,
+                borderColor: previewOpen ? '#ffa500' : '#4a4a4a',
+                color: previewOpen ? '#ffa500' : '#cccccc',
+              }}
+              title="Render the brief as PNGs and show inline (~5s)"
+            >
+              {previewLoading ? 'Rendering…' : previewOpen ? '↻ Refresh Preview' : 'Preview'}
+            </button>
             <span style={{ flex: 1 }} />
             <button onClick={() => setBrief(null)} style={btnDanger}>Discard</button>
           </div>
+
+          {/* Preview pane — inline slide viewer with prev/next nav */}
+          {previewOpen && (
+            <div style={{
+              marginBottom: 16, background: '#1a1a1a',
+              border: '1px solid #3a3a3a',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 10px', background: '#262626',
+                borderBottom: '1px solid #3a3a3a',
+              }}>
+                <div style={{ fontSize: 11, color: '#ffa500', fontWeight: 600,
+                              letterSpacing: 1, textTransform: 'uppercase' }}>
+                  Preview
+                </div>
+                <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+                  {previewSlides.length > 0
+                    ? `Slide ${previewIdx + 1} / ${previewSlides.length}`
+                    : previewLoading ? 'Rendering…' : 'No slides'}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button
+                  onClick={() => setPreviewIdx((i) => Math.max(0, i - 1))}
+                  disabled={previewIdx === 0 || previewLoading}
+                  style={{ ...btnSmall, opacity: previewIdx === 0 ? 0.4 : 1 }}
+                >‹ Prev</button>
+                <button
+                  onClick={() => setPreviewIdx((i) =>
+                    Math.min(previewSlides.length - 1, i + 1))}
+                  disabled={previewIdx >= previewSlides.length - 1 || previewLoading}
+                  style={{ ...btnSmall,
+                           opacity: previewIdx >= previewSlides.length - 1 ? 0.4 : 1 }}
+                >Next ›</button>
+                <button onClick={() => setPreviewOpen(false)} style={btnSmall}>
+                  Close
+                </button>
+              </div>
+              <div style={{
+                padding: 12, display: 'flex', justifyContent: 'center',
+                background: '#0f0f0f', minHeight: 360,
+              }}>
+                {previewLoading && previewSlides.length === 0 ? (
+                  <div style={{ color: '#aaaaaa', fontSize: 14, padding: 60 }}>
+                    Rendering brief… (~5s)
+                  </div>
+                ) : previewSlides[previewIdx] ? (
+                  <img
+                    src={`data:image/png;base64,${previewSlides[previewIdx]}`}
+                    alt={`slide ${previewIdx + 1}`}
+                    style={{
+                      maxWidth: '100%', maxHeight: 600,
+                      objectFit: 'contain',
+                      boxShadow: '0 0 0 1px #3a3a3a',
+                    }}
+                    onClick={() => setPreviewIdx((i) =>
+                      i + 1 < previewSlides.length ? i + 1 : 0)}
+                  />
+                ) : (
+                  <div style={{ color: '#888', fontSize: 13, padding: 60 }}>
+                    No slides to display.
+                  </div>
+                )}
+              </div>
+              {previewSlides.length > 0 && !previewLoading && (
+                <div style={{
+                  padding: '6px 10px', borderTop: '1px solid #3a3a3a',
+                  fontSize: 11, color: '#888888',
+                }}>
+                  Click slide or hit Next ›  ·  Edit any section then ↻ Refresh Preview
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Header card — mission name / date / time + logo */}
           <Card title="Cover">
