@@ -745,24 +745,31 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
             # Lead-line on first page only
             tier_count = sum(1 for r in threats_list)
             _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
-                 f"{tier_count} threat area(s) — position is bearing/distance (nm) "
+                 f"{tier_count} threat area(s) — position is bearing/range (nm) "
                  f"from bullseye; WEZ is max engagement range in cluster.",
                  size=11, color=DIM, italic=True)
 
-        # Render rows as styled bands (not a real table — gives us per-row
-        # tier coloring and bigger fonts than a python-pptx table allows).
-        # Layout: TIER | COMPOSITION | POSITION | WEZ
+        # Layout — column ranges are non-overlapping and total 12.1" wide:
+        #   TIER         x 0.6  w 1.5  → ends 2.1
+        #   COMPOSITION  x 2.2  w 5.6  → ends 7.8
+        #   POSITION     x 7.9  w 2.0  → ends 9.9  (BE bearing/range)
+        #   WEZ          x 10.0 w 2.7  → ends 12.7
+        # Was overlapping because COMPOSITION (6.0" wide) often had long
+        # text like "1× SA-11 + 4× SA-15 Tor M1 + 6× ZU-23 Emplacement"
+        # that wrapped to a second line and bled into the next row's space
+        # since ROW_H stayed 0.55". Fixed by reducing rows-per-slide,
+        # shrinking the composition font, raising row height.
         TOP = Inches(1.7) if page_idx == 1 else Inches(1.3)
-        ROW_H = Inches(0.55)
+        ROW_H = Inches(0.65)  # bumped from 0.55 to allow 2-line wrap headroom
+        COL_TIER = (Inches(0.6),  Inches(1.5))
+        COL_COMP = (Inches(2.2),  Inches(5.6))
+        COL_POS  = (Inches(7.9),  Inches(2.0))
+        COL_WEZ  = (Inches(10.0), Inches(2.7))
+
         # Header band
-        _txt(s, Inches(0.6), TOP, Inches(1.6), ROW_H,
-             "TIER", size=12, bold=True, color=ACCENT)
-        _txt(s, Inches(2.4), TOP, Inches(6.0), ROW_H,
-             "COMPOSITION", size=12, bold=True, color=ACCENT)
-        _txt(s, Inches(8.6), TOP, Inches(2.0), ROW_H,
-             "POSITION", size=12, bold=True, color=ACCENT)
-        _txt(s, Inches(10.8), TOP, Inches(2.0), ROW_H,
-             "WEZ", size=12, bold=True, color=ACCENT)
+        for label, (x, w) in (("TIER", COL_TIER), ("COMPOSITION", COL_COMP),
+                              ("POSITION", COL_POS), ("WEZ", COL_WEZ)):
+            _txt(s, x, TOP, w, ROW_H, label, size=12, bold=True, color=ACCENT)
         # Underline below header
         underline = s.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, Inches(0.6), TOP + Inches(0.5),
@@ -778,20 +785,28 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
             wez_km = t.get("range_km", 0)
             wez_nm = t.get("range_nm", 0)
 
-            _txt(s, Inches(0.6), y, Inches(1.7), ROW_H,
-                 tier, size=14, bold=True, color=tier_color)
-            _txt(s, Inches(2.4), y, Inches(6.0), ROW_H,
-                 t.get("composition") or t.get("name") or "?",
-                 size=14, color=LIGHT)
-            _txt(s, Inches(8.6), y, Inches(2.0), ROW_H,
+            # Composition can be long; shrink font when content suggests
+            # it'd wrap. Threshold roughly matches 5.6" at 13pt Arial.
+            comp = t.get("composition") or t.get("name") or "?"
+            comp_size = 13 if len(comp) <= 60 else 11
+
+            _txt(s, COL_TIER[0], y, COL_TIER[1], ROW_H,
+                 tier, size=13, bold=True, color=tier_color)
+            _txt(s, COL_COMP[0], y, COL_COMP[1], ROW_H,
+                 comp, size=comp_size, color=LIGHT)
+            _txt(s, COL_POS[0], y, COL_POS[1], ROW_H,
                  t.get("location", "—"),
-                 size=14, color=LIGHT, bold=True)
-            _txt(s, Inches(10.8), y, Inches(2.0), ROW_H,
+                 size=13, color=LIGHT, bold=True)
+            _txt(s, COL_WEZ[0], y, COL_WEZ[1], ROW_H,
                  f"{wez_nm:.0f} nm  ({wez_km:.0f} km)" if wez_nm > 0 else "—",
-                 size=13, color=LIGHT)
+                 size=12, color=LIGHT)
 
     if threats_list:
-        ROWS_PER_SLIDE = 9  # comfortable read at this font size
+        # 7 rows × 0.65" = 4.55" of rows + 0.7" header headroom = 5.25"
+        # plus the 1.7" header zone = 6.95" total — fits in 7.5" slide.
+        # Was 9 rows × 0.55" = 4.95" but with text wrapping that exceeded
+        # the row band and overlapped the next row's text.
+        ROWS_PER_SLIDE = 7
         n = len(threats_list)
         total_pages = (n + ROWS_PER_SLIDE - 1) // ROWS_PER_SLIDE
         for page_idx in range(1, total_pages + 1):
@@ -806,19 +821,35 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
              size=18, color=DIM, italic=True)
 
     # ---------- Slide 6: Force composition -------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "FRIENDLY FORCES")
-    if brief["flights"]:
-        _table(
-            s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.0),
-            ["Callsign", "Aircraft", "#", "Role", "Freq (MHz)", "TACAN", "Home Plate"],
-            [[f.get("callsign", ""), f.get("aircraft", ""), str(f.get("count", "")),
-              f.get("role", ""), f.get("frequency", ""), f.get("tacan", ""),
-              f.get("home_plate", "")] for f in brief["flights"]],
-            col_widths=[Inches(2.0), Inches(2.5), Inches(0.5), Inches(1.5),
-                        Inches(1.5), Inches(1.2), Inches(2.5)],
-        )
+    # Paginated when there are more flights than fit comfortably on one
+    # slide. Each row is ~0.4" tall at 11pt Arial; 5.5" of rows = ~13
+    # rows safely. Was overflowing on missions with 14+ flights because
+    # python-pptx tables grow downward past their requested height when
+    # row count exceeds what fits — causing rows to fall off the slide.
+    flights_list = brief.get("flights") or []
+    if flights_list:
+        FLIGHTS_PER_SLIDE = 12
+        n = len(flights_list)
+        flight_pages = (n + FLIGHTS_PER_SLIDE - 1) // FLIGHTS_PER_SLIDE
+        for page_idx in range(1, flight_pages + 1):
+            start = (page_idx - 1) * FLIGHTS_PER_SLIDE
+            chunk = flights_list[start:start + FLIGHTS_PER_SLIDE]
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            title = ("FRIENDLY FORCES" if flight_pages == 1
+                     else f"FRIENDLY FORCES ({page_idx}/{flight_pages})")
+            _slide_header(s, title)
+            _table(
+                s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5),
+                ["Callsign", "Aircraft", "#", "Role", "Freq (MHz)", "TACAN", "Home Plate"],
+                [[f.get("callsign", ""), f.get("aircraft", ""), str(f.get("count", "")),
+                  f.get("role", ""), f.get("frequency", ""), f.get("tacan", ""),
+                  f.get("home_plate", "")] for f in chunk],
+                col_widths=[Inches(2.0), Inches(2.5), Inches(0.5), Inches(1.5),
+                            Inches(1.5), Inches(1.2), Inches(2.5)],
+            )
     else:
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "FRIENDLY FORCES")
         _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
              "No player flights detected.", size=18, color=DIM, italic=True)
 

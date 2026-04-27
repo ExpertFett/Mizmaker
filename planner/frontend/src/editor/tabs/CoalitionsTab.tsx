@@ -155,20 +155,22 @@ export function CoalitionsTab() {
     setApplied(false);
   }, [initialAssignments]);
 
-  // Group countries by coalition
+  // Group countries by coalition. Defensively normalise unexpected
+  // coalition values ('neutral' singular, undefined, etc.) into
+  // 'neutrals' so the country always lands in one of the three rendered
+  // columns instead of vanishing into a fourth bucket the UI ignores.
   const coalitionGroups = useMemo(() => {
     const result: Record<string, { name: string; unitCount: number; groupCount: number }[]> = {
       blue: [], red: [], neutrals: [],
     };
     for (const c of countries) {
-      const coal = assignments.get(c.name) || c.coalition;
-      if (!result[coal]) result[coal] = [];
+      let coal = assignments.get(c.name) || c.coalition || 'neutrals';
+      if (coal !== 'blue' && coal !== 'red') coal = 'neutrals';
       const groupCount = groups.filter(
         (g) => g.country === c.name
       ).length;
       result[coal].push({ name: c.name, unitCount: c.unitCount, groupCount });
     }
-    // Sort each by unit count descending
     for (const coal of Object.keys(result)) {
       result[coal].sort((a, b) => b.unitCount - a.unitCount);
     }
@@ -182,21 +184,29 @@ export function CoalitionsTab() {
     return false;
   }, [assignments, countries]);
 
-  const moveCountry = useCallback((name: string, toCoalition: string) => {
+  // Cycle coalition uses functional setState so the read of "current"
+  // always sees the latest assignments map. The previous version closed
+  // over `assignments` and could see stale state under React 19's
+  // automatic batching, which made consecutive clicks appear to do
+  // nothing (Brazil bug). Empty deps keep the callback stable across
+  // renders, so onClick refs don't churn.
+  const cycleCoalition = useCallback((name: string) => {
     setAssignments((prev) => {
-      const next = new Map(prev);
-      next.set(name, toCoalition);
-      return next;
+      const order = ['blue', 'red', 'neutrals'];
+      // Coalitions in the parsed mission can use either "neutrals"
+      // (plural, what extract_countries returns) or "neutral" (singular,
+      // some mod / older paths). Normalise so the order lookup always
+      // resolves and one click always advances.
+      let current = prev.get(name) || 'neutrals';
+      if (current === 'neutral') current = 'neutrals';
+      const idx = order.indexOf(current);
+      const next = order[(idx + 1 + order.length) % order.length];
+      const result = new Map(prev);
+      result.set(name, next);
+      return result;
     });
     setApplied(false);
   }, []);
-
-  const cycleCoalition = useCallback((name: string) => {
-    const current = assignments.get(name) || 'neutrals';
-    const order = ['blue', 'red', 'neutrals'];
-    const next = order[(order.indexOf(current) + 1) % order.length];
-    moveCountry(name, next);
-  }, [assignments, moveCountry]);
 
   const applyPreset = useCallback((preset: CoalitionPreset) => {
     // Normalize each preset name through COUNTRY_ALIASES so quirks like
