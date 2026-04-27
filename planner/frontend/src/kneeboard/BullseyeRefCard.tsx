@@ -230,15 +230,22 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
           No reference points available.
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
-              <th style={{ ...th, width: 100 }}>TYPE</th>
-              <th style={{ ...th, width: 110 }}>FROM BE</th>
-              <th style={{ ...th, width: 150 }}>MGRS</th>
-            </tr>
-          </thead>
+        <>
+          {/* Column legend — replaces the cryptic 'FROM BE' header label
+              with a one-line explanation pilots can read at a glance. */}
+          <div style={{ padding: '4px 0 8px', fontSize: 13, color: DIM, fontStyle: 'italic' }}>
+            Bearing/range column is bullseye-relative — read as
+            "BE 045/35" = bearing 045° true, 35 nm from bullseye.
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
+                <th style={{ ...th, width: 100 }}>TYPE</th>
+                <th style={{ ...th, width: 130 }}>BRG / RNG (BE)</th>
+                <th style={{ ...th, width: 150 }}>MGRS</th>
+              </tr>
+            </thead>
           <tbody>
             {refs.map((pt, i) => (
               <tr key={pt.name + i}>
@@ -268,6 +275,7 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
             ))}
           </tbody>
         </table>
+        </>
       )}
 
       {/* Notes */}

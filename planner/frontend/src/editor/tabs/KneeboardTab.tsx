@@ -14,11 +14,11 @@ import { FlightCard } from '../../kneeboard/FlightCard';
 import { CommsCard } from '../../kneeboard/CommsCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
 import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
-import { SupportAssetsCard } from '../../kneeboard/SupportAssetsCard';
+import { SupportAssetsCard, supportAssetsPageCount } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
-import { ThreatCard } from '../../kneeboard/ThreatCard';
+import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
@@ -119,8 +119,12 @@ export function KneeboardTab() {
   const renderSharedCards = async (): Promise<{ name: string; blob: Blob }[]> => {
     const results: { name: string; blob: Blob }[] = [];
     if (cards.supportAssets) {
-      const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined });
-      results.push({ name: 'Support_Assets.png', blob: await renderCardToBlob(el) });
+      const pageCount = supportAssetsPageCount({ groups, coalition });
+      for (let p = 0; p < pageCount; p++) {
+        const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
+        const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p });
+        results.push({ name: fname, blob: await renderCardToBlob(el) });
+      }
     }
     if (cards.radioLadder) {
       const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined });
@@ -135,8 +139,12 @@ export function KneeboardTab() {
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.threatCard) {
-      const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined });
-      results.push({ name: 'Threat_Card.png', blob: await renderCardToBlob(el) });
+      const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
+      for (let p = 0; p < pageCount; p++) {
+        const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
+        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p });
+        results.push({ name: fname, blob: await renderCardToBlob(el) });
+      }
     }
     if (cards.weatherBrief && overview) {
       const el = createElement(WeatherBriefCard, { overview });
@@ -495,10 +503,14 @@ function CardCarousel({
 
     // Shared cards
     if (cards.supportAssets) {
-      list.push({
-        key: 'supportAssets', label: 'Support Assets',
-        element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined }),
-      });
+      const pageCount = supportAssetsPageCount({ groups, coalition });
+      for (let p = 0; p < pageCount; p++) {
+        const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
+        list.push({
+          key: `supportAssets-${p}`, label: `Support Assets${suffix}`,
+          element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p }),
+        });
+      }
     }
     if (cards.radioLadder) {
       list.push({
@@ -519,10 +531,14 @@ function CardCarousel({
       });
     }
     if (cards.threatCard) {
-      list.push({
-        key: 'threatCard', label: 'Threat Card',
-        element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined }),
-      });
+      const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
+      for (let p = 0; p < pageCount; p++) {
+        const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
+        list.push({
+          key: `threatCard-${p}`, label: `Threat Card${suffix}`,
+          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p }),
+        });
+      }
     }
     if (cards.weatherBrief && overview) {
       list.push({

@@ -158,6 +158,33 @@ export function RadioPresetsSection() {
     });
   }, [groups]);
 
+  // Cross-flight clipboard: copy one card's presets, paste into another.
+  // Stored as in-memory state (not navigator.clipboard) so it works on
+  // hosts where clipboard permissions aren't granted, and so we don't
+  // pollute the user's OS clipboard with JSON blobs.
+  const [presetClipboard, setPresetClipboard] = useState<Preset[] | null>(null);
+  const [copiedFromName, setCopiedFromName] = useState<string>('');
+
+  const copyFlight = useCallback((flight: MissionGroup) => {
+    const list = presetsByFlight.get(flight.groupId);
+    if (!list) return;
+    setPresetClipboard(list.map((p) => ({ ...p })));
+    setCopiedFromName(flight.units[0]?.name || flight.groupName);
+  }, [presetsByFlight]);
+
+  const pasteFlight = useCallback((flight: MissionGroup) => {
+    if (!presetClipboard) return;
+    setPresetsByFlight((prev) => {
+      const next = new Map(prev);
+      // Preserve channel numbers from the destination — copy paste only
+      // mirrors label/freq/mod, since a flight's own ch1 should still be
+      // ch1 on the destination card.
+      const cloned = presetClipboard.map((p) => ({ ...p }));
+      next.set(flight.groupId, cloned);
+      return next;
+    });
+  }, [presetClipboard]);
+
   if (playerFlights.length === 0) {
     return (
       <div style={{
@@ -185,6 +212,11 @@ export function RadioPresetsSection() {
         </div>
         <span style={{ fontSize: 11, color: '#888888' }}>
           Reference only — these don't write to the .miz radio slots yet
+          {presetClipboard && copiedFromName && (
+            <span style={{ marginLeft: 12, color: '#d29922' }}>
+              clipboard: {copiedFromName} ({presetClipboard.length} ch)
+            </span>
+          )}
         </span>
       </div>
 
@@ -212,15 +244,41 @@ export function RadioPresetsSection() {
                     {flight.units.length}× {aircraft}
                   </span>
                 </div>
-                <button
-                  onClick={() => resetFlight(flight)}
-                  style={{
-                    background: 'transparent', border: '1px solid #4a4a4a',
-                    color: '#cccccc', padding: '3px 10px', fontSize: 11,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                  title="Re-derive preset list from current mission groups"
-                >Reset</button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={() => copyFlight(flight)}
+                    style={{
+                      background: 'transparent', border: '1px solid #4a4a4a',
+                      color: '#4a8fd4', padding: '3px 10px', fontSize: 11,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                    title="Copy this flight's preset list to the clipboard so it can be pasted into other flights"
+                  >Copy</button>
+                  <button
+                    onClick={() => pasteFlight(flight)}
+                    disabled={!presetClipboard}
+                    style={{
+                      background: 'transparent', border: '1px solid #4a4a4a',
+                      color: presetClipboard ? '#3fb950' : '#555',
+                      padding: '3px 10px', fontSize: 11,
+                      cursor: presetClipboard ? 'pointer' : 'not-allowed',
+                      fontFamily: 'inherit',
+                      opacity: presetClipboard ? 1 : 0.5,
+                    }}
+                    title={presetClipboard
+                      ? `Paste presets from ${copiedFromName} into this flight (overwrites current preset table)`
+                      : 'Copy a flight first, then paste here'}
+                  >Paste</button>
+                  <button
+                    onClick={() => resetFlight(flight)}
+                    style={{
+                      background: 'transparent', border: '1px solid #4a4a4a',
+                      color: '#cccccc', padding: '3px 10px', fontSize: 11,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                    title="Re-derive preset list from current mission groups"
+                  >Reset</button>
+                </div>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>

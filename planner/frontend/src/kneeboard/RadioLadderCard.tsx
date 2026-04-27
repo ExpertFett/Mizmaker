@@ -34,15 +34,36 @@ function getRoleLabel(g: MissionGroup): string {
 }
 
 export function RadioLadderCard({ groups, coalition, overview }: RadioLadderCardProps) {
+  // Order per Fett's SOP convention: facility comms first (the things
+  // pilots talk to before takeoff and after landing — carriers/airfield
+  // tower), then command-and-control (AWACS), then JTAC/FAC, then
+  // tankers (push freqs you contact mid-mission), then the strike/CAS/
+  // CAP package itself. Reading top-to-bottom mirrors the typical
+  // mission flow: launch → join → cleared off → push → talk to JTAC →
+  // tank → engage → recover. For divert situations the bottom-up
+  // reading still works (you'd rejoin tanker, contact AWACS for state,
+  // then talk to whatever recovery field).
   const coalitionGroups = groups
     .filter((g) => g.coalition === coalition && g.frequency > 0)
     .sort((a, b) => {
-      // Sort: AWACS first, then tankers, then by frequency
       const roleOrder = (g: MissionGroup) => {
         const task = (g.task || '').toLowerCase();
-        if (task === 'awacs') return 0;
-        if (task === 'refueling') return 1;
-        return 2;
+        const cat = (g.category || '').toLowerCase();
+        const utype = ((g.units || [])[0]?.type || '').toUpperCase();
+        // Tier 0: facility comms — carriers, recovery ships
+        if (cat === 'ship') {
+          // Prefer CVN/LHA over arbitrary surface combatants
+          if (/CVN|CV_|LHA|LHD|STENNIS|LINCOLN|ROOSEVELT|VINSON|TRUMAN|EISENHOWER|WASHINGTON|FORRESTAL/.test(utype)) return 0;
+          return 1;
+        }
+        // Tier 2: command and control
+        if (task === 'awacs') return 2;
+        // Tier 3: JTAC / FAC(A) — typically AFAC tasked or helo recon
+        if (task === 'afac' || task === 'reconnaissance') return 3;
+        // Tier 4: tankers (push freqs)
+        if (task === 'refueling') return 4;
+        // Tier 5: strike package — CAP/CAS/SEAD/STRIKE etc
+        return 5;
       };
       const oa = roleOrder(a), ob = roleOrder(b);
       if (oa !== ob) return oa - ob;

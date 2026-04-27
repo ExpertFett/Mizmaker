@@ -13,6 +13,22 @@ interface ThreatCardProps {
   threats: ThreatRing[];
   playerCoalition: string;
   overview?: MissionOverviewData;
+  /** 0-based page index for multi-card pagination. Page 0 has the map
+   *  + first PAGE1_ROWS inventory rows; subsequent pages carry only
+   *  more inventory rows. Use threatCardPageCount() to plan. */
+  page?: number;
+}
+
+/** First-page inventory has the map above it, so it fits fewer rows
+ *  than continuation pages. Tuned to the H=850 card height. */
+const PAGE1_ROWS = 12;
+const PAGEN_ROWS = 22;
+
+/** Compute how many cards a given threat list needs. */
+export function threatCardPageCount(props: Pick<ThreatCardProps, 'threats' | 'playerCoalition'>): number {
+  const enemy = props.threats.filter((t) => t.coalition !== props.playerCoalition && t.lat != null && t.lon != null);
+  if (enemy.length <= PAGE1_ROWS) return 1;
+  return 1 + Math.ceil((enemy.length - PAGE1_ROWS) / PAGEN_ROWS);
 }
 
 /* ---- SAM lookup (mirrors ThreatLibraryTab) ---- */
@@ -69,7 +85,7 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardProps) {
+export function ThreatCard({ threats, playerCoalition, overview, page = 0 }: ThreatCardProps) {
   const enemy = threats.filter((t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
 
   // Enrich with SAM info and sort by range descending
@@ -78,12 +94,24 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
     return { ...t, info };
   }).sort((a, b) => (b.info?.rangeKm ?? metersToNm(b.range)) - (a.info?.rangeKm ?? metersToNm(a.range)));
 
+  // Page slicing: page 0 holds map + first PAGE1_ROWS rows; pages 1+
+  // carry additional PAGEN_ROWS rows each (no map repeated).
+  const isFirstPage = page === 0;
+  const pageStart = isFirstPage ? 0 : PAGE1_ROWS + (page - 1) * PAGEN_ROWS;
+  const pageEnd = isFirstPage ? PAGE1_ROWS : pageStart + PAGEN_ROWS;
+  const pageRows = enriched.slice(pageStart, pageEnd);
+  const totalPages = enriched.length <= PAGE1_ROWS
+    ? 1
+    : 1 + Math.ceil((enriched.length - PAGE1_ROWS) / PAGEN_ROWS);
+
   // Stats
   const categories = new Map<string, number>();
   for (const t of enriched) {
     const cat = t.info?.category || 'unknown';
     categories.set(cat, (categories.get(cat) || 0) + 1);
   }
+
+  // Note: bounds + map only matter on page 0. Page 1+ skip the map.
 
   // Map bounds — must encompass each threat's full engagement RING,
   // not just the threat point. With the old 'threat points + 15% pad'
@@ -93,7 +121,7 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
   // Fix: compute each threat's lat/lon delta from its range in metres
   // (≈111 km per degree latitude, scales by cos(lat) for longitude),
   // and use the union of those extents as the bounds.
-  const hasMap = enriched.length >= 1;
+  const hasMap = isFirstPage && enriched.length >= 1;
   let minLat = 0, maxLat = 0, minLon = 0, maxLon = 0;
   if (hasMap) {
     const KM_PER_DEG_LAT = 111.0;
@@ -133,7 +161,9 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
       <div style={headerStyle}>
-        <div style={titleStyle}>THREAT CARD</div>
+        <div style={titleStyle}>
+          THREAT CARD{totalPages > 1 ? ` (${page + 1}/${totalPages})` : ''}
+        </div>
         <div style={subtitleStyle}>
           {enriched.length} hostile system{enriched.length !== 1 ? 's' : ''} |
           {Array.from(categories.entries()).map(([cat, n]) => ` ${n} ${cat.toUpperCase()}`).join(',')}
@@ -155,7 +185,9 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
       )}
 
       {/* Inventory table */}
-      <div style={sectionTitle}>THREAT INVENTORY</div>
+      <div style={sectionTitle}>
+        {isFirstPage ? 'THREAT INVENTORY' : "THREAT INVENTORY — CONT'D"}
+      </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
@@ -168,13 +200,14 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
           </tr>
         </thead>
         <tbody>
-          {enriched.slice(0, 20).map((t, i) => {
+          {pageRows.map((t, i) => {
             const cat = t.info?.category || 'unknown';
             const color = CAT_COLORS[cat] || DIM;
+            const absIdx = pageStart + i;
             return (
-              <tr key={t.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              <tr key={t.name + absIdx} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
                 <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>
-                  {i + 1}
+                  {absIdx + 1}
                 </td>
                 <td style={{ ...cell, color }}>
                   {t.info ? t.info.nato : t.type.split(' ')[0]}
@@ -194,13 +227,6 @@ export function ThreatCard({ threats, playerCoalition, overview }: ThreatCardPro
               </tr>
             );
           })}
-          {enriched.length > 20 && (
-            <tr>
-              <td colSpan={6} style={{ ...cell, textAlign: 'center', color: DIM }}>
-                +{enriched.length - 20} more systems
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
 

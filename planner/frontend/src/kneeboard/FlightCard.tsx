@@ -42,6 +42,37 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId }: Fl
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
+      {/* Flight-level NAV/COMMS data — TACAN + ICLS pulled from the .miz,
+          IFF Mode codes left as edit placeholders (DCS doesn't expose IFF
+          settings in the mission Lua; pilots set them in cockpit per SOP). */}
+      <div style={sectionTitle}>FLIGHT DATA</div>
+      <div style={{
+        display: 'flex', gap: 0, flexShrink: 0,
+        borderBottom: `1px solid ${BORDER}`,
+      }}>
+        {(() => {
+          const tacanStr = group.tacan
+            ? `${group.tacan.channel}${group.tacan.band}` + (group.tacan.callsign ? ` (${group.tacan.callsign})` : '')
+            : '—';
+          const iclsStr = group.icls?.channel ? String(group.icls.channel) : '—';
+          const items = [
+            { label: 'TACAN',     value: tacanStr,    color: group.tacan ? TEXT : DIM },
+            { label: 'ICLS',      value: iclsStr,     color: group.icls ? TEXT : DIM },
+            { label: 'IFF M1',    value: '— EDIT —',  color: DIM },
+            { label: 'IFF M3',    value: '— EDIT —',  color: DIM },
+          ];
+          return items.map(({ label, value, color }) => (
+            <div key={label} style={{
+              flex: 1, padding: '4px 6px',
+              borderRight: `1px solid ${BORDER}`, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 11, color: DIM, fontWeight: 600 }}>{label}</div>
+              <div style={{ fontSize: 16, color, fontWeight: 600 }}>{value}</div>
+            </div>
+          ));
+        })()}
+      </div>
+
       {/* Crew roster */}
       <div style={sectionTitle}>CREW</div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>

@@ -167,9 +167,17 @@ def parse_mission_text(text: str) -> dict:
     return _normalize_slpp_keys(mission)
 
 
-def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
+def extract_full_mission_data(mission_dict: dict, theater: str, options_text: str | None = None) -> dict:
     """
     Extract complete mission data for the frontend.
+
+    `options_text` is the raw Lua text from the .miz's `options` file (if
+    available). When supplied, missionOptions falls back to the
+    options/difficulty block for any keys missing from mission/forcedOptions.
+    DCS ME writes both, but some hand-edited or third-party-modified
+    missions only have the difficulty block — without this fallback those
+    options would render as "Not Set" (gray) when the user has actually
+    forced them off.
 
     Returns dict with: overview, groups[], units[], threats[], airbases[]
     """
@@ -228,7 +236,7 @@ def extract_full_mission_data(mission_dict: dict, theater: str) -> dict:
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)
     trigger_zones = _extract_trigger_zones(mission_dict, theater, has_projection)
-    mission_options = _extract_mission_options(mission_dict)
+    mission_options = _extract_mission_options(mission_dict, options_text)
 
     return {
         "overview": overview,
@@ -414,12 +422,19 @@ def _extract_overview(d: dict, theater: str) -> dict:
     }
 
 
-def _extract_mission_options(d: dict) -> dict:
+def _extract_mission_options(d: dict, options_text: str | None = None) -> dict:
     """Extract forcedOptions and mission-level options from the mission dict.
 
     DCS forcedOptions controls what players can/cannot do:
     - labels, padlock, externalViews, birds, civTraffic, easyFlight, etc.
     These are set in the ME under 'Mission Options'.
+
+    When `options_text` is supplied, falls back to options/difficulty for
+    any keys not present in mission/forcedOptions. DCS writes both blocks
+    when the user toggles in the ME, but hand-edited / third-party miz
+    files sometimes only carry the difficulty block; without this
+    fallback those forced options would render as "Not Set" (gray) in
+    the planner UI even though they're actually forced off.
     """
     forced = d.get("forcedOptions", {})
     if not isinstance(forced, dict):
@@ -453,7 +468,85 @@ def _extract_mission_options(d: dict) -> dict:
         if k not in result:
             result[k] = v
 
+    # Fallback: scan options/difficulty for any keys we still don't have.
+    # We only handle simple scalar values here (bool / int / float /
+    # string) — enum strings like "realistic" stay as-is so the frontend
+    # at least shows a non-undefined value rather than gray.
+    if options_text:
+        diff_extras = _parse_options_difficulty(options_text)
+        # Translate difficulty key names back to forcedOptions key names.
+        # Only one rename today: easyCommunication ↔ easyComms.
+        renames = {"easyCommunication": "easyComms"}
+        for d_key, val in diff_extras.items():
+            fo_key = renames.get(d_key, d_key)
+            if fo_key in result:
+                continue  # forcedOptions wins
+            if fo_key in bool_keys:
+                # difficulty might store booleans as strings ("true"/"false")
+                if isinstance(val, bool):
+                    result[fo_key] = val
+                elif isinstance(val, str) and val.lower() in ("true", "false"):
+                    result[fo_key] = (val.lower() == "true")
+                elif isinstance(val, (int, float)):
+                    result[fo_key] = bool(val)
+            elif fo_key in enum_keys:
+                if isinstance(val, (int, float)):
+                    result[fo_key] = int(val)
+                # Skip string enum values (older missions store geffect as
+                # "realistic"/"none" — frontend expects ints, would break).
+
     return result
+
+
+# Match `["key"] = value` pairs inside the difficulty block. Captures the
+# RHS up to comma or newline so we can classify it.
+_DIFFICULTY_KV_RE = re.compile(
+    r'\["(?P<key>[^"]+)"\]\s*=\s*(?P<val>[^,\n]+?)\s*(?=[,\n])'
+)
+
+
+def _parse_options_difficulty(options_text: str) -> dict:
+    """Extract scalar `["key"] = value` pairs from the options/difficulty block.
+
+    Returns a dict mapping key → bool / int / float / str. Used as a
+    fallback when mission/forcedOptions doesn't carry the value.
+    """
+    diff_match = re.search(r'\["difficulty"\]\s*=\s*\n?\s*\{', options_text)
+    if not diff_match:
+        return {}
+
+    # Brace-match to find the end of the difficulty block
+    brace_start = options_text.index('{', diff_match.start())
+    depth = 1
+    i = brace_start + 1
+    while i < len(options_text) and depth > 0:
+        ch = options_text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    diff_text = options_text[brace_start:i]
+
+    out: dict = {}
+    for m in _DIFFICULTY_KV_RE.finditer(diff_text):
+        key = m.group("key")
+        raw = m.group("val").strip().rstrip(',').strip()
+        if raw == "true":
+            out[key] = True
+        elif raw == "false":
+            out[key] = False
+        elif raw.startswith('"') and raw.endswith('"'):
+            out[key] = raw[1:-1]
+        else:
+            try:
+                out[key] = int(raw)
+            except ValueError:
+                try:
+                    out[key] = float(raw)
+                except ValueError:
+                    pass
+    return out
 
 
 def _extract_tacan_from_tasks(waypoints: list) -> dict | None:

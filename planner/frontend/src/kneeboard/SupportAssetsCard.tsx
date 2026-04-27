@@ -11,6 +11,31 @@ interface SupportAssetsCardProps {
   groups: MissionGroup[];
   coalition: string;
   overview?: MissionOverviewData;
+  /** 0-based page index. Lets callers render multi-card sets when the
+   *  asset list overflows one card. Use supportAssetsPageCount() to
+   *  decide how many cards to emit. Default 0 = first/only page. */
+  page?: number;
+}
+
+/** Maximum 'OTHER AIR ASSETS' rows on one card before pagination kicks
+ *  in. Tankers + AWACS always stay on page 1; only the bulk 'other'
+ *  list paginates. Tuned so the card body fits within H=850. */
+const OTHER_PAGE_SIZE = 8;
+
+/** Compute how many cards a given props set would emit. ExportPanel
+ *  calls this to know how many filenames to write. */
+export function supportAssetsPageCount(props: Pick<SupportAssetsCardProps, 'groups' | 'coalition'>): number {
+  const cg = props.groups.filter((g) => g.coalition === props.coalition);
+  const others = cg.filter((g) => {
+    const task = (g.task || '').toLowerCase();
+    return (g.category === 'plane' || g.category === 'helicopter') &&
+      task !== 'refueling' && task !== 'awacs' &&
+      !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
+  });
+  // Page 1 always exists (tankers + awacs + first OTHER_PAGE_SIZE other).
+  // Subsequent pages each carry OTHER_PAGE_SIZE more "other" rows.
+  if (others.length <= OTHER_PAGE_SIZE) return 1;
+  return 1 + Math.ceil((others.length - OTHER_PAGE_SIZE) / OTHER_PAGE_SIZE);
 }
 
 function formatFreq(freq: number, mod: number): string {
@@ -27,7 +52,7 @@ function formatSpeed(wp: { speed_ms: number }): string {
   return `${Math.round(msToKnots(wp.speed_ms))} kts`;
 }
 
-export function SupportAssetsCard({ groups, coalition, overview }: SupportAssetsCardProps) {
+export function SupportAssetsCard({ groups, coalition, overview, page = 0 }: SupportAssetsCardProps) {
   const coalitionGroups = groups.filter((g) => g.coalition === coalition);
   const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
   const awacsGroups = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
@@ -39,6 +64,17 @@ export function SupportAssetsCard({ groups, coalition, overview }: SupportAssets
       task !== 'refueling' && task !== 'awacs' &&
       !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
   });
+
+  // Page slicing: page 0 carries tankers+AWACS+first OTHER_PAGE_SIZE
+  // "other" rows; pages 1+ carry only continuation "other" rows.
+  const isFirstPage = page === 0;
+  const pageStart = isFirstPage ? 0 : OTHER_PAGE_SIZE + (page - 1) * OTHER_PAGE_SIZE;
+  const pageEnd = pageStart + OTHER_PAGE_SIZE;
+  const otherSlice = otherSupport.slice(pageStart, pageEnd);
+  const totalPages = Math.max(1,
+    otherSupport.length <= OTHER_PAGE_SIZE
+      ? 1
+      : 1 + Math.ceil((otherSupport.length - OTHER_PAGE_SIZE) / OTHER_PAGE_SIZE));
 
   const renderAssetTable = (assets: MissionGroup[], _role: string) => (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -73,43 +109,42 @@ export function SupportAssetsCard({ groups, coalition, overview }: SupportAssets
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
       <div style={headerStyle}>
-        <div style={titleStyle}>SUPPORT ASSETS</div>
+        <div style={titleStyle}>
+          SUPPORT ASSETS{totalPages > 1 ? ` (${page + 1}/${totalPages})` : ''}
+        </div>
         <div style={subtitleStyle}>
           {coalition.toUpperCase()} coalition | {tankers.length} tanker{tankers.length !== 1 ? 's' : ''} | {awacsGroups.length} AWACS
         </div>
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
-      {/* Tankers */}
-      {tankers.length > 0 && (
+      {/* Tankers — first page only */}
+      {isFirstPage && tankers.length > 0 && (
         <>
           <div style={sectionTitle}>TANKERS</div>
           {renderAssetTable(tankers, 'TANKER')}
         </>
       )}
 
-      {/* AWACS */}
-      {awacsGroups.length > 0 && (
+      {/* AWACS — first page only */}
+      {isFirstPage && awacsGroups.length > 0 && (
         <>
           <div style={sectionTitle}>AWACS</div>
           {renderAssetTable(awacsGroups, 'AWACS')}
         </>
       )}
 
-      {/* Other support */}
-      {otherSupport.length > 0 && (
+      {/* Other support — paginated */}
+      {otherSlice.length > 0 && (
         <>
-          <div style={sectionTitle}>OTHER AIR ASSETS</div>
-          {renderAssetTable(otherSupport.slice(0, 10), 'SUPPORT')}
-          {otherSupport.length > 10 && (
-            <div style={{ padding: '4px 16px', fontSize: 17, color: DIM }}>
-              + {otherSupport.length - 10} more
-            </div>
-          )}
+          <div style={sectionTitle}>
+            {isFirstPage ? 'OTHER AIR ASSETS' : "OTHER AIR ASSETS — CONT'D"}
+          </div>
+          {renderAssetTable(otherSlice, 'SUPPORT')}
         </>
       )}
 
-      {tankers.length === 0 && awacsGroups.length === 0 && otherSupport.length === 0 && (
+      {isFirstPage && tankers.length === 0 && awacsGroups.length === 0 && otherSupport.length === 0 && (
         <div style={{ padding: '20px 16px', fontSize: 17, color: DIM, textAlign: 'center' }}>
           No support assets found for this coalition.
         </div>

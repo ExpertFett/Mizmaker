@@ -191,7 +191,14 @@ def upload():
 
     try:
         # Planner map data (groups with waypoints, units, threats, airbases, drawings)
-        data = extract_full_mission_data(mission_dict, theater)
+        # Pass options text so missionOptions can fall back to options/difficulty
+        # when the mission/forcedOptions block is missing keys (some hand-edited
+        # missions only carry the difficulty block).
+        try:
+            options_text_for_parse = extract_options_from_miz(miz_bytes)
+        except Exception:
+            options_text_for_parse = None
+        data = extract_full_mission_data(mission_dict, theater, options_text_for_parse)
         for group in data["groups"]:
             if group["waypoints"]:
                 group["waypoints"] = recompute_route(group["waypoints"])

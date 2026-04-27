@@ -327,15 +327,14 @@ export function CommCardTab() {
 
   return (
     <div>
-      {/* Per-flight radio preset cards. Player flights show as preset
-          tables (20 channels each) rather than as single-freq rows in
-          the legacy frequency matrix below — that matrix only made
-          sense for tankers/AWACS/AI. */}
-      <RadioPresetsSection />
+      {/* Per Fett's Phase G feedback: AI/tanker/AWACS frequency matrix
+          comes FIRST (you set those once for the mission), then
+          per-player-flight preset cards below. The previous order had
+          presets on top which buried the deconflict workflow. */}
 
       {/* Legacy frequency matrix — covers tankers, AWACS, and AI flights
           where a single primary freq is the right model. Player flights
-          are filtered out (they're handled by RadioPresetsSection above). */}
+          are filtered out (they're handled by RadioPresetsSection below). */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
@@ -466,6 +465,14 @@ export function CommCardTab() {
           <FreqTable rows={aiRows} getEffective={getEffective} isConflict={isConflict} updateFreq={updateFreq} updateMod={updateMod} overrides={overrides} />
         </>
       )}
+
+      {/* Per-flight radio preset cards. Each player flight gets a
+          20-channel preset table (own primary, AWACS, tankers, sister
+          flights, GUARD). Copy/paste between cards mirrors a setup once
+          the lead flight is configured. */}
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #3a3a3a' }}>
+        <RadioPresetsSection />
+      </div>
     </div>
   );
 }

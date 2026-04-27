@@ -38,14 +38,11 @@ export function CommsCard({ group, allGroups, overview }: CommsCardProps) {
   // Collect all known frequencies from groups in same coalition
   const coalitionGroups = allGroups.filter((g) => g.coalition === group.coalition && g.frequency > 0);
 
-  // Separate support assets
+  // Separate support assets — flights list intentionally not derived
+  // anymore: per-flight freqs were removed from this card (overflow
+  // fix). AWACS + tanker support is the only thing rendered.
   const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
   const awacs = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
-  const flights = coalitionGroups.filter((g) =>
-    (g.task || '').toLowerCase() !== 'refueling' &&
-    (g.task || '').toLowerCase() !== 'awacs' &&
-    g.category === 'plane',
-  );
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
@@ -95,34 +92,12 @@ export function CommsCard({ group, allGroups, overview }: CommsCardProps) {
         </>
       )}
 
-      {/* Other flights */}
-      {flights.length > 1 && (
-        <>
-          <div style={sectionTitle}>FLIGHT FREQUENCIES</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, textAlign: 'left' }}>FLIGHT</th>
-                <th style={{ ...th, width: 80 }}>TASK</th>
-                <th style={{ ...th, width: 120 }}>FREQ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {flights.map((g, i) => (
-                <tr key={g.groupId} style={{
-                  background: g.groupId === group.groupId ? 'rgba(255, 165, 0, 0.12)' : i % 2 === 0 ? 'transparent' : ROW_ALT,
-                }}>
-                  <td style={{ ...cell, fontWeight: g.groupId === group.groupId ? 600 : 400 }}>
-                    {g.groupName}{g.groupId === group.groupId ? ' *' : ''}
-                  </td>
-                  <td style={{ ...cell, textAlign: 'center', fontSize: 17, color: DIM }}>{g.task || '—'}</td>
-                  <td style={{ ...cell, textAlign: 'center' }}>{formatFreq(g.frequency, g.modulation)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+      {/* Per-flight frequency list intentionally removed — was the cause
+          of the 'comms card overflowing the bottom' feedback. Per Fett:
+          'we don't need each jet's freq, unless stated otherwise'. The
+          per-flight presets live on the editor's Radio Presets section
+          (and on each per-flight brief card), not on the shared
+          kneeboard. AWACS + tanker support is enough here. */}
 
       {/* Mission flow */}
       <div style={sectionTitle}>MISSION FLOW</div>

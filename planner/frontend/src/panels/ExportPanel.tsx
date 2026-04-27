@@ -9,11 +9,12 @@ import { FlightCard } from '../kneeboard/FlightCard';
 import { CommsCard } from '../kneeboard/CommsCard';
 import { RouteDetailCard } from '../kneeboard/RouteDetailCard';
 import { FuelLadderCard } from '../kneeboard/FuelLadderCard';
-import { SupportAssetsCard } from '../kneeboard/SupportAssetsCard';
+import { SupportAssetsCard, supportAssetsPageCount } from '../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
+import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import type { Weather } from '../utils/atmosphere';
 
@@ -96,14 +97,30 @@ export function ExportPanel() {
       // Shared cards — inject into KNEEBOARD/IMAGES/ (no aircraft type subfolder)
       try {
         const sharedType = '_SHARED_';
-        if (cards.supportAssets)
-          await addCard(sharedType, 'Support_Assets.png', createElement(SupportAssetsCard, { groups, coalition }));
+        if (cards.supportAssets) {
+          const pageCount = supportAssetsPageCount({ groups, coalition });
+          for (let p = 0; p < pageCount; p++) {
+            const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
+            await addCard(sharedType, fname, createElement(SupportAssetsCard, { groups, coalition, page: p }));
+          }
+        }
         if (cards.radioLadder)
           await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, { groups, coalition }));
         if (cards.airbaseRef)
-          await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, { airbases, theater: theater || '' }));
+          await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, {
+            airbases, theater: theater || '', groups, coalition,
+            // groups + coalition trigger the route-relevance filter so we
+            // don't dump all 36 Kola airfields onto a kneeboard.
+          }));
         if (cards.bullseyeRef && overview)
           await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition }));
+        if (cards.threatCard) {
+          const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
+          for (let p = 0; p < pageCount; p++) {
+            const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
+            await addCard(sharedType, fname, createElement(ThreatCard, { threats, playerCoalition: coalition, page: p }));
+          }
+        }
         if (cards.weatherBrief && overview)
           await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { overview }));
       } catch (e) {

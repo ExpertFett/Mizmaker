@@ -669,6 +669,24 @@ export function WeatherTab() {
               : 'Full control over all weather parameters.'}
           </p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Status badge — mirrors CommCardTab. Weather edits auto-queue
+              on every change (no explicit Apply), but users still want a
+              visible "yes, this is queued" confirmation. */}
+          {hasChanges && (
+            <div style={{
+              padding: '5px 10px', borderRadius: 4,
+              background: 'rgba(63, 185, 80, 0.1)',
+              border: '1px solid #3fb950',
+              color: '#3fb950', fontSize: 12, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }} title="Weather edits are queued and will write to the .miz on download">
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', background: '#3fb950',
+              }} />
+              Edits queued — download .miz to save
+            </div>
+          )}
         <div style={{ display: 'flex', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden' }}>
           <button
             onClick={() => setMode('simple')}
@@ -690,6 +708,7 @@ export function WeatherTab() {
           >
             Advanced
           </button>
+        </div>
         </div>
       </div>
 
