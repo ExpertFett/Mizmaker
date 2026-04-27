@@ -321,6 +321,28 @@ DEFAULT_THEATRE_BLURB = (
 )
 
 
+# Default mission names per theater — used when the .miz has no sortie
+# string. Better than falling back to a literal filename like 'Mission 5
+# v3 edited copy.miz' on the cover slide.
+DEFAULT_MISSION_NAMES: Dict[str, str] = {
+    "Caucasus":         "CAUCASUS OPERATIONS",
+    "Syria":            "LEVANT OPERATIONS",
+    "PersianGulf":      "PERSIAN GULF OPERATIONS",
+    "Nevada":           "NEVADA TRAINING SORTIE",
+    "SinaiMap":         "SINAI OPERATIONS",
+    "Normandy":         "NORMANDY 1944",
+    "TheChannel":       "CHANNEL OPERATIONS",
+    "MarianaIslands":   "MARIANAS OPERATIONS",
+    "Falklands":        "FALKLANDS 1982",
+    "Kola":             "KOLA OPERATIONS",
+    "Afghanistan":      "AFGHANISTAN OPERATIONS",
+    "Iraq":             "IRAQ OPERATIONS",
+    "TopEndAustralia":  "TOP END EXERCISE",
+    "SouthEastAsia":    "SOUTHEAST ASIA OPERATIONS",
+    "GermanyCW":        "COLD WAR GERMANY",
+}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -638,9 +660,113 @@ def _find_waypoint_time(
     return None
 
 
+def _is_carrier_group(g: dict) -> bool:
+    """Carrier ship groups — anything that DCS treats as a CV/CVN/LHA-class
+    deck. Used by spawn-wave timeline math and the comms slide."""
+    if g.get("category") != "ship":
+        return False
+    utype = ((g.get("units") or [{}])[0].get("type") or "").upper()
+    return any(k in utype for k in (
+        "CVN", "CV_", "STENNIS", "LINCOLN", "ROOSEVELT", "VINSON",
+        "WASHINGTON", "TRUMAN", "FORRESTAL", "TARAWA", "AMERICA",
+        "KUZNECOW", "KUZNETSOV",
+    ))
+
+
+def _is_carrier_launched(flight: dict, carriers: List[dict]) -> bool:
+    """A flight is carrier-launched if its first waypoint sits within
+    ~3 nm of a carrier's spawn position. Cheap squared-distance check
+    in lat/lon, scaled crudely — fine for differentiating carrier
+    launches from runway departures even at high latitudes."""
+    wps = flight.get("waypoints") or []
+    if not wps:
+        return False
+    wp0 = wps[0]
+    fl_lat = wp0.get("lat"); fl_lon = wp0.get("lon")
+    if fl_lat is None or fl_lon is None:
+        return False
+    for c in carriers:
+        units = c.get("units") or []
+        if not units:
+            continue
+        c_lat = units[0].get("lat"); c_lon = units[0].get("lon")
+        if c_lat is None or c_lon is None:
+            continue
+        # ~3 nm = ~0.05° at equator, scales by cos(lat) for lon.
+        # Use a generous 0.1° box to be tolerant of mid-deck spawns.
+        if abs(fl_lat - c_lat) < 0.1 and abs(fl_lon - c_lon) < 0.1:
+            return True
+    return False
+
+
+def _build_carrier_spawn_waves(
+    groups: List[dict],
+    start_seconds: Optional[float],
+) -> List[Dict[str, str]]:
+    """Compute carrier spawn waves for the timeline.
+
+    Rule (per Fett's SOP): a carrier deck can safely spawn 8 jets at a
+    time, with 5 minutes of startup before the next wave can spawn. So a
+    16-jet carrier package is wave 1 (jets 1-8) at takeoff, wave 2 at
+    takeoff + 5 min. Land-based flights don't suffer this constraint.
+
+    Returns timeline rows describing each wave; when there's only one
+    wave (or no carrier-launched flights), returns []. The caller
+    interleaves these into the main timeline.
+    """
+    if start_seconds is None:
+        start_seconds = 0.0
+    carriers = [g for g in groups if _is_carrier_group(g)]
+    if not carriers:
+        return []
+
+    # Pull all carrier-launched player flights, sorted by group ID for
+    # deterministic wave ordering.
+    cv_flights = [g for g in groups
+                  if _is_player_group(g) and _is_carrier_launched(g, carriers)]
+    if not cv_flights:
+        return []
+
+    # Sum total jets across CV-launched flights — that's what the deck
+    # has to sequence.
+    total_jets = sum(len(g.get("units") or []) for g in cv_flights)
+    JETS_PER_WAVE = 8
+    WAVE_INTERVAL_MIN = 5
+    waves = (total_jets + JETS_PER_WAVE - 1) // JETS_PER_WAVE
+    if waves <= 1:
+        return []  # one wave fits the deck — no spawn-order row needed
+
+    rows: List[Dict[str, str]] = []
+    # Distribute flights into waves, packing units up to 8 per wave.
+    wave_lists: List[List[str]] = [[] for _ in range(waves)]
+    used_in_wave = 0
+    wave_idx = 0
+    for g in cv_flights:
+        cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "?")
+        unit_count = len(g.get("units") or [])
+        if used_in_wave + unit_count > JETS_PER_WAVE and wave_idx + 1 < waves:
+            wave_idx += 1
+            used_in_wave = 0
+        wave_lists[wave_idx].append(f"{cs} ({unit_count})")
+        used_in_wave += unit_count
+
+    for i, members in enumerate(wave_lists):
+        if not members:
+            continue
+        wave_t = start_seconds + i * WAVE_INTERVAL_MIN * 60
+        rows.append(asdict(TimelineRow(
+            phase=f"CV Wave {i + 1}",
+            time_zulu=_format_zulu(wave_t),
+            note=", ".join(members) + (
+                "  ·  spawn first" if i == 0 else f"  ·  +{i * WAVE_INTERVAL_MIN} min"),
+        )))
+    return rows
+
+
 def _build_timeline(
     start_seconds: Optional[float],
     groups: Optional[List[dict]] = None,
+    mission_type: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Build a phase timeline anchored on mission start, enriched with
     actual waypoint times when player flights have meaningfully named
@@ -733,16 +859,50 @@ def _build_timeline(
     rtb_note = ("Recovery to home plate or alternate"
                 + (f" (from waypoint data, {len(rtb_times)} flight(s))" if rtb_times else ""))
 
-    rows = [
+    # Mission types that spend significant time over the AO get an
+    # on-station WINDOW (start/end) instead of a single TOT — for CAS,
+    # DCA, recon flights the meaningful planning value is the window
+    # the package is available, not a single moment over the target.
+    mtype = (mission_type or "").lower()
+    is_window_mission = mtype in {"cas", "dca", "recon"}
+
+    if is_window_mission:
+        # Window start = the existing tot_t (push-into-AO time).
+        # Window end heuristic: 15 min before RTB for CAS (typical
+        # off-station handoff), or 10 min for DCA/recon.
+        end_offset_min = 15 if mtype == "cas" else 10
+        on_station_end = max(rtb_t - end_offset_min * 60, tot_t)
+        on_station_label = {
+            "cas":   "On-Station (CAS)",
+            "dca":   "On-Station (CAP)",
+            "recon": "On-Station (Recon)",
+        }[mtype]
+        action_rows = [
+            TimelineRow(f"{on_station_label} Start", _format_zulu(tot_t), tot_note),
+            TimelineRow(f"{on_station_label} End",   _format_zulu(on_station_end),
+                        f"Hand-off / off-station — RTB minus {end_offset_min} min"),
+        ]
+    else:
+        action_rows = [
+            TimelineRow("TOT", _format_zulu(tot_t), tot_note),
+        ]
+
+    rows: List[TimelineRow] = [
         TimelineRow("Ground Ops", _add_minutes(start_seconds, -30), "Pre-flight, brief, walk to jets"),
         TimelineRow("Engine Start", _add_minutes(start_seconds, -10), "Sequence per ground"),
         TimelineRow("Takeoff", _format_zulu(start_seconds), "Rolling takeoff, flow takeoff per flight"),
         TimelineRow("Push", _format_zulu(push_t), push_note),
-        TimelineRow("TOT", _format_zulu(tot_t), tot_note),
+        *action_rows,
         TimelineRow("Egress Complete", _format_zulu(egress_t), egress_note),
         TimelineRow("RTB", _format_zulu(rtb_t), rtb_note),
     ]
-    return [asdict(r) for r in rows]
+
+    # Append carrier spawn waves (if any) so deck launch sequencing is
+    # visible on the timeline. _build_carrier_spawn_waves returns an
+    # empty list when one wave fits the deck or no carriers are launched.
+    out = [asdict(r) for r in rows]
+    out.extend(_build_carrier_spawn_waves(groups, start_seconds))
+    return out
 
 
 def _build_flights(groups: List[dict], airbases: List[dict]) -> List[Dict[str, Any]]:
@@ -986,27 +1146,75 @@ def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List
 
 
 def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
-    """Pull the most-used frequencies as a starter comm card.
+    """Build the wing-brief comms slide.
 
-    User edits to add GCI, tanker, AAR, divert tower, etc. since those
-    aren't reliably present in the mission file.
+    Per Fett's testing: don't list individual flight frequencies — that's
+    handled per-flight in the Radio Presets section. The wing brief
+    comms slide is the SHARED comm card: tankers, AWACS, carriers, GCI,
+    AAR, guard. Things every flight needs to know about.
     """
     out: List[Dict[str, str]] = []
-    seen = set()
+    seen_freqs = set()
+
+    # Tankers — show real frequencies from the mission. Multiple tankers
+    # appear as separate rows.
     for g in groups:
-        if not _is_player_group(g):
+        if (g.get("task") or "").lower() != "refueling":
+            continue
+        if g.get("coalition") != "blue":
+            continue  # only friendly tankers on the brief
+        f = _format_freq(g.get("frequency"))
+        cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
+        if not f or f in seen_freqs:
+            continue
+        out.append({"label": f"TANKER  {cs}", "value": f"{f} MHz"})
+        seen_freqs.add(f)
+
+    # AWACS — same pattern
+    for g in groups:
+        if (g.get("task") or "").lower() != "awacs":
+            continue
+        if g.get("coalition") != "blue":
             continue
         f = _format_freq(g.get("frequency"))
-        callsign = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
-        if not f or callsign in seen:
+        cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
+        if not f or f in seen_freqs:
             continue
-        out.append({"label": callsign, "value": f"{f} MHz"})
-        seen.add(callsign)
-    if not out:
-        out.append({"label": "Primary", "value": "edit — add primary freq"})
+        out.append({"label": f"AWACS   {cs}", "value": f"{f} MHz"})
+        seen_freqs.add(f)
+
+    # Carriers — TACAN + ICLS where set; freq if available
+    for g in groups:
+        if g.get("category") != "ship":
+            continue
+        utype = ((g.get("units") or [{}])[0].get("type") or "").upper()
+        if "CVN" not in utype and "CV_" not in utype and "STENNIS" not in utype \
+                and "LINCOLN" not in utype and "ROOSEVELT" not in utype \
+                and "VINSON" not in utype and "WASHINGTON" not in utype \
+                and "TRUMAN" not in utype and "FORRESTAL" not in utype \
+                and "TARAWA" not in utype:
+            continue
+        cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
+        info_bits = []
+        if g.get("frequency"):
+            f = _format_freq(g.get("frequency"))
+            info_bits.append(f"{f} MHz")
+        if g.get("tacan"):
+            t = g["tacan"]
+            info_bits.append(f"TCN {t.get('channel','')}{t.get('band','')}")
+        if g.get("icls"):
+            info_bits.append(f"ICLS {g['icls'].get('channel','')}")
+        if info_bits:
+            out.append({"label": f"CARRIER {cs}", "value": "  ·  ".join(info_bits)})
+
+    # SOP-required slots — placeholder rows the mission maker fills in.
+    # These are universal in any squadron brief; they just don't live in
+    # the .miz so we surface them as edit-me prompts.
     out.append({"label": "GCI", "value": "edit — add GCI freq"})
-    out.append({"label": "AAR", "value": "edit — add tanker freq if applicable"})
-    out.append({"label": "Guard", "value": "243.000"})
+    out.append({"label": "AAR Boom",   "value": "edit — primary tanker push"})
+    out.append({"label": "BTW Tower",  "value": "edit — primary recovery field"})
+    out.append({"label": "Approach",   "value": "edit — approach control freq"})
+    out.append({"label": "Guard",      "value": "243.000  (UHF)"})
     return out
 
 
@@ -1058,11 +1266,20 @@ def build_flight_briefs(
     dictionary = parse_dictionary(dictionary_text)
     mission_type = _detect_mission_type(groups)
 
+    # Mission name precedence:
+    #   1. resolved sortie (real text from .miz dictionary)
+    #   2. theater-specific default ("KOLA OPERATIONS", "FALKLANDS 1982")
+    #   3. filename
+    #   4. literal "Untitled Mission" — last resort
+    # Filenames usually look like "Mission 5.2_edited_edited.miz" which
+    # makes a terrible cover-slide title; the per-theater default is
+    # almost always better.
     raw_sortie = overview.get("sortie") or ""
     resolved_sortie = str(resolve_dict_key(raw_sortie, dictionary)).strip()
-    mission_name = resolved_sortie or filename or "Untitled Mission"
-    if mission_name.startswith("DictKey_"):
-        mission_name = filename or "Untitled Mission"
+    if resolved_sortie and not resolved_sortie.startswith("DictKey_"):
+        mission_name = resolved_sortie
+    else:
+        mission_name = DEFAULT_MISSION_NAMES.get(theater) or filename or "Untitled Mission"
 
     out: List[Dict[str, Any]] = []
     for g in groups:
@@ -1172,13 +1389,14 @@ def build_wing_brief(
     # → filename → "Untitled Mission". Some .miz files have a sortie DictKey
     # that resolves to an empty string (placeholder set but never authored);
     # those should fall through to the filename rather than show blank.
+    # Mission name precedence: resolved sortie → theater default → filename
+    # → "Untitled Mission". See DEFAULT_MISSION_NAMES for per-theater values.
     raw_sortie = overview.get("sortie") or ""
     resolved_sortie = str(resolve_dict_key(raw_sortie, dictionary)).strip()
-    mission_name = resolved_sortie or filename or "Untitled Mission"
-    # If the "resolved" name is still a literal DictKey_... reference, the
-    # dictionary lookup failed — show the filename instead of the ugly key.
-    if mission_name.startswith("DictKey_"):
-        mission_name = filename or "Untitled Mission"
+    if resolved_sortie and not resolved_sortie.startswith("DictKey_"):
+        mission_name = resolved_sortie
+    else:
+        mission_name = DEFAULT_MISSION_NAMES.get(theater) or filename or "Untitled Mission"
 
     brief = WingBrief(
         mission_name=str(mission_name),
@@ -1193,7 +1411,7 @@ def build_wing_brief(
         mission_flow=_build_mission_flow_placeholder(),
         notes="",
 
-        timeline=_build_timeline(start_seconds, groups),
+        timeline=_build_timeline(start_seconds, groups, _detect_mission_type(groups)),
         threats=_build_threats(threats, overview.get("bullseye")),
         flights=_build_flights(groups, airbases),
 
