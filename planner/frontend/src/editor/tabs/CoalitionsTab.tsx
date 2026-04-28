@@ -63,7 +63,14 @@ const PRESETS: CoalitionPreset[] = [
       'Australia', 'Japan', 'South Korea', 'Israel',
     ],
     red: [
-      'Russia', 'China', 'North Korea', 'Cuba', 'Hungary', 'Poland',
+      // Soviet republics (Ukrainian SSR, Belarussian SSR were part of the
+      // USSR throughout the 80s — DCS still models them as separate
+      // countries because units use them in modern scenarios). Without
+      // them on the red list here, a Cold War mission with Ukraine
+      // would leave Ukraine on blue, which is wrong for the era.
+      'Russia', 'Ukraine', 'Belarus',
+      // Warsaw Pact + aligned states
+      'China', 'North Korea', 'Cuba', 'Hungary', 'Poland',
       'Czech Republic', 'Romania', 'Bulgaria', 'Syria', 'Iraq', 'Iran',
     ],
   },
