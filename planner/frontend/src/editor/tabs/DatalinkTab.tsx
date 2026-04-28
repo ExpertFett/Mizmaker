@@ -144,14 +144,16 @@ export function DatalinkTab() {
     // STN uses a global counter to ensure uniqueness across all groups
     let stnFlight = 1;
     for (const [groupName, { units }] of grouped) {
-      const lead = units[0];
-      // "ED" is DCS's default placeholder VoiceCallsignLabel (Eagle
-      // Dynamics) for units the mission designer never set. Treat it as
-      // unset so auto-assign derives a real callsign from the group
-      // name instead of stamping every flight as "ED".
-      const existing = (lead.voiceCallsignLabel || '').trim().toUpperCase();
-      const isPlaceholder = existing === '' || existing === 'ED';
-      const csLabel = isPlaceholder ? abbreviateCallsign(groupName) : lead.voiceCallsignLabel;
+      // Auto-assign always derives the 2-char label from the group's
+      // base name (Bengal 1 → BN, Camelot 2 → CM, etc.), overwriting
+      // whatever the lead currently has. Earlier we tried to preserve
+      // the lead's existing value when it wasn't "ED" or empty, but
+      // Fett's flow is "click Auto Assign and just make it match the
+      // flight name" — so the button does the work end-to-end.
+      // Strip the trailing flight number so the abbreviation is taken
+      // from the prefix only ("Bengal 1" → "Bengal" → BN).
+      const baseName = groupName.replace(/\s*\d+\s*$/, '').trim() || groupName;
+      const csLabel = abbreviateCallsign(baseName);
 
       // Extract flight number from group name (e.g. "Bengal 1" → 1, "Camelot 2" → 2)
       const flightMatch = groupName.match(/(\d+)\s*$/);
