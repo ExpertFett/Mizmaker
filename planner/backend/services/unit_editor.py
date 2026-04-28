@@ -1094,6 +1094,166 @@ def _replace_radio_frequency(text: str, unit_id: int, freq_hz: int) -> str:
     return text
 
 
+def _enumerate_unit_ids_in_group(text: str, group_id: int) -> list[int]:
+    """Return the list of unitIds inside the named group's ["units"] block.
+
+    Used by per-group edits (e.g. radio presets) that need to fan out to
+    every unit in a flight. Walks the group's units block via brace
+    matching so we don't trip over unitId numbers appearing elsewhere
+    in the mission (triggers, etc.).
+    """
+    group_pos = _find_group_block_start(text, group_id)
+    units_match = re.search(r'\["units"\]\s*=\s*\n?\s*\{', text[group_pos:group_pos + 500])
+    if not units_match:
+        return []
+    brace_start = group_pos + units_match.end() - 1
+    depth = 1
+    i = brace_start + 1
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    units_block = text[brace_start:i]
+    return [int(m.group(1)) for m in re.finditer(r'\["unitId"\]\s*=\s*(\d+)', units_block)]
+
+
+def _replace_radio_presets_for_unit(text: str, unit_id: int, radio_num: int,
+                                    channels: list) -> str:
+    """Rewrite the channels / modulations / channelsNames sub-blocks of
+    ["Radio"][radio_num] for a unit.
+
+    `channels` is a list of dicts: [{ch, freq_mhz, modulation, name}, ...]
+
+    We rebuild the three sub-blocks from scratch (rather than poking at
+    individual entries) so a designer who programmed channel 17 can
+    unset it from the planner UI by sending a list that doesn't include
+    ch=17. Empty channel sub-blocks render as `{}` so DCS still sees
+    the keys.
+
+    Channels with freq_mhz <= 0 are dropped (treated as "not set"),
+    matching the frontend's "blank means unset" convention.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
+
+    # Locate ["Radio"] = { ... } inside the unit block.
+    radio_m = re.search(r'\["Radio"\]\s*=\s*\n?\s*\{', unit_block)
+    if not radio_m:
+        return text
+
+    radio_open_rel = unit_block.index('{', radio_m.start())
+    depth = 1
+    i = radio_open_rel + 1
+    while i < len(unit_block) and depth > 0:
+        ch = unit_block[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    radio_close_rel = i  # one past the closing }
+    radio_block_rel = unit_block[radio_open_rel:radio_close_rel]
+
+    # Locate [radio_num] = { ... } inside the Radio block.
+    radio_idx_m = re.search(rf'\[{radio_num}\]\s*=\s*\n?\s*\{{', radio_block_rel)
+    if not radio_idx_m:
+        return text  # this radio slot doesn't exist on the unit; skip silently
+
+    sub_open_rel = radio_block_rel.index('{', radio_idx_m.start())
+    depth = 1
+    j = sub_open_rel + 1
+    while j < len(radio_block_rel) and depth > 0:
+        ch = radio_block_rel[j]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        j += 1
+    sub_close_rel = j  # one past closing }
+    sub_block = radio_block_rel[sub_open_rel:sub_close_rel]
+    inner = sub_block[1:-1]  # drop the surrounding {}
+
+    # Build the new channels / modulations / channelsNames Lua text.
+    valid = [c for c in channels if (c.get("freq_mhz") or 0) > 0]
+    valid.sort(key=lambda c: int(c["ch"]))
+
+    def _ch_block(label: str, body: str) -> str:
+        if body:
+            return f'                        ["{label}"] = \n                        {{\n{body}                        }},\n'
+        return f'                        ["{label}"] = \n                        {{\n                        }},\n'
+
+    chan_lines = "".join(
+        f'                            [{int(c["ch"])}] = {float(c["freq_mhz"]):.6f},\n'
+        for c in valid
+    )
+    mod_lines = "".join(
+        f'                            [{int(c["ch"])}] = {int(c.get("modulation", 0))},\n'
+        for c in valid
+    )
+    name_lines = "".join(
+        f'                            [{int(c["ch"])}] = {_lua_escape(c.get("name", ""))},\n'
+        for c in valid if c.get("name")
+    )
+
+    new_inner_parts = []
+    new_inner_parts.append(_ch_block("channels", chan_lines))
+    new_inner_parts.append(_ch_block("modulations", mod_lines))
+    if name_lines:
+        new_inner_parts.append(_ch_block("channelsNames", name_lines))
+    # Preserve any other top-level keys inside the radio sub-block (e.g.
+    # ["frequency"] for the spawn freq) by scanning the existing inner
+    # content for keys other than channels/modulations/channelsNames.
+    for keep_match in re.finditer(r'\["([^"]+)"\]\s*=\s*([^\n]+?)(,?)\n', inner):
+        key = keep_match.group(1)
+        if key in ("channels", "modulations", "channelsNames"):
+            continue
+        new_inner_parts.append(f'                        ["{key}"] = {keep_match.group(2)},\n')
+
+    new_inner = "".join(new_inner_parts)
+    new_sub_block = "{\n" + new_inner + "                    }"
+
+    # Splice the new sub-block back into the radio block, then the unit
+    # block, then the full text.
+    new_radio_block = (
+        radio_block_rel[:sub_open_rel]
+        + new_sub_block
+        + radio_block_rel[sub_close_rel:]
+    )
+    new_unit_block = (
+        unit_block[:radio_open_rel]
+        + new_radio_block
+        + unit_block[radio_close_rel:]
+    )
+    return text[:block_start] + new_unit_block + text[block_end:]
+
+
+def _lua_escape(s: str) -> str:
+    """Render a Python string as a Lua double-quoted literal."""
+    if s is None:
+        return '""'
+    safe = str(s).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{safe}"'
+
+
+def _replace_radio_presets_for_group(text: str, group_id: int, radio_num: int,
+                                     channels: list) -> str:
+    """Apply the same preset list to every unit in a group's ["units"] block.
+
+    DCS replicates the lead's presets to wingmen at runtime, but mission
+    designers usually program presets identically on every unit too —
+    so the safest write-back is "stamp every unit with the new list".
+    """
+    unit_ids = _enumerate_unit_ids_in_group(text, group_id)
+    # Process highest unitId first so earlier-positioned units' offsets
+    # don't shift while we're still working at the bottom of the block.
+    for uid in sorted(unit_ids, reverse=True):
+        text = _replace_radio_presets_for_unit(text, uid, radio_num, channels)
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Group-level edit functions
 # ---------------------------------------------------------------------------
@@ -2153,6 +2313,12 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
             # Group-level edits
             elif field == "groupWrappedActions":
                 text = _insert_group_wrapped_actions(text, edit["groupId"], value)
+            elif field == "radioPresets":
+                # Per-group preset write-back. value = {radio: 1,
+                # channels: [{ch, freq_mhz, modulation, name}, ...]}
+                radio_num = int(value.get("radio", 1))
+                channels = value.get("channels", []) or []
+                text = _replace_radio_presets_for_group(text, edit["groupId"], radio_num, channels)
             elif field in ("groupTask", "groupFrequency", "groupModulation"):
                 lua_field = {
                     "groupTask": "task",

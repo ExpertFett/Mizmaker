@@ -23,6 +23,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore } from '../../store/editStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { MissionGroup, ClientUnit } from '../../types/mission';
 
@@ -152,6 +153,30 @@ function buildAutoPresets(flight: MissionGroup, allGroups: MissionGroup[]): Pres
 export function RadioPresetsSection() {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
+  const addEdit = useEditStore((s) => s.addEdit);
+
+  // Convert a UI preset list to the backend radioPresets edit shape.
+  // Strips placeholder rows (empty / 0 freq) so the .miz only carries
+  // channels the user actually set — matches DCS's "missing key = unset"
+  // convention rather than dumping 20× freq=0 rows into the Lua.
+  const dispatchRadioPresetsEdit = useCallback((groupId: number, presets: Preset[]) => {
+    const channels = presets
+      .map((p) => {
+        const freq = parseFloat(p.freq);
+        return {
+          ch: p.ch,
+          freq_mhz: isFinite(freq) && freq > 0 ? freq : 0,
+          modulation: p.mod === 'FM' ? 1 : 0,
+          name: (p.label || '').trim(),
+        };
+      })
+      .filter((c) => c.freq_mhz > 0);
+    addEdit({
+      field: 'radioPresets',
+      groupId,
+      value: { radio: 1, channels },
+    } as any);
+  }, [addEdit]);
 
   const playerFlights = useMemo(() =>
     groups.filter((g) =>
@@ -199,19 +224,27 @@ export function RadioPresetsSection() {
       if (!list) return prev;
       const updated = list.map((p) => p.ch === ch ? { ...p, ...patch } : p);
       next.set(groupId, updated);
+      // Auto-dispatch the full preset list so the edit queue always
+      // reflects the latest UI state. Backend handler is idempotent —
+      // each edit replaces the unit's Radio[1] sub-blocks wholesale.
+      dispatchRadioPresetsEdit(groupId, updated);
       return next;
     });
-  }, []);
+  }, [dispatchRadioPresetsEdit]);
 
   const resetFlight = useCallback((flight: MissionGroup) => {
     setPresetsByFlight((prev) => {
       const next = new Map(prev);
       // Reset re-reads from the .miz first; only falls back to the
       // auto-derived defaults when the mission has no presets at all.
-      next.set(flight.groupId, resolveInitial(flight));
+      const fresh = resolveInitial(flight);
+      next.set(flight.groupId, fresh);
+      // Dispatch so the edit queue reverts too — otherwise a previous
+      // dispatch from typed edits would still write on download.
+      dispatchRadioPresetsEdit(flight.groupId, fresh);
       return next;
     });
-  }, [resolveInitial]);
+  }, [resolveInitial, dispatchRadioPresetsEdit]);
 
   // Cross-flight clipboard: copy one card's presets, paste into another.
   // Stored as in-memory state (not navigator.clipboard) so it works on
@@ -236,9 +269,10 @@ export function RadioPresetsSection() {
       // ch1 on the destination card.
       const cloned = presetClipboard.map((p) => ({ ...p }));
       next.set(flight.groupId, cloned);
+      dispatchRadioPresetsEdit(flight.groupId, cloned);
       return next;
     });
-  }, [presetClipboard]);
+  }, [presetClipboard, dispatchRadioPresetsEdit]);
 
   if (playerFlights.length === 0) {
     return (
@@ -266,7 +300,7 @@ export function RadioPresetsSection() {
           Radio Presets — Per Flight
         </div>
         <span style={{ fontSize: 11, color: '#888888' }}>
-          Reference only — these don't write to the .miz radio slots yet
+          Edits write to Radio[1] of every unit in the flight on download
           {presetClipboard && copiedFromName && (
             <span style={{ marginLeft: 12, color: '#d29922' }}>
               clipboard: {copiedFromName} ({presetClipboard.length} ch)

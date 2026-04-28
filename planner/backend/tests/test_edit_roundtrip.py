@@ -283,6 +283,50 @@ class TestEditResults:
             f"Bogus laser_code edit was silently dropped: {results[0]}"
 
 
+class TestRadioPresets:
+    def test_radio_presets_write_to_every_unit_in_group(self, client, uploaded_session):
+        """A radioPresets edit must rewrite Radio[1].channels for every unit
+        in the targeted group's units block — DCS replicates lead presets to
+        wingmen at runtime, but mission designers normally program presets
+        identically on every unit, so we mirror that.
+        """
+        sid = uploaded_session["sessionId"]
+        groups = uploaded_session.get("groups", [])
+        # Pick the first player group with at least one unit
+        target_group = next(
+            (g for g in groups if g.get("category") in ("plane", "helicopter")
+             and any(u.get("skill") in ("Client", "Player") for u in g.get("units", []))),
+            None,
+        )
+        if not target_group:
+            pytest.skip("fixture has no player flights with radio data")
+        gid = target_group["groupId"]
+
+        edit = {
+            "field": "radioPresets",
+            "groupId": gid,
+            "value": {
+                "radio": 1,
+                "channels": [
+                    {"ch": 1, "freq_mhz": 251.000, "modulation": 0, "name": "TWR"},
+                    {"ch": 2, "freq_mhz": 305.500, "modulation": 0, "name": "TANKER"},
+                    {"ch": 20, "freq_mhz": 243.000, "modulation": 0, "name": "GUARD"},
+                ],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        mission = files["mission"]
+
+        # The new Radio[1] block must contain our channel values (251, 305.5, 243)
+        # and the channelsNames entries.
+        for needle in ("251.000000", "305.500000", "243.000000"):
+            assert needle in mission, \
+                f"radioPresets channel freq {needle} not written to mission"
+        for label in ('"TWR"', '"TANKER"', '"GUARD"'):
+            assert label in mission, \
+                f"radioPresets channel name {label} not written to mission"
+
+
 class TestCoalition:
     def test_country_reassignment_applies(self, client, uploaded_session):
         """Regression guard: earlier versions searched for ["target"] = { in
