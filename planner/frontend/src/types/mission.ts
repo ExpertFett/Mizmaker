@@ -220,6 +220,22 @@ export interface ClientUnit {
   flare: number;
   chaff: number;
   gun: number;
+  /** Radio presets parsed from the unit's Radio[] block in the .miz.
+   *  Empty when the mission designer never programmed any. The frontend
+   *  RadioPresetsSection prefers these over auto-derived defaults. */
+  radioPresets?: RadioPresetRadio[];
+}
+
+export interface RadioPresetRadio {
+  radio: number;          // 1, 2, …
+  channels: RadioPresetChannel[];
+}
+
+export interface RadioPresetChannel {
+  ch: number;             // 1–20 typically
+  freq_mhz: number;       // 251.000, 305.000, etc.
+  modulation: number;     // 0=AM, 1=FM
+  name: string;
 }
 
 /** Laser-capable unit (client or AI). Shape subset of ClientUnit for the LaserTab. */

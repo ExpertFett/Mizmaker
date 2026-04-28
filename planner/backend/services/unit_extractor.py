@@ -668,6 +668,17 @@ def find_client_units(mission: dict) -> list:
                 if isinstance(settings, dict) and "laser_code" in settings:
                     laser_code = int(settings["laser_code"])
 
+        # Extract radio presets stored in the .miz. Structure (per unit):
+        #   unit["Radio"][1].channels = {1: 251.000, 2: 305.000, ...}
+        #   unit["Radio"][1].modulations = {1: 0 (AM) | 1 (FM), ...}
+        #   unit["Radio"][1].channelsNames = {1: "TANKER", ...}  -- optional
+        # Multi-radio jets (Hornet, Viper) have Radio[1] (COMM1/UHF) and
+        # Radio[2] (COMM2/V/UHF). Single-radio jets only have Radio[1].
+        # Without this extraction the frontend RadioPresetsSection
+        # auto-generated presets ignored what the mission designer had
+        # actually programmed — every channel showed 000.
+        radio_presets = _extract_unit_radio_presets(unit)
+
         clients.append({
             "unitId": int(unit.get("unitId", 0)),
             "name": unit.get("name", "?"),
@@ -686,9 +697,85 @@ def find_client_units(mission: dict) -> list:
             "flare": payload.get("flare", 0),
             "chaff": payload.get("chaff", 0),
             "gun": payload.get("gun", 0),
+            "radioPresets": radio_presets,
         })
 
     return clients
+
+
+def _extract_unit_radio_presets(unit: dict) -> list:
+    """Pull radio preset channels off a unit's Radio[] block.
+
+    Returns a list of radios, each radio is a list of channels:
+      [
+        {"radio": 1, "channels": [
+          {"ch": 1, "freq_mhz": 251.000, "modulation": 0, "name": "TWR"},
+          ...
+        ]},
+        {"radio": 2, ...},
+      ]
+
+    Empty / missing slots are simply absent from the channel list. The
+    frontend treats absent channels as "000" placeholder rows.
+    """
+    radios_raw = unit.get("Radio")
+    if not radios_raw:
+        return []
+
+    # Normalize list/dict shape (slpp may return either depending on the
+    # source mission's Lua style).
+    if isinstance(radios_raw, dict):
+        radios_iter = sorted(
+            ((int(k), v) for k, v in radios_raw.items() if isinstance(v, dict)),
+            key=lambda x: x[0],
+        )
+    elif isinstance(radios_raw, list):
+        radios_iter = [(i + 1, v) for i, v in enumerate(radios_raw) if isinstance(v, dict)]
+    else:
+        return []
+
+    out = []
+    for radio_num, radio_block in radios_iter:
+        channels = radio_block.get("channels", {})
+        modulations = radio_block.get("modulations", {})
+        names = radio_block.get("channelsNames", {})
+
+        # Lists → 1-indexed dicts for uniform downstream handling.
+        if isinstance(channels, list):
+            channels = {i + 1: v for i, v in enumerate(channels) if v is not None}
+        if isinstance(modulations, list):
+            modulations = {i + 1: v for i, v in enumerate(modulations) if v is not None}
+        if isinstance(names, list):
+            names = {i + 1: v for i, v in enumerate(names) if v is not None}
+
+        # Coerce string keys to ints (slpp usually gives ints; pydcs sometimes strings).
+        def _ints(d):
+            return {int(k): v for k, v in d.items()} if isinstance(d, dict) else {}
+        channels = _ints(channels)
+        modulations = _ints(modulations)
+        names_int = _ints(names) if names else {}
+
+        ch_list = []
+        for ch_num in sorted(channels.keys()):
+            freq = channels[ch_num]
+            try:
+                freq_mhz = float(freq)
+            except (TypeError, ValueError):
+                continue
+            ch_list.append({
+                "ch": int(ch_num),
+                "freq_mhz": freq_mhz,
+                "modulation": int(modulations.get(ch_num, 0) or 0),
+                "name": names_int.get(ch_num, ""),
+            })
+
+        # Skip radios that ended up empty after parsing (avoids serializing
+        # noise like {"radio": 1, "channels": []} when the source mission
+        # had a Radio block but no channels filled in).
+        if ch_list:
+            out.append({"radio": int(radio_num), "channels": ch_list})
+
+    return out
 
 
 # Short-form CLSID patterns for laser-guided weapons (DCS ME sometimes writes

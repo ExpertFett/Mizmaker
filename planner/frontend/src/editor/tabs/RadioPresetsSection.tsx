@@ -24,7 +24,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { isPlayerGroup } from '../../utils/groups';
-import type { MissionGroup } from '../../types/mission';
+import type { MissionGroup, ClientUnit } from '../../types/mission';
 
 interface Preset {
   ch: number;        // 1-20
@@ -39,6 +39,43 @@ const GUARD_PRESET: Preset = { ch: 20, label: 'GUARD', freq: '243.000', mod: 'AM
 function fmtFreq(hz: number): string {
   if (!hz) return '';
   return (hz / 1_000_000).toFixed(3);
+}
+
+/**
+ * Build the preset list from radio data already programmed into the
+ * .miz file. We use the lead unit's Radio[1] (primary UHF/V-UHF radio
+ * for most jets — Hornet COMM1, Viper COMM1, etc). Returns null when
+ * the lead has no preset data so callers can fall back to auto-derive.
+ */
+function buildPresetsFromMiz(leadClient: ClientUnit | undefined): Preset[] | null {
+  if (!leadClient || !leadClient.radioPresets || leadClient.radioPresets.length === 0) {
+    return null;
+  }
+  // Prefer Radio[1] (COMM1) since that's where mission designers usually
+  // program presets. If only Radio[2] is present, use that.
+  const radio = leadClient.radioPresets.find((r) => r.radio === 1)
+             || leadClient.radioPresets[0];
+  if (!radio || radio.channels.length === 0) return null;
+
+  // Build a map ch → preset so we can fill in absent channels with blanks
+  const byCh = new Map<number, Preset>();
+  for (const c of radio.channels) {
+    byCh.set(c.ch, {
+      ch: c.ch,
+      label: c.name || '',
+      freq: c.freq_mhz > 0 ? c.freq_mhz.toFixed(3) : '',
+      mod: c.modulation === 1 ? 'FM' : 'AM',
+    });
+  }
+  const out: Preset[] = [];
+  for (let ch = 1; ch <= PRESET_COUNT; ch++) {
+    out.push(byCh.get(ch) || { ch, label: '', freq: '', mod: 'AM' });
+  }
+  // Standard convention: GUARD on the highest channel slot. Only stamp
+  // if the .miz left it blank — never overwrite a value the designer set.
+  const last = out[PRESET_COUNT - 1];
+  if (!last.freq) out[PRESET_COUNT - 1] = { ...GUARD_PRESET, ch: PRESET_COUNT };
+  return out;
 }
 
 /**
@@ -114,12 +151,28 @@ function buildAutoPresets(flight: MissionGroup, allGroups: MissionGroup[]): Pres
 
 export function RadioPresetsSection() {
   const groups = useMissionStore((s) => s.groups);
+  const clientUnits = useMissionStore((s) => s.clientUnits);
 
   const playerFlights = useMemo(() =>
     groups.filter((g) =>
       isPlayerGroup(g)
       && (g.category === 'plane' || g.category === 'helicopter')),
     [groups]);
+
+  // Find the lead client unit for a flight by groupName so we can read
+  // its .miz-stored radio presets. Lead = first matching client unit
+  // for the group; mission designers typically program presets on the
+  // lead and DCS replicates them to wingmen at runtime.
+  const findLeadClient = useCallback((flight: MissionGroup): ClientUnit | undefined => {
+    return clientUnits.find((u) => u.groupName === flight.groupName);
+  }, [clientUnits]);
+
+  // Resolve a flight's initial preset list: prefer .miz-stored presets
+  // (what the user actually programmed) over auto-derived defaults.
+  const resolveInitial = useCallback((flight: MissionGroup): Preset[] => {
+    const lead = findLeadClient(flight);
+    return buildPresetsFromMiz(lead) || buildAutoPresets(flight, groups);
+  }, [findLeadClient, groups]);
 
   // Per-flight preset state. Stored as a Map keyed by groupId.
   // Auto-populated on first render; user edits override.
@@ -131,13 +184,13 @@ export function RadioPresetsSection() {
       const next = new Map(prev);
       for (const f of playerFlights) {
         if (!initialised.current.has(f.groupId)) {
-          next.set(f.groupId, buildAutoPresets(f, groups));
+          next.set(f.groupId, resolveInitial(f));
           initialised.current.add(f.groupId);
         }
       }
       return next;
     });
-  }, [playerFlights, groups]);
+  }, [playerFlights, resolveInitial]);
 
   const updatePreset = useCallback((groupId: number, ch: number, patch: Partial<Preset>) => {
     setPresetsByFlight((prev) => {
@@ -153,10 +206,12 @@ export function RadioPresetsSection() {
   const resetFlight = useCallback((flight: MissionGroup) => {
     setPresetsByFlight((prev) => {
       const next = new Map(prev);
-      next.set(flight.groupId, buildAutoPresets(flight, groups));
+      // Reset re-reads from the .miz first; only falls back to the
+      // auto-derived defaults when the mission has no presets at all.
+      next.set(flight.groupId, resolveInitial(flight));
       return next;
     });
-  }, [groups]);
+  }, [resolveInitial]);
 
   // Cross-flight clipboard: copy one card's presets, paste into another.
   // Stored as in-memory state (not navigator.clipboard) so it works on
