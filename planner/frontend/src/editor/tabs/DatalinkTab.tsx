@@ -145,7 +145,13 @@ export function DatalinkTab() {
     let stnFlight = 1;
     for (const [groupName, { units }] of grouped) {
       const lead = units[0];
-      const csLabel = lead.voiceCallsignLabel || abbreviateCallsign(groupName);
+      // "ED" is DCS's default placeholder VoiceCallsignLabel (Eagle
+      // Dynamics) for units the mission designer never set. Treat it as
+      // unset so auto-assign derives a real callsign from the group
+      // name instead of stamping every flight as "ED".
+      const existing = (lead.voiceCallsignLabel || '').trim().toUpperCase();
+      const isPlaceholder = existing === '' || existing === 'ED';
+      const csLabel = isPlaceholder ? abbreviateCallsign(groupName) : lead.voiceCallsignLabel;
 
       // Extract flight number from group name (e.g. "Bengal 1" → 1, "Camelot 2" → 2)
       const flightMatch = groupName.match(/(\d+)\s*$/);

@@ -949,8 +949,14 @@ def generate_datalink_suggestions(client_units: list) -> list:
         lead_number = lead["voiceCallsignNumber"]
         lead_stn = lead["stnL16"]
 
-        # Skip groups where lead has no callsign data
-        if not lead_label or not lead_number or not lead_stn:
+        # Skip groups where lead has no callsign data. "ED" is DCS's
+        # default placeholder (Eagle Dynamics) for units the mission
+        # designer never set — treating it as a real callsign would
+        # propagate "ED" to every wingman, which is what the user saw
+        # on auto-assign. Treat as unset.
+        if not lead_label or lead_label.strip().upper() == "ED":
+            continue
+        if not lead_number or not lead_stn:
             continue
 
         # Parse lead's number to get flight number
