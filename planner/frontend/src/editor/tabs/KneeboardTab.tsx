@@ -131,7 +131,13 @@ export function KneeboardTab() {
       results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el) });
     }
     if (cards.airbaseRef) {
-      const el = createElement(AirbaseRefCard, { airbases, theater, overview: overview || undefined });
+      // Pass groups + coalition so the route-relevance filter fires.
+      // Without them the card falls back to listing all theater
+      // airfields — Kola has 71, Sinai has 51, way too many to be
+      // useful as a kneeboard reference.
+      const el = createElement(AirbaseRefCard, {
+        airbases, theater, overview: overview || undefined, groups, coalition,
+      });
       results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.bullseyeRef && overview) {
@@ -521,7 +527,9 @@ function CardCarousel({
     if (cards.airbaseRef) {
       list.push({
         key: 'airbaseRef', label: 'Airbase Reference',
-        element: createElement(AirbaseRefCard, { airbases, theater, overview: overview || undefined }),
+        element: createElement(AirbaseRefCard, {
+          airbases, theater, overview: overview || undefined, groups, coalition,
+        }),
       });
     }
     if (cards.bullseyeRef && overview) {
