@@ -41,7 +41,12 @@ const PRESETS: CoalitionPreset[] = [
       'USA', 'UK', 'France', 'Germany', 'Canada', 'Turkey', 'Spain', 'Italy',
       'Norway', 'Denmark', 'The Netherlands', 'Belgium', 'Greece', 'Poland',
       'Czech Republic', 'Hungary', 'Romania', 'Bulgaria', 'Croatia', 'Slovakia',
-      'Slovenia', 'Portugal',
+      'Slovenia', 'Portugal', 'Sweden', 'Finland',
+      // Ukraine is a Western ally in current-era scenarios — DCS lists it
+      // separately from NATO members but mission designers consistently
+      // place it on blue. Without it here the preset was a no-op for
+      // Ukraine-vs-Russia missions (Fett's testing case).
+      'Ukraine',
       'Australia', 'Israel', 'Japan', 'South Korea',
     ],
     red: [
@@ -145,15 +150,43 @@ export function CoalitionsTab() {
   }, [countries]);
 
   const [assignments, setAssignments] = useState<Map<string, string>>(() => new Map(initialAssignments));
-  const [applied, setApplied] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
 
   // Reset assignments when the underlying country list changes (new mission loaded).
   // Using useEffect (not useMemo) because this is a side effect, not a memoized value.
   useEffect(() => {
     setAssignments(new Map(initialAssignments));
-    setApplied(false);
   }, [initialAssignments]);
+
+  // Auto-stage on every change: compute the cumulative diff against the
+  // initial assignments and dispatch a coalitionReassign edit. Earlier
+  // versions required clicking an explicit "Stage Coalition Changes"
+  // button — Fett moved Ukraine to red and downloaded without staging,
+  // got a .miz where Ukraine was still blue. Auto-staging matches the
+  // every-other-tab pattern (weather, comms, etc.) where mutations
+  // queue immediately. The backend handler is idempotent so re-firing
+  // the same change set on each click is safe.
+  useEffect(() => {
+    const changes: Record<string, string> = {};
+    for (const [name, coal] of assignments) {
+      const initial = initialAssignments.get(name);
+      if (initial && coal !== initial) {
+        changes[name] = coal;
+      }
+    }
+    // Always dispatch — even an empty changes set, because clearing
+    // back to the original (Reset) needs to overwrite a previous
+    // coalitionReassign edit. Edits accumulate in editStore; the most
+    // recent one for a given country wins because it runs last.
+    if (Object.keys(changes).length > 0) {
+      addEdit({ field: 'coalitionReassign', value: changes } as any);
+    }
+    // Intentionally only react to assignments changes — initialAssignments
+    // is recomputed when countries change (loaded mission), at which
+    // point the resetting useEffect above clears assignments to match
+    // and we don't want to fire a redundant edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignments]);
 
   // Group countries by coalition. Defensively normalise unexpected
   // coalition values ('neutral' singular, undefined, etc.) into
@@ -205,7 +238,6 @@ export function CoalitionsTab() {
       result.set(name, next);
       return result;
     });
-    setApplied(false);
   }, []);
 
   const applyPreset = useCallback((preset: CoalitionPreset) => {
@@ -230,31 +262,11 @@ export function CoalitionsTab() {
       }
       return next;
     });
-    setApplied(false);
     setShowPresets(false);
   }, [countries]);
 
-  const handleApply = useCallback(() => {
-    // Build the reassignment map: only changed countries
-    const changes: Record<string, string> = {};
-    for (const c of countries) {
-      const newCoal = assignments.get(c.name);
-      if (newCoal && newCoal !== c.coalition) {
-        changes[c.name] = newCoal;
-      }
-    }
-    if (Object.keys(changes).length === 0) return;
-
-    addEdit({
-      field: 'coalitionReassign',
-      value: changes,
-    } as any);
-    setApplied(true);
-  }, [assignments, countries, addEdit]);
-
   const handleReset = useCallback(() => {
     setAssignments(new Map(initialAssignments));
-    setApplied(false);
   }, [initialAssignments]);
 
   return (
@@ -391,38 +403,30 @@ export function CoalitionsTab() {
             })}
           </div>
 
-          {/* Apply bar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
-            padding: '10px 0', borderTop: '1px solid #3a3a3a',
-          }}>
-            <button
-              onClick={handleApply}
-              disabled={!hasChanges}
-              style={{
-                background: hasChanges ? 'rgba(63, 185, 80, 0.15)' : 'rgba(63, 185, 80, 0.05)',
-                border: '1px solid rgba(63, 185, 80, 0.3)',
-                borderRadius: 4, color: hasChanges ? '#3fb950' : '#2a4a2a',
-                fontSize: 13, padding: '8px 20px',
-                cursor: hasChanges ? 'pointer' : 'not-allowed',
-                fontWeight: 600, fontFamily: 'inherit',
-              }}
-            >
-              {applied ? 'Changes Staged' : 'Stage Coalition Changes'}
-            </button>
-            {applied && (
-              <span style={{ fontSize: 12, color: '#3fb950' }}>
-                Changes will be applied when you download the .miz
+          {/* Status bar — coalition changes auto-stage on every click /
+              preset application, so all the user needs is confirmation
+              that edits are queued and a count of how many countries
+              will be reassigned on download. */}
+          {hasChanges && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
+              padding: '10px 14px', borderTop: '1px solid #3a3a3a',
+              background: 'rgba(63, 185, 80, 0.08)',
+              borderRadius: 4,
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%', background: '#3fb950',
+              }} />
+              <span style={{ fontSize: 13, color: '#3fb950', fontWeight: 600 }}>
+                Edits queued — download .miz to save
               </span>
-            )}
-            {hasChanges && !applied && (
-              <span style={{ fontSize: 12, color: '#d29922' }}>
+              <span style={{ fontSize: 12, color: '#aaaaaa' }}>
                 {Array.from(assignments.entries()).filter(
                   ([name, coal]) => initialAssignments.get(name) !== coal
-                ).length} country reassignment(s) pending
+                ).length} country reassignment(s)
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
     </div>
