@@ -171,32 +171,28 @@ export function ExportPanel() {
       URL.revokeObjectURL(url);
       clearEdits();
 
-      // Surface any dropped / invalid edits to the user after the download kicks off.
-      // "applied" and "noop-on-already-matching-value" are fine. "skipped" means the
-      // edit threw; "invalid" means it was malformed; "noop" means the target wasn't
-      // found. All are worth showing.
+      // Surface only dropped / invalid edits in a popup. Noops are
+      // logged to the console but not alerted — earlier the popup also
+      // listed every "value already matched, no-op" edit, which was
+      // noisy (Auto Deconflict in the comms tab generated tons of them
+      // for unchanged modulation fields). Real anomalies that the user
+      // needs to see still surface as a popup.
       const dropped = editResults.filter(
         (r) => r.status === 'skipped' || r.status === 'invalid',
       );
       const noops = editResults.filter((r) => r.status === 'noop');
-      if (dropped.length > 0 || noops.length > 0) {
+      if (noops.length > 0) {
+        console.info(`[edits] ${noops.length} no-op edit(s) — value already matched or target absent:`,
+          noops);
+      }
+      if (dropped.length > 0) {
         const lines: string[] = [];
-        if (dropped.length > 0) {
-          lines.push(`⚠️ ${dropped.length} edit${dropped.length !== 1 ? 's' : ''} were DROPPED:`);
-          for (const r of dropped.slice(0, 8)) {
-            const tag = r.unitId ? `unit ${r.unitId}` : r.groupId ? `group ${r.groupId}` : '';
-            lines.push(`  • ${r.field} ${tag} — ${r.reason || r.status}`);
-          }
-          if (dropped.length > 8) lines.push(`  …and ${dropped.length - 8} more`);
+        lines.push(`⚠️ ${dropped.length} edit${dropped.length !== 1 ? 's' : ''} were DROPPED:`);
+        for (const r of dropped.slice(0, 8)) {
+          const tag = r.unitId ? `unit ${r.unitId}` : r.groupId ? `group ${r.groupId}` : '';
+          lines.push(`  • ${r.field} ${tag} — ${r.reason || r.status}`);
         }
-        if (noops.length > 0) {
-          lines.push(`ℹ️ ${noops.length} edit${noops.length !== 1 ? 's' : ''} made no change:`);
-          for (const r of noops.slice(0, 5)) {
-            const tag = r.unitId ? `unit ${r.unitId}` : r.groupId ? `group ${r.groupId}` : '';
-            lines.push(`  • ${r.field} ${tag} — ${r.reason || 'no match'}`);
-          }
-          if (noops.length > 5) lines.push(`  …and ${noops.length - 5} more`);
-        }
+        if (dropped.length > 8) lines.push(`  …and ${dropped.length - 8} more`);
         alert(lines.join('\n'));
       }
     } catch (e: any) {

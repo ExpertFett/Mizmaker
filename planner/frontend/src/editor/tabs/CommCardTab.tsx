@@ -267,9 +267,16 @@ export function CommCardTab() {
         }
       }
 
-      // Queue an override if the freq/mod differs from the row's current values
-      if (freq !== row.frequency || mod !== row.modulation) {
-        next.set(row.groupId, { frequency: freq, modulation: mod });
+      // Queue an override only for fields that actually differ. Earlier
+      // versions blanket-set both frequency and modulation whenever
+      // either changed — the unchanged half then dispatched as a no-op
+      // edit on download, which the user saw as a "X edit(s) made no
+      // change: groupModulation target field not found" warning.
+      const patch: { frequency?: number; modulation?: number } = {};
+      if (freq !== row.frequency) patch.frequency = freq;
+      if (mod !== row.modulation) patch.modulation = mod;
+      if (Object.keys(patch).length > 0) {
+        next.set(row.groupId, patch);
         if (fromSop) sopHits++;
       } else if (fromSop) {
         // SOP matches what's already set — still counts as an SOP match for the result
@@ -297,19 +304,30 @@ export function CommCardTab() {
   // Apply changes
   const handleApply = useCallback(() => {
     if (overrides.size === 0) { setResult('No changes to apply'); return; }
+    // Index rows by id so we can compare against the source values and
+    // skip dispatching a key whose override accidentally matches the
+    // current value (e.g. user typed then re-typed the same number).
+    const rowById = new Map<number, FreqRow>();
+    for (const r of allRows) rowById.set(r.groupId, r);
+
     let count = 0;
     for (const [groupId, ov] of overrides) {
-      if (ov.frequency !== undefined) {
+      const row = rowById.get(groupId);
+      if (ov.frequency !== undefined && (!row || ov.frequency !== row.frequency)) {
         addEdit({ groupId, field: 'groupFrequency', value: ov.frequency } as any);
         count++;
       }
-      if (ov.modulation !== undefined) {
+      if (ov.modulation !== undefined && (!row || ov.modulation !== row.modulation)) {
         addEdit({ groupId, field: 'groupModulation', value: ov.modulation } as any);
         count++;
       }
     }
-    setResult(`Applied ${count} change${count !== 1 ? 's' : ''} — download .miz to save`);
-  }, [overrides, addEdit]);
+    if (count === 0) {
+      setResult('No effective changes — overrides matched current values');
+    } else {
+      setResult(`Applied ${count} change${count !== 1 ? 's' : ''} — download .miz to save`);
+    }
+  }, [overrides, allRows, addEdit]);
 
   // Reset
   const handleReset = useCallback(() => {
