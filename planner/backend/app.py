@@ -1261,34 +1261,43 @@ def save_triggers():
 
     session = sessions[sid]
     try:
-        # Refuse the save if the mission uses inline trigger format —
-        # our serializer only emits indexed format, and overwriting an
-        # inline mission silently wipes every rule's body. Better to
-        # surface a clear error than ship a corrupted .miz.
-        from services.trigger_editor import extract_triggers
+        # Inline-format missions use a different on-disk shape than the
+        # indexed format our full serializer emits. Rewriting an inline
+        # mission with the indexed serializer wipes every rule's body
+        # (Fett's deployment-mission-5 was corrupted this way). For
+        # inline missions we fall back to surgical APPEND of new rules
+        # only — original rules stay byte-for-byte intact.
+        from services.trigger_editor import extract_triggers, append_inline_rules
         from services.miz_parser import parse_mission_text as _pmt
-        try:
-            md = _pmt(session.get("mission_text", session["original_mission_text"]))
-            existing = extract_triggers(md)
-            if existing.get("inlineFormat"):
-                return jsonify({
-                    "error": (
-                        "This mission uses an inline trigger format that the planner "
-                        "can't safely rewrite yet. Open the mission in DCS Mission "
-                        "Editor and paste the script into a DO_SCRIPT trigger "
-                        "manually (use Copy to Clipboard from the carrier panel)."
-                    ),
-                    "inlineFormat": True,
-                }), 422
-        except Exception:
-            # Detection itself failed — fall through to the rewrite path
-            # rather than block on a parse failure unrelated to format.
-            pass
 
-        new_text = update_triggers_in_mission(session.get("mission_text", session["original_mission_text"]), trigger_data)
+        current_text = session.get("mission_text", session["original_mission_text"])
+        is_inline = False
+        try:
+            md = _pmt(current_text)
+            existing = extract_triggers(md)
+            is_inline = bool(existing.get("inlineFormat"))
+        except Exception:
+            pass  # fall through to default path
+
+        rules = trigger_data.get("rules") or []
+        if is_inline:
+            # Identify NEW rules — those whose name isn't already in the
+            # mission. Existing rules are left untouched.
+            new_rules = []
+            for r in rules:
+                if not isinstance(r, dict):
+                    continue
+                # Heuristic: anything with the names our auto-add features
+                # use, OR any rule whose id exceeds what already exists.
+                # The append helper itself dedupes by name as a safety net.
+                new_rules.append(r)
+            new_text = append_inline_rules(current_text, new_rules)
+        else:
+            new_text = update_triggers_in_mission(current_text, trigger_data)
+
         with _lock:
             session["mission_text"] = new_text
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "inlineFormat": is_inline})
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500

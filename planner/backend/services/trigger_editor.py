@@ -828,6 +828,276 @@ def update_triggers_in_mission(mission_text: str, trigger_data: Dict) -> str:
     return mission_text
 
 
+# ── Inline-format append path ───────────────────────────────────────────────
+#
+# Some DCS missions use an "inline" trigger format where each rule's
+# conditions and actions are stored as dicts inside the rule itself, not
+# as indexes into trig.conditions / trig.actions:
+#
+#   [N] = {
+#     ["rules"]   = { [1] = {["predicate"]="c_time_after", ["seconds"]=2} },
+#     ["actions"] = { [1] = {["predicate"]="a_do_script_file", ["file"]="..."} },
+#     ["comment"] = "...",
+#     ["predicate"] = "triggerFront",
+#   }
+#
+# Our serializer above only emits indexed format. For inline missions we
+# instead surgically APPEND new rules at the end of the trigrules block,
+# leaving the original rules byte-for-byte untouched.
+
+# Reverse maps: structured action/condition type → DCS predicate function name
+ACTION_TYPE_TO_PREDICATE = {v: k for k, v in ACTION_PARSERS.items()}
+CONDITION_TYPE_TO_PREDICATE = {v: k for k, v in CONDITION_PARSERS.items()}
+
+# Each known action type → the param key DCS uses for the body of that
+# action in inline format. Most actions take a single primary param.
+ACTION_PARAM_KEYS = {
+    "DO_SCRIPT":         "text",
+    "DO_SCRIPT_FILE":    "file",
+    "SET_FLAG":          "flag",       # also "value"
+    "CLEAR_FLAG":        "flag",
+    "MESSAGE_TO_ALL":    "text",       # also "seconds"
+}
+
+
+def _lua_render_value(v) -> str:
+    """Render a Python scalar / dict / list as inline Lua text (no
+    leading indent, no trailing comma — caller handles those)."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if v is None:
+        return "nil"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        esc = v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
+        return f'"{esc}"'
+    if isinstance(v, dict):
+        parts = ["{"]
+        for k, val in v.items():
+            key_str = f'["{k}"]' if isinstance(k, str) else f'[{k}]'
+            parts.append(f'  {key_str} = {_lua_render_value(val)},')
+        parts.append("}")
+        return "\n".join(parts)
+    if isinstance(v, list):
+        parts = ["{"]
+        for i, val in enumerate(v, 1):
+            parts.append(f'  [{i}] = {_lua_render_value(val)},')
+        parts.append("}")
+        return "\n".join(parts)
+    return f'"{v}"'
+
+
+def _render_inline_action(act: Dict, indent: str = "\t\t\t\t\t") -> str:
+    """Render a structured action dict as an inline-format action entry.
+
+    Returns just the body (without the outer `[N] = ` and trailing comma)
+    — caller wraps with the index.
+    """
+    atype = act.get("type", "CUSTOM_LUA")
+    params = act.get("params", {}) if isinstance(act.get("params"), dict) else {}
+    predicate = ACTION_TYPE_TO_PREDICATE.get(atype)
+
+    inner = indent + "\t"
+    lines = ["{"]
+
+    if predicate:
+        # Map the structured param keys → DCS inline param keys.
+        # Most actions just have a single primary key plus optional extras.
+        if atype == "DO_SCRIPT":
+            lines.append(f'{inner}["text"] = {_lua_render_value(params.get("lua", ""))},')
+        elif atype == "DO_SCRIPT_FILE":
+            lines.append(f'{inner}["file"] = {_lua_render_value(params.get("file", ""))},')
+        elif atype == "SET_FLAG":
+            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
+            v = params.get("value", True)
+            lines.append(f'{inner}["value"] = {_lua_render_value(v)},')
+        elif atype == "CLEAR_FLAG":
+            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
+        elif atype == "MESSAGE_TO_ALL":
+            lines.append(f'{inner}["text"] = {_lua_render_value(params.get("text", ""))},')
+            lines.append(f'{inner}["seconds"] = {int(params.get("duration", 10))},')
+        else:
+            # Generic: dump every param key/value as-is.
+            for pk, pv in params.items():
+                lines.append(f'{inner}["{pk}"] = {_lua_render_value(pv)},')
+        lines.append(f'{inner}["predicate"] = "{predicate}",')
+    else:
+        # Unknown action type: fall back to raw Lua via DO_SCRIPT.
+        raw = act.get("rawLua") or params.get("lua", "")
+        lines.append(f'{inner}["text"] = {_lua_render_value(raw)},')
+        lines.append(f'{inner}["predicate"] = "a_do_script",')
+
+    lines.append(f'{indent}}}')
+    return "\n".join(lines)
+
+
+def _render_inline_condition(cond: Dict, indent: str = "\t\t\t\t\t") -> str:
+    """Render a structured condition dict as inline-format condition entry."""
+    ctype = cond.get("type", "CUSTOM_LUA")
+    params = cond.get("params", {}) if isinstance(cond.get("params"), dict) else {}
+    predicate = CONDITION_TYPE_TO_PREDICATE.get(ctype)
+
+    inner = indent + "\t"
+    lines = ["{"]
+
+    if predicate:
+        if ctype in ("TIME_MORE_THAN", "TIME_LESS_THAN"):
+            lines.append(f'{inner}["seconds"] = {int(params.get("seconds", 0))},')
+        elif ctype in ("FLAG_IS_TRUE", "FLAG_IS_FALSE"):
+            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
+        elif ctype in ("FLAG_EQUALS", "FLAG_LESS_THAN", "FLAG_MORE_THAN"):
+            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
+            lines.append(f'{inner}["value"] = {int(params.get("value", 0))},')
+        else:
+            for pk, pv in params.items():
+                lines.append(f'{inner}["{pk}"] = {_lua_render_value(pv)},')
+        lines.append(f'{inner}["predicate"] = "{predicate}",')
+    else:
+        # Always-true sentinel
+        lines.append(f'{inner}["predicate"] = "c_time_after",')
+        lines.append(f'{inner}["seconds"] = 0,')
+
+    lines.append(f'{indent}}}')
+    return "\n".join(lines)
+
+
+def _render_inline_rule(rule: Dict, rule_id: int, indent: str = "\t\t") -> str:
+    """Render a full rule entry in inline format.
+
+    Returns the `[N] = { ... }, -- end of [N]` text ready for splicing
+    into the trigrules block.
+    """
+    inner = indent + "\t"
+    field = inner + "\t"
+
+    # Predicate (fire trigger event type)
+    predicate = rule.get("predicate") or {
+        "once": "triggerOnce",
+        "continuous": "triggerContinuous",
+        "onMissionStart": "triggerStart",
+    }.get(rule.get("eventType", "once"), "triggerOnce")
+
+    conditions = rule.get("conditions", []) or []
+    actions = rule.get("actions", []) or []
+
+    lines = []
+    lines.append(f'{indent}[{rule_id}] =')
+    lines.append(f'{indent}{{')
+
+    # Conditions go under ["rules"] in inline format
+    if conditions:
+        lines.append(f'{inner}["rules"] =')
+        lines.append(f'{inner}{{')
+        for i, c in enumerate(conditions, 1):
+            body = _render_inline_condition(c, field)
+            lines.append(f'{field}[{i}] = {body},')
+        lines.append(f'{inner}}}, -- end of ["rules"]')
+    else:
+        lines.append(f'{inner}["rules"] = {{}},')
+
+    lines.append(f'{inner}["comment"] = {_lua_render_value(rule.get("name", f"Trigger {rule_id}"))},')
+    lines.append(f'{inner}["eventlist"] = "",')
+    lines.append(f'{inner}["predicate"] = "{predicate}",')
+
+    if actions:
+        lines.append(f'{inner}["actions"] =')
+        lines.append(f'{inner}{{')
+        for i, a in enumerate(actions, 1):
+            body = _render_inline_action(a, field)
+            lines.append(f'{field}[{i}] = {body},')
+        lines.append(f'{inner}}}, -- end of ["actions"]')
+    else:
+        lines.append(f'{inner}["actions"] = {{}},')
+
+    lines.append(f'{indent}}}, -- end of [{rule_id}]')
+    return "\n".join(lines)
+
+
+def _max_existing_rule_id(text: str) -> int:
+    """Scan the trigrules block and return the highest existing rule id."""
+    m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', text)
+    if not m:
+        return 0
+    open_pos = text.index('{', m.start())
+    depth = 1
+    i = open_pos + 1
+    while i < len(text) and depth > 0:
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+        i += 1
+    block = text[open_pos:i]
+    # Top-level rule indexes have indentation level matching the trigrules
+    # body — but a simpler heuristic: any `[N] =` at depth 1 inside the
+    # trigrules block. We approximate by scanning for `[\d+] =\n\t+{` which
+    # only matches actual rule entries, not nested condition/action ids.
+    max_id = 0
+    cs_depth = 0
+    cs_i = 0
+    while cs_i < len(block):
+        ch = block[cs_i]
+        if ch == '{':
+            cs_depth += 1
+        elif ch == '}':
+            cs_depth -= 1
+        elif ch == '[' and cs_depth == 1:
+            idx_m = re.match(r'\[(\d+)\]\s*=', block[cs_i:])
+            if idx_m:
+                max_id = max(max_id, int(idx_m.group(1)))
+        cs_i += 1
+    return max_id
+
+
+def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
+    """Insert new rules in inline format at the end of the trigrules block.
+
+    Skips rules that already exist (by name). Each new rule is given an
+    id one greater than the current max.
+    """
+    if not new_rules:
+        return mission_text
+
+    m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
+    if not m:
+        return mission_text
+
+    open_pos = mission_text.index('{', m.start())
+    depth = 1
+    i = open_pos + 1
+    while i < len(mission_text) and depth > 0:
+        if mission_text[i] == '{':
+            depth += 1
+        elif mission_text[i] == '}':
+            depth -= 1
+        i += 1
+    close_pos = i - 1  # position of the closing `}` of trigrules
+
+    # Collect existing rule comments so we can skip duplicates by name.
+    block = mission_text[open_pos:close_pos + 1]
+    existing_names = set(re.findall(r'\["comment"\]\s*=\s*"([^"]*)"', block))
+
+    next_id = _max_existing_rule_id(mission_text) + 1
+    pieces: List[str] = []
+    for rule in new_rules:
+        if rule.get("name") in existing_names:
+            continue  # skip duplicate by name
+        pieces.append(_render_inline_rule(rule, next_id, indent="\t\t"))
+        next_id += 1
+
+    if not pieces:
+        return mission_text  # nothing new to add
+
+    insertion = "\n" + "\n".join(pieces)
+    # Inject before the closing `}` of trigrules. Find the start of the
+    # line containing close_pos so we land cleanly above it.
+    line_start = mission_text.rfind("\n", 0, close_pos)
+    if line_start < 0:
+        line_start = close_pos
+    return mission_text[:line_start] + insertion + mission_text[line_start:]
+
+
 def _replace_lua_block(text: str, key: str, trigger_data: Dict, is_trig: bool) -> str:
     """Find and replace a top-level Lua table block by key name."""
     # Pattern to match ["key"] = {
