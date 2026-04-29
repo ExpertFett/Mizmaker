@@ -308,6 +308,15 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
     flags_state = _to_idx_dict(trig.get("flag", {}))
     func_lua = _to_idx_dict(trig.get("func", {}))
 
+    # Detect "inline" trigger format: some DCS missions store actions
+    # as list-of-dicts directly inside the rule (each dict carries
+    # `predicate` + params) instead of as indexes into trig.actions.
+    # Our serializer only knows how to emit indexed format; if we
+    # rewrote an inline-format mission we'd silently wipe every
+    # rule's body. Flag this case so the SAVE endpoint can refuse
+    # rather than corrupt the .miz.
+    inline_format = _detect_inline_format(trigrules)
+
     rules = []
 
     # trigrules can be dict with int keys or list
@@ -384,7 +393,41 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
     # Extract flag references
     flags = _extract_flag_references(rules)
 
-    return {"rules": rules, "flags": flags}
+    return {"rules": rules, "flags": flags, "inlineFormat": inline_format}
+
+
+def _detect_inline_format(trigrules) -> bool:
+    """Return True if the trigrules table uses the inline action format.
+
+    Indexed format (what our serializer emits):
+      ["actions"] = { [1] = 5, [2] = 7 }     -- ints pointing at trig.actions[N]
+
+    Inline format (DCS sometimes uses, especially older missions):
+      ["actions"] = { [1] = { ["predicate"] = "a_set_flag", ... } }
+
+    The two are incompatible; rewriting an inline mission with our
+    indexed serializer empties out every rule's body.
+    """
+    if isinstance(trigrules, dict):
+        rule_iter = trigrules.values()
+    elif isinstance(trigrules, list):
+        rule_iter = trigrules
+    else:
+        return False
+
+    for rule in rule_iter:
+        if not isinstance(rule, dict):
+            continue
+        actions = rule.get("actions")
+        if isinstance(actions, list):
+            for a in actions:
+                if isinstance(a, dict):
+                    return True  # inline action object found
+        elif isinstance(actions, dict):
+            for a in actions.values():
+                if isinstance(a, dict):
+                    return True
+    return False
 
 
 def _safe_params(item) -> Dict[str, Any]:

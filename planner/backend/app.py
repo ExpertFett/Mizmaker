@@ -1261,6 +1261,30 @@ def save_triggers():
 
     session = sessions[sid]
     try:
+        # Refuse the save if the mission uses inline trigger format —
+        # our serializer only emits indexed format, and overwriting an
+        # inline mission silently wipes every rule's body. Better to
+        # surface a clear error than ship a corrupted .miz.
+        from services.trigger_editor import extract_triggers
+        from services.miz_parser import parse_mission_text as _pmt
+        try:
+            md = _pmt(session.get("mission_text", session["original_mission_text"]))
+            existing = extract_triggers(md)
+            if existing.get("inlineFormat"):
+                return jsonify({
+                    "error": (
+                        "This mission uses an inline trigger format that the planner "
+                        "can't safely rewrite yet. Open the mission in DCS Mission "
+                        "Editor and paste the script into a DO_SCRIPT trigger "
+                        "manually (use Copy to Clipboard from the carrier panel)."
+                    ),
+                    "inlineFormat": True,
+                }), 422
+        except Exception:
+            # Detection itself failed — fall through to the rewrite path
+            # rather than block on a parse failure unrelated to format.
+            pass
+
         new_text = update_triggers_in_mission(session.get("mission_text", session["original_mission_text"]), trigger_data)
         with _lock:
             session["mission_text"] = new_text
