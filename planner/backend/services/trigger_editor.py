@@ -281,10 +281,32 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
     if not trig and not trigrules:
         return {"rules": [], "flags": []}
 
-    conditions_lua = trig.get("conditions", {})
-    actions_lua = trig.get("actions", {})
-    flags_state = trig.get("flag", {})
-    func_lua = trig.get("func", {})
+    # SLPP + our _normalize_slpp_keys helper converts any Lua table
+    # whose keys happen to all be sequential ints starting at 1 into a
+    # Python list. ["conditions"] / ["actions"] / ["flag"] / ["func"]
+    # use int keys, so they often arrive here as lists. The original
+    # code assumed dicts and called `.get()` on them — Fett's mission
+    # had this exact shape and the GET /api/triggers call 500'd with
+    # "'list' object has no attribute 'get'", which surfaced as the
+    # 'Failed to add carrier trigger' alert.
+    def _to_idx_dict(x):
+        """Normalize SLPP list-or-dict to {int_idx: value} for .get() use."""
+        if isinstance(x, dict):
+            return x
+        if isinstance(x, list):
+            return {i + 1: v for i, v in enumerate(x) if v is not None}
+        return {}
+
+    if not isinstance(trig, dict):
+        # Whole `trig` table arrived as a list — synthesize a dict by
+        # picking off the named sub-blocks if they exist (rare path),
+        # otherwise treat the trig data as empty.
+        trig = {}
+
+    conditions_lua = _to_idx_dict(trig.get("conditions", {}))
+    actions_lua = _to_idx_dict(trig.get("actions", {}))
+    flags_state = _to_idx_dict(trig.get("flag", {}))
+    func_lua = _to_idx_dict(trig.get("func", {}))
 
     rules = []
 
