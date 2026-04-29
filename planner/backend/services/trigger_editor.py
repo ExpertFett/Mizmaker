@@ -74,6 +74,11 @@ ACTION_PARSERS = {
     "a_signal_flare":               "SIGNAL_FLARE",
     "a_illumination_bomb":          "ILLUMINATION_BOMB",
     "a_smoke_marker":               "SMOKE_MARKER",
+    # TIC carrier-control template predicates — used by the planner's
+    # CarrierSetupPanel auto-generated trigger rules. Listed here so
+    # they round-trip through the inline serializer cleanly.
+    "a_ai_task":                          "AI_TASK",
+    "a_set_carrier_illumination_mode":    "CARRIER_LIGHTS",
 }
 
 # Predicate → eventType mapping
@@ -933,7 +938,13 @@ def _render_inline_action(act: Dict, indent: str = "\t\t\t\t\t") -> str:
 
 
 def _render_inline_condition(cond: Dict, indent: str = "\t\t\t\t\t") -> str:
-    """Render a structured condition dict as inline-format condition entry."""
+    """Render a structured condition dict as inline-format condition entry.
+
+    Generic strategy: render every params key/value as-is, then append
+    the predicate. The TIC-style conditions carry several optional
+    Mission-Editor metadata fields (coalitionlist, zone, value) that
+    callers can pass through verbatim.
+    """
     ctype = cond.get("type", "CUSTOM_LUA")
     params = cond.get("params", {}) if isinstance(cond.get("params"), dict) else {}
     predicate = CONDITION_TYPE_TO_PREDICATE.get(ctype)
@@ -942,16 +953,14 @@ def _render_inline_condition(cond: Dict, indent: str = "\t\t\t\t\t") -> str:
     lines = ["{"]
 
     if predicate:
-        if ctype in ("TIME_MORE_THAN", "TIME_LESS_THAN"):
-            lines.append(f'{inner}["seconds"] = {int(params.get("seconds", 0))},')
-        elif ctype in ("FLAG_IS_TRUE", "FLAG_IS_FALSE"):
-            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
-        elif ctype in ("FLAG_EQUALS", "FLAG_LESS_THAN", "FLAG_MORE_THAN"):
-            lines.append(f'{inner}["flag"] = {_lua_render_value(str(params.get("flag", "1")))},')
-            lines.append(f'{inner}["value"] = {int(params.get("value", 0))},')
-        else:
-            for pk, pv in params.items():
-                lines.append(f'{inner}["{pk}"] = {_lua_render_value(pv)},')
+        # Stringify flag IDs: DCS stores them as Lua strings.
+        normalized = dict(params)
+        if "flag" in normalized:
+            normalized["flag"] = str(normalized["flag"])
+        if "flag2" in normalized:
+            normalized["flag2"] = str(normalized["flag2"])
+        for pk, pv in normalized.items():
+            lines.append(f'{inner}["{pk}"] = {_lua_render_value(pv)},')
         lines.append(f'{inner}["predicate"] = "{predicate}",')
     else:
         # Always-true sentinel
@@ -1075,14 +1084,23 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
     close_pos = i - 1  # position of the closing `}` of trigrules
 
     # Collect existing rule comments so we can skip duplicates by name.
+    # Normalize whitespace + case so 'Activate  CVN TACAN' (double space —
+    # observed in Fett's TIC template) matches our generated 'Activate
+    # CVN TACAN' (single space) and we don't ship duplicate trigger
+    # rules that fire identical actions on the same flag.
+    def _normalize(name: str) -> str:
+        return re.sub(r'\s+', ' ', name or '').strip().lower()
+
     block = mission_text[open_pos:close_pos + 1]
-    existing_names = set(re.findall(r'\["comment"\]\s*=\s*"([^"]*)"', block))
+    existing_names = {
+        _normalize(n) for n in re.findall(r'\["comment"\]\s*=\s*"([^"]*)"', block)
+    }
 
     next_id = _max_existing_rule_id(mission_text) + 1
     pieces: List[str] = []
     for rule in new_rules:
-        if rule.get("name") in existing_names:
-            continue  # skip duplicate by name
+        if _normalize(rule.get("name", "")) in existing_names:
+            continue  # skip duplicate by name (whitespace-tolerant)
         pieces.append(_render_inline_rule(rule, next_id, indent="\t\t"))
         next_id += 1
 

@@ -222,13 +222,15 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
       lines.push('');
     }
 
-    // Light functions
+    // Light functions — flag offsets match the TIC carrier-control
+    // template convention so the auto-generated DCS trigger rules
+    // (added alongside this script) can fire on these flag changes.
     const lights = [
-      { name: 'Off', flag: fb + 10 },
-      { name: 'Auto', flag: fb + 11 },
-      { name: 'Navigation', flag: fb + 12 },
-      { name: 'Launch', flag: fb + 13 },
-      { name: 'Recovery', flag: fb + 14 },
+      { name: 'Off',         flag: fb + 9  },
+      { name: 'Auto',        flag: fb + 10 },
+      { name: 'Navigation',  flag: fb + 11 },
+      { name: 'Launch',      flag: fb + 12 },
+      { name: 'Recovery',    flag: fb + 13 },
     ];
 
     for (const l of lights) {
@@ -387,6 +389,129 @@ export function CarrierSetupPanel() {
     setTimeout(() => setCopied(false), 2000);
   }, [script]);
 
+  // Build the per-carrier flag-watcher trigger rules that toggle
+  // TACAN/ICLS/LINK4/ACLS/Lights when the MOOSE F10 menu callbacks
+  // raise their respective USERFLAGs. Mirrors the TIC carrier-control
+  // template — each rule fires on `triggerFront` (transition false→true)
+  // so the F10 menu can be reused, clears the partner flag (so toggling
+  // off then on works cleanly), and dispatches either an `a_ai_task`
+  // (beacons) or `a_set_carrier_illumination_mode` (lights) action.
+  //
+  // For missions that don't ship with the TIC carrier-task setup, the
+  // `a_ai_task` actions reference task ids 1-8 on group id 1 — pilots
+  // can re-target those in DCS ME by editing the trigger actions. The
+  // light rules use `a_set_carrier_illumination_mode` directly, which
+  // works without any per-mission setup.
+  const buildCarrierFlagRules = useCallback((startId: number) => {
+    const out: Array<Record<string, unknown>> = [];
+    let id = startId;
+
+    for (const c of configs) {
+      const fb = c.flagBase;
+      const carrierUnitId = (() => {
+        const grp = groups.find((g) => g.groupId === c.groupId);
+        return grp?.units[0]?.unitId ?? 1;
+      })();
+
+      // ── Beacon rules (off then on per beacon)
+      // Task ids match the TIC convention: TACAN-off=1, ICLS-off=2,
+      // LINK4-off=3, ACLS-off=4; on variants are off+4.
+      const beacons = [
+        { name: 'TACAN',   offFlag: fb + 0, onFlag: fb + 1, offTask: 1, onTask: 5 },
+        ...(c.hasIcls ? [
+          { name: 'ICLS',  offFlag: fb + 2, onFlag: fb + 3, offTask: 2, onTask: 6 },
+          { name: 'LINK 4', offFlag: fb + 4, onFlag: fb + 5, offTask: 3, onTask: 7 },
+        ] : []),
+        ...(c.aclsEnabled ? [
+          { name: 'ACLS',  offFlag: fb + 6, onFlag: fb + 7, offTask: 4, onTask: 8 },
+        ] : []),
+      ];
+
+      for (const b of beacons) {
+        // Deactivate rule
+        id += 1;
+        out.push({
+          id,
+          name: `Deactivate ${c.label} ${b.name}`,
+          enabled: true,
+          oneTime: false,
+          eventType: 'switched' as const,
+          predicate: 'triggerFront',
+          conditions: [{
+            type: 'FLAG_IS_TRUE',
+            params: { flag: String(b.offFlag), value: 1 },
+          }],
+          actions: [
+            { type: 'CLEAR_FLAG', params: { flag: String(b.onFlag) } },
+            { type: 'AI_TASK', params: {
+              ai_task: [c.groupId, b.offTask],
+              meters: 1000,
+              zone: 2241,
+            } },
+          ],
+        });
+        // Activate rule
+        id += 1;
+        out.push({
+          id,
+          name: `Activate ${c.label} ${b.name}`,
+          enabled: true,
+          oneTime: false,
+          eventType: 'switched' as const,
+          predicate: 'triggerFront',
+          conditions: [{
+            type: 'FLAG_IS_TRUE',
+            params: { flag: String(b.onFlag), value: 2 },
+          }],
+          actions: [
+            { type: 'CLEAR_FLAG', params: { flag: String(b.offFlag) } },
+            { type: 'AI_TASK', params: {
+              ai_task: [c.groupId, b.onTask],
+              meters: 1000,
+              zone: 2241,
+            } },
+          ],
+        });
+      }
+
+      // ── Light rules (5 modes — Off, Auto, Nav, Launch, Recovery).
+      // Each rule clears the OTHER 4 light flags then sets the carrier's
+      // illumination mode to a specific value. lightsMode encoding from
+      // DCS: -2=Off, -1=Auto, 0=Nav, 1=Launch, 2=Recovery.
+      const lightModes = [
+        { label: 'Off',      flag: fb + 9,  mode: -2 },
+        { label: 'Auto',     flag: fb + 10, mode: -1 },
+        { label: 'Nav',      flag: fb + 11, mode:  0 },
+        { label: 'Launch',   flag: fb + 12, mode:  1 },
+        { label: 'Landing',  flag: fb + 13, mode:  2 },
+      ];
+      for (const l of lightModes) {
+        const otherFlags = lightModes.filter((m) => m.flag !== l.flag).map((m) => m.flag);
+        id += 1;
+        out.push({
+          id,
+          name: `${c.label} Lights ${l.label}`,
+          enabled: true,
+          oneTime: false,
+          eventType: 'switched' as const,
+          predicate: 'triggerFront',
+          conditions: [{
+            type: 'FLAG_IS_TRUE',
+            params: { flag: String(l.flag), value: 1 },
+          }],
+          actions: [
+            ...otherFlags.map((f) => ({ type: 'CLEAR_FLAG', params: { flag: String(f) } })),
+            { type: 'CARRIER_LIGHTS', params: {
+              lightsMode: l.mode,
+              unit: carrierUnitId,
+            } },
+          ],
+        });
+      }
+    }
+    return out;
+  }, [configs, groups]);
+
   // Add to trigger library — mirrors AtisConfigTab's pattern: GET
   // current triggers, append new rules, POST back. The previous
   // implementation dispatched an `addTrigger` unit-edit, but that
@@ -440,6 +565,13 @@ export function CarrierSetupPanel() {
         actions: [{ type: 'DO_SCRIPT', params: { lua: script } }],
       };
       filtered.push(carrierRule);
+
+      // Append the per-carrier flag-watcher rules. The backend's
+      // append_inline_rules dedupes by name, so missions that already
+      // ship TIC-style "Deactivate CVN TACAN" rules won't get
+      // duplicates — only missing rules are added.
+      const flagRules = buildCarrierFlagRules(nextId);
+      filtered.push(...(flagRules as unknown as typeof filtered));
 
       await saveTriggers(sessionId, { rules: filtered });
 
