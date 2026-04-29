@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
-import { useEditStore } from '../../store/editStore';
 import { isCarrierGroup } from '../../utils/groups';
+import { getTriggers, saveTriggers } from '../../api/client';
+import { useTriggerStore } from '../../store/triggerStore';
 import type { MissionGroup } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
@@ -294,12 +295,14 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
 
 export function CarrierSetupPanel() {
   const groups = useMissionStore((s) => s.groups);
-  const addEdit = useEditStore((s) => s.addEdit);
+  const sessionId = useMissionStore((s) => s.sessionId);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);
   const [scriptPreview, setScriptPreview] = useState(false);
   const [script, setScript] = useState('');
   const [copied, setCopied] = useState(false);
+  const [addingToTriggers, setAddingToTriggers] = useState(false);
+  const [addedToTriggers, setAddedToTriggers] = useState(false);
 
   // Detect carriers
   const carrierGroups = useMemo(() =>
@@ -384,17 +387,80 @@ export function CarrierSetupPanel() {
     setTimeout(() => setCopied(false), 2000);
   }, [script]);
 
-  // Add to trigger library
-  const handleAddToTriggers = useCallback(() => {
-    addEdit({
-      field: 'addTrigger',
-      value: {
-        name: 'Carrier Control (MOOSE)',
-        lua: script,
-        comment: `Auto-generated for: ${configs.map((c) => `${c.label} "${c.callsign}"`).join(', ')}`,
-      },
-    } as any);
-  }, [addEdit, script, configs]);
+  // Add to trigger library — mirrors AtisConfigTab's pattern: GET
+  // current triggers, append new rules, POST back. The previous
+  // implementation dispatched an `addTrigger` unit-edit, but that
+  // field has no backend handler so the carrier rule was silently
+  // dropped on download (Fett's "boat wasn't added" report).
+  const handleAddToTriggers = useCallback(async () => {
+    if (!sessionId || !script) return;
+    setAddingToTriggers(true);
+    try {
+      const data = await getTriggers(sessionId);
+      const currentRules = data.rules || [];
+      let nextId = currentRules.reduce((max: number, r: { id: number }) => Math.max(max, r.id), 0);
+      const newRules = [...currentRules];
+
+      // Auto-add Moose_.lua DO_SCRIPT_FILE if not already present.
+      // The carrier script depends on MOOSE; without the framework
+      // loaded first, NAVYGROUP / RESCUEHELO / USERFLAG are nil.
+      const hasMoose = currentRules.some((r: { actions: { type: string; params: Record<string, unknown> }[] }) =>
+        r.actions?.some((a) =>
+          a.type === 'DO_SCRIPT_FILE' && typeof a.params.file === 'string' &&
+          a.params.file.toLowerCase().includes('moose'),
+        ),
+      );
+      if (!hasMoose) {
+        nextId += 1;
+        newRules.push({
+          id: nextId,
+          name: 'MOOSE Framework',
+          enabled: true,
+          oneTime: false,
+          eventType: 'once' as const,
+          conditions: [{ type: 'TIME_MORE_THAN', params: { seconds: 1 } }],
+          actions: [{ type: 'DO_SCRIPT_FILE', params: { file: 'Moose_.lua' } }],
+        });
+      }
+
+      // Replace any existing carrier-control rule so re-clicking
+      // "Add to Triggers" updates instead of duplicating.
+      const filtered = newRules.filter((r: { name: string }) =>
+        !r.name.toLowerCase().startsWith('carrier control'),
+      );
+      nextId = Math.max(nextId, ...filtered.map((r: { id: number }) => r.id), 0);
+      nextId += 1;
+      const carrierRule = {
+        id: nextId,
+        name: `Carrier Control (${configs.map((c) => c.callsign).join(', ')})`,
+        enabled: true,
+        oneTime: false,
+        eventType: 'once' as const,
+        conditions: [{ type: 'TIME_MORE_THAN', params: { seconds: 2 } }],
+        actions: [{ type: 'DO_SCRIPT', params: { lua: script } }],
+      };
+      filtered.push(carrierRule);
+
+      await saveTriggers(sessionId, { rules: filtered });
+
+      // Sync the trigger store so the Triggers tab shows the new rule
+      // immediately without a manual refresh.
+      useTriggerStore.setState({
+        rules: filtered,
+        selectedRuleId: carrierRule.id,
+        isDirty: false,
+        loaded: true,
+      });
+
+      setAddedToTriggers(true);
+      setTimeout(() => setAddedToTriggers(false), 4000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`Failed to add carrier trigger: ${msg}`);
+    } finally {
+      setAddingToTriggers(false);
+    }
+  }, [sessionId, script, configs]);
 
 
   if (carrierGroups.length === 0) {
@@ -525,8 +591,19 @@ export function CarrierSetupPanel() {
               <button onClick={handleCopy} style={{ ...smallBtnStyle, color: copied ? '#3fb950' : '#4a8fd4' }}>
                 {copied ? 'Copied!' : 'Copy to Clipboard'}
               </button>
-              <button onClick={handleAddToTriggers} style={{ ...smallBtnStyle, color: '#d29922', borderColor: '#d29922' }}>
-                Add to Triggers
+              <button
+                onClick={handleAddToTriggers}
+                disabled={addingToTriggers || !sessionId}
+                style={{
+                  ...smallBtnStyle,
+                  color: addedToTriggers ? '#3fb950' : '#d29922',
+                  borderColor: addedToTriggers ? '#3fb950' : '#d29922',
+                  cursor: addingToTriggers ? 'wait' : 'pointer',
+                  opacity: addingToTriggers ? 0.6 : 1,
+                }}
+                title="Save the carrier control script as a DO_SCRIPT trigger. Auto-adds Moose_.lua DO_SCRIPT_FILE if not already present."
+              >
+                {addingToTriggers ? 'Adding…' : addedToTriggers ? 'Added ✓' : 'Add to Triggers'}
               </button>
             </div>
           </div>
