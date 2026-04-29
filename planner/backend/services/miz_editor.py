@@ -7,6 +7,7 @@ Replaces the entire ["points"] block within the matched group.
 """
 
 import io
+import os
 import re
 import zipfile
 from typing import Dict, List, Any, Optional, Tuple
@@ -255,8 +256,22 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
         DictKey_* references from the mission file).
     new_options_text: if provided, overwrites the `options` file. Used for
         forcedOptions edits (DCS ME displays these from options/difficulty).
+
+    Side effect: scans the new mission text for `a_do_script_file("name.lua")`
+    references and auto-embeds matching files from the planner's bundled
+    script library (planner/backend/assets/scripts/) into the .miz at
+    `l10n/DEFAULT/<name>`. Without this, MOOSE / AEGIS / TIC / carrier-control
+    triggers the planner generates would silently fail when the user opens the
+    mission, because DO_SCRIPT_FILE looks up the file inside the .miz ZIP.
     """
+    # Resolve the set of bundled script files we'd embed if the mission
+    # references them. Build the lookup once; missing references are no-ops.
+    script_assets = _bundled_script_assets()
+    referenced = _scan_script_file_references(new_mission_text)
+    auto_embed = {fname: script_assets[fname] for fname in referenced if fname in script_assets}
+
     output = io.BytesIO()
+    embedded_paths: set[str] = set()
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -267,6 +282,11 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                 elif new_options_text is not None and item.filename == "options":
                     zout.writestr(item, new_options_text.encode("utf-8"))
                 else:
+                    # If the .miz already ships a file we'd auto-embed, prefer
+                    # the user's existing copy — they may have edited it.
+                    base = item.filename.rsplit("/", 1)[-1]
+                    if base in auto_embed and item.filename.startswith("l10n/DEFAULT/"):
+                        embedded_paths.add(base)
                     zout.writestr(item, zin.read(item.filename))
 
             # Inject kneeboard PNGs into KNEEBOARD/<aircraft_type>/IMAGES/
@@ -278,7 +298,78 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     else:
                         path = f"KNEEBOARD/{kb['aircraft_type']}/IMAGES/{kb['filename']}"
                     zout.writestr(path, kb["data"])
+
+            # Auto-embed any referenced script files the mission lacks.
+            for fname, data in auto_embed.items():
+                if fname in embedded_paths:
+                    continue  # user's own copy wins
+                zout.writestr(f"l10n/DEFAULT/{fname}", data)
     return output.getvalue()
+
+
+# ── Bundled script library (Moose, TIC, AEGIS, carrier-control, …) ──────────
+#
+# Triggers the planner generates often reference DO_SCRIPT_FILE("Moose_.lua")
+# or similar. For those references to resolve at mission load time, the
+# referenced files have to live inside the .miz ZIP at
+# l10n/DEFAULT/<filename>. We ship canonical copies in
+# planner/backend/assets/scripts/ and embed them automatically.
+
+_SCRIPT_ASSET_CACHE: dict[str, bytes] | None = None
+
+
+def _bundled_script_assets() -> dict[str, bytes]:
+    """Lazy-loaded dict of {filename: bytes} for bundled scripts."""
+    global _SCRIPT_ASSET_CACHE
+    if _SCRIPT_ASSET_CACHE is not None:
+        return _SCRIPT_ASSET_CACHE
+
+    cache: dict[str, bytes] = {}
+    here = os.path.dirname(os.path.abspath(__file__))
+    asset_dir = os.path.join(here, "..", "assets", "scripts")
+    if os.path.isdir(asset_dir):
+        for name in os.listdir(asset_dir):
+            if not name.endswith(".lua"):
+                continue
+            full = os.path.join(asset_dir, name)
+            try:
+                with open(full, "rb") as f:
+                    cache[name] = f.read()
+            except OSError:
+                continue
+    _SCRIPT_ASSET_CACHE = cache
+    return cache
+
+
+def _scan_script_file_references(mission_text: str) -> set[str]:
+    """Collect every filename referenced by a_do_script_file actions.
+
+    Both rendering shapes are picked up:
+      - inline:  ["predicate"] = "a_do_script_file", ["file"] = "Moose_.lua"
+      - indexed: a_do_script_file("Moose_.lua")  (in trig.actions[N])
+    """
+    import re as _re
+    refs: set[str] = set()
+    # Indexed: bare function call as a string in trig.actions
+    for m in _re.finditer(r'a_do_script_file\s*\(\s*"([^"]+)"\s*\)', mission_text):
+        refs.add(m.group(1))
+    # Inline: ["file"] = "..." inside an a_do_script_file action block.
+    # Match "file" key followed (within ~200 chars) by predicate=a_do_script_file
+    # OR vice versa. Simpler: any ["file"] = "<name>.lua" near the predicate.
+    for m in _re.finditer(
+        r'\["file"\]\s*=\s*"([^"]+\.lua)"[^}]*?\["predicate"\]\s*=\s*"a_do_script_file"',
+        mission_text,
+        flags=_re.DOTALL,
+    ):
+        refs.add(m.group(1))
+    for m in _re.finditer(
+        r'\["predicate"\]\s*=\s*"a_do_script_file"[^}]*?\["file"\]\s*=\s*"([^"]+\.lua)"',
+        mission_text,
+        flags=_re.DOTALL,
+    ):
+        refs.add(m.group(1))
+    # Strip directory prefixes (DCS stores bare filenames in l10n/DEFAULT)
+    return {r.rsplit("/", 1)[-1] for r in refs}
 
 
 def _escape_lua_string(s: str) -> str:

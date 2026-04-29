@@ -208,6 +208,22 @@ without Fett's go-ahead.
   + html-to-canvas pipeline the kneeboard cards already use. Most
   visually impressive single feature; medium-large effort.
 
+- **Weapon-employment kneeboards** for newer pilots and training
+  missions. Per-weapon reference cards modeled on the SAM threat-
+  cards style (DEFEND banner up top, layout faithful to existing
+  squadron cards). Each card covers a single store: AGM-65 family,
+  AGM-84 (HARM/SLAM-ER), AGM-88, AIM-7/9/120, JDAM (GBU-31/32/38),
+  GBU-10/12/16/24, etc. Content per card: WEZ envelope + min/max
+  range, employment profile (ALT/AS/dive angle), HUD/MFD pages
+  used, switchology cheatsheet, common mistakes. Output is PNG via
+  the same headless-Chrome HTML→PNG pipeline used for the SAM
+  cards. Tied to a per-flight loadout: when a player flight is
+  carrying e.g. an AIM-9X, the AIM-9X card auto-injects into that
+  flight's KNEEBOARD/<aircraft>/IMAGES on download. Useful for
+  Hornet School training missions where the student loadout is
+  known. Medium effort; doable in a single phase once the SAM-card
+  template is generalized into a reusable HTML template.
+
 ## User profile (Fett)
 
 - Callsign **Fett**. Squadron **VMFA-224(AW) Bengals**. Runs a

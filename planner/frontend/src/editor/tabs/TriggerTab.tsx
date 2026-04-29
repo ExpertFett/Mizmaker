@@ -288,19 +288,24 @@ export function TriggerTab() {
 
           {/* ── Right: Flags + Audio ─────────────────────── */}
           <div style={{ width: 280, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto' }}>
-            <ScriptsLibrary onAddScript={(name, lua) => {
-              // Create a new trigger rule with DO_SCRIPT action, type onMissionStart
+            <ScriptsLibrary onAddScript={(name, lua, bundledFile) => {
+              // Create a new trigger rule. When the script entry has a
+              // bundledFile, use DO_SCRIPT_FILE — the backend auto-embeds
+              // the file into the .miz on download. Otherwise fall back
+              // to DO_SCRIPT with the inline Lua text.
               addRule();
-              // Grab the newly added rule (last in array)
               const newRules = useTriggerStore.getState().rules;
               const newest = newRules[newRules.length - 1];
               if (newest) {
+                const action = bundledFile
+                  ? { type: 'DO_SCRIPT_FILE' as const, params: { file: bundledFile } }
+                  : { type: 'DO_SCRIPT' as const, params: { lua } };
                 updateRule(newest.id, {
                   name: `Script: ${name}`,
                   eventType: 'onMissionStart',
                   enabled: true,
                   conditions: [],
-                  actions: [{ type: 'DO_SCRIPT', params: { lua } }],
+                  actions: [action],
                 });
                 selectRule(newest.id);
               }
@@ -2288,6 +2293,11 @@ interface ScriptEntry {
   description: string;
   lua: string;
   url?: string;
+  /** Canonical filename of the bundled .lua in the planner's script
+   *  library. When set, "+ Add to Triggers" creates a DO_SCRIPT_FILE
+   *  action referencing this name; the backend auto-embeds the file
+   *  into the .miz at l10n/DEFAULT/<bundledFile> on download. */
+  bundledFile?: string;
 }
 
 const SCRIPT_LIBRARY: ScriptEntry[] = [
@@ -2295,30 +2305,18 @@ const SCRIPT_LIBRARY: ScriptEntry[] = [
     id: 'moose',
     name: 'MOOSE Framework',
     category: 'framework',
-    description: 'MOOSE scripting framework (116K lines). Add as DO_SCRIPT_FILE or paste full Moose_.lua content. Load order: trigger 1.',
+    description: 'MOOSE scripting framework. + Add to Triggers auto-embeds Moose_.lua into the .miz on download. Load order: TIME MORE > 1 (must precede dependent scripts).',
     url: 'https://flightcontrol-master.github.io/MOOSE_DOCS/',
-    lua: `-- MOOSE Framework — too large to embed (116K lines)
--- Use DO_SCRIPT_FILE pointing to: Moose_03db4e8.lua
--- Or paste the full Moose_.lua content here after adding this trigger.
---
--- Load order: This must run BEFORE any MOOSE-dependent scripts.
--- Recommended: TIME MORE > 1 second
-
-env.info("[MOOSE] Placeholder — replace with full Moose_.lua content or use DO_SCRIPT_FILE")`,
+    bundledFile: 'Moose_.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads Moose_.lua. The file is\n-- auto-bundled into the .miz at l10n/DEFAULT/Moose_.lua on download.',
   },
   {
     id: 'aegis-iads',
     name: 'AEGIS IADS',
     category: 'framework',
-    description: 'AEGIS v0.8.4-beta — Event-driven IADS for DCS. EW activation, WEZ gating, HARM reaction, EMCON cycling, ECM jamming. Load BEFORE setup script.',
-    lua: `-- AEGIS IADS v0.8.4-beta — too large to embed (5K lines)
--- Use DO_SCRIPT_FILE pointing to: aegis-iads-v0.8.4-beta.lua
--- Or paste the full aegis-iads lua content here after adding this trigger.
---
--- Load order: TIME MORE > 1 (after MOOSE if used), BEFORE aegis-setup.
--- Group naming: SAM-TYPE-SECTOR, EW-SECTOR, PD-TYPE-SECTOR, PWR-SECTOR, ECM-TYPE-SECTOR
-
-env.info("[AEGIS] Placeholder — replace with full aegis-iads-v0.8.4-beta.lua content or use DO_SCRIPT_FILE")`,
+    description: 'AEGIS v0.8.4-beta — Event-driven IADS. EW activation, WEZ gating, HARM reaction, EMCON cycling, ECM jamming. Auto-bundled. Load order: TIME MORE > 1, AFTER MOOSE, BEFORE aegis-setup.',
+    bundledFile: 'aegis-iads-v0.8.4-beta.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads aegis-iads-v0.8.4-beta.lua\n-- (auto-bundled into the .miz on download).',
   },
   {
     id: 'aegis-setup',
@@ -2397,16 +2395,9 @@ iads:StartMapDebug(15)`,
     id: 'tic',
     name: 'TIC (Troops in Contact)',
     category: 'ground',
-    description: 'TIC v1.1 — Dynamic ground combat script. Transforms ground battles into believable engagements with realistic fire exchanges.',
-    lua: `-- TIC (Troops in Contact) v1.1 — too large to embed (5K lines)
--- Use DO_SCRIPT_FILE pointing to: TIC_v1.1.lua
--- Or paste the full TIC lua content here after adding this trigger.
---
--- Designed to make ground fights look and feel like real combat,
--- where both sides exchange fire and there is action for players.
--- See included PDF for full configuration guide.
-
-env.info("[TIC] Placeholder — replace with full TIC_v1.1.lua content or use DO_SCRIPT_FILE")`,
+    description: 'TIC v1.1 — Dynamic ground combat script. Auto-bundled. Transforms ground battles into believable engagements with realistic fire exchanges.',
+    bundledFile: 'TIC_v1.1.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads TIC_v1.1.lua (auto-bundled).',
   },
   {
     id: 'carrier-control',
@@ -2673,7 +2664,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   utility:   { label: 'Utility',   color: '#cccccc' },
 };
 
-function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: string) => void }) {
+function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: string, bundledFile?: string) => void }) {
   const [expanded, setExpanded] = useState(true);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
@@ -2753,7 +2744,7 @@ function ScriptsLibrary({ onAddScript }: { onAddScript: (name: string, lua: stri
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button
                       style={{ ...btnPrimary, padding: '4px 10px', fontSize: 12 }}
-                      onClick={() => onAddScript(script.name, script.lua)}
+                      onClick={() => onAddScript(script.name, script.lua, script.bundledFile)}
                     >+ Add to Triggers</button>
                     <button
                       style={{ ...btn, padding: '4px 10px', fontSize: 12 }}
