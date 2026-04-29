@@ -263,6 +263,12 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
     `l10n/DEFAULT/<name>`. Without this, MOOSE / AEGIS / TIC / carrier-control
     triggers the planner generates would silently fail when the user opens the
     mission, because DO_SCRIPT_FILE looks up the file inside the .miz ZIP.
+
+    Critical: DCS uses a ResKey indirection layer for file references.
+    The trigger action's `["file"]` field has to store a key like
+    "ResKey_Action_42" which mapResource then maps to "Moose_.lua".
+    Bare filename references don't resolve at mission load time. We
+    rewrite filename refs → ResKeys + update mapResource on the fly.
     """
     # Resolve the set of bundled script files we'd embed if the mission
     # references them. Build the lookup once; missing references are no-ops.
@@ -270,8 +276,25 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
     referenced = _scan_script_file_references(new_mission_text)
     auto_embed = {fname: script_assets[fname] for fname in referenced if fname in script_assets}
 
+    # Read the current mapResource so we can extend it with our ResKeys.
+    existing_map_resource = ""
+    try:
+        with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as _zin_peek:
+            try:
+                existing_map_resource = _zin_peek.read("l10n/DEFAULT/mapResource").decode("utf-8")
+            except KeyError:
+                pass
+    except zipfile.BadZipFile:
+        pass
+
+    # Translate filename refs to ResKeys, updating mission text + map.
+    new_mission_text, new_map_resource_text, embed_filenames = _link_script_files_to_reskeys(
+        new_mission_text, existing_map_resource, set(auto_embed.keys()),
+    )
+
     output = io.BytesIO()
     embedded_paths: set[str] = set()
+    map_resource_written = False
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -281,13 +304,18 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     zout.writestr(item, new_dictionary_text.encode("utf-8"))
                 elif new_options_text is not None and item.filename == "options":
                     zout.writestr(item, new_options_text.encode("utf-8"))
+                elif item.filename == "l10n/DEFAULT/mapResource" and new_map_resource_text:
+                    zout.writestr(item, new_map_resource_text.encode("utf-8"))
+                    map_resource_written = True
                 else:
-                    # If the .miz already ships a file we'd auto-embed, prefer
-                    # the user's existing copy — they may have edited it.
                     base = item.filename.rsplit("/", 1)[-1]
                     if base in auto_embed and item.filename.startswith("l10n/DEFAULT/"):
                         embedded_paths.add(base)
                     zout.writestr(item, zin.read(item.filename))
+
+            # If mapResource didn't exist in the original miz, write a new one.
+            if new_map_resource_text and not map_resource_written:
+                zout.writestr("l10n/DEFAULT/mapResource", new_map_resource_text.encode("utf-8"))
 
             # Inject kneeboard PNGs into KNEEBOARD/<aircraft_type>/IMAGES/
             # Shared cards (aircraft_type == '_SHARED_') go into KNEEBOARD/IMAGES/
@@ -300,11 +328,134 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     zout.writestr(path, kb["data"])
 
             # Auto-embed any referenced script files the mission lacks.
-            for fname, data in auto_embed.items():
+            for fname in embed_filenames:
                 if fname in embedded_paths:
                     continue  # user's own copy wins
-                zout.writestr(f"l10n/DEFAULT/{fname}", data)
+                if fname in script_assets:
+                    zout.writestr(f"l10n/DEFAULT/{fname}", script_assets[fname])
     return output.getvalue()
+
+
+def _link_script_files_to_reskeys(
+    mission_text: str, map_resource_text: str, candidate_filenames: set,
+) -> tuple[str, str, set]:
+    """Wire bundled-script filename refs through the DCS ResKey layer.
+
+    Walks `mission_text` for trigger actions of the form:
+       ["file"] = "<filename.lua>", ["predicate"] = "a_do_script_file"
+       ["predicate"] = "a_do_script_file", ["file"] = "<filename.lua>"
+    For each filename in `candidate_filenames`, allocate a ResKey
+    (reusing one if mapResource already contains a mapping to that
+    filename), rewrite the trigger action to reference the ResKey, and
+    extend the mapResource block.
+
+    Returns (new_mission_text, new_map_resource_text, set_of_filenames_to_embed).
+    `new_map_resource_text` is "" when no changes were needed.
+    """
+    if not candidate_filenames:
+        return mission_text, "", set()
+
+    # Parse existing mapResource: collect filename → key for reuse, and
+    # find the highest existing numeric suffix so we don't collide.
+    existing: dict[str, str] = {}
+    max_n = 0
+    for m in re.finditer(r'\["(ResKey_[A-Za-z]+_(\d+))"\]\s*=\s*"([^"]+)"', map_resource_text or ""):
+        key, num, fname = m.group(1), int(m.group(2)), m.group(3)
+        existing[fname] = key
+        if num > max_n:
+            max_n = num
+
+    # Allocate or reuse a ResKey per candidate filename. We only emit a
+    # mapping for filenames that actually appear in the mission text.
+    needed_for: dict[str, str] = {}  # filename → key
+    embed_set: set = set()
+
+    def _ensure_key(fname: str) -> str:
+        if fname in needed_for:
+            return needed_for[fname]
+        if fname in existing:
+            needed_for[fname] = existing[fname]
+            return existing[fname]
+        nonlocal max_n
+        max_n += 1
+        key = f"ResKey_Action_{max_n}"
+        needed_for[fname] = key
+        return key
+
+    # Rewrite inline trigger actions to use the ResKey instead of the bare
+    # filename. We match the two field-order variants produced by our
+    # inline renderer (file-then-predicate, predicate-then-file).
+    def _replace_inline(match: re.Match) -> str:
+        fname = match.group("fname")
+        if fname not in candidate_filenames:
+            return match.group(0)
+        key = _ensure_key(fname)
+        embed_set.add(fname)
+        return match.group(0).replace(f'"{fname}"', f'"{key}"', 1)
+
+    # Pattern A: ["file"] = "<fname>" ... ["predicate"] = "a_do_script_file"
+    pat_a = re.compile(
+        r'\["file"\]\s*=\s*"(?P<fname>[^"]+\.lua)"[^}]*?\["predicate"\]\s*=\s*"a_do_script_file"',
+        flags=re.DOTALL,
+    )
+    mission_text = pat_a.sub(_replace_inline, mission_text)
+
+    # Pattern B: ["predicate"] = "a_do_script_file" ... ["file"] = "<fname>"
+    pat_b = re.compile(
+        r'\["predicate"\]\s*=\s*"a_do_script_file"[^}]*?\["file"\]\s*=\s*"(?P<fname>[^"]+\.lua)"',
+        flags=re.DOTALL,
+    )
+    mission_text = pat_b.sub(_replace_inline, mission_text)
+
+    # Indexed format: a_do_script_file("Moose_.lua") inside trig.actions
+    # gets converted to a_do_script_file(getValueResourceByKey("ResKey_…"))
+    def _replace_indexed(match: re.Match) -> str:
+        fname = match.group(1)
+        if fname not in candidate_filenames:
+            return match.group(0)
+        key = _ensure_key(fname)
+        embed_set.add(fname)
+        return f'a_do_script_file(getValueResourceByKey("{key}"))'
+
+    mission_text = re.sub(
+        r'a_do_script_file\s*\(\s*"([^"]+)"\s*\)', _replace_indexed, mission_text,
+    )
+
+    if not needed_for:
+        return mission_text, "", set()
+
+    # Re-emit the mapResource block with the additional entries appended.
+    # If the original was empty / missing we synthesize a fresh one.
+    if not map_resource_text:
+        lines = ["mapResource = ", "{"]
+        for fname, key in sorted(needed_for.items(), key=lambda x: int(x[1].rsplit("_", 1)[-1])):
+            lines.append(f'\t["{key}"] = "{fname}",')
+        lines.append("} -- end of mapResource\n")
+        return mission_text, "\n".join(lines), embed_set
+
+    # Append any newly-allocated keys before the closing brace.
+    new_entries: list[str] = []
+    for fname, key in sorted(needed_for.items(), key=lambda x: int(x[1].rsplit("_", 1)[-1])):
+        if fname in existing:
+            continue  # already in mapResource
+        new_entries.append(f'\t["{key}"] = "{fname}",')
+
+    if not new_entries:
+        return mission_text, map_resource_text, embed_set
+
+    # Find the trailing `}` of the mapResource table and inject before it.
+    close_match = re.search(r'\n\}\s*(--[^\n]*)?\s*$', map_resource_text)
+    if close_match:
+        insert_pos = close_match.start() + 1  # after the leading newline
+        new_text = (
+            map_resource_text[:insert_pos]
+            + "\n".join(new_entries) + "\n"
+            + map_resource_text[insert_pos:]
+        )
+    else:
+        new_text = map_resource_text.rstrip() + "\n" + "\n".join(new_entries) + "\n"
+
+    return mission_text, new_text, embed_set
 
 
 # ── Bundled script library (Moose, TIC, AEGIS, carrier-control, …) ──────────
