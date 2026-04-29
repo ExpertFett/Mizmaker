@@ -365,15 +365,45 @@ def extract_triggers(mission_dict: dict) -> Dict[str, Any]:
     return {"rules": rules, "flags": flags}
 
 
+def _safe_params(item) -> Dict[str, Any]:
+    """Best-effort extract a dict-shaped `params` from a condition/action.
+
+    The trigger Lua we parse out of user-edited missions is sometimes
+    shaped weirdly — third-party scripts, hand-edited triggers, mods
+    can produce conditions whose params decode as a list rather than a
+    dict. Without this guard, downstream code that does
+    `cond.get('params', {}).get('flag')` blows up with
+    "'list' object has no attribute 'get'", which is exactly what
+    happened on Fett's session when he tried to add the carrier
+    trigger and the GET /api/triggers call 500'd before we ever got
+    to POST.
+    """
+    if not isinstance(item, dict):
+        return {}
+    p = item.get("params")
+    if isinstance(p, dict):
+        return p
+    return {}
+
+
 def _extract_flag_references(rules: List[Dict]) -> List[Dict]:
     """Scan all trigger rules and extract a deduplicated flag summary."""
     flag_map: Dict[str, Dict[str, List[str]]] = {}
 
     for rule in rules:
-        rule_name = rule.get("name", f"Trigger {rule['id']}")
+        if not isinstance(rule, dict):
+            continue
+        rule_name = rule.get("name", f"Trigger {rule.get('id', '?')}")
+        conditions = rule.get("conditions", [])
+        if not isinstance(conditions, list):
+            conditions = []
+        actions = rule.get("actions", [])
+        if not isinstance(actions, list):
+            actions = []
 
-        for cond in rule.get("conditions", []):
-            flag_id = cond.get("params", {}).get("flag")
+        for cond in conditions:
+            params = _safe_params(cond)
+            flag_id = params.get("flag")
             if flag_id is not None:
                 flag_id = str(flag_id)
                 if flag_id not in flag_map:
@@ -382,7 +412,7 @@ def _extract_flag_references(rules: List[Dict]) -> List[Dict]:
                     flag_map[flag_id]["readBy"].append(rule_name)
 
             # Also check flag2 for FLAG_EQUALS_FLAG
-            flag2 = cond.get("params", {}).get("flag2")
+            flag2 = params.get("flag2")
             if flag2 is not None:
                 flag2 = str(flag2)
                 if flag2 not in flag_map:
@@ -390,8 +420,9 @@ def _extract_flag_references(rules: List[Dict]) -> List[Dict]:
                 if rule_name not in flag_map[flag2]["readBy"]:
                     flag_map[flag2]["readBy"].append(rule_name)
 
-        for act in rule.get("actions", []):
-            flag_id = act.get("params", {}).get("flag")
+        for act in actions:
+            params = _safe_params(act)
+            flag_id = params.get("flag")
             if flag_id is not None:
                 flag_id = str(flag_id)
                 if flag_id not in flag_map:
@@ -482,8 +513,12 @@ def remove_audio_from_miz(miz_bytes: bytes, path: str) -> bytes:
 
 def _condition_to_lua(cond: Dict) -> str:
     """Convert a structured condition back to DCS Lua function call string."""
-    ctype = cond["type"]
+    ctype = cond.get("type", "CUSTOM_LUA")
     p = cond.get("params", {})
+    # Defensive: malformed triggers can produce list-shaped params. Treat
+    # those as empty so .get() calls below don't blow up.
+    if not isinstance(p, dict):
+        p = {}
 
     if cond.get("rawLua"):
         return cond["rawLua"]
@@ -530,8 +565,12 @@ def _condition_to_lua(cond: Dict) -> str:
 
 def _action_to_lua(act: Dict) -> str:
     """Convert a structured action back to DCS Lua function call string."""
-    atype = act["type"]
+    atype = act.get("type", "CUSTOM_LUA")
     p = act.get("params", {})
+    # Defensive: malformed triggers can produce list-shaped params. Treat
+    # those as empty so .get() calls below don't blow up.
+    if not isinstance(p, dict):
+        p = {}
 
     if act.get("rawLua"):
         return act["rawLua"]
@@ -631,18 +670,33 @@ def serialize_triggers_to_lua(trigger_data: Dict, indent: str = "\t") -> Tuple[s
     act_idx = 1
 
     for rule in rules:
-        rule_id = rule["id"]
+        if not isinstance(rule, dict):
+            continue
+        rule_id = rule.get("id")
+        if rule_id is None:
+            continue
 
-        # Map this rule's conditions to global indices
+        # Map this rule's conditions to global indices. Coerce non-dict
+        # entries to empty so we don't blow up on malformed triggers.
         rule_cond_indices = {}
-        for i, cond in enumerate(rule.get("conditions", []), 1):
+        rule_conditions = rule.get("conditions", [])
+        if not isinstance(rule_conditions, list):
+            rule_conditions = []
+        for i, cond in enumerate(rule_conditions, 1):
+            if not isinstance(cond, dict):
+                continue
             conditions_lua[cond_idx] = _condition_to_lua(cond)
             rule_cond_indices[i] = cond_idx
             cond_idx += 1
 
         # Map this rule's actions to global indices
         rule_act_indices = {}
-        for i, act in enumerate(rule.get("actions", []), 1):
+        rule_actions = rule.get("actions", [])
+        if not isinstance(rule_actions, list):
+            rule_actions = []
+        for i, act in enumerate(rule_actions, 1):
+            if not isinstance(act, dict):
+                continue
             actions_lua[act_idx] = _action_to_lua(act)
             rule_act_indices[i] = act_idx
             act_idx += 1
