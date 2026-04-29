@@ -120,6 +120,21 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
         del sessions[oldest]
     sid = str(uuid.uuid4())
     host_token = str(uuid.uuid4())
+
+    # Detect at upload time whether the original .miz uses inline trigger
+    # format. We pin this to the session so subsequent saves always use
+    # the append path, even if the in-memory mission_text gets corrupted
+    # mid-session by a bad rewrite (e.g. user uploaded an _edited.miz).
+    orig_inline_format = False
+    try:
+        from services.miz_parser import parse_mission_text as _pmt
+        from services.trigger_editor import extract_triggers as _et
+        _md = _pmt(mission_text)
+        _data = _et(_md)
+        orig_inline_format = bool(_data.get("inlineFormat"))
+    except Exception:
+        pass
+
     with _lock:
         sessions[sid] = {
             "miz_bytes": miz_bytes,
@@ -134,6 +149,8 @@ def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints)
             # Server-authoritative unit edits (loadouts, datalink, etc.)
             "unit_edits": [],  # accumulated from all participants
             "pending_triggers": None,  # trigger edits, applied at download
+            # Sticky format hint — see save_triggers handler.
+            "orig_inline_format": orig_inline_format,
             # Collaborative session fields
             "host_token": host_token,
             "participants": {},  # { token: { name, group, connected, ready } }
@@ -1263,35 +1280,60 @@ def save_triggers():
     try:
         # Inline-format missions use a different on-disk shape than the
         # indexed format our full serializer emits. Rewriting an inline
-        # mission with the indexed serializer wipes every rule's body
-        # (Fett's deployment-mission-5 was corrupted this way). For
-        # inline missions we fall back to surgical APPEND of new rules
-        # only — original rules stay byte-for-byte intact.
+        # mission with the indexed serializer wipes every rule's body.
+        # For inline missions we fall back to surgical APPEND of new
+        # rules only — original rules stay byte-for-byte intact.
         from services.trigger_editor import extract_triggers, append_inline_rules
         from services.miz_parser import parse_mission_text as _pmt
 
         current_text = session.get("mission_text", session["original_mission_text"])
         is_inline = False
+        existing_rule_count = 0
         try:
             md = _pmt(current_text)
             existing = extract_triggers(md)
             is_inline = bool(existing.get("inlineFormat"))
+            existing_rule_count = len(existing.get("rules", []))
         except Exception:
             pass  # fall through to default path
 
+        # ── Always-prefer-append safety: if the ORIGINAL upload was
+        # inline (we track that on the session), use append even if the
+        # current text appears indexed (which can happen when the user
+        # uploaded a previously-corrupted _edited.miz). This prevents
+        # the rewrite path from compounding damage on already-broken
+        # missions.
+        if session.get("orig_inline_format"):
+            is_inline = True
+
         rules = trigger_data.get("rules") or []
+
+        # ── Catastrophic-loss guard: refuse the save if it would empty
+        # out a substantial number of existing rules. Specifically: in
+        # the indexed (rewrite) path, if any incoming rule has an id
+        # matching an existing one but the rule's conditions+actions
+        # are empty, the rewrite would replace a working rule with an
+        # empty one. We can't always tell with certainty (some rules
+        # legitimately have no body), but if MORE THAN HALF the rules
+        # would be emptied we treat that as user error and refuse.
+        if not is_inline and existing_rule_count >= 4:
+            empty_count = sum(
+                1 for r in rules
+                if isinstance(r, dict)
+                and not r.get("conditions") and not r.get("actions")
+            )
+            if empty_count > existing_rule_count // 2:
+                return jsonify({
+                    "error": (
+                        "Refusing to save: this would wipe most existing trigger "
+                        "bodies. The mission's session state may be corrupted from "
+                        "a previous edit. Please re-upload the ORIGINAL .miz file "
+                        "(not an _edited version) and try again."
+                    ),
+                }), 422
+
         if is_inline:
-            # Identify NEW rules — those whose name isn't already in the
-            # mission. Existing rules are left untouched.
-            new_rules = []
-            for r in rules:
-                if not isinstance(r, dict):
-                    continue
-                # Heuristic: anything with the names our auto-add features
-                # use, OR any rule whose id exceeds what already exists.
-                # The append helper itself dedupes by name as a safety net.
-                new_rules.append(r)
-            new_text = append_inline_rules(current_text, new_rules)
+            new_text = append_inline_rules(current_text, rules)
         else:
             new_text = update_triggers_in_mission(current_text, trigger_data)
 
