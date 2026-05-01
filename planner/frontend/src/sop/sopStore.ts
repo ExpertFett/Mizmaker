@@ -58,6 +58,10 @@ interface SopState {
   setActive: (id: string | null) => void;
   /** Replace the entire library (used for bulk import). */
   replaceAll: (sops: SOP[]) => void;
+  /** Wipe every SOP from localStorage. Useful for a "clear browser
+   *  state" button in the SOP UI when users want to start fresh
+   *  (e.g. after testing with a proprietary kneeboard image). */
+  clearAll: () => void;
 }
 
 const initial = loadFromStorage();
@@ -106,5 +110,11 @@ export const useSopStore = create<SopState>((set, get) => ({
   replaceAll: (sops) => {
     saveSops(sops);
     set({ sops });
+  },
+
+  clearAll: () => {
+    saveSops([]);
+    saveActive(null);
+    set({ sops: [], activeId: null });
   },
 }));

@@ -22,6 +22,7 @@ export function SopTab() {
   const deleteSop = useSopStore((s) => s.deleteSop);
   const setActive = useSopStore((s) => s.setActive);
   const updateSop = useSopStore((s) => s.updateSop);
+  const clearAll = useSopStore((s) => s.clearAll);
 
   const [selectedId, setSelectedId] = useState<string | null>(activeId);
   const [importError, setImportError] = useState<string | null>(null);
@@ -146,6 +147,18 @@ export function SopTab() {
     setImportInfo(`Created starter SOP "${sop.name}". Rename it, edit values to match your scenario, then set as active.`);
   }, [addSop]);
 
+  const handleClearAll = useCallback(() => {
+    if (sops.length === 0) return;
+    const ok = confirm(
+      `Wipe all ${sops.length} SOP${sops.length !== 1 ? 's' : ''} from localStorage? ` +
+      `This is irreversible — download anything you want to keep first.`,
+    );
+    if (!ok) return;
+    clearAll();
+    setSelectedId(null);
+    setImportInfo('Cleared all SOPs from browser storage.');
+  }, [sops.length, clearAll]);
+
   const handleRename = useCallback((id: string, name: string) => {
     const sop = sops.find((s) => s.id === id);
     if (!sop) return;
@@ -255,6 +268,15 @@ export function SopTab() {
         >
           Download Template
         </button>
+        {sops.length > 0 && (
+          <button
+            onClick={handleClearAll}
+            style={{ ...btnDanger, marginLeft: 'auto' }}
+            title="Wipe every SOP from this browser's localStorage. Useful for clearing test/proprietary entries before sharing the planner."
+          >
+            Clear All ({sops.length})
+          </button>
+        )}
       </div>
 
       {/* Starter SOPs — for users without a squadron SOP. Clicking
