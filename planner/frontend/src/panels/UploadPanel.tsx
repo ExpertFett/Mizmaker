@@ -11,9 +11,15 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const aiKey = useAiStore((s) => s.apiKey);
-  const lastTestOk = useAiStore((s) => s.lastTestOk);
-  const lastTestedAt = useAiStore((s) => s.lastTestedAt);
+  const aiProvider = useAiStore((s) => s.provider);
+  const aiCreds = useAiStore((s) => ({
+    provider: s.provider,
+    anthropicKey: s.anthropicKey, geminiKey: s.geminiKey,
+    anthropicModel: s.anthropicModel, geminiModel: s.geminiModel,
+  }));
+  const lastTestOk = useAiStore((s) => s.lastTestOk[s.provider]);
+  const lastTestedAt = useAiStore((s) => s.lastTestedAt[s.provider]);
+  const aiKey = aiCreds.provider === 'anthropic' ? aiCreds.anthropicKey : aiCreds.geminiKey;
   const [aiOpen, setAiOpen] = useState(false);
 
   const handleFile = useCallback(
@@ -117,10 +123,12 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
               fontFamily: 'inherit',
             }}
             title={aiKey
-              ? 'Anthropic API key is set. Click to view / change settings.'
-              : 'No AI key set. Click to add an Anthropic key for vision-based SOP extraction.'}
+              ? `${aiProvider === 'gemini' ? 'Gemini' : 'Anthropic'} API key is set. Click to view / change settings.`
+              : 'No AI key set. Click to add a free Gemini key (or paid Anthropic) for vision-based SOP extraction.'}
           >
-            {aiKey ? '🔑 AI Connected' : '🔑 Connect AI'}
+            {aiKey
+              ? `🔑 AI Connected (${aiProvider === 'gemini' ? 'Gemini' : 'Anthropic'})`
+              : '🔑 Connect AI'}
           </button>
         </div>
 

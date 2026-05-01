@@ -7,7 +7,8 @@
  * never overwrites a value the user has already typed in.
  */
 
-import { callAnthropic, type AnthropicContentBlock } from './anthropicClient';
+import { callAi, type AiContentBlock } from './aiClient';
+import type { AiProvider } from './aiStore';
 import type { SOP, SopAttachment } from '../sop/types';
 
 const SYSTEM_PROMPT = `You are a tactical aviation reference reader. The user will give you images of a squadron's Standard Operating Procedures (SOP) — typically callsign tables, frequency cards, TACAN charts, kneeboard reference pages.
@@ -63,23 +64,22 @@ export interface ExtractionResult {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-/** Call Anthropic with the SOP images and parse the response into a
- *  partial SOP. Throws if the API call fails or the response isn't
- *  parseable JSON. */
+/** Call the active AI provider with the SOP images and parse the
+ *  response into a partial SOP. Throws if the API call fails or the
+ *  response isn't parseable JSON. */
 export async function extractSopFromImages(
+  provider: AiProvider,
   apiKey: string,
   model: string,
   attachments: SopAttachment[],
 ): Promise<ExtractionResult> {
   if (attachments.length === 0) throw new Error('No images to extract from');
 
-  // Vision quota: Anthropic limits to ~20 images per request and ~5MB
-  // per image after compression. SOP screenshots are well under that
-  // but cap at 12 to avoid surprise context-window blowups on big
-  // OZP imports.
+  // Vision quota: both providers handle ~12 images comfortably.
+  // Capping protects against context-window blowups on big OZPs.
   const limited = attachments.slice(0, 12);
 
-  const content: AnthropicContentBlock[] = [];
+  const content: AiContentBlock[] = [];
   for (const att of limited) {
     if (!att.mimeType.startsWith('image/')) continue;  // skip PDFs etc.
     content.push({
@@ -96,12 +96,14 @@ export async function extractSopFromImages(
       : `Extract and merge the SOP data from these ${limited.length} images. They belong to the same squadron SOP — combine entries (don't duplicate the same callsign across multiple images).`,
   });
 
-  const result = await callAnthropic({
+  const result = await callAi({
+    provider,
     apiKey,
     model,
     maxTokens: 4096,
     system: SYSTEM_PROMPT,
     content,
+    jsonMode: provider === 'gemini',
   });
 
   // Parse — strip any accidental markdown fences just in case

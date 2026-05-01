@@ -26,8 +26,13 @@ export function SopTab() {
   const setActive = useSopStore((s) => s.setActive);
   const updateSop = useSopStore((s) => s.updateSop);
   const clearAll = useSopStore((s) => s.clearAll);
-  const aiKey = useAiStore((s) => s.apiKey);
-  const aiModel = useAiStore((s) => s.model);
+  const aiProvider = useAiStore((s) => s.provider);
+  const aiKey = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicKey : s.geminiKey,
+  );
+  const aiModel = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicModel : s.geminiModel,
+  );
 
   const [aiOpen, setAiOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -246,7 +251,7 @@ export function SopTab() {
     setImportError(null);
     setImportInfo(null);
     try {
-      const result = await extractSopFromImages(aiKey, aiModel, atts);
+      const result = await extractSopFromImages(aiProvider, aiKey, aiModel, atts);
       const merged = mergePartialIntoSop(selected, result.partial);
       updateSop(merged);
       const partsAdded = [
@@ -266,7 +271,7 @@ export function SopTab() {
     } finally {
       setExtracting(false);
     }
-  }, [aiKey, aiModel, selected, updateSop]);
+  }, [aiProvider, aiKey, aiModel, selected, updateSop]);
 
   const handleClearAll = useCallback(() => {
     if (sops.length === 0) return;
