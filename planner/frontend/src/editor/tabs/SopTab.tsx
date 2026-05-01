@@ -146,7 +146,7 @@ export function SopTab() {
   }, [sops, updateSop]);
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
@@ -240,11 +240,13 @@ export function SopTab() {
           minHeight: 400,
         }}
       >
-        {/* Library panel */}
+        {/* Library panel — fixed-width left rail. Stays narrow because
+            the SOP names are short; the detail pane gets the rest of
+            the viewport. */}
         <div style={{
-          flexShrink: 0, width: 280,
+          flexShrink: 0, width: 240,
           background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
-          padding: 8,
+          padding: 8, position: 'sticky', top: 0,
         }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#cccccc', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
             LIBRARY ({sops.length})
@@ -384,6 +386,10 @@ function SopDetail({
         </div>
       )}
 
+      {/* Stats strip — at-a-glance summary so the user knows what's
+          populated without scrolling through every section. */}
+      <SopStatsStrip sop={sop} />
+
       {/* Single attachment preview (legacy) */}
       {sop.attachment && sop.attachment.mimeType.startsWith('image/') && (
         <Section title={`ATTACHMENT (${sop.attachment.name})`}>
@@ -403,27 +409,89 @@ function SopDetail({
         <AttachmentGallery attachments={sop.attachments} />
       )}
 
-      {/* Flight callsigns */}
-      <FlightsEditor sop={sop} onUpdate={onUpdate} />
-
-      {/* Tankers */}
-      <TankersEditor sop={sop} onUpdate={onUpdate} />
-
-      {/* Support assets */}
-      <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
-
-      {/* Comms */}
-      <CommsEditor sop={sop} onUpdate={onUpdate} />
-
-      {/* TACANs */}
-      <TacansEditor sop={sop} onUpdate={onUpdate} />
-
-      {/* Laser code base */}
-      <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
+      {/* 2-column editor grid. Left column = flight-package side
+          (callsigns, support assets), right column = comms / nav side
+          (frequencies, TACAN, laser). Collapses to single column on
+          narrow viewports. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+        gap: 16, alignItems: 'start',
+      }}>
+        <div>
+          <FlightsEditor sop={sop} onUpdate={onUpdate} />
+          <TankersEditor sop={sop} onUpdate={onUpdate} />
+          <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
+        </div>
+        <div>
+          <CommsEditor sop={sop} onUpdate={onUpdate} />
+          <TacansEditor sop={sop} onUpdate={onUpdate} />
+          <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
+        </div>
+      </div>
 
       <div style={{ color: '#4a4a4a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
         Tip: after filling in tankers &amp; flights, set the SOP active and the auto-assigns on other tabs will use these values.
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* SopStatsStrip — at-a-glance summary cards so wide-screen users     */
+/* don't see a wall of empty space + a tall narrow column of editors. */
+/* ------------------------------------------------------------------ */
+
+function SopStatsStrip({ sop }: { sop: SOP }) {
+  const stats: Array<{ label: string; value: number; color: string; tip?: string }> = [
+    { label: 'FLIGHTS',     value: sop.flights.length,                color: '#4a8fd4',
+      tip: 'Player flight callsigns + default freqs' },
+    { label: 'TANKERS',     value: (sop.tankers || []).length,        color: '#d29922',
+      tip: 'Refueling assets — drives Comms + TACAN auto-assign' },
+    { label: 'SUPPORT',     value: (sop.supportAssets || []).length,  color: '#a371f7',
+      tip: 'AWACS / JTAC / non-tanker support callsigns' },
+    { label: 'COMMS',       value: sop.comms.length,                  color: '#3fb950',
+      tip: 'Mission comm frequency table (push freqs etc.)' },
+    { label: 'TACAN',       value: sop.tacans.length,                 color: '#6ab4f0',
+      tip: 'Non-tanker TACAN entries (home plate, divert, etc.)' },
+    { label: 'LASER BASE',  value: sop.laserCodeBase ?? 0,            color: '#ff6b8a',
+      tip: 'Auto-assign starts from this base; each digit 1-7' },
+  ];
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+      gap: 8, marginBottom: 16,
+    }}>
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          title={s.tip}
+          style={{
+            background: '#1a1a1a',
+            border: `1px solid ${s.value > 0 ? `${s.color}55` : '#3a3a3a'}`,
+            borderLeft: `3px solid ${s.value > 0 ? s.color : '#3a3a3a'}`,
+            borderRadius: 4,
+            padding: '8px 12px',
+          }}
+        >
+          <div style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 1,
+            color: s.value > 0 ? s.color : '#5a6878',
+          }}>
+            {s.label}
+          </div>
+          <div style={{
+            fontSize: 22, fontWeight: 700,
+            color: s.value > 0 ? '#e0e0e0' : '#5a6878',
+            fontFamily: "'B612 Mono', monospace",
+            marginTop: 2,
+          }}>
+            {s.label === 'LASER BASE' && s.value === 0 ? '—' : s.value}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
