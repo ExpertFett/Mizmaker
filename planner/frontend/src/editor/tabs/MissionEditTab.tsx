@@ -9,12 +9,20 @@ import { TriggerTab } from './TriggerTab';
 import { DrawingsTab } from './DrawingsTab';
 import { BattlefieldCommandersTab } from './BattlefieldCommandersTab';
 
+// Sub-tab order follows mission-setup workflow:
+//   Briefing   → set the story / sortie title first
+//   Options    → forcedOptions (Easy Flight, labels, etc.)
+//   Commanders → battlefield commander assignments
+//   Drawings   → map markers / shapes (visual polish)
+//   Triggers   → last — by the time you check this tab, Carriers/Scripts
+//                tabs have already appended their auto-generated rules
+//                and you're verifying, not creating.
 const SUB_TABS = [
   { id: 'briefing', label: 'Briefing' },
-  { id: 'commanders', label: 'Commanders' },
   { id: 'options', label: 'Options' },
-  { id: 'triggers', label: 'Triggers' },
+  { id: 'commanders', label: 'Commanders' },
   { id: 'drawings', label: 'Drawings' },
+  { id: 'triggers', label: 'Triggers' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];

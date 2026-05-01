@@ -53,17 +53,22 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'tab', id: 'carriers',    label: 'Carriers',    icon: '⚓' },
   { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: '📜' },
 
+  // PLANNING comes BEFORE flights — threat picture, target list, and
+  // range/fuel constraints all drive the loadout / radio / DTC choices
+  // for each player flight. Doing FLIGHTS first means you'd commit to a
+  // loadout, then go look at threats and realize you brought the wrong
+  // weapons.
+  { kind: 'section', label: 'PLANNING' },
+  { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
+  { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
+  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '📐' },
+
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
   { kind: 'tab', id: 'datalink',    label: 'Datalink',    icon: '📡' },
   { kind: 'tab', id: 'radio',       label: 'Radio',       icon: '📻' },
   { kind: 'tab', id: 'dtc',         label: 'DTC',         icon: '💾' },
   { kind: 'tab', id: 'livery',      label: 'Livery',      icon: '🎨' },
-
-  { kind: 'section', label: 'PLANNING' },
-  { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
-  { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
-  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '📐' },
 
   { kind: 'section', label: 'OUTPUT' },
   { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: '📋' },
