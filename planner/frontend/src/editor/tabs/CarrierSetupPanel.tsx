@@ -298,6 +298,8 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
 export function CarrierSetupPanel() {
   const groups = useMissionStore((s) => s.groups);
   const sessionId = useMissionStore((s) => s.sessionId);
+  const missionOptions = useMissionStore((s) => s.missionOptions);
+  const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);
   const [scriptPreview, setScriptPreview] = useState(false);
@@ -305,6 +307,24 @@ export function CarrierSetupPanel() {
   const [copied, setCopied] = useState(false);
   const [addingToTriggers, setAddingToTriggers] = useState(false);
   const [addedToTriggers, setAddedToTriggers] = useState(false);
+
+  // Mission-wide Supercarrier toggles. DCS stores these in
+  //   forcedOptions.Supercarrier.{deck_crew, speakers_enabled}
+  // Both are added by the April 29 2026 ED update; both default to ON
+  // when the field is absent from the .miz.
+  const scOpts = (missionOptions?.Supercarrier as
+    | { deck_crew?: boolean; speakers_enabled?: boolean }
+    | undefined) || {};
+  const deckCrewEnabled = scOpts.deck_crew !== false;       // default ON
+  const fiveMcEnabled   = scOpts.speakers_enabled !== false; // default ON
+
+  const setSupercarrierOption = useCallback((key: 'deck_crew' | 'speakers_enabled', value: boolean) => {
+    const prev = (missionOptions?.Supercarrier as Record<string, unknown>) || {};
+    setMissionOptions({
+      ...missionOptions,
+      Supercarrier: { ...prev, [key]: value },
+    });
+  }, [missionOptions, setMissionOptions]);
 
   // Detect carriers
   const carrierGroups = useMemo(() =>
@@ -624,6 +644,46 @@ export function CarrierSetupPanel() {
               Generate Script
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Mission-wide Supercarrier options (DCS forcedOptions.Supercarrier).
+          Added by ED in the April 29 2026 update — these toggles control
+          whether deck crew is rendered on the flight deck and whether the
+          5MC PA system plays announcements during launch / recovery. */}
+      <div style={{
+        marginBottom: 12, padding: '10px 14px',
+        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: '#6ab4f0',
+          letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8,
+        }}>Mission-wide Carrier Options</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={deckCrewEnabled}
+              onChange={(e) => setSupercarrierOption('deck_crew', e.target.checked)}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <span style={{ color: '#e0e0e0' }}>Enable Deck Crew</span>
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
+              forcedOptions.Supercarrier.deck_crew
+            </span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={fiveMcEnabled}
+              onChange={(e) => setSupercarrierOption('speakers_enabled', e.target.checked)}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <span style={{ color: '#e0e0e0' }}>Enable 5MC Messages</span>
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
+              forcedOptions.Supercarrier.speakers_enabled
+            </span>
+          </label>
         </div>
       </div>
 
