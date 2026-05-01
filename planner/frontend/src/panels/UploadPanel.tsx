@@ -12,14 +12,13 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const aiProvider = useAiStore((s) => s.provider);
-  const aiCreds = useAiStore((s) => ({
-    provider: s.provider,
-    anthropicKey: s.anthropicKey, geminiKey: s.geminiKey,
-    anthropicModel: s.anthropicModel, geminiModel: s.geminiModel,
-  }));
+  const aiAnthropicKey = useAiStore((s) => s.anthropicKey);
+  const aiGeminiKey = useAiStore((s) => s.geminiKey);
+  // React 19's useSyncExternalStore rejects selectors that return new
+  // references each call — pick scalars only, derive at the JSX level.
   const lastTestOk = useAiStore((s) => s.lastTestOk[s.provider]);
   const lastTestedAt = useAiStore((s) => s.lastTestedAt[s.provider]);
-  const aiKey = aiCreds.provider === 'anthropic' ? aiCreds.anthropicKey : aiCreds.geminiKey;
+  const aiKey = aiProvider === 'anthropic' ? aiAnthropicKey : aiGeminiKey;
   const [aiOpen, setAiOpen] = useState(false);
 
   const handleFile = useCallback(
