@@ -36,6 +36,9 @@ export function SopTab() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  /** Per-image progress when looping over multi-image SOPs.
+   *  null = not extracting; { current, total } during the loop. */
+  const [extractProgress, setExtractProgress] = useState<{ current: number; total: number } | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(activeId);
   const [importError, setImportError] = useState<string | null>(null);
@@ -247,29 +250,69 @@ export function SopTab() {
         ? [selected.attachment]
         : [];
     if (atts.length === 0) return;
+
     setExtracting(true);
     setImportError(null);
     setImportInfo(null);
+
+    // Loop over images one at a time and merge each result into the
+    // SOP. Per-image extraction avoids the model truncating its output
+    // when a single mega-call has too many tables to enumerate. The
+    // merge is dedup-by-callsign so common entries across images don't
+    // get duplicated, and user-typed values win across all merges.
+    setExtractProgress({ current: 0, total: atts.length });
+
     try {
-      const result = await extractSopFromImages(aiProvider, aiKey, aiModel, atts);
-      const merged = mergePartialIntoSop(selected, result.partial);
-      updateSop(merged);
+      // Snapshot the SOP at the start; merge each image's partial
+      // into a running accumulator so we only updateSop ONCE at the
+      // end. Otherwise rapid React re-renders during the loop can
+      // race with the next iteration's merge baseline.
+      let working = { ...selected };
+      let totalIn = 0;
+      let totalOut = 0;
+      const failures: string[] = [];
+
+      for (let i = 0; i < atts.length; i++) {
+        setExtractProgress({ current: i + 1, total: atts.length });
+        try {
+          const result = await extractSopFromImages(
+            aiProvider, aiKey, aiModel, [atts[i]],
+          );
+          working = mergePartialIntoSop(working, result.partial);
+          totalIn += result.usage.input_tokens;
+          totalOut += result.usage.output_tokens;
+        } catch (e) {
+          failures.push(`${atts[i].name}: ${(e as Error).message}`);
+        }
+      }
+
+      // Persist the accumulated result once at the end.
+      updateSop(working);
+
       const partsAdded = [
-        merged.flights.length - selected.flights.length,
-        (merged.tankers?.length || 0) - (selected.tankers?.length || 0),
-        (merged.supportAssets?.length || 0) - (selected.supportAssets?.length || 0),
-        merged.comms.length - selected.comms.length,
-        merged.tacans.length - selected.tacans.length,
+        working.flights.length - selected.flights.length,
+        (working.tankers?.length || 0) - (selected.tankers?.length || 0),
+        (working.supportAssets?.length || 0) - (selected.supportAssets?.length || 0),
+        working.comms.length - selected.comms.length,
+        working.tacans.length - selected.tacans.length,
       ];
       const totalNew = partsAdded.reduce((a, b) => a + Math.max(0, b), 0);
-      setImportInfo(
-        `Extracted ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} via ${aiModel} ` +
-        `(${result.usage.input_tokens} input + ${result.usage.output_tokens} output tokens).`,
-      );
+
+      const successCount = atts.length - failures.length;
+      const summary = atts.length === 1
+        ? `Extracted ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} via ${aiModel}.`
+        : `Extracted across ${successCount}/${atts.length} images via ${aiModel}: ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} added. (${totalIn} input + ${totalOut} output tokens total)`;
+
+      if (failures.length > 0) {
+        setImportError(`${summary}\n\n${failures.length} image(s) failed:\n${failures.slice(0, 3).join('\n')}${failures.length > 3 ? `\n…and ${failures.length - 3} more` : ''}`);
+      } else {
+        setImportInfo(summary);
+      }
     } catch (err) {
       setImportError(`AI extraction failed: ${(err as Error).message}`);
     } finally {
       setExtracting(false);
+      setExtractProgress(null);
     }
   }, [aiProvider, aiKey, aiModel, selected, updateSop]);
 
@@ -551,6 +594,7 @@ export function SopTab() {
               onUpdate={(patch) => updateSop({ ...selected, ...patch })}
               onExtractWithAi={handleExtractWithAi}
               extracting={extracting}
+              extractProgress={extractProgress}
               hasAiKey={!!aiKey}
               onOpenAiSettings={() => setAiOpen(true)}
             />
@@ -569,7 +613,7 @@ export function SopTab() {
 
 function SopDetail({
   sop, isActive, onRename, onActivate, onDeactivate, onDelete, onDownload, onUpdate,
-  onExtractWithAi, extracting, hasAiKey, onOpenAiSettings,
+  onExtractWithAi, extracting, extractProgress, hasAiKey, onOpenAiSettings,
 }: {
   sop: SOP;
   isActive: boolean;
@@ -581,6 +625,7 @@ function SopDetail({
   onUpdate: (patch: Partial<SOP>) => void;
   onExtractWithAi: () => void;
   extracting: boolean;
+  extractProgress: { current: number; total: number } | null;
   hasAiKey: boolean;
   onOpenAiSettings: () => void;
 }) {
@@ -629,14 +674,18 @@ function SopDetail({
             <button
               onClick={onExtractWithAi}
               disabled={extracting}
-              title="Send the attached image(s) to Claude with a structured-extraction prompt. Empty fields fill from the response; values you've already typed stay put."
+              title="Loop through every attached image, sending each to the AI individually with a structured-extraction prompt. Results are merged into this SOP — empty fields fill from responses, your typed values stay put. Per-image extraction avoids the model truncating its output on dense kneeboard packs."
               style={{
                 ...btnAi,
                 opacity: extracting ? 0.6 : 1,
                 cursor: extracting ? 'wait' : 'pointer',
               }}
             >
-              {extracting ? '⋯ Extracting…' : '✨ Extract with AI'}
+              {extracting
+                ? (extractProgress
+                    ? `⋯ Extracting ${extractProgress.current}/${extractProgress.total}…`
+                    : '⋯ Extracting…')
+                : '✨ Extract with AI'}
             </button>
           ) : (
             <button
