@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
+import { isPlayerGroup } from '../../utils/groups';
 import type { GroupRenamerData } from '../../types/mission';
 // Carrier / JTAC / TIC / AEGIS auto-setup panels moved to top-level
 // tabs (Carriers and Scripts) as part of the v0.7.x workflow reorg.
@@ -11,7 +13,11 @@ type CoalitionFilter = 'all' | 'blue' | 'red' | 'neutrals';
 
 export function RenamerTab() {
   const allGroupsRenamer = useMissionStore((s) => s.allGroupsRenamer);
+  const groups = useMissionStore((s) => s.groups);
   const addEdit = useEditStore((s) => s.addEdit);
+  const activeSop = useSopStore((s) => s.activeId
+    ? s.sops.find((x) => x.id === s.activeId) || null
+    : null);
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
@@ -121,6 +127,81 @@ export function RenamerTab() {
     });
   }, [addEdit, groupNames, unitNames]);
 
+  /**
+   * Apply SOP callsigns to player flights in priority order.
+   *
+   * For each player flight (planes/helos with Client/Player skill),
+   * walk through SOP flights ordered by priority (lower = first) and
+   * propose a rename. The number suffix from the original group name
+   * is preserved ("Bengal 1" → "Enfield 1"); units in each group get
+   * their suffix matched too ("Bengal 1-1" → "Enfield 1-1").
+   *
+   * Doesn't dispatch — sets local state so the user can review before
+   * committing on download.
+   */
+  const sopFlightsSorted = useMemo(() => {
+    if (!activeSop) return [];
+    return [...activeSop.flights]
+      .filter((f) => f.callsign)
+      .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+  }, [activeSop]);
+
+  const playerFlightCount = useMemo(
+    () => groups.filter((g) =>
+      isPlayerGroup(g) && (g.category === 'plane' || g.category === 'helicopter'),
+    ).length,
+    [groups],
+  );
+
+  const handleApplySopCallsigns = useCallback(() => {
+    if (!activeSop || sopFlightsSorted.length === 0) return;
+    const playerGroups = groups
+      .filter((g) =>
+        isPlayerGroup(g) && (g.category === 'plane' || g.category === 'helicopter'),
+      );
+    if (playerGroups.length === 0) return;
+
+    const nextGroupNames = new Map(groupNames);
+    const nextUnitNames = new Map(unitNames);
+    let assigned = 0;
+
+    for (let i = 0; i < playerGroups.length; i++) {
+      const g = playerGroups[i];
+      const sopFlight = sopFlightsSorted[i];
+      if (!sopFlight) break;  // ran out of SOP entries
+      // Preserve trailing flight number from existing name when present
+      // ("Bengal 1" → keep " 1" suffix; "Bengal" → no suffix).
+      const numMatch = g.groupName.match(/(\s*\d+)\s*$/);
+      const numSuffix = numMatch ? numMatch[1] : '';
+      const newGroupName = `${sopFlight.callsign}${numSuffix}`;
+      nextGroupNames.set(g.groupId, newGroupName);
+
+      // Rename units to match the new group name + their position
+      // ("Bengal 1-1" → "Enfield 1-1"). Only retarget the LEAD-derived
+      // numbering pattern; preserve any custom unit names that don't
+      // start with the old group name.
+      g.units.forEach((u, idx) => {
+        const numLikely = `-${idx + 1}`;
+        nextUnitNames.set(u.unitId, `${newGroupName}${numLikely}`);
+      });
+
+      // Dispatch the edit immediately so download writes the new name
+      const unitNamesObj: Record<number, string> = {};
+      g.units.forEach((u, idx) => {
+        unitNamesObj[u.unitId] = `${newGroupName}-${idx + 1}`;
+      });
+      addEdit({
+        groupId: g.groupId, field: 'groupRename',
+        value: { groupId: g.groupId, newGroupName, unitNames: unitNamesObj },
+      } as any);
+      assigned++;
+    }
+
+    setGroupNames(nextGroupNames);
+    setUnitNames(nextUnitNames);
+    void assigned;  // for future status-message use
+  }, [activeSop, sopFlightsSorted, groups, groupNames, unitNames, addEdit]);
+
   const handleFindReplace = useCallback(() => {
     if (!findText) return;
     addEdit({ field: 'findReplace', value: { find: findText, replace: replaceText, useRegex } } as any);
@@ -183,6 +264,56 @@ export function RenamerTab() {
 
       {/* Carrier / JTAC / TIC / AEGIS auto-setup moved to dedicated
           top-level tabs (Carriers + Scripts) in the workflow reorg. */}
+
+      {/* SOP Callsigns — quick way to rename every player flight to
+          the squadron's preferred callsigns in priority order. */}
+      {activeSop && sopFlightsSorted.length > 0 && playerFlightCount > 0 && (
+        <div style={{
+          marginBottom: 16,
+          border: '1px solid rgba(63, 185, 80, 0.4)',
+          background: 'rgba(63, 185, 80, 0.06)',
+          borderRadius: 4,
+          padding: '12px 14px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+              color: '#3fb950',
+              border: '1px solid rgba(63, 185, 80, 0.5)',
+              borderRadius: 3, padding: '2px 8px',
+            }}>SOP CALLSIGNS</span>
+            <span style={{ fontSize: 13, color: '#e0e0e0', fontWeight: 600 }}>
+              {activeSop.name}
+            </span>
+            <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+              {sopFlightsSorted.length} callsign{sopFlightsSorted.length !== 1 ? 's' : ''} available
+              {' · '}
+              {playerFlightCount} player flight{playerFlightCount !== 1 ? 's' : ''} in mission
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={handleApplySopCallsigns}
+              style={{
+                background: 'rgba(63, 185, 80, 0.15)',
+                border: '1px solid #3fb950',
+                borderRadius: 4,
+                color: '#3fb950',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 600,
+                padding: '6px 14px',
+                fontFamily: 'inherit',
+              }}
+            >
+              Apply SOP Callsigns to Player Flights
+            </button>
+            <span style={{ fontSize: 11, color: '#888' }}>
+              First {Math.min(sopFlightsSorted.length, playerFlightCount)}: {sopFlightsSorted.slice(0, Math.min(sopFlightsSorted.length, playerFlightCount)).map((f) => f.callsign).join(', ')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Find & Replace */}
       <div style={{

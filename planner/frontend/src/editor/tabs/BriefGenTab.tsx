@@ -14,6 +14,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useSopStore } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 
 // ---------------------------------------------------------------------------
@@ -758,6 +759,14 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     ? `${Math.round(w.dir).toString().padStart(3, '0')}/${Math.round(w.speed * 1.94384)}kt` : '';
   const flights = s.groups.filter(isPlayerGroup);
 
+  // Active SOP — read once at token-resolve time. resolveCustomToken
+  // is called many times per template render so the lookup must be
+  // cheap; useSopStore.getState() is just a property read.
+  const sopState = useSopStore.getState();
+  const activeSop = sopState.activeId
+    ? sopState.sops.find((x) => x.id === sopState.activeId) || null
+    : null;
+
   const direct: Record<string, () => string | null> = {
     'mission.theater':      () => s.theater ?? null,
     'mission.sortie':       () => s.overview?.sortie ?? null,
@@ -775,6 +784,18 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     'weather.wind_8000':    () => fmtWind(s.overview?.weather?.wind?.at8000) || null,
     'weather.cloud_preset': () => s.overview?.weather?.clouds_preset ?? null,
     'weather.visibility_m': () => s.overview?.weather?.visibility_m?.toString() ?? null,
+    // SOP tokens — let squadrons embed their SOP-defined values
+    // directly in custom .pptx templates.
+    'sop.name':             () => activeSop?.name ?? null,
+    'sop.squadron':         () => activeSop?.squadron ?? null,
+    'sop.notes':             () => activeSop?.notes ?? null,
+    'sop.laser_base':       () => activeSop?.laserCodeBase?.toString() ?? null,
+    'sop.tanker.callsigns': () => activeSop?.tankers?.map((t) => t.callsign).filter(Boolean).join(', ') || null,
+    'sop.flight.callsigns': () => activeSop?.flights.map((f) => f.callsign).filter(Boolean).join(', ') || null,
+    'sop.guard_freq':       () => {
+      const guard = activeSop?.comms.find((c) => /guard/i.test(c.role));
+      return guard?.frequency.toFixed(3) ?? null;
+    },
   };
   if (direct[token]) return direct[token]!();
 

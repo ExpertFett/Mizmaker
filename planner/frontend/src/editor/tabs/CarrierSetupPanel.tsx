@@ -3,6 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { isCarrierGroup } from '../../utils/groups';
 import { getTriggers, saveTriggers } from '../../api/client';
 import { useTriggerStore } from '../../store/triggerStore';
+import { useSopStore } from '../../sop/sopStore';
 import type { MissionGroup } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
@@ -299,6 +300,9 @@ export function CarrierSetupPanel() {
   const groups = useMissionStore((s) => s.groups);
   const sessionId = useMissionStore((s) => s.sessionId);
   const missionOptions = useMissionStore((s) => s.missionOptions);
+  const activeSop = useSopStore((s) => s.activeId
+    ? s.sops.find((x) => x.id === s.activeId) || null
+    : null);
   const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);
@@ -360,6 +364,28 @@ export function CarrierSetupPanel() {
       const hasIcls = info.hasIcls ?? true;
       const iclsCh = hasIcls ? nextFreeIcls(info.iclsCh) : 0;
       if (iclsCh > 0) usedIcls.add(iclsCh);
+
+      // SOP override — if the active SOP has a TACAN entry whose role
+      // mentions this carrier's hull number, callsign, or auto-detected
+      // callsign (e.g. role="Stennis Home Plate", role="CVN-71",
+      // role="Rough Rider"), the SOP value wins over the built-in
+      // hull database. Catches squadron-specific TACAN convention
+      // (e.g. CSG-3 always uses 72X for the lead CVN).
+      const hullType = (g.units[0]?.type || '').toUpperCase();
+      const callsign = (info.callsign || '').toLowerCase();
+      const sopTacan = activeSop?.tacans?.find((t) => {
+        const role = (t.role || '').toLowerCase();
+        if (!role) return false;
+        if (callsign && role.includes(callsign)) return true;
+        if (hullType && role.toUpperCase().includes(hullType)) return true;
+        // Generic 'CVN' / 'home plate' / 'carrier' matches the FIRST
+        // carrier only — second carrier should fall through to its
+        // own detection.
+        if (carrierGroups.indexOf(g) === 0
+            && /\b(cvn|carrier|home\s*plate|ship)\b/i.test(role)) return true;
+        return false;
+      });
+
       result.push({
         groupId: g.groupId,
         groupName: g.groupName,
@@ -367,9 +393,9 @@ export function CarrierSetupPanel() {
         coalition: g.coalition,
         label: info.label || 'CVN',
         callsign: info.callsign || 'Carrier',
-        tacanCh: info.tacanCh || 72,
-        tacanBand: 'X',
-        tacanCallsign: info.tacanCallsign || 'CVN',
+        tacanCh: sopTacan?.channel || info.tacanCh || 72,
+        tacanBand: sopTacan?.band || 'X',
+        tacanCallsign: sopTacan?.callsign || info.tacanCallsign || 'CVN',
         iclsCh,
         aclsEnabled: info.aclsEnabled ?? hasIcls,
         hasIcls,
@@ -384,7 +410,7 @@ export function CarrierSetupPanel() {
 
     setConfigs(result);
     setGenerated(false);
-  }, [carrierGroups]);
+  }, [carrierGroups, activeSop]);
 
   // Update a config field
   const updateConfig = useCallback((groupId: number, field: keyof CarrierConfig, value: string | number) => {
@@ -628,8 +654,24 @@ export function CarrierSetupPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#4a8fd4', marginBottom: 4 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            fontSize: 15, fontWeight: 600, color: '#4a8fd4', marginBottom: 4,
+          }}>
             Carrier Control Setup
+            {activeSop && (
+              <span
+                title={`Auto-detect will check SOP "${activeSop.name}" TACAN entries for carrier-related roles (Stennis, CVN-xx, Home Plate) and override the built-in hull defaults.`}
+                style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                  color: '#3fb950',
+                  border: '1px solid rgba(63, 185, 80, 0.5)',
+                  background: 'rgba(63, 185, 80, 0.08)',
+                  borderRadius: 3, padding: '2px 6px',
+                  textTransform: 'uppercase',
+                }}
+              >SOP</span>
+            )}
           </div>
           <div style={{ fontSize: 13, color: '#aaaaaa' }}>
             Configure carriers and generate a MOOSE carrier control script with F10 menus.
