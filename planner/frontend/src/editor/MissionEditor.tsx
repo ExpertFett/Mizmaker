@@ -39,6 +39,12 @@ type SidebarItem = { kind: 'section'; label: string } | (TabDef & { kind: 'tab' 
 const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'SETUP' },
   { kind: 'tab', id: 'map',         label: 'Map',         icon: '🗺' },
+  // SOP comes early because callsigns, freqs, TACAN channels, ICLS
+  // assignments etc. defined here drive defaults all over the rest of
+  // the planner (CommCardTab auto-deconflict, carrier setup, kneeboards).
+  // Loading the right SOP first means the downstream tabs start
+  // pre-configured for the squadron / era you're flying.
+  { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
   { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
   { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
   { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
@@ -58,7 +64,6 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
   { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '📐' },
-  { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
 
   { kind: 'section', label: 'OUTPUT' },
   { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: '📋' },
