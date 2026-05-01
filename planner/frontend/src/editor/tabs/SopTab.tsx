@@ -29,6 +29,7 @@ export function SopTab() {
   const [importInfo, setImportInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const addImageInputRef = useRef<HTMLInputElement>(null);
   const ozpInputRef = useRef<HTMLInputElement>(null);
 
   const selected = sops.find((s) => s.id === selectedId) || null;
@@ -77,49 +78,118 @@ export function SopTab() {
     }
   }, [addSop]);
 
-  const handleImageUpload = useCallback(async (file: File) => {
+  // Read a File into a base64 SopAttachment.
+  const readFileAsAttachment = useCallback(
+    (file: File): Promise<import('../../sop/types').SopAttachment> => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(',')[1] || '';
+          resolve({
+            name: file.name,
+            mimeType: file.type || 'image/*',
+            dataBase64: base64,
+          });
+        };
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    },
+    [],
+  );
+
+  /** Upload one or more images as a NEW SOP. All images land in
+   *  attachments[] (plural). One image still gets a sensible name. */
+  const handleImageUpload = useCallback(async (files: File[]) => {
     setImportError(null);
     setImportInfo(null);
-    // Create a draft SOP with the image attached so it can be reviewed/edited.
-    // Vision-based auto-parsing requires a backend proxy to Claude's API —
-    // that's a follow-up. For now we stash the raw image on an empty SOP
-    // and prompt the user to fill in fields manually.
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1] || '';
+    if (files.length === 0) return;
+    try {
+      const attachments = await Promise.all(files.map(readFileAsAttachment));
+      const namePart = files.length === 1
+        ? files[0].name
+        : `${files.length} images`;
       const sop: SOP = {
         id: makeId(),
-        name: `SOP from image: ${file.name}`,
+        name: `SOP from image: ${namePart}`,
         updatedAt: Date.now(),
         flights: [],
         comms: [],
         tacans: [],
-        attachment: {
-          name: file.name,
-          mimeType: file.type || 'image/*',
-          dataBase64: base64,
-        },
+        attachments,
       };
       addSop(sop);
       setSelectedId(sop.id);
-      setImportInfo(`Image stored on new SOP "${sop.name}". Auto-extraction from images requires the vision AI backend — edit fields manually for now.`);
-    };
-    reader.onerror = () => setImportError('Failed to read image');
-    reader.readAsDataURL(file);
-  }, [addSop]);
+      setImportInfo(
+        files.length === 1
+          ? `Image stored on new SOP "${sop.name}". Auto-extraction from images requires the vision AI backend — edit fields manually for now.`
+          : `${files.length} images stored on new SOP "${sop.name}". Use the side-by-side view to read off them while filling in the form.`,
+      );
+    } catch (err) {
+      setImportError(`Failed to import: ${(err as Error).message}`);
+    }
+  }, [addSop, readFileAsAttachment]);
+
+  /** Append images to the currently SELECTED SOP rather than creating
+   *  a new one. The natural follow-up when you've already imported one
+   *  image and realize you have a second/third reference card. */
+  const handleAddImagesToSelected = useCallback(async (files: File[]) => {
+    setImportError(null);
+    setImportInfo(null);
+    if (files.length === 0 || !selectedId) return;
+    const target = sops.find((s) => s.id === selectedId);
+    if (!target) return;
+    try {
+      const newAttachments = await Promise.all(files.map(readFileAsAttachment));
+      // Migrate legacy `attachment` (singular) into `attachments[]` so the
+      // SOP only carries one shape going forward.
+      const existing = target.attachments
+        ? [...target.attachments]
+        : target.attachment
+          ? [target.attachment]
+          : [];
+      updateSop({
+        ...target,
+        attachment: undefined,
+        attachments: [...existing, ...newAttachments],
+      });
+      setImportInfo(
+        `Added ${files.length} image${files.length !== 1 ? 's' : ''} to "${target.name}".`,
+      );
+    } catch (err) {
+      setImportError(`Failed to add: ${(err as Error).message}`);
+    }
+  }, [selectedId, sops, updateSop, readFileAsAttachment]);
 
   const handleDrop = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const file = files[0];
-    if (/\.(ozp|zip)$/i.test(file.name)) {
-      handleOzpUpload(file);
-    } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|pdf)$/i.test(file.name)) {
-      handleImageUpload(file);
-    } else {
-      handleJsonUpload(file);
+    const arr = Array.from(files);
+    // Mixed-type drops: route each file to its handler. Common case is
+    // dragging multiple kneeboard PNGs at once — those all go to the
+    // same SOP via handleImageUpload (or appended to selected, if one
+    // is already selected).
+    const ozps = arr.filter((f) => /\.(ozp|zip)$/i.test(f.name));
+    const images = arr.filter((f) =>
+      f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|pdf)$/i.test(f.name),
+    );
+    const jsons = arr.filter((f) => !ozps.includes(f) && !images.includes(f));
+
+    // OZPs always create a new SOP each (they're full bundles)
+    for (const f of ozps) handleOzpUpload(f);
+
+    if (images.length > 0) {
+      // If an SOP is already selected and the user is just dropping more
+      // reference images, append them. Otherwise create a new SOP.
+      if (selectedId) {
+        handleAddImagesToSelected(images);
+      } else {
+        handleImageUpload(images);
+      }
     }
-  }, [handleJsonUpload, handleImageUpload, handleOzpUpload]);
+
+    for (const f of jsons) handleJsonUpload(f);
+  }, [handleJsonUpload, handleImageUpload, handleOzpUpload, handleAddImagesToSelected, selectedId]);
 
   const downloadJson = useCallback((sop: SOP, filename?: string) => {
     const blob = new Blob([JSON.stringify(sop, null, 2)], { type: 'application/json' });
@@ -239,9 +309,13 @@ export function SopTab() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleJsonUpload(f); e.target.value = ''; }}
         />
         <input
-          ref={imageInputRef} type="file" accept="image/*,.pdf"
+          ref={imageInputRef} type="file" accept="image/*,.pdf" multiple
           style={{ display: 'none' }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); e.target.value = ''; }}
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) handleImageUpload(files);
+            e.target.value = '';
+          }}
         />
         <input
           ref={ozpInputRef} type="file" accept=".ozp,.zip,application/zip"
@@ -255,10 +329,28 @@ export function SopTab() {
           title="Upload a squadron kneeboard pack (.ozp / .zip). We extract the images so you can reference them while filling in the SOP fields.">
           Upload OZP / ZIP
         </button>
+        <input
+          ref={addImageInputRef} type="file" accept="image/*,.pdf" multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) handleAddImagesToSelected(files);
+            e.target.value = '';
+          }}
+        />
         <button onClick={() => imageInputRef.current?.click()} style={btnSecondary}
-          title="Upload a screenshot/photo of your SOP. Auto-extraction via vision AI is a planned follow-up; for now the image is attached and you fill fields manually.">
-          Upload Image / PDF
+          title="Upload one or more SOP screenshots/photos as a NEW SOP entry. Multiple images are stored side-by-side as reference material.">
+          Upload Image{selected ? ' as New SOP' : 's / PDF'}
         </button>
+        {selected && (
+          <button
+            onClick={() => addImageInputRef.current?.click()}
+            style={btnGhost}
+            title={`Append additional images to "${selected.name}" rather than creating a new SOP.`}
+          >
+            + Add Images to "{selected.name.length > 22 ? selected.name.slice(0, 22) + '…' : selected.name}"
+          </button>
+        )}
         <button onClick={handleInstallSample} style={btnSecondary}>
           Load Sample SOP
         </button>
