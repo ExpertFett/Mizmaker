@@ -11,7 +11,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useSopStore } from '../../sop/sopStore';
-import { makeSampleSop } from '../../sop/sopSamples';
+import { makeSampleSop, makeStarterSop, type StarterKind } from '../../sop/sopSamples';
 import { makeId, type SOP } from '../../sop/types';
 import { importOzpAsSop } from '../../sop/ozpImport';
 
@@ -139,6 +139,13 @@ export function SopTab() {
     setImportInfo('Loaded sample SOP. Edit as needed, then set as active.');
   }, [addSop]);
 
+  const handleStarter = useCallback((kind: StarterKind) => {
+    const sop = makeStarterSop(kind);
+    addSop(sop);
+    setSelectedId(sop.id);
+    setImportInfo(`Created starter SOP "${sop.name}". Rename it, edit values to match your scenario, then set as active.`);
+  }, [addSop]);
+
   const handleRename = useCallback((id: string, name: string) => {
     const sop = sops.find((s) => s.id === id);
     if (!sop) return;
@@ -218,6 +225,38 @@ export function SopTab() {
           Download Template
         </button>
       </div>
+
+      {/* Starter SOPs — for users without a squadron SOP. Clicking
+          builds a sensible default SOP they can edit instead of staring
+          at an empty form. */}
+      {sops.length === 0 && (
+        <div style={{
+          marginBottom: 14, padding: '12px 14px', borderRadius: 6,
+          background: 'rgba(74, 143, 212, 0.06)',
+          border: '1px solid rgba(74, 143, 212, 0.25)',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6ab4f0', marginBottom: 8 }}>
+            DON'T HAVE AN SOP? &nbsp;Build one from a starter
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => handleStarter('modern-carrier')} style={btnStarter}>
+              ⚓ Modern Carrier
+            </button>
+            <button onClick={() => handleStarter('modern-land')} style={btnStarter}>
+              🛩 Modern Land-Based
+            </button>
+            <button onClick={() => handleStarter('cold-war')} style={btnStarter}>
+              📻 Cold War (1985)
+            </button>
+            <button onClick={() => handleStarter('empty')} style={btnStarter}>
+              ☐ Blank Skeleton
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
+            Each starter ships with realistic callsigns / freqs / TACANs for the era. Tweak to match your scenario.
+          </div>
+        </div>
+      )}
 
       {(importError || importInfo) && (
         <div style={{
@@ -390,45 +429,61 @@ function SopDetail({
           populated without scrolling through every section. */}
       <SopStatsStrip sop={sop} />
 
-      {/* Single attachment preview (legacy) */}
-      {sop.attachment && sop.attachment.mimeType.startsWith('image/') && (
-        <Section title={`ATTACHMENT (${sop.attachment.name})`}>
-          <img
-            src={`data:${sop.attachment.mimeType};base64,${sop.attachment.dataBase64}`}
-            alt={sop.attachment.name}
-            style={{ maxWidth: '100%', maxHeight: 400, border: '1px solid #3a3a3a', borderRadius: 4 }}
-          />
-          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
-            Vision-based auto-extraction is not wired yet — this image is kept for reference only.
+      {/* Side-by-side layout when the SOP has an attached image:
+          editors on the left, image pinned on the right so the user
+          can read off the source while typing. Without an image we
+          fall back to a 2-column editor grid that uses the full
+          width. */}
+      {(sop.attachment || (sop.attachments && sop.attachments.length > 0)) ? (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 480px)',
+          gap: 16, alignItems: 'start',
+        }}>
+          <div>
+            <FlightsEditor sop={sop} onUpdate={onUpdate} />
+            <TankersEditor sop={sop} onUpdate={onUpdate} />
+            <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
+            <CommsEditor sop={sop} onUpdate={onUpdate} />
+            <TacansEditor sop={sop} onUpdate={onUpdate} />
+            <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
           </div>
-        </Section>
-      )}
-
-      {/* Multi-attachment gallery (e.g. from OZP import) */}
-      {sop.attachments && sop.attachments.length > 0 && (
-        <AttachmentGallery attachments={sop.attachments} />
-      )}
-
-      {/* 2-column editor grid. Left column = flight-package side
-          (callsigns, support assets), right column = comms / nav side
-          (frequencies, TACAN, laser). Collapses to single column on
-          narrow viewports. */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-        gap: 16, alignItems: 'start',
-      }}>
-        <div>
-          <FlightsEditor sop={sop} onUpdate={onUpdate} />
-          <TankersEditor sop={sop} onUpdate={onUpdate} />
-          <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
+          <div style={{ position: 'sticky', top: 0, maxHeight: 'calc(100vh - 80px)', overflow: 'auto' }}>
+            {sop.attachment && sop.attachment.mimeType.startsWith('image/') && (
+              <Section title={`SOURCE: ${sop.attachment.name}`}>
+                <img
+                  src={`data:${sop.attachment.mimeType};base64,${sop.attachment.dataBase64}`}
+                  alt={sop.attachment.name}
+                  style={{ maxWidth: '100%', border: '1px solid #3a3a3a', borderRadius: 4, display: 'block' }}
+                />
+                <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
+                  Read values off this image and type into the form on the left. The Quick-Add box above each section accepts whitespace-separated tokens for fast entry.
+                </div>
+              </Section>
+            )}
+            {sop.attachments && sop.attachments.length > 0 && (
+              <AttachmentGallery attachments={sop.attachments} />
+            )}
+          </div>
         </div>
-        <div>
-          <CommsEditor sop={sop} onUpdate={onUpdate} />
-          <TacansEditor sop={sop} onUpdate={onUpdate} />
-          <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+          gap: 16, alignItems: 'start',
+        }}>
+          <div>
+            <FlightsEditor sop={sop} onUpdate={onUpdate} />
+            <TankersEditor sop={sop} onUpdate={onUpdate} />
+            <SupportAssetsEditor sop={sop} onUpdate={onUpdate} />
+          </div>
+          <div>
+            <CommsEditor sop={sop} onUpdate={onUpdate} />
+            <TacansEditor sop={sop} onUpdate={onUpdate} />
+            <LaserBaseEditor sop={sop} onUpdate={onUpdate} />
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ color: '#4a4a4a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
         Tip: after filling in tankers &amp; flights, set the SOP active and the auto-assigns on other tabs will use these values.
@@ -523,6 +578,16 @@ function FlightsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
 
   return (
     <Section title={`FLIGHT CALLSIGNS (${flights.length})`}>
+      <QuickAddRow
+        placeholder="Callsign  Freq  Mod    e.g.  Bengal 251.000 AM"
+        hint="Tokens: callsign  freq(MHz)  AM|FM. Multi-line for batch."
+        onParse={(t) => onUpdate({ flights: [...flights, {
+          callsign: t[0] || '',
+          defaultFreq: parseNum(t[1] || ''),
+          defaultMod: (t[2] || '').toUpperCase() === 'FM' ? 'FM' : (t[2] || '').toUpperCase() === 'AM' ? 'AM' : undefined,
+          priority: flights.length + 1,
+        }] })}
+      />
       <table style={tableStyle}>
         <thead><tr>
           <th style={{ ...thStyle, width: 50 }}>#</th>
@@ -575,6 +640,18 @@ function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
 
   return (
     <Section title={`TANKERS (${tankers.length}) — drives TACAN + Comms auto-assign`}>
+      <QuickAddRow
+        placeholder="Callsign Freq Mod TACAN# Band Callsign  e.g.  Texaco 271.500 AM 41 Y TX1"
+        hint="Tokens: callsign  freq(MHz)  AM|FM  tacan#  X|Y  tacan-callsign"
+        onParse={(t) => onUpdate({ tankers: [...tankers, {
+          callsign: t[0] || '',
+          frequency: parseNum(t[1] || ''),
+          modulation: (t[2] || '').toUpperCase() === 'FM' ? 'FM' : (t[2] || '').toUpperCase() === 'AM' ? 'AM' : undefined,
+          tacanChannel: parseInt0(t[3] || ''),
+          tacanBand: (t[4] || '').toUpperCase() === 'Y' ? 'Y' : (t[4] || '').toUpperCase() === 'X' ? 'X' : undefined,
+          tacanCallsign: t[5] || undefined,
+        }] })}
+      />
       <table style={tableStyle}>
         <thead><tr>
           <th style={thStyle}>Callsign</th>
@@ -639,6 +716,16 @@ function SupportAssetsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Pa
 
   return (
     <Section title={`SUPPORT ASSETS (${assets.length}) — AWACS, JTAC, etc.`}>
+      <QuickAddRow
+        placeholder="Callsign Role Freq Mod   e.g.  Magic AWACS 263.000 AM"
+        hint="Tokens: callsign  role  freq(MHz)  AM|FM"
+        onParse={(t) => onUpdate({ supportAssets: [...assets, {
+          callsign: t[0] || '',
+          role: t[1] || undefined,
+          frequency: parseNum(t[2] || ''),
+          modulation: (t[3] || '').toUpperCase() === 'FM' ? 'FM' : (t[3] || '').toUpperCase() === 'AM' ? 'AM' : undefined,
+        }] })}
+      />
       <table style={tableStyle}>
         <thead><tr>
           <th style={thStyle}>Callsign</th>
@@ -690,6 +777,15 @@ function CommsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SO
 
   return (
     <Section title={`COMM FREQUENCIES (${comms.length})`}>
+      <QuickAddRow
+        placeholder="Role Freq Mod  e.g.  Strike 280.000 AM"
+        hint="Tokens: role(no-spaces or quoted)  freq(MHz)  AM|FM"
+        onParse={(t) => onUpdate({ comms: [...comms, {
+          role: t[0] || '',
+          frequency: parseNum(t[1] || '') ?? 0,
+          modulation: (t[2] || '').toUpperCase() === 'FM' ? 'FM' : 'AM',
+        }] })}
+      />
       <table style={tableStyle}>
         <thead><tr>
           <th style={thStyle}>Role</th>
@@ -741,6 +837,16 @@ function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<S
 
   return (
     <Section title={`TACAN (${tacans.length}) — non-tanker entries (home plate, ship, etc.)`}>
+      <QuickAddRow
+        placeholder="Role Channel Band Callsign  e.g.  HomePlate 74 X TR"
+        hint="Tokens: role  channel(1-126)  X|Y  callsign"
+        onParse={(t) => onUpdate({ tacans: [...tacans, {
+          role: t[0] || '',
+          channel: parseInt0(t[1] || '') ?? 1,
+          band: (t[2] || '').toUpperCase() === 'Y' ? 'Y' : 'X',
+          callsign: t[3] || undefined,
+        }] })}
+      />
       <table style={tableStyle}>
         <thead><tr>
           <th style={thStyle}>Role</th>
@@ -952,6 +1058,87 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+
+/** Quick-add textarea: type/paste a single line of whitespace-separated
+ *  values, hit Enter, the parsed row is appended to the section's
+ *  table. Significantly faster than typing into 5+ separate cells per
+ *  row when the user is reading values off a screenshot or pasting
+ *  from a spreadsheet. Multi-line paste (CSV-style) is supported —
+ *  each newline becomes a row.
+ */
+function QuickAddRow({
+  placeholder,
+  hint,
+  onParse,
+}: {
+  placeholder: string;
+  hint: string;
+  onParse: (tokens: string[]) => void;
+}) {
+  const [text, setText] = useState('');
+
+  const submit = useCallback(() => {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    for (const line of lines) {
+      // Split on whitespace OR comma OR tab — picks up Excel/TSV pastes
+      // and freeform user typing equally well.
+      const tokens = line.split(/[\s,\t]+/).filter(Boolean);
+      if (tokens.length === 0) continue;
+      onParse(tokens);
+    }
+    setText('');
+  }, [text, onParse]);
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      marginTop: 4, marginBottom: 4,
+    }}>
+      <textarea
+        rows={1}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter (without Shift) submits; Shift+Enter inserts a newline
+          // for the multi-row paste case.
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder={placeholder}
+        style={{
+          flex: 1,
+          background: '#1a1a1a',
+          border: '1px solid #3a3a3a',
+          borderRadius: 3,
+          color: '#cccccc',
+          fontSize: 12,
+          padding: '4px 8px',
+          fontFamily: "'B612 Mono', monospace",
+          outline: 'none',
+          resize: 'vertical',
+          minHeight: 22,
+        }}
+      />
+      <button
+        onClick={submit}
+        title="Append parsed row(s) to the table"
+        style={{
+          background: '#1a3a2a', border: '1px solid #3fb950',
+          borderRadius: 3, color: '#3fb950', cursor: 'pointer',
+          fontSize: 11, fontWeight: 600, padding: '4px 10px',
+          fontFamily: 'inherit', flexShrink: 0,
+        }}
+      >+ Add</button>
+      <span style={{ fontSize: 10, color: '#5a6878', flexShrink: 0 }} title={hint}>
+        ⓘ
+      </span>
+    </div>
+  );
+}
+
 // `Empty` placeholder component removed — was unused after the SOP UI
 // rework. Reintroduce if we add empty-state messaging to the lists.
 
@@ -995,6 +1182,18 @@ const btnDanger: React.CSSProperties = {
   background: 'transparent', border: '1px solid rgba(217, 80, 80, 0.4)',
   borderRadius: 4, color: '#d95050', cursor: 'pointer',
   fontSize: 12, padding: '6px 12px', fontFamily: 'inherit',
+};
+
+const btnStarter: React.CSSProperties = {
+  background: 'rgba(74, 143, 212, 0.1)',
+  border: '1px solid rgba(74, 143, 212, 0.4)',
+  borderRadius: 4,
+  color: '#6ab4f0',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 600,
+  padding: '8px 14px',
+  fontFamily: 'inherit',
 };
 
 const inputStyle: React.CSSProperties = {
