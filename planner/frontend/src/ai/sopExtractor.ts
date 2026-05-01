@@ -22,10 +22,11 @@ Extract the structured data into JSON matching the schema below. Rules:
 - Return ONLY valid JSON, no markdown fences, no commentary, no preamble.
 
 CRITICAL output-length rules — these prevent JSON truncation:
-- "notes" must be ≤200 characters. ONE short sentence identifying the SOP (squadron, era, scenario name). DO NOT dump tables or lists into notes.
-- If the page has per-unit laser codes for many flights (e.g. Victory 1-4: 1661-1664, Wraith 1-4: 1665-1668), pick the LOWEST code visible as "laserCodeBase" and DO NOT enumerate the rest. The schema only stores a single base; the planner derives per-flight codes from there.
-- For arrays (flights, tankers, comms, tacans, supportAssets): include only entries that are clearly meant to be programmed into the jet/mission. Skip narrative explanations.
-- Do not add fields outside the schema below. No "laser_codes" object, no "frequencyTable" — only the named fields.
+- "notes" is OPTIONAL and OFTEN BEST OMITTED. If you include it, ≤120 characters MAX. ONE short sentence identifying the SOP. NEVER dump tables, lists, or any structured data into notes — that's what the array fields are for. If the only thing you'd put there is a list, OMIT the field entirely.
+- If the page has per-unit laser codes (e.g. Victory 1-4: 1661-1664, Wraith 1-4: 1665-1668, etc.) — pick the LOWEST single code visible as "laserCodeBase" (an integer, e.g. 1661) and STOP. DO NOT enumerate per-unit codes anywhere in the response. The planner derives per-flight codes from the base.
+- For each array (flights, tankers, comms, tacans, supportAssets): include only the entries that fit the schema. Skip narrative blurbs. Skip "see notes" placeholders.
+- Do not invent fields. No "laser_codes" object, no "frequencyTable", no "additionalNotes", no "remarks" — ONLY the fields named in the schema below.
+- Each callsign / role string ≤32 chars. Each freq is a single number, not a range.
 
 JSON schema (all top-level fields optional; omit any you can't fill):
 {
@@ -102,29 +103,46 @@ export async function extractSopFromImages(
       : `Extract and merge the SOP data from these ${limited.length} images. They belong to the same squadron SOP — combine entries (don't duplicate the same callsign across multiple images).`,
   });
 
-  const result = await callAi({
+  // Initial attempt at 16K output tokens. Both Gemini 2.5 Flash and
+  // Claude Sonnet support up to 64K output, so we have plenty of
+  // headroom — but starting moderate keeps the typical-case fast.
+  // If the model truncates, we auto-retry once at 2x.
+  let result = await callAi({
     provider,
     apiKey,
     model,
-    // 8192 covers the largest realistic SOP comfortably (typically 1-3K
-    // tokens of structured JSON) without the 4096 cap chopping the
-    // last array mid-string.
-    maxTokens: 8192,
+    maxTokens: 16384,
     system: SYSTEM_PROMPT,
     content,
     jsonMode: provider === 'gemini',
   });
 
-  // If the provider stopped generating because it hit the token cap,
-  // the JSON is almost certainly mid-string. Surface a clear error
-  // rather than letting JSON.parse bury the issue in a column number.
-  const truncated = result.stopReason === 'MAX_TOKENS'
-    || result.stopReason === 'max_tokens'
-    || result.stopReason === 'length';
-  if (truncated) {
+  const isTruncated = (r: typeof result) =>
+    r.stopReason === 'MAX_TOKENS'
+    || r.stopReason === 'max_tokens'
+    || r.stopReason === 'length';
+
+  if (isTruncated(result)) {
+    // One auto-retry at the absolute upper bound. Both providers
+    // accept up to 65535 even if their effective ceilings are lower.
+    result = await callAi({
+      provider,
+      apiKey,
+      model,
+      maxTokens: 32768,
+      system: SYSTEM_PROMPT,
+      content,
+      jsonMode: provider === 'gemini',
+    });
+  }
+
+  if (isTruncated(result)) {
     throw new Error(
-      `Output was truncated (hit ${result.usage.output_tokens}-token output cap before finishing). ` +
-      `Try a higher-capacity model (gemini-2.5-pro / claude-opus) or split the SOP into smaller image batches.`,
+      `Output was truncated even at 32K tokens (model wrote ${result.usage.output_tokens} output tokens). ` +
+      `The image set is too dense for one extraction. Try: ` +
+      `(1) split the SOP into fewer images per call (3-4 max), ` +
+      `(2) switch to gemini-2.5-pro (better at concise output), or ` +
+      `(3) extract from one image at a time and let the merger combine them.`,
     );
   }
 
