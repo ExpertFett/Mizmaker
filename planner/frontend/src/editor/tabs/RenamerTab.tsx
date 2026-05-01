@@ -1,11 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { TicSetupPanel } from './TicSetupPanel';
-import { AegisSetupPanel } from './AegisSetupPanel';
-import { CarrierSetupPanel } from './CarrierSetupPanel';
-import { JtacSetupPanel } from './JtacSetupPanel';
 import type { GroupRenamerData } from '../../types/mission';
+// Carrier / JTAC / TIC / AEGIS auto-setup panels moved to top-level
+// tabs (Carriers and Scripts) as part of the v0.7.x workflow reorg.
+// They no longer live inside the Renamer.
 
 type CategoryFilter = 'all' | 'plane' | 'helicopter' | 'vehicle' | 'ship' | 'static';
 type CoalitionFilter = 'all' | 'blue' | 'red' | 'neutrals';
@@ -182,17 +181,8 @@ export function RenamerTab() {
         </p>
       </div>
 
-      {/* JTAC Auto-Setup (collapsible) */}
-      <JtacSection />
-
-      {/* TIC Script Auto-Setup (collapsible) */}
-      <TicSection />
-
-      {/* AEGIS IADS Auto-Setup (collapsible) */}
-      <AegisSection />
-
-      {/* Carrier Control Setup (collapsible) */}
-      <CarrierSection />
+      {/* Carrier / JTAC / TIC / AEGIS auto-setup moved to dedicated
+          top-level tabs (Carriers + Scripts) in the workflow reorg. */}
 
       {/* Find & Replace */}
       <div style={{
@@ -402,176 +392,11 @@ function GroupCard({
 }
 
 /* ------------------------------------------------------------------ */
-/* JTAC Section (collapsible)                                         */
-/* ------------------------------------------------------------------ */
-
-function JtacSection() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      marginBottom: 16,
-      border: '1px solid #3a3a3a',
-      borderRadius: 4,
-      background: '#222222',
-    }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          padding: '10px 14px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          borderBottom: open ? '1px solid #3a3a3a' : 'none',
-        }}
-      >
-        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
-          {open ? '\u25BC' : '\u25B6'}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#3fb950' }}>
-          JTAC Auto-Setup
-        </span>
-        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
-          Designate ground groups as JTACs with naming, laser codes &amp; frequencies
-        </span>
-      </div>
-      {open && (
-        <div style={{ padding: '12px 14px' }}>
-          <JtacSetupPanel />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* TIC Section (collapsible)                                          */
-/* ------------------------------------------------------------------ */
-
-function TicSection() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      marginBottom: 16,
-      border: '1px solid #3a3a3a',
-      borderRadius: 4,
-      background: '#222222',
-    }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          padding: '10px 14px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          borderBottom: open ? '1px solid #3a3a3a' : 'none',
-        }}
-      >
-        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
-          {open ? '\u25BC' : '\u25B6'}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#d29922' }}>
-          TIC Script Auto-Setup
-        </span>
-        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
-          Auto-rename ground units for Troops in Contact script
-        </span>
-      </div>
-      {open && (
-        <div style={{ padding: '12px 14px' }}>
-          <TicSetupPanel />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* AEGIS Section (collapsible)                                        */
-/* ------------------------------------------------------------------ */
-
-function AegisSection() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      marginBottom: 16,
-      border: '1px solid #3a3a3a',
-      borderRadius: 4,
-      background: '#222222',
-    }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          padding: '10px 14px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          borderBottom: open ? '1px solid #3a3a3a' : 'none',
-        }}
-      >
-        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
-          {open ? '\u25BC' : '\u25B6'}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#d95050' }}>
-          AEGIS IADS Auto-Setup
-        </span>
-        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
-          Auto-rename SAM/EWR groups for AEGIS IADS script
-        </span>
-      </div>
-      {open && (
-        <div style={{ padding: '12px 14px' }}>
-          <AegisSetupPanel />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Carrier Section (collapsible)                                      */
-/* ------------------------------------------------------------------ */
-
-function CarrierSection() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      marginBottom: 16,
-      border: '1px solid #3a3a3a',
-      borderRadius: 4,
-      background: '#222222',
-    }}>
-      <div
-        onClick={() => setOpen(!open)}
-        style={{
-          padding: '10px 14px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          borderBottom: open ? '1px solid #3a3a3a' : 'none',
-        }}
-      >
-        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
-          {open ? '\u25BC' : '\u25B6'}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#4a8fd4' }}>
-          Carrier Control Setup
-        </span>
-        <span style={{ fontSize: 12, color: '#aaaaaa' }}>
-          Configure carriers and generate MOOSE control script
-        </span>
-      </div>
-      {open && (
-        <div style={{ padding: '12px 14px' }}>
-          <CarrierSetupPanel />
-        </div>
-      )}
-    </div>
-  );
-}
+/* Auto-setup sections (Carrier, JTAC, TIC, AEGIS) used to live here as
+ * collapsibles. They moved to dedicated top-level tabs (Carriers and
+ * Scripts) in the v0.7.x workflow reorg \u2014 see CarriersTab.tsx and
+ * ScriptsTab.tsx.
+ */
 
 /* ------------------------------------------------------------------ */
 /* Styles                                                             */

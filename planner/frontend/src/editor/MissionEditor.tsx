@@ -23,28 +23,54 @@ import { SopTab } from './tabs/SopTab';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
+import { CarriersTab } from './tabs/CarriersTab';
+import { ScriptsTab } from './tabs/ScriptsTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
-const TABS = [
-  { id: 'map', label: 'Map', icon: '🗺' },
-  { id: 'coalitions', label: 'Coalitions', icon: '⚔' },
-  { id: 'threats', label: 'Threats', icon: '⚠' },
-  { id: 'datalink', label: 'Datalink', icon: '📡' },
-  { id: 'dtc', label: 'DTC', icon: '💾' },
-  { id: 'weapons', label: 'Weapons', icon: '💣' },
-  { id: 'radio', label: 'Radio', icon: '📻' },
-  { id: 'kneeboard', label: 'Kneeboard', icon: '📋' },
-  { id: 'weather', label: 'Weather', icon: '🌤' },
-  { id: 'livery', label: 'Livery', icon: '🎨' },
-  { id: 'missionEdit', label: 'Miz Edit', icon: '🔔' },
-  { id: 'debug', label: 'Debug', icon: '🔍' },
-  { id: 'dmpi', label: 'DMPI', icon: '🎯' },
-  { id: 'rangePlan', label: 'Range', icon: '📐' },
-  { id: 'tools', label: 'Tools', icon: '🔧' },
-  { id: 'sop', label: 'SOP', icon: '📘' },
-  { id: 'briefGen', label: 'Brief', icon: '📝' },
-  { id: 'upload', label: 'Upload', icon: '📁' },
-] as const;
+// Sidebar layout — workflow phases. Each tab is a top-level destination;
+// section headers ('SETUP', 'ENTITIES', etc.) act as visual dividers
+// only, not clickable. Order is start-of-mission → finish-of-mission.
+//
+// Carriers and Scripts are top-level (promoted from the v0.6 Tools→Rename
+// collapsibles). Old "Weapons" → "Loadout", old "Miz Edit" → "Mission".
+type TabDef = { id: string; label: string; icon: string };
+type SidebarItem = { kind: 'section'; label: string } | (TabDef & { kind: 'tab' });
+
+const SIDEBAR: SidebarItem[] = [
+  { kind: 'section', label: 'SETUP' },
+  { kind: 'tab', id: 'map',         label: 'Map',         icon: '🗺' },
+  { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
+  { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
+  { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
+
+  { kind: 'section', label: 'ENTITIES' },
+  { kind: 'tab', id: 'carriers',    label: 'Carriers',    icon: '⚓' },
+  { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: '📜' },
+
+  { kind: 'section', label: 'FLIGHTS' },
+  { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
+  { kind: 'tab', id: 'datalink',    label: 'Datalink',    icon: '📡' },
+  { kind: 'tab', id: 'radio',       label: 'Radio',       icon: '📻' },
+  { kind: 'tab', id: 'dtc',         label: 'DTC',         icon: '💾' },
+  { kind: 'tab', id: 'livery',      label: 'Livery',      icon: '🎨' },
+
+  { kind: 'section', label: 'PLANNING' },
+  { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
+  { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
+  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '📐' },
+  { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
+
+  { kind: 'section', label: 'OUTPUT' },
+  { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: '📋' },
+  { kind: 'tab', id: 'briefGen',    label: 'Brief',       icon: '📝' },
+
+  { kind: 'section', label: 'UTIL' },
+  { kind: 'tab', id: 'debug',       label: 'Debug',       icon: '🔍' },
+  { kind: 'tab', id: 'tools',       label: 'Tools',       icon: '🔧' },
+  { kind: 'tab', id: 'upload',      label: 'Upload',      icon: '📁' },
+];
+
+const TABS = SIDEBAR.filter((s): s is TabDef & { kind: 'tab' } => s.kind === 'tab');
 
 type TabId = (typeof TABS)[number]['id'];
 
@@ -132,15 +158,40 @@ export function MissionEditor() {
           )}
         </div>
 
-        {/* Tab buttons */}
+        {/* Tab buttons + section dividers */}
         <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #3a3a3a', overflow: isCollapsed ? 'hidden' : undefined }}>
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
+          {SIDEBAR.map((item, idx) => {
+            if (item.kind === 'section') {
+              if (isCollapsed) {
+                // Collapsed sidebar: render a thin divider line instead of the label
+                return (
+                  <div key={`sec-${idx}`} style={{
+                    height: 1, background: '#3a3a3a', margin: '6px 8px',
+                  }} />
+                );
+              }
+              return (
+                <div
+                  key={`sec-${idx}`}
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: '#5a6878',
+                    letterSpacing: 1.5,
+                    padding: '10px 14px 4px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {item.label}
+                </div>
+              );
+            }
+            const isActive = activeTab === item.id;
             return (
               <button
-                key={tab.id}
-                onClick={() => selectTab(tab.id)}
-                title={isCollapsed ? tab.label : undefined}
+                key={item.id}
+                onClick={() => selectTab(item.id as TabId)}
+                title={isCollapsed ? item.label : undefined}
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
                   border: 'none',
@@ -151,8 +202,8 @@ export function MissionEditor() {
                   alignItems: 'center',
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   gap: isCollapsed ? 0 : 8,
-                  padding: isCollapsed ? '10px 0' : isMap ? '9px 14px' : '11px 14px',
-                  fontSize: 14,
+                  padding: isCollapsed ? '8px 0' : isMap ? '7px 14px' : '8px 14px',
+                  fontSize: 13,
                   fontFamily: 'inherit',
                   textAlign: 'left',
                   width: '100%',
@@ -160,8 +211,8 @@ export function MissionEditor() {
                   overflow: 'hidden',
                 }}
               >
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{tab.icon}</span>
-                {!isCollapsed && tab.label}
+                <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
+                {!isCollapsed && item.label}
               </button>
             );
           })}
@@ -271,6 +322,16 @@ export function MissionEditor() {
             {visitedTabs.has('tools') && (
               <div style={{ display: activeTab === 'tools' ? 'block' : 'none' }}>
                 <ToolsTab />
+              </div>
+            )}
+            {visitedTabs.has('carriers') && (
+              <div style={{ display: activeTab === 'carriers' ? 'block' : 'none' }}>
+                <CarriersTab />
+              </div>
+            )}
+            {visitedTabs.has('scripts') && (
+              <div style={{ display: activeTab === 'scripts' ? 'block' : 'none' }}>
+                <ScriptsTab />
               </div>
             )}
             {visitedTabs.has('sop') && (
