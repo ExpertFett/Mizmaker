@@ -15,7 +15,9 @@ import { AirbaseRefCard } from '../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
+import { SopCommsCard } from '../kneeboard/SopCommsCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
+import { useSopStore } from '../sop/sopStore';
 import type { Weather } from '../utils/atmosphere';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
@@ -43,6 +45,11 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export function ExportPanel() {
   const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
   const { edits, isDirty, clearEdits, injectKneeboards, kneeboardSettings } = useEditStore();
+  // Active SOP — needed if the user has the SOP Comms kneeboard card
+  // enabled and wants it injected into the .miz on download.
+  const sopList = useSopStore((s) => s.sops);
+  const activeSopId = useSopStore((s) => s.activeId);
+  const activeSop = activeSopId ? sopList.find((s) => s.id === activeSopId) ?? null : null;
 
   const handleDownload = async () => {
     if (!sessionId) { alert('No session'); return; }
@@ -123,6 +130,13 @@ export function ExportPanel() {
         }
         if (cards.weatherBrief && overview)
           await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { overview }));
+        // SOP Comms — only injected when an SOP is active. The carousel
+        // already shows a "select SOP" hint if the toggle is on but no
+        // SOP is loaded; here we just silently skip rather than emit an
+        // empty card.
+        if (cards.sopComms && activeSop)
+          await addCard(sharedType, 'SOP_Comms.png',
+            createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }));
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
       }

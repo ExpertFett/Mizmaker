@@ -21,7 +21,9 @@ import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
 import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
+import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
+import { useSopStore } from '../../sop/sopStore';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
 
@@ -41,6 +43,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'bullseyeRef', label: 'Bullseye Reference', desc: 'Bullseye point and radials' },
   { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
+  { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
 ];
 
 export function KneeboardTab() {
@@ -56,6 +59,16 @@ export function KneeboardTab() {
   const setInjectKneeboards = useEditStore((s) => s.setInjectKneeboards);
   const kneeboardSettings = useEditStore((s) => s.kneeboardSettings);
   const setKneeboardSettings = useEditStore((s) => s.setKneeboardSettings);
+
+  // Active SOP feeds the SOP Comms card. Read scalars only — React 19's
+  // useSyncExternalStore rejects object-returning selectors as
+  // infinite-loop hazards.
+  const sops = useSopStore((s) => s.sops);
+  const activeSopId = useSopStore((s) => s.activeId);
+  const activeSop = useMemo(
+    () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
+    [activeSopId, sops],
+  );
 
   const coordFormat = kneeboardSettings.coordFormat;
   const speedRef = kneeboardSettings.speedRef as KneeboardSpeedRef;
@@ -155,6 +168,14 @@ export function KneeboardTab() {
     if (cards.weatherBrief && overview) {
       const el = createElement(WeatherBriefCard, { overview });
       results.push({ name: 'Weather_Brief.png', blob: await renderCardToBlob(el) });
+    }
+    // SOP Comms card — only generated if a SOP is currently active.
+    // No-op when the user has the toggle on but no SOP loaded; we don't
+    // want to silently fail or emit a blank card. The carousel shows a
+    // hint in that case so it's discoverable.
+    if (cards.sopComms && activeSop) {
+      const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined });
+      results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el) });
     }
     return results;
   };
@@ -412,6 +433,7 @@ export function KneeboardTab() {
         coordFormat={coordFormat}
         speedRef={speedRef}
         machThreshold={machThreshold}
+        activeSop={activeSop}
       />
     </div>
   );
@@ -436,6 +458,7 @@ interface CarouselProps {
   coordFormat: 'mgrs' | 'latlon';
   speedRef: KneeboardSpeedRef;
   machThreshold: number;
+  activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
 }
 
 interface CardEntry {
@@ -447,6 +470,7 @@ interface CardEntry {
 function CardCarousel({
   selectedGroup, cards, groups, clientUnits, threats,
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
+  activeSop,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -554,9 +578,15 @@ function CardCarousel({
         element: createElement(WeatherBriefCard, { overview }),
       });
     }
+    if (cards.sopComms && activeSop) {
+      list.push({
+        key: 'sopComms', label: 'SOP Comms',
+        element: createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }),
+      });
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, activeSop]);
 
   // Clamp index when list changes
   useEffect(() => {

@@ -16,6 +16,9 @@ export interface KneeboardCards {
   bullseyeRef: boolean;
   threatCard: boolean;
   weatherBrief: boolean;
+  /** SOP Comms Card — synthesised from the active SOP. Emits a placeholder
+   *  if no SOP is active so the checkbox doesn't silently produce nothing. */
+  sopComms: boolean;
 }
 
 export interface KneeboardSettings {
@@ -45,6 +48,7 @@ export const useEditStore = create<EditState>((set) => ({
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
+      sopComms: true,
     },
   },
 
