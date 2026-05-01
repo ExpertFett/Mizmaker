@@ -164,7 +164,9 @@ export function SopTab() {
         </p>
       </div>
 
-      {/* Active SOP banner */}
+      {/* Active SOP banner. When inactive, render a quick-select
+          dropdown so the user can activate any library SOP without
+          digging through the library list / detail-panel two-step. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '10px 14px', marginBottom: 14, borderRadius: 6,
@@ -179,11 +181,40 @@ export function SopTab() {
         }}>
           {active ? 'ACTIVE' : 'NO ACTIVE SOP'}
         </span>
-        <span style={{ color: active ? '#e0e0e0' : '#cccccc', fontSize: 14, fontWeight: 500 }}>
-          {active ? active.name : 'Auto-assigns will use generic DCS defaults until you activate an SOP.'}
-        </span>
-        {active && (
-          <button onClick={() => setActive(null)} style={btnGhost}>Deactivate</button>
+        {active ? (
+          <>
+            <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 500, flex: 1 }}>
+              {active.name}
+            </span>
+            <button onClick={() => setActive(null)} style={btnGhost}>Deactivate</button>
+          </>
+        ) : sops.length === 0 ? (
+          <span style={{ color: '#cccccc', fontSize: 14, fontWeight: 500, flex: 1 }}>
+            Auto-assigns will use generic DCS defaults. Pick a starter SOP below to get going.
+          </span>
+        ) : (
+          <>
+            <span style={{ color: '#cccccc', fontSize: 13, flex: 1 }}>
+              Auto-assigns will use generic DCS defaults until you activate an SOP.
+            </span>
+            <select
+              defaultValue=""
+              onChange={(e) => { if (e.target.value) setActive(e.target.value); }}
+              style={{
+                background: '#262626', border: '1px solid #4a8fd4',
+                borderRadius: 4, color: '#4a8fd4', cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, padding: '6px 10px',
+                fontFamily: 'inherit',
+              }}
+            >
+              <option value="" disabled>Activate SOP…</option>
+              {sops.map((s) => (
+                <option key={s.id} value={s.id} style={{ color: '#e0e0e0', background: '#1a1a1a' }}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </>
         )}
       </div>
 
