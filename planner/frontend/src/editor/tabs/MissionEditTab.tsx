@@ -1,11 +1,14 @@
 /**
- * Mission Edit tab — combines Mission Options, Triggers, and Drawings.
+ * Mission tab — briefing text, mission options, commanders, drawings.
+ *
+ * Triggers used to live here as a sub-tab; promoted to its own
+ * top-level tab in the v0.7.x reorg because it sits AFTER Carriers
+ * and Scripts in workflow (those panels auto-append trigger rules).
  */
 
 import { useState } from 'react';
 import { BriefingTab } from './BriefingTab';
 import { MissionOptionsTab } from './MissionOptionsTab';
-import { TriggerTab } from './TriggerTab';
 import { DrawingsTab } from './DrawingsTab';
 import { BattlefieldCommandersTab } from './BattlefieldCommandersTab';
 
@@ -14,15 +17,11 @@ import { BattlefieldCommandersTab } from './BattlefieldCommandersTab';
 //   Options    → forcedOptions (Easy Flight, labels, etc.)
 //   Commanders → battlefield commander assignments
 //   Drawings   → map markers / shapes (visual polish)
-//   Triggers   → last — by the time you check this tab, Carriers/Scripts
-//                tabs have already appended their auto-generated rules
-//                and you're verifying, not creating.
 const SUB_TABS = [
   { id: 'briefing', label: 'Briefing' },
   { id: 'options', label: 'Options' },
   { id: 'commanders', label: 'Commanders' },
   { id: 'drawings', label: 'Drawings' },
-  { id: 'triggers', label: 'Triggers' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -36,7 +35,6 @@ export function MissionEditTab() {
       {sub === 'briefing' && <BriefingTab />}
       {sub === 'commanders' && <BattlefieldCommandersTab />}
       {sub === 'options' && <MissionOptionsTab />}
-      {sub === 'triggers' && <TriggerTab />}
       {sub === 'drawings' && <DrawingsTab />}
     </div>
   );

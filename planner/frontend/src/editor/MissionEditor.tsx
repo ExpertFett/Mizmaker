@@ -25,6 +25,7 @@ import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
 import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
+import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
@@ -52,6 +53,12 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'ENTITIES' },
   { kind: 'tab', id: 'carriers',    label: 'Carriers',    icon: '⚓' },
   { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: '📜' },
+  // Triggers comes AFTER Carriers + Scripts because both of those
+  // panels auto-append trigger rules (Carrier Control + 13 TIC rules
+  // from Carriers, framework load triggers from Scripts). By the time
+  // the user opens this tab the rules are already there — they're
+  // verifying / tweaking, not authoring from scratch.
+  { kind: 'tab', id: 'triggers',    label: 'Triggers',    icon: '⚡' },
 
   // PLANNING comes BEFORE flights — threat picture, target list, and
   // range/fuel constraints all drive the loadout / radio / DTC choices
@@ -342,6 +349,11 @@ export function MissionEditor() {
             {visitedTabs.has('scripts') && (
               <div style={{ display: activeTab === 'scripts' ? 'block' : 'none' }}>
                 <ScriptsTab />
+              </div>
+            )}
+            {visitedTabs.has('triggers') && (
+              <div style={{ display: activeTab === 'triggers' ? 'block' : 'none', height: '100%' }}>
+                <TriggerTab />
               </div>
             )}
             {visitedTabs.has('sop') && (
