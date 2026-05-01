@@ -3,12 +3,18 @@ import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 import { VERSION } from '../version';
+import { useAiStore } from '../ai/aiStore';
+import { AiSettingsPanel } from './AiSettingsPanel';
 
 export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const loadMission = useMissionStore((s) => s.loadMission);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const aiKey = useAiStore((s) => s.apiKey);
+  const lastTestOk = useAiStore((s) => s.lastTestOk);
+  const lastTestedAt = useAiStore((s) => s.lastTestedAt);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -82,6 +88,42 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       }}
     >
       <div style={{ maxWidth: 700, width: '100%', padding: '0 20px' }}>
+        {/* AI settings — top-right corner of the upload screen so users
+            can plug in their Anthropic key before they start planning.
+            Color reflects state: green=tested OK, amber=key set but
+            never tested or last test failed, grey=no key set. */}
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', marginBottom: 8,
+        }}>
+          <button
+            onClick={() => setAiOpen(true)}
+            style={{
+              background: aiKey
+                ? (lastTestOk && lastTestedAt > 0
+                    ? 'rgba(63, 185, 80, 0.1)'
+                    : 'rgba(210, 153, 34, 0.1)')
+                : 'transparent',
+              border: `1px solid ${aiKey
+                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
+                : '#3a3a3a'}`,
+              borderRadius: 4,
+              color: aiKey
+                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
+                : '#aaaaaa',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              fontFamily: 'inherit',
+            }}
+            title={aiKey
+              ? 'Anthropic API key is set. Click to view / change settings.'
+              : 'No AI key set. Click to add an Anthropic key for vision-based SOP extraction.'}
+          >
+            {aiKey ? '🔑 AI Connected' : '🔑 Connect AI'}
+          </button>
+        </div>
+
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <h1 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
@@ -97,6 +139,8 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             }}>{VERSION}</span>
           </p>
         </div>
+
+        <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
 
         {/* Upload zone */}
         <div

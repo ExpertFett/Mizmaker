@@ -182,19 +182,22 @@ master plan. Current phase:
 Things we've discussed but explicitly deferred. Don't start these
 without Fett's go-ahead.
 
-- **BYOK AI features** (Bring Your Own Anthropic Key). Pattern: user
-  pastes their personal Anthropic API key in a Settings panel, key is
-  stored client-side only (browser localStorage), AI calls go directly
-  from the browser to `api.anthropic.com` using `anthropic-dangerous-
-  direct-browser-access: true`. Their key, their bill — Railway never
-  sees it. Features unlocked: smarter commander's intent (full prose
-  from scenario+threats+flights), threat narrative paragraphs, mission-
-  flow rewrite, brief-presenter speaker notes, custom template token
+- **BYOK AI features** (Bring Your Own Anthropic Key). **Foundation
+  shipped in v0.8.0** — `ai/aiStore.ts` (key + model in localStorage),
+  `ai/anthropicClient.ts` (direct browser → api.anthropic.com), AI
+  Settings modal on the upload screen, vision-based SOP image
+  extraction. Pattern: user pastes their personal Anthropic API key
+  in a Settings panel, key is stored client-side only (browser
+  localStorage), AI calls go directly from the browser to
+  `api.anthropic.com` using `anthropic-dangerous-direct-browser-
+  access: true`. Their key, their bill — Railway never sees it.
+  Remaining AI features to build (each ~30 min once foundation
+  exists): smarter commander's intent (full prose from scenario +
+  threats + flights), threat narrative paragraphs, mission-flow
+  rewrite, brief-presenter speaker notes, custom template token
   auto-mapping ("Option C" from the original brief plan). Every AI
-  feature MUST have a graceful non-AI fallback so users without keys
-  still see a working brief. Foundation effort ~2-3 hours; each feature
-  ~30 min after that. Held off until the non-AI brief workflow is
-  fully solid (post v0.4.x).
+  feature MUST have a graceful non-AI fallback so users without
+  keys still see a working brief.
 
 - **Per-flight editor UI** (Phase 3b). Currently flight briefs are
   auto-only — the package render rebuilds them fresh each time from

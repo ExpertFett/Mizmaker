@@ -14,6 +14,9 @@ import { useSopStore } from '../../sop/sopStore';
 import { makeSampleSop, makeStarterSop, type StarterKind } from '../../sop/sopSamples';
 import { makeId, type SOP } from '../../sop/types';
 import { importOzpAsSop } from '../../sop/ozpImport';
+import { useAiStore } from '../../ai/aiStore';
+import { extractSopFromImages, mergePartialIntoSop } from '../../ai/sopExtractor';
+import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
 export function SopTab() {
   const sops = useSopStore((s) => s.sops);
@@ -23,6 +26,11 @@ export function SopTab() {
   const setActive = useSopStore((s) => s.setActive);
   const updateSop = useSopStore((s) => s.updateSop);
   const clearAll = useSopStore((s) => s.clearAll);
+  const aiKey = useAiStore((s) => s.apiKey);
+  const aiModel = useAiStore((s) => s.model);
+
+  const [aiOpen, setAiOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const [selectedId, setSelectedId] = useState<string | null>(activeId);
   const [importError, setImportError] = useState<string | null>(null);
@@ -216,6 +224,49 @@ export function SopTab() {
     setSelectedId(sop.id);
     setImportInfo(`Created starter SOP "${sop.name}". Rename it, edit values to match your scenario, then set as active.`);
   }, [addSop]);
+
+  /** Send the selected SOP's attached image(s) to Claude with a
+   *  structured-extraction prompt; merge what comes back into the
+   *  SOP's fields. The user's already-typed values WIN — extraction
+   *  only fills empty fields and appends new array entries. */
+  const handleExtractWithAi = useCallback(async () => {
+    if (!aiKey) {
+      setAiOpen(true);
+      return;
+    }
+    if (!selected) return;
+    // Collect attachments — both legacy single + multi-attachment shapes
+    const atts = selected.attachments
+      ? selected.attachments
+      : selected.attachment
+        ? [selected.attachment]
+        : [];
+    if (atts.length === 0) return;
+    setExtracting(true);
+    setImportError(null);
+    setImportInfo(null);
+    try {
+      const result = await extractSopFromImages(aiKey, aiModel, atts);
+      const merged = mergePartialIntoSop(selected, result.partial);
+      updateSop(merged);
+      const partsAdded = [
+        merged.flights.length - selected.flights.length,
+        (merged.tankers?.length || 0) - (selected.tankers?.length || 0),
+        (merged.supportAssets?.length || 0) - (selected.supportAssets?.length || 0),
+        merged.comms.length - selected.comms.length,
+        merged.tacans.length - selected.tacans.length,
+      ];
+      const totalNew = partsAdded.reduce((a, b) => a + Math.max(0, b), 0);
+      setImportInfo(
+        `Extracted ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} via ${aiModel} ` +
+        `(${result.usage.input_tokens} input + ${result.usage.output_tokens} output tokens).`,
+      );
+    } catch (err) {
+      setImportError(`AI extraction failed: ${(err as Error).message}`);
+    } finally {
+      setExtracting(false);
+    }
+  }, [aiKey, aiModel, selected, updateSop]);
 
   const handleClearAll = useCallback(() => {
     if (sops.length === 0) return;
@@ -493,10 +544,16 @@ export function SopTab() {
               }}
               onDownload={() => downloadJson(selected)}
               onUpdate={(patch) => updateSop({ ...selected, ...patch })}
+              onExtractWithAi={handleExtractWithAi}
+              extracting={extracting}
+              hasAiKey={!!aiKey}
+              onOpenAiSettings={() => setAiOpen(true)}
             />
           )}
         </div>
       </div>
+
+      <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   );
 }
@@ -507,6 +564,7 @@ export function SopTab() {
 
 function SopDetail({
   sop, isActive, onRename, onActivate, onDeactivate, onDelete, onDownload, onUpdate,
+  onExtractWithAi, extracting, hasAiKey, onOpenAiSettings,
 }: {
   sop: SOP;
   isActive: boolean;
@@ -516,8 +574,13 @@ function SopDetail({
   onDelete: () => void;
   onDownload: () => void;
   onUpdate: (patch: Partial<SOP>) => void;
+  onExtractWithAi: () => void;
+  extracting: boolean;
+  hasAiKey: boolean;
+  onOpenAiSettings: () => void;
 }) {
   const [editName, setEditName] = useState<string | null>(null);
+  const hasImages = !!sop.attachment || (sop.attachments && sop.attachments.length > 0);
 
   return (
     <div>
@@ -549,6 +612,36 @@ function SopDetail({
           >
             {sop.name}
           </span>
+        )}
+        {/* AI extraction — only meaningful when the SOP has at least
+            one image attached. Shows different states:
+              - no key:        prompts user to open AI Settings
+              - key set:       offers extraction
+              - extracting:    spinner-style indicator
+        */}
+        {hasImages && (
+          hasAiKey ? (
+            <button
+              onClick={onExtractWithAi}
+              disabled={extracting}
+              title="Send the attached image(s) to Claude with a structured-extraction prompt. Empty fields fill from the response; values you've already typed stay put."
+              style={{
+                ...btnAi,
+                opacity: extracting ? 0.6 : 1,
+                cursor: extracting ? 'wait' : 'pointer',
+              }}
+            >
+              {extracting ? '⋯ Extracting…' : '✨ Extract with AI'}
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAiSettings}
+              title="Connect your Anthropic API key to enable vision-based SOP extraction."
+              style={btnAiDisabled}
+            >
+              🔑 Connect AI to Extract
+            </button>
+          )
         )}
         {isActive ? (
           <button onClick={onDeactivate} style={btnGhost}>Deactivate</button>
@@ -1338,6 +1431,31 @@ const btnStarter: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   padding: '8px 14px',
+  fontFamily: 'inherit',
+};
+
+const btnAi: React.CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(163, 113, 247, 0.15), rgba(74, 143, 212, 0.15))',
+  border: '1px solid #a371f7',
+  borderRadius: 4,
+  color: '#c8a8ff',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 700,
+  padding: '6px 14px',
+  fontFamily: 'inherit',
+  letterSpacing: 0.3,
+};
+
+const btnAiDisabled: React.CSSProperties = {
+  background: 'rgba(163, 113, 247, 0.05)',
+  border: '1px dashed rgba(163, 113, 247, 0.4)',
+  borderRadius: 4,
+  color: '#a371f7',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '6px 14px',
   fontFamily: 'inherit',
 };
 
