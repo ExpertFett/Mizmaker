@@ -21,11 +21,17 @@ Extract the structured data into JSON matching the schema below. Rules:
 - Modulation is "AM" or "FM". If unstated, infer from frequency band: <136 MHz = FM, >225 MHz = AM, otherwise null.
 - Return ONLY valid JSON, no markdown fences, no commentary, no preamble.
 
+CRITICAL output-length rules — these prevent JSON truncation:
+- "notes" must be ≤200 characters. ONE short sentence identifying the SOP (squadron, era, scenario name). DO NOT dump tables or lists into notes.
+- If the page has per-unit laser codes for many flights (e.g. Victory 1-4: 1661-1664, Wraith 1-4: 1665-1668), pick the LOWEST code visible as "laserCodeBase" and DO NOT enumerate the rest. The schema only stores a single base; the planner derives per-flight codes from there.
+- For arrays (flights, tankers, comms, tacans, supportAssets): include only entries that are clearly meant to be programmed into the jet/mission. Skip narrative explanations.
+- Do not add fields outside the schema below. No "laser_codes" object, no "frequencyTable" — only the named fields.
+
 JSON schema (all top-level fields optional; omit any you can't fill):
 {
-  "name": string,                  // SOP title if visible
-  "squadron": string,              // squadron designator
-  "notes": string,                 // any free-form notes / context shown
+  "name": string,                  // SOP title if visible (≤80 chars)
+  "squadron": string,              // squadron designator (≤40 chars)
+  "notes": string,                 // ≤200 chars — short identification only
   "flights": [                     // player flight callsigns
     { "callsign": string, "defaultFreq": number | null, "defaultMod": "AM" | "FM" | null }
   ],
@@ -43,7 +49,7 @@ JSON schema (all top-level fields optional; omit any you can't fill):
   "tacans": [
     { "role": string, "channel": number, "band": "X" | "Y", "callsign": string | null }
   ],
-  "laserCodeBase": number          // 4-digit code, each digit 1-7
+  "laserCodeBase": number          // 4-digit code, each digit 1-7. Lowest code visible if multiple.
 }`;
 
 interface PartialSop {
@@ -100,11 +106,27 @@ export async function extractSopFromImages(
     provider,
     apiKey,
     model,
-    maxTokens: 4096,
+    // 8192 covers the largest realistic SOP comfortably (typically 1-3K
+    // tokens of structured JSON) without the 4096 cap chopping the
+    // last array mid-string.
+    maxTokens: 8192,
     system: SYSTEM_PROMPT,
     content,
     jsonMode: provider === 'gemini',
   });
+
+  // If the provider stopped generating because it hit the token cap,
+  // the JSON is almost certainly mid-string. Surface a clear error
+  // rather than letting JSON.parse bury the issue in a column number.
+  const truncated = result.stopReason === 'MAX_TOKENS'
+    || result.stopReason === 'max_tokens'
+    || result.stopReason === 'length';
+  if (truncated) {
+    throw new Error(
+      `Output was truncated (hit ${result.usage.output_tokens}-token output cap before finishing). ` +
+      `Try a higher-capacity model (gemini-2.5-pro / claude-opus) or split the SOP into smaller image batches.`,
+    );
+  }
 
   // Parse — strip any accidental markdown fences just in case
   let jsonText = result.text.trim();
@@ -115,12 +137,46 @@ export async function extractSopFromImages(
   try {
     parsed = JSON.parse(jsonText);
   } catch (e) {
+    // Last-resort recovery: try chopping at the last balanced brace.
+    // Some providers slip past the truncation check by claiming
+    // 'STOP' but still cutting mid-string when their internal token
+    // accounting is off. We can salvage everything up to the last
+    // complete top-level field.
+    const recovered = tryRecoverPartialJson(jsonText);
+    if (recovered) {
+      return { partial: recovered, raw: result.text, usage: result.usage };
+    }
     throw new Error(
       `Model returned non-JSON response (${(e as Error).message}). First 200 chars: ${jsonText.slice(0, 200)}`,
     );
   }
 
   return { partial: parsed, raw: result.text, usage: result.usage };
+}
+
+/** Best-effort recovery from a JSON response that was truncated
+ *  mid-string. Walk backward from the end finding the last position
+ *  where the JSON is structurally balanced after closing braces, then
+ *  parse that prefix. Returns null if no salvage point is reachable. */
+function tryRecoverPartialJson(s: string): PartialSop | null {
+  // Strip any trailing partial object fragments like:
+  //   ... "notes": "incomplete strin
+  // by walking back to the last "}," or "],"
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] !== ',' && s[i] !== '}' && s[i] !== ']') continue;
+    // Try parsing a synthesized prefix: prefix up to here + closing brace
+    const prefix = s.slice(0, i).replace(/[,\s]+$/, '');
+    for (const closer of ['}', ']}']) {
+      try {
+        const candidate = `${prefix}${closer}`;
+        const parsed = JSON.parse(candidate);
+        if (parsed && typeof parsed === 'object') return parsed as PartialSop;
+      } catch {
+        /* try the next position */
+      }
+    }
+  }
+  return null;
 }
 
 /** Merge a partial extraction into an existing SOP. The user's already-
