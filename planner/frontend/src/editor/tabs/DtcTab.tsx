@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useSopStore } from '../../sop/sopStore';
+import type { SOP } from '../../sop/types';
 import { dtcPreview, dtcGenerate } from '../../api/client';
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +92,118 @@ const CMDS_PROGRAMS = [
 
 function programLabel(key: string): string {
   return key.replace('_', ' ');
+}
+
+/* ------------------------------------------------------------------ */
+/* SOP -> DTC COMM synthesis                                            */
+/*                                                                      */
+/* When an SOP is active the DTC tab can auto-fill both Hornet radios   */
+/* in one click. Convention used here matches how Fett's school         */
+/* actually flies the F-18:                                             */
+/*   COMM1 (aux):    intra-flight squadron freqs + primary tanker       */
+/*   COMM2 (front):  mission services (Strike/Marshal/Tower/AWACS/JTAC) */
+/* GUARD (243.000 or whatever the SOP guard entry says) is duplicated   */
+/* on both radios at slot 20 + the GUARD slot.                          */
+/* Channel labels truncate at 12 chars to fit the Hornet UFC.           */
+/* ------------------------------------------------------------------ */
+
+function nameForUfc(raw: string, fallback: string): string {
+  const v = (raw || fallback || '').trim().toUpperCase();
+  return v.slice(0, 12);
+}
+
+function buildSopComms(sop: SOP): {
+  COMM1: CommRadio;
+  COMM2: CommRadio;
+  filledCh1: number;
+  filledCh2: number;
+} {
+  const comm1: CommRadio = {};
+  const comm2: CommRadio = {};
+
+  // Resolve guard once — used on both radios.
+  const guardEntry = sop.comms.find((c) => /guard/i.test(c.role));
+  const guardCh: CommChannel = {
+    frequency: (guardEntry?.frequency ?? 243.0).toFixed(3),
+    modulation: guardEntry?.modulation ?? 'AM',
+    name: 'GUARD',
+  };
+
+  // ---- COMM1 (intra-flight) ----
+  let ch = 1;
+  const flightsByPriority = [...sop.flights]
+    .filter((f) => f.callsign && f.defaultFreq && f.defaultFreq > 0)
+    .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+  for (const f of flightsByPriority) {
+    if (ch > 18) break;
+    comm1[`Channel_${ch}`] = {
+      frequency: (f.defaultFreq ?? 0).toFixed(3),
+      modulation: f.defaultMod ?? 'AM',
+      name: nameForUfc(f.callsign, `FLT${ch}`),
+    };
+    ch++;
+  }
+
+  // Primary tanker on the next free channel (cap at 19 so guard can sit at 20).
+  const primaryTanker = sop.tankers?.find((t) => t.frequency && t.frequency > 0);
+  if (primaryTanker && ch <= 19) {
+    comm1[`Channel_${ch}`] = {
+      frequency: (primaryTanker.frequency ?? 0).toFixed(3),
+      modulation: primaryTanker.modulation ?? 'AM',
+      name: nameForUfc(primaryTanker.callsign, 'TANKER'),
+    };
+    ch++;
+  }
+  const filledCh1 = ch - 1;
+
+  // Always anchor guard at slot 20 + GUARD aux slot.
+  comm1['Channel_20'] = { ...guardCh };
+  comm1['GUARD'] = { ...guardCh };
+
+  // ---- COMM2 (mission services) ----
+  ch = 1;
+  for (const c of sop.comms) {
+    if (/guard/i.test(c.role)) continue;
+    if (!c.frequency || c.frequency <= 0) continue;
+    if (ch > 18) break;
+    comm2[`Channel_${ch}`] = {
+      frequency: c.frequency.toFixed(3),
+      modulation: c.modulation ?? 'AM',
+      name: nameForUfc(c.role, `COMM${ch}`),
+    };
+    ch++;
+  }
+
+  for (const a of sop.supportAssets ?? []) {
+    if (ch > 18) break;
+    if (!a.frequency || a.frequency <= 0) continue;
+    comm2[`Channel_${ch}`] = {
+      frequency: a.frequency.toFixed(3),
+      modulation: a.modulation ?? 'AM',
+      name: nameForUfc(a.role || a.callsign, `AST${ch}`),
+    };
+    ch++;
+  }
+
+  // Tankers beyond the primary land here so the wingman has them too.
+  const extraTankers = (sop.tankers ?? []).slice(primaryTanker ? 1 : 0);
+  for (const t of extraTankers) {
+    if (ch > 18) break;
+    if (!t.frequency || t.frequency <= 0) continue;
+    comm2[`Channel_${ch}`] = {
+      frequency: t.frequency.toFixed(3),
+      modulation: t.modulation ?? 'AM',
+      name: nameForUfc(t.callsign, 'TANKER'),
+    };
+    ch++;
+  }
+  const filledCh2 = ch - 1;
+
+  comm2['Channel_20'] = { ...guardCh };
+  comm2['GUARD'] = { ...guardCh };
+
+  return { COMM1: comm1, COMM2: comm2, filledCh1, filledCh2 };
 }
 
 /* ------------------------------------------------------------------ */
@@ -259,6 +373,17 @@ export function DtcTab() {
   const dtcFlights = useMissionStore((s) => s.dtcFlights);
   const sessionId = useMissionStore((s) => s.sessionId);
 
+  // SOP integration — when active, the "Apply SOP" buttons in COMM and
+  // Presets subtabs synthesize both Hornet radios from this. We read
+  // sops + activeId as scalars (React 19 / useSyncExternalStore won't
+  // tolerate object-returning selectors).
+  const sops = useSopStore((s) => s.sops);
+  const activeSopId = useSopStore((s) => s.activeId);
+  const activeSop = useMemo(
+    () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
+    [activeSopId, sops],
+  );
+
   const [selectedFlight, setSelectedFlight] = useState<string>(dtcFlights[0] ?? '');
   const [dtcData, setDtcData] = useState<DtcData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -267,6 +392,7 @@ export function DtcTab() {
   const [exporting, setExporting] = useState(false);
   const [steerNotes, setSteerNotes] = useState<Record<number, string>>({});
   const [templateMsg, setTemplateMsg] = useState('');
+  const [sopApplyMsg, setSopApplyMsg] = useState('');
 
   const handleLoad = useCallback(async () => {
     if (!sessionId || !selectedFlight) return;
@@ -315,6 +441,40 @@ export function DtcTab() {
     });
   }, []);
 
+  /**
+   * Overwrites both COMM radios with channels synthesized from the active
+   * SOP. Existing channels not produced by the SOP are preserved on each
+   * radio so a partial SOP doesn't blow away pilot edits.
+   */
+  const applySopComms = useCallback(
+    (target: 'both' | 'COMM1' | 'COMM2' = 'both') => {
+      if (!activeSop) return;
+      const built = buildSopComms(activeSop);
+      setDtcData((prev) => {
+        if (!prev) return prev;
+        const nextComm1 =
+          target === 'both' || target === 'COMM1'
+            ? { ...prev.COMM.COMM1, ...built.COMM1 }
+            : prev.COMM.COMM1;
+        const nextComm2 =
+          target === 'both' || target === 'COMM2'
+            ? { ...prev.COMM.COMM2, ...built.COMM2 }
+            : prev.COMM.COMM2;
+        return { ...prev, COMM: { COMM1: nextComm1, COMM2: nextComm2 } };
+      });
+      const summary =
+        target === 'both'
+          ? `COMM1 (${built.filledCh1} ch) + COMM2 (${built.filledCh2} ch)`
+          : target === 'COMM1'
+          ? `COMM1 (${built.filledCh1} ch)`
+          : `COMM2 (${built.filledCh2} ch)`;
+      setSopApplyMsg(`Applied SOP "${activeSop.name}" → ${summary}`);
+      setTemplateMsg('');
+      setTimeout(() => setSopApplyMsg(''), 3500);
+    },
+    [activeSop],
+  );
+
   const handleExport = useCallback(async () => {
     if (!sessionId || !selectedFlight || !dtcData) return;
     setExporting(true);
@@ -348,9 +508,28 @@ export function DtcTab() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
-          F/A-18C DTC Builder
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+            F/A-18C DTC Builder
+          </h2>
+          {activeSop && (
+            <span
+              title={`Active SOP: ${activeSop.name}. Use "Apply SOP" on the COMM tab to fill both radios.`}
+              style={{
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: '#1a3a1a',
+                border: '1px solid #2a5a2a',
+                color: '#3fb950',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.5,
+              }}
+            >
+              SOP
+            </span>
+          )}
+        </div>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Load, edit, and export Data Transfer Cartridge files for Hornet flights.
         </p>
@@ -380,6 +559,22 @@ export function DtcTab() {
 
       {error && (
         <div style={{ color: '#d95050', fontSize: 14, marginBottom: 12 }}>{error}</div>
+      )}
+
+      {sopApplyMsg && (
+        <div
+          style={{
+            color: '#3fb950',
+            fontSize: 12,
+            padding: '6px 12px',
+            background: '#0a1218',
+            borderRadius: 6,
+            border: '1px solid #1a3a1a',
+            marginBottom: 12,
+          }}
+        >
+          ✓ {sopApplyMsg}
+        </div>
       )}
 
       {!dtcData && !loading && (
@@ -421,13 +616,28 @@ export function DtcTab() {
             ))}
           </div>
 
-          {subTab === 'comm' && <CommSubTab data={dtcData.COMM} onUpdate={updateComm} />}
+          {subTab === 'comm' && (
+            <CommSubTab
+              data={dtcData.COMM}
+              onUpdate={updateComm}
+              activeSop={activeSop}
+              onApplySop={applySopComms}
+            />
+          )}
           {subTab === 'cmds' && <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />}
           {subTab === 'waypoints' && <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />}
           {subTab === 'nav' && <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} selectedFlight={selectedFlight} />}
           {subTab === 'fuel' && <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />}
           {subTab === 'tools' && <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />}
-          {subTab === 'presets' && <PresetsSubTab setDtcData={setDtcData} templateMsg={templateMsg} setTemplateMsg={setTemplateMsg} />}
+          {subTab === 'presets' && (
+            <PresetsSubTab
+              setDtcData={setDtcData}
+              templateMsg={templateMsg}
+              setTemplateMsg={setTemplateMsg}
+              activeSop={activeSop}
+              onApplySop={applySopComms}
+            />
+          )}
         </>
       )}
     </div>
@@ -438,12 +648,93 @@ export function DtcTab() {
 /* COMM sub-tab                                                        */
 /* ------------------------------------------------------------------ */
 
-function CommSubTab({ data, onUpdate }: {
+function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
   data: { COMM1: CommRadio; COMM2: CommRadio };
   onUpdate: (radio: 'COMM1' | 'COMM2', channelKey: string, field: keyof CommChannel, value: string) => void;
+  activeSop: SOP | null;
+  onApplySop: (target?: 'both' | 'COMM1' | 'COMM2') => void;
 }) {
   return (
     <div>
+      {/* SOP auto-fill row — only shows when an SOP is active. Three buttons:
+          fill both radios, just COMM1, or just COMM2. Buttons merge over
+          existing channels rather than wiping them. */}
+      {activeSop && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 12px',
+            marginBottom: 12,
+            background: '#0a1218',
+            border: '1px solid #1a3a1a',
+            borderRadius: 6,
+          }}
+        >
+          <span
+            style={{
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: '#1a3a1a',
+              border: '1px solid #2a5a2a',
+              color: '#3fb950',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 0.5,
+            }}
+          >
+            SOP
+          </span>
+          <span style={{ color: '#cccccc', fontSize: 12, flex: 1 }}>
+            Apply <strong style={{ color: '#e0e0e0' }}>{activeSop.name}</strong> — COMM1 = squadron flights + tanker, COMM2 = mission services. GUARD anchored on Ch 20 of both.
+          </span>
+          <button
+            onClick={() => onApplySop('both')}
+            style={{
+              background: '#1a3a1a',
+              border: '1px solid #2a5a2a',
+              borderRadius: 4,
+              color: '#3fb950',
+              cursor: 'pointer',
+              fontSize: 12,
+              padding: '5px 12px',
+              fontWeight: 600,
+            }}
+          >
+            Apply SOP (Both)
+          </button>
+          <button
+            onClick={() => onApplySop('COMM1')}
+            style={{
+              background: '#262626',
+              border: '1px solid #3a3a3a',
+              borderRadius: 4,
+              color: '#aaaaaa',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: '5px 10px',
+            }}
+          >
+            COMM1 only
+          </button>
+          <button
+            onClick={() => onApplySop('COMM2')}
+            style={{
+              background: '#262626',
+              border: '1px solid #3a3a3a',
+              borderRadius: 4,
+              color: '#aaaaaa',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: '5px 10px',
+            }}
+          >
+            COMM2 only
+          </button>
+        </div>
+      )}
+
       {/* Radio tables */}
       <div style={{ display: 'flex', gap: 24 }}>
         {(['COMM1', 'COMM2'] as const).map((radio) => (
@@ -1614,10 +1905,12 @@ const fieldLabelStyle: React.CSSProperties = {
 /* Presets sub-tab                                                      */
 /* ------------------------------------------------------------------ */
 
-function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg }: {
+function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onApplySop }: {
   setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
   templateMsg: string;
   setTemplateMsg: (msg: string) => void;
+  activeSop: SOP | null;
+  onApplySop: (target?: 'both' | 'COMM1' | 'COMM2') => void;
 }) {
   const applyTemplate = (tpl: DtcTemplate) => {
     setDtcData((prev) => {
@@ -1648,6 +1941,71 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {templateMsg && <div style={{ color: '#3fb950', fontSize: 12, padding: '6px 12px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222' }}>✓ {templateMsg}</div>}
+
+      {/* Active SOP — synthesized COMM pack. Same wiring as the COMM tab's
+          inline button, mirrored here so pilots can find it next to the
+          other preset packs. */}
+      {activeSop && (
+        <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #1a3a1a' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: '#1a3a1a',
+                border: '1px solid #2a5a2a',
+                color: '#3fb950',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.5,
+              }}
+            >
+              SOP
+            </span>
+            <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+              Active SOP — {activeSop.name}
+            </div>
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: '#262626', border: '1px solid #4a4a4a', borderRadius: 6,
+            padding: '8px 12px',
+          }}>
+            <span style={{ flex: 1, color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>{activeSop.name}</span>
+            <span style={{ color: '#aaaaaa', fontSize: 11, flex: 2 }}>
+              COMM1: {activeSop.flights?.length ?? 0} flight callsigns + tanker · COMM2: {activeSop.comms?.length ?? 0} comms + {activeSop.supportAssets?.length ?? 0} support
+            </span>
+            <button
+              onClick={() => onApplySop('both')}
+              style={{
+                background: '#1a3a1a', border: '1px solid #2a5a2a', borderRadius: 4,
+                color: '#3fb950', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+                fontWeight: 600,
+              }}
+            >
+              → Both
+            </button>
+            <button
+              onClick={() => onApplySop('COMM1')}
+              style={{
+                background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
+                color: '#6ab4f0', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+              }}
+            >
+              → COMM1
+            </button>
+            <button
+              onClick={() => onApplySop('COMM2')}
+              style={{
+                background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
+                color: '#cccccc', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+              }}
+            >
+              → COMM2
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* DTC Templates */}
       <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222' }}>
