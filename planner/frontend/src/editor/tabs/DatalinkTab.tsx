@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
 import type { ClientUnit, DonorInfo } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
@@ -23,6 +24,12 @@ export function DatalinkTab() {
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const allUnitsDonor = useMissionStore((s) => s.allUnitsDonor);
   const addEdit = useEditStore((s) => s.addEdit);
+  // Active SOP drives callsign auto-assign — match player flights to
+  // SOP-defined callsigns by first-word of group name. Falls back to
+  // abbreviated group name when no SOP match.
+  const activeSop = useSopStore((s) => s.activeId
+    ? s.sops.find((x) => x.id === s.activeId) || null
+    : null);
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -142,18 +149,36 @@ export function DatalinkTab() {
   const handleAutoAssignAll = useCallback(() => {
     // Use each group's own flight number from its name (e.g. "Bengal 1" → flight 1)
     // STN uses a global counter to ensure uniqueness across all groups
+
+    // Build SOP callsign lookup (first-word → full SOP callsign) so
+    // we can match a mission group like "Bengal 1" to an SOP entry
+    // named "Bengal" and use the SOP-defined callsign as the source
+    // of the 2-char label rather than just the group's first word.
+    // For most missions these will be the same string anyway, but
+    // when the mission designer named a group differently from the
+    // squadron's preferred callsign (e.g. group="HornetA1" but
+    // SOP="Bengal"), the SOP wins.
+    const sopByFirstWord = new Map<string, string>();
+    if (activeSop) {
+      for (const f of activeSop.flights) {
+        if (!f.callsign) continue;
+        const firstWord = f.callsign.split(/[-\s]/)[0].toLowerCase();
+        sopByFirstWord.set(firstWord, f.callsign);
+      }
+    }
+
     let stnFlight = 1;
     for (const [groupName, { units }] of grouped) {
       // Auto-assign always derives the 2-char label from the group's
       // base name (Bengal 1 → BN, Camelot 2 → CM, etc.), overwriting
-      // whatever the lead currently has. Earlier we tried to preserve
-      // the lead's existing value when it wasn't "ED" or empty, but
-      // Fett's flow is "click Auto Assign and just make it match the
-      // flight name" — so the button does the work end-to-end.
-      // Strip the trailing flight number so the abbreviation is taken
-      // from the prefix only ("Bengal 1" → "Bengal" → BN).
+      // whatever the lead currently has. With an active SOP, we look
+      // up the SOP callsign for this group's first word and use that
+      // as the source of the abbreviation instead of the raw group
+      // name — letting the squadron control official callsigns even
+      // when the mission designer named groups differently.
       const baseName = groupName.replace(/\s*\d+\s*$/, '').trim() || groupName;
-      const csLabel = abbreviateCallsign(baseName);
+      const sopCallsign = sopByFirstWord.get(baseName.toLowerCase());
+      const csLabel = abbreviateCallsign(sopCallsign || baseName);
 
       // Extract flight number from group name (e.g. "Bengal 1" → 1, "Camelot 2" → 2)
       const flightMatch = groupName.match(/(\d+)\s*$/);
@@ -170,7 +195,7 @@ export function DatalinkTab() {
       }
       stnFlight++;
     }
-  }, [grouped, handleFieldChange]);
+  }, [grouped, handleFieldChange, activeSop]);
 
   if (clientUnits.length === 0) {
     return (
@@ -192,14 +217,33 @@ export function DatalinkTab() {
             Click a group to expand. Edit callsigns, STN L16 addresses, donors, and team members.
           </p>
         </div>
-        <button
-          onClick={handleAutoAssignAll}
-          style={{
-            background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
-            color: '#6ab4f0', padding: '6px 16px', fontSize: 13, cursor: 'pointer',
-            fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-          }}
-        >Auto Assign All</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {activeSop && (
+            <span
+              title={`Auto-assign will use callsigns from SOP "${activeSop.name}" — ${activeSop.flights.length} entries.`}
+              style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+                color: '#3fb950',
+                border: '1px solid rgba(63, 185, 80, 0.5)',
+                background: 'rgba(63, 185, 80, 0.08)',
+                borderRadius: 3, padding: '3px 8px',
+              }}
+            >
+              SOP: {activeSop.name.length > 24 ? activeSop.name.slice(0, 24) + '…' : activeSop.name}
+            </span>
+          )}
+          <button
+            onClick={handleAutoAssignAll}
+            title={activeSop
+              ? `Match each player flight's first-word callsign against SOP "${activeSop.name}" entries; use the SOP callsign as the abbreviation source. Falls back to the raw group name when no SOP match.`
+              : 'Derive a 2-char callsign label from each group name and assign to every unit. Set an active SOP to drive callsigns from squadron defaults instead.'}
+            style={{
+              background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
+              color: '#6ab4f0', padding: '6px 16px', fontSize: 13, cursor: 'pointer',
+              fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+          >Auto Assign All{activeSop ? ' (SOP)' : ''}</button>
+        </div>
       </div>
 
       {/* Filter bar */}

@@ -24,8 +24,10 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useSopStore } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { MissionGroup, ClientUnit } from '../../types/mission';
+import type { SOP } from '../../sop/types';
 
 interface Preset {
   ch: number;        // 1-20
@@ -106,7 +108,11 @@ function buildPresetsFromMiz(leadClient: ClientUnit | undefined): FlightPresets 
  * other groups in the mission. Returns exactly PRESET_COUNT entries
  * (20), padded with blanks. The user can edit any of them.
  */
-function buildAutoPresets(flight: MissionGroup, allGroups: MissionGroup[]): Preset[] {
+function buildAutoPresets(
+  flight: MissionGroup,
+  allGroups: MissionGroup[],
+  sop: SOP | null = null,
+): Preset[] {
   const presets: Preset[] = [];
 
   // Ch 1 — own primary freq
@@ -131,22 +137,56 @@ function buildAutoPresets(flight: MissionGroup, allGroups: MissionGroup[]): Pres
     });
   }
 
-  // Ch 3-4 — Tankers (up to 2)
-  const tankers = allGroups
-    .filter((g) => (g.task || '').toLowerCase() === 'refueling' && g.frequency > 0)
+  // Ch 3-4 — Tankers. Prefer SOP-defined tankers (squadron-canonical
+  // callsign + freq) when an SOP is active; fall back to mission-
+  // detected refueling groups when SOP doesn't have entries.
+  const sopTankers = (sop?.tankers || [])
+    .filter((t) => t.callsign && t.frequency)
     .slice(0, 2);
-  for (const t of tankers) {
-    const cs = t.units[0]?.name || t.groupName;
-    presets.push({
-      ch: presets.length + 1,
-      label: cs,
-      freq: fmtFreq(t.frequency),
-      mod: t.modulation === 1 ? 'FM' : 'AM',
-    });
+  if (sopTankers.length > 0) {
+    for (const t of sopTankers) {
+      presets.push({
+        ch: presets.length + 1,
+        label: t.callsign,
+        freq: t.frequency!.toFixed(3),
+        mod: t.modulation === 'FM' ? 'FM' : 'AM',
+      });
+    }
+  } else {
+    const tankers = allGroups
+      .filter((g) => (g.task || '').toLowerCase() === 'refueling' && g.frequency > 0)
+      .slice(0, 2);
+    for (const t of tankers) {
+      const cs = t.units[0]?.name || t.groupName;
+      presets.push({
+        ch: presets.length + 1,
+        label: cs,
+        freq: fmtFreq(t.frequency),
+        mod: t.modulation === 1 ? 'FM' : 'AM',
+      });
+    }
   }
 
-  // Ch 5+ — Other player flights (intra-package coordination). Skip
-  // self; cap at the channels remaining before GUARD on ch 20.
+  // SOP-defined common comms (Strike, Marshal, Tower, etc.) — these
+  // are mission-wide push freqs the squadron uses regardless of which
+  // flights are flying. Insert before player-flight entries so they
+  // sit on stable channels.
+  if (sop && sop.comms.length > 0) {
+    const sopCommsLimit = Math.min(sop.comms.length, PRESET_COUNT - presets.length - 1);
+    for (let i = 0; i < sopCommsLimit; i++) {
+      const c = sop.comms[i];
+      if (!c.role || !c.frequency) continue;
+      presets.push({
+        ch: presets.length + 1,
+        label: c.role,
+        freq: c.frequency.toFixed(3),
+        mod: c.modulation === 'FM' ? 'FM' : 'AM',
+      });
+    }
+  }
+
+  // Ch N+ — Other player flights (intra-package coordination). Skip
+  // self; cap at the channels remaining before GUARD on the last ch.
   const others = allGroups
     .filter((g) =>
       g.groupId !== flight.groupId
@@ -176,6 +216,12 @@ export function RadioPresetsSection() {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const addEdit = useEditStore((s) => s.addEdit);
+  // Active SOP feeds tanker callsigns/freqs and mission-wide comm
+  // frequencies (Strike Primary, Marshal, Tower, etc.) into the
+  // auto-built preset list.
+  const activeSop = useSopStore((s) => s.activeId
+    ? s.sops.find((x) => x.id === s.activeId) || null
+    : null);
 
   // Convert a UI preset list to the backend radioPresets edit shape.
   // Strips placeholder rows (empty / 0 freq) so the .miz only carries
@@ -225,9 +271,9 @@ export function RadioPresetsSection() {
     const fromMiz = buildPresetsFromMiz(lead);
     if (fromMiz) return fromMiz;
     const single: FlightPresets = new Map();
-    single.set(1, buildAutoPresets(flight, groups));
+    single.set(1, buildAutoPresets(flight, groups, activeSop));
     return single;
-  }, [findLeadClient, groups]);
+  }, [findLeadClient, groups, activeSop]);
 
   // Per-flight preset state. groupId → (radioNum → Preset[]).
   const [presetsByFlight, setPresetsByFlight] = useState<Map<number, FlightPresets>>(new Map());
@@ -349,10 +395,26 @@ export function RadioPresetsSection() {
         marginBottom: 8,
       }}>
         <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
           fontSize: 12, color: '#ffa500', fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>
           Radio Presets — Per Flight
+          {activeSop && (
+            <span
+              title={`Tanker callsigns and ${activeSop.comms.length} mission comm frequencies are pulled from SOP "${activeSop.name}" into auto-built channels.`}
+              style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+                color: '#3fb950',
+                border: '1px solid rgba(63, 185, 80, 0.5)',
+                background: 'rgba(63, 185, 80, 0.08)',
+                borderRadius: 3, padding: '2px 6px',
+                textTransform: 'uppercase',
+              }}
+            >
+              SOP
+            </span>
+          )}
         </div>
         <span style={{ fontSize: 11, color: '#888888' }}>
           Edits write to every radio of every unit in the flight on download
