@@ -93,44 +93,6 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       }}
     >
       <div style={{ maxWidth: 700, width: '100%', padding: '0 20px' }}>
-        {/* AI settings — top-right corner of the upload screen so users
-            can plug in their Anthropic key before they start planning.
-            Color reflects state: green=tested OK, amber=key set but
-            never tested or last test failed, grey=no key set. */}
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', marginBottom: 8,
-        }}>
-          <button
-            onClick={() => setAiOpen(true)}
-            style={{
-              background: aiKey
-                ? (lastTestOk && lastTestedAt > 0
-                    ? 'rgba(63, 185, 80, 0.1)'
-                    : 'rgba(210, 153, 34, 0.1)')
-                : 'transparent',
-              border: `1px solid ${aiKey
-                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
-                : '#3a3a3a'}`,
-              borderRadius: 4,
-              color: aiKey
-                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
-                : '#aaaaaa',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '5px 12px',
-              fontFamily: 'inherit',
-            }}
-            title={aiKey
-              ? `${aiProvider === 'gemini' ? 'Gemini' : 'Anthropic'} API key is set. Click to view / change settings.`
-              : 'No AI key set. Click to add a free Gemini key (or paid Anthropic) for vision-based SOP extraction.'}
-          >
-            {aiKey
-              ? `🔑 AI Connected (${aiProvider === 'gemini' ? 'Gemini' : 'Anthropic'})`
-              : '🔑 Connect AI'}
-          </button>
-        </div>
-
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <h1 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
@@ -189,6 +151,112 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           </button>
         </div>
 
+        {/* AI Connection card — explains what BYOK is, why you might
+            want it, and what it costs. Was previously a tiny button
+            tucked in the top-right corner; promoted here so first-time
+            users see what AI does and how to enable it. */}
+        <div style={{
+          background: '#222222',
+          border: `1px solid ${aiKey
+            ? (lastTestOk && lastTestedAt > 0 ? 'rgba(63, 185, 80, 0.4)' : 'rgba(210, 153, 34, 0.4)')
+            : '#3a3a3a'}`,
+          borderRadius: 8,
+          padding: '20px 24px',
+          marginBottom: 20,
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            marginBottom: 10, flexWrap: 'wrap', gap: 12,
+          }}>
+            <p style={{ color: '#e0e0e0', fontSize: 16, fontWeight: 600, margin: 0 }}>
+              ✨ AI-Powered SOP Extraction <span style={{ color: '#aaaaaa', fontSize: 13, fontWeight: 400, marginLeft: 8 }}>(optional)</span>
+            </p>
+            {aiKey && lastTestOk && lastTestedAt > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+                color: '#3fb950',
+                border: '1px solid rgba(63, 185, 80, 0.5)',
+                borderRadius: 3, padding: '2px 8px',
+              }}>
+                CONNECTED — {aiProvider === 'gemini' ? 'GEMINI' : 'ANTHROPIC'}
+              </span>
+            )}
+            {aiKey && !(lastTestOk && lastTestedAt > 0) && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+                color: '#d29922',
+                border: '1px solid rgba(210, 153, 34, 0.5)',
+                borderRadius: 3, padding: '2px 8px',
+              }}>
+                KEY SET — UNTESTED
+              </span>
+            )}
+          </div>
+          <p style={{ color: '#aaaaaa', fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>
+            Drop a kneeboard PNG / squadron SOP image into the SOP tab and the AI will
+            read the page and fill in callsigns, frequencies, TACAN, and laser codes
+            for you. <strong style={{ color: '#cccccc' }}>Your typed values always win</strong> —
+            extraction only fills empty fields.
+          </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 10, marginBottom: 14,
+          }}>
+            <div style={infoTileStyle('#3fb950')}>
+              <div style={tileLabelStyle}>FREE OPTION</div>
+              <div style={tileBodyStyle}>
+                <strong style={{ color: '#e0e0e0' }}>Google Gemini</strong> — free key in 30s at{' '}
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#3fb950' }}>
+                  aistudio.google.com
+                </a>. 1500 extractions/day on the free tier. No credit card.
+              </div>
+            </div>
+            <div style={infoTileStyle('#a371f7')}>
+              <div style={tileLabelStyle}>PAID OPTION</div>
+              <div style={tileBodyStyle}>
+                <strong style={{ color: '#e0e0e0' }}>Anthropic (Claude)</strong> — get a key at{' '}
+                <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color: '#c8a8ff' }}>
+                  console.anthropic.com
+                </a>. Pay-per-use (~$0.02/extract). Separate from Claude.ai Pro.
+              </div>
+            </div>
+            <div style={infoTileStyle('#6ab4f0')}>
+              <div style={tileLabelStyle}>PRIVACY</div>
+              <div style={tileBodyStyle}>
+                Your key lives in <strong style={{ color: '#e0e0e0' }}>this browser only</strong>.
+                Calls go directly browser → provider. Railway never sees the key or your images.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setAiOpen(true)}
+            style={{
+              background: aiKey
+                ? (lastTestOk && lastTestedAt > 0
+                    ? 'rgba(63, 185, 80, 0.15)'
+                    : 'rgba(210, 153, 34, 0.15)')
+                : 'rgba(74, 143, 212, 0.12)',
+              border: `1px solid ${aiKey
+                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
+                : '#4a8fd4'}`,
+              borderRadius: 4,
+              color: aiKey
+                ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
+                : '#6ab4f0',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              padding: '8px 18px',
+              fontFamily: 'inherit',
+            }}
+          >
+            {aiKey
+              ? '🔑 Manage AI Connection'
+              : '🔑 Connect AI'}
+          </button>
+        </div>
+
         {/* Feature list */}
         <div style={{
           background: '#222222',
@@ -234,4 +302,24 @@ const toolBtnStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 500,
   padding: '10px 20px',
+};
+
+// Tile within the AI explanation card. Color-coded left border for the
+// three categories (free / paid / privacy) so the card scans visually
+// without requiring users to read every line.
+function infoTileStyle(accent: string): React.CSSProperties {
+  return {
+    background: '#1a1a1a',
+    border: '1px solid #3a3a3a',
+    borderLeft: `3px solid ${accent}`,
+    borderRadius: 4,
+    padding: '8px 10px',
+  };
+}
+const tileLabelStyle: React.CSSProperties = {
+  fontSize: 10, fontWeight: 700, color: '#888', letterSpacing: 1,
+  marginBottom: 4, textTransform: 'uppercase',
+};
+const tileBodyStyle: React.CSSProperties = {
+  fontSize: 12, color: '#aaaaaa', lineHeight: 1.5,
 };
