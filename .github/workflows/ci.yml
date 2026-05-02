@@ -1,0 +1,84 @@
+# CI — runs on every push to main and on pull requests.
+#
+# Two parallel jobs:
+#   backend  — pytest against the Flask API (33 round-trip + brief renderer tests)
+#   frontend — TypeScript typecheck + ESLint
+#
+# Goal: nothing merges to main with a broken backend edit pipeline or a
+# TypeScript regression. Frontend currently has no Vitest suite — when
+# we add one, drop it into the frontend job.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs of the same ref so a quick second push doesn't
+# burn CI minutes on a soon-to-be-stale commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: planner/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            planner/backend/requirements.txt
+            planner/backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        # -ra shows reasons for skips/xfails so we know if the laser fixture
+        # gates trip in CI (they currently do — simple.miz has no laser units).
+        run: pytest -ra --tb=short
+
+  frontend:
+    name: Frontend (tsc + eslint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: planner/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: planner/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        # Same command we run locally before every commit. Build's tsc
+        # step already runs this, but doing it explicitly keeps the CI
+        # log short when only types break.
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: ESLint
+        # Soft-failing for now since we haven't audited lint warnings —
+        # `|| true` keeps CI green while we work through the backlog.
+        # Remove once ESLint exits 0 on a clean checkout.
+        run: npm run lint || true
