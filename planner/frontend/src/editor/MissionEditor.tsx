@@ -20,6 +20,7 @@ import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
+import { SopCheckTab } from './tabs/SopCheckTab';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
@@ -46,6 +47,10 @@ const SIDEBAR: SidebarItem[] = [
   // Loading the right SOP first means the downstream tabs start
   // pre-configured for the squadron / era you're flying.
   { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
+  // SOP Check sits next to SOP — read-only comparison panel that flags
+  // where the loaded mission disagrees with the active SOP. Empty
+  // state when no SOP active or no mission loaded.
+  { kind: 'tab', id: 'sopCheck',    label: 'SOP Check',   icon: '✓' },
   { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
   { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
   { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
@@ -359,6 +364,11 @@ export function MissionEditor() {
             {visitedTabs.has('sop') && (
               <div style={{ display: activeTab === 'sop' ? 'block' : 'none' }}>
                 <SopTab />
+              </div>
+            )}
+            {visitedTabs.has('sopCheck') && (
+              <div style={{ display: activeTab === 'sopCheck' ? 'block' : 'none' }}>
+                <SopCheckTab />
               </div>
             )}
             {visitedTabs.has('briefGen') && (
