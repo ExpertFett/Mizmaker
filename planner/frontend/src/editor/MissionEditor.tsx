@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useSopStore } from '../sop/sopStore';
 import { useSessionStream } from '../session/useSessionStream';
 import { ParticipantBar } from '../session/ParticipantBar';
 import { InviteManager } from '../session/InviteManager';
@@ -109,6 +110,17 @@ export function MissionEditor() {
   const filename = useMissionStore((s) => s.filename);
   const theater = useMissionStore((s) => s.theater);
 
+  // Active SOP — shown as a green indicator on the SOP tab + the SOP
+  // name under theater/filename in the sidebar header. Visible from any
+  // tab so "is an SOP active?" is answerable at a glance. Read scalars
+  // (React 19 / useSyncExternalStore won't tolerate object selectors).
+  const sops = useSopStore((s) => s.sops);
+  const activeSopId = useSopStore((s) => s.activeId);
+  const activeSop = useMemo(
+    () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
+    [activeSopId, sops],
+  );
+
   const selectTab = (tab: TabId) => {
     setActiveTab(tab);
     setVisitedTabs((prev) => prev.has(tab) ? prev : new Set(prev).add(tab));
@@ -159,6 +171,36 @@ export function MissionEditor() {
             <div style={{ overflow: 'hidden' }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
               {isMap && <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
+              {activeSop && (
+                <div
+                  title={`Active SOP: ${activeSop.name}`}
+                  style={{
+                    fontSize: 11,
+                    color: '#3fb950',
+                    marginTop: 4,
+                    fontWeight: 600,
+                    letterSpacing: 0.3,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: '#3fb950',
+                      flexShrink: 0,
+                      boxShadow: '0 0 4px #3fb950',
+                    }}
+                  />
+                  SOP: {activeSop.name}
+                </div>
+              )}
             </div>
           )}
           {isMap && (
@@ -209,11 +251,19 @@ export function MissionEditor() {
               );
             }
             const isActive = activeTab === item.id;
+            // SOP-aware tab indicators — small green dot on the SOP and
+            // SOP Check tabs when an SOP is active, so "is an SOP
+            // loaded?" reads at a glance from any tab. Picked these two
+            // because they're the SOP-domain tabs; other tabs still
+            // show their inline SOP badges in their own headers.
+            const showSopDot = activeSop != null && (item.id === 'sop' || item.id === 'sopCheck');
             return (
               <button
                 key={item.id}
                 onClick={() => selectTab(item.id as TabId)}
-                title={isCollapsed ? item.label : undefined}
+                title={isCollapsed
+                  ? (showSopDot ? `${item.label} — SOP: ${activeSop!.name}` : item.label)
+                  : (showSopDot ? `Active SOP: ${activeSop!.name}` : undefined)}
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
                   border: 'none',
@@ -231,10 +281,37 @@ export function MissionEditor() {
                   width: '100%',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
+                  position: 'relative',
                 }}
               >
                 <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
                 {!isCollapsed && item.label}
+                {showSopDot && (
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: '#3fb950',
+                      boxShadow: '0 0 4px #3fb950',
+                      flexShrink: 0,
+                      marginLeft: isCollapsed ? 0 : 'auto',
+                      marginRight: isCollapsed ? 0 : 4,
+                      // Collapsed sidebar: pin the dot to the corner so
+                      // it sits at the edge of the icon-only button
+                      // rather than overlapping the icon.
+                      ...(isCollapsed
+                        ? {
+                            position: 'absolute',
+                            top: 6,
+                            right: 6,
+                            marginLeft: 0,
+                            marginRight: 0,
+                          }
+                        : {}),
+                    }}
+                  />
+                )}
               </button>
             );
           })}

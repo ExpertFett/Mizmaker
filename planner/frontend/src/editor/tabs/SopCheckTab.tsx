@@ -447,28 +447,66 @@ export function SopCheckTab() {
 
   return (
     <div style={{ maxWidth: 1100, padding: '0 4px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: 0, fontWeight: 600 }}>
-          SOP Check
-        </h2>
+      <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 10px', fontWeight: 600 }}>
+        SOP Check
+      </h2>
+
+      {/* Active-SOP banner — green accent strip with the SOP name in
+          large readable text, the squadron underneath if defined. The
+          point of this tab is to compare against this SOP, so making
+          which one is active visible at a glance matters. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          padding: '10px 14px',
+          marginBottom: 14,
+          background: '#0d2818',
+          border: '1px solid #2a5a2a',
+          borderLeft: '4px solid #3fb950',
+          borderRadius: 6,
+        }}
+      >
         <span
           style={{
-            padding: '2px 8px',
+            padding: '4px 10px',
             borderRadius: 4,
             background: '#1a3a1a',
             border: '1px solid #2a5a2a',
             color: '#3fb950',
             fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: 0.5,
+            fontWeight: 800,
+            letterSpacing: 1,
+            flexShrink: 0,
           }}
         >
-          SOP
+          SOP ACTIVE
         </span>
-        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
-          {activeSop.name}
-        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              color: '#e0e0e0',
+              fontSize: 16,
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {activeSop.name}
+          </div>
+          {activeSop.squadron && (
+            <div style={{ color: '#888', fontSize: 12, marginTop: 1 }}>
+              {activeSop.squadron}
+            </div>
+          )}
+        </div>
+        <div style={{ color: '#5a8a6a', fontSize: 11, fontWeight: 600, letterSpacing: 0.5 }}>
+          {activeSop.flights?.length ?? 0} flights · {activeSop.comms?.length ?? 0} comms · {activeSop.tankers?.length ?? 0} tankers
+        </div>
       </div>
+
       <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
         Read-only report. Compares the loaded mission against the active SOP and
         flags differences. Apply-on-click is coming in the next release; for now
