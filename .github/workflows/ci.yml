@@ -77,6 +77,12 @@ jobs:
         # log short when only types break.
         run: npx tsc --noEmit -p tsconfig.json
 
+      - name: Vitest
+        # Frontend unit tests (currently editStore actions only — see
+        # standing plan Phase 3 "frontend test foundation"). Hard-gates
+        # CI: a failing frontend test blocks merge.
+        run: npm test
+
       - name: ESLint
         # Soft-failing for now since we haven't audited lint warnings —
         # `|| true` keeps CI green while we work through the backlog.
