@@ -78,15 +78,56 @@ def _mhz_from_hz(freq_hz: float) -> float:
 # Issue class
 # ---------------------------------------------------------------------------
 
+class Fix:
+    """Auto-fix descriptor attached to an Issue.
+
+    Carries everything the frontend needs to render a before/after
+    preview AND dispatch the actual edit(s) when the user clicks
+    Apply. Same shape regardless of which check produced it, so the
+    Debug tab UI stays uniform.
+
+    `before` / `after` are arbitrary dicts shaped per category — for
+    a TACAN conflict they'd be {channel, band}; for a missing ICLS
+    they'd be {channel}. The frontend renders them as a labeled
+    key-value table without needing per-category branches.
+
+    `edits` is a list of edit objects matching the /api/download
+    `unitEdits` payload — pushed straight into editStore on Apply
+    so the next download writes them into the .miz.
+    """
+
+    def __init__(self, description: str, before: dict, after: dict, edits: list):
+        self.description = description
+        self.before = before
+        self.after = after
+        self.edits = edits
+
+    def to_dict(self):
+        return {
+            "description": self.description,
+            "before": self.before,
+            "after": self.after,
+            "edits": self.edits,
+        }
+
+
 class Issue:
     def __init__(self, severity: str, category: str, title: str, detail: str,
-                 group_name: str = "", unit_name: str = ""):
+                 group_name: str = "", unit_name: str = "",
+                 fix: Fix = None):
         self.severity = severity      # "error", "warning", "info"
         self.category = category      # "frequency", "tacan", "carrier", "tanker", etc.
         self.title = title
         self.detail = detail
         self.group_name = group_name
         self.unit_name = unit_name
+        # Optional auto-fix descriptor. None means the issue isn't
+        # auto-fixable (user has to make a judgement call) and the
+        # frontend hides the Fix button. Issues with simple,
+        # well-defined remediations (TACAN/ICLS deconflict, missing
+        # carrier beacons, etc.) carry a Fix; subjective ones
+        # (frequency choice, protected-name absence) don't.
+        self.fix = fix
 
     def to_dict(self):
         d = {
@@ -99,6 +140,8 @@ class Issue:
             d["groupName"] = self.group_name
         if self.unit_name:
             d["unitName"] = self.unit_name
+        if self.fix:
+            d["fix"] = self.fix.to_dict()
         return d
 
 
@@ -137,7 +180,14 @@ def _check_frequency_conflicts(groups: list) -> list:
 
 
 def _check_tacan_conflicts(groups: list) -> list:
-    """Find groups with duplicate TACAN channel+band."""
+    """Find groups with duplicate TACAN channel+band.
+
+    Auto-fix: keep the first group's channel, bump every other group
+    to the next free channel on the same band. Channel preference
+    walks 1..126 odd-then-even (1, 3, 5, ..., 2, 4, 6, ...) — the
+    canonical SOP convention puts carriers / lead tankers on odd
+    channels and pad-fills with evens.
+    """
     issues = []
     tacan_map = defaultdict(list)
 
@@ -148,20 +198,87 @@ def _check_tacan_conflicts(groups: list) -> list:
         key = f"{tacan['channel']}{tacan.get('band', 'X')}"
         tacan_map[key].append(g)
 
+    # Snapshot every channel/band pair currently in use, so the
+    # deconflict pass below doesn't bump a duplicate onto another
+    # already-occupied slot.
+    used: set[tuple[int, str]] = set()
+    for g in groups:
+        t = g.get("tacan")
+        if t and t.get("channel"):
+            used.add((int(t["channel"]), t.get("band", "X")))
+
+    def next_free(band: str) -> int:
+        for ch in [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29,
+                   31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57, 59,
+                   61, 63, 65, 67, 69, 71, 73, 75, 77, 79, 81, 83, 85, 87, 89,
+                   91, 93, 95, 97, 99, 101, 103, 105, 107, 109, 111, 113, 115,
+                   117, 119, 121, 123, 125,
+                   2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+                   32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60,
+                   62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90,
+                   92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114, 116,
+                   118, 120, 122, 124, 126]:
+            if (ch, band) not in used:
+                return ch
+        return 1  # all 126 channels taken; shouldn't happen
+
     for key, glist in tacan_map.items():
         if len(glist) > 1:
             names = ", ".join(f"{g['groupName']} ({g.get('tacan', {}).get('callsign', '?')})" for g in glist)
+            # Per group on the conflict (except the first — that one
+            # keeps the original channel), build a Fix that moves it
+            # to the next free channel. We emit ONE issue per
+            # conflict pair; the fix payload edits each non-first
+            # group in the pair.
+            head = glist[0]
+            tail = glist[1:]
+            tail_band = head.get("tacan", {}).get("band", "X")
+            after_assignments: list[tuple[dict, int]] = []
+            for g in tail:
+                ch = next_free(tail_band)
+                after_assignments.append((g, ch))
+                used.add((ch, tail_band))
+
+            edits = []
+            after_summary = []
+            for g, ch in after_assignments:
+                # tacan edit anchored on the group's first unit (the
+                # ActivateBeacon target). Same shape TacanTab uses.
+                unit_id = (g.get("units") or [{}])[0].get("unitId")
+                if unit_id is None:
+                    continue
+                cs = g.get("tacan", {}).get("callsign", "")
+                edits.append({
+                    "unitId": unit_id,
+                    "groupId": g.get("groupId"),
+                    "field": "tacan",
+                    "value": {"channel": ch, "band": tail_band, "callsign": cs},
+                })
+                after_summary.append(f"{g['groupName']}: {ch}{tail_band}")
+
+            fix = None
+            if edits:
+                fix = Fix(
+                    description=f"Move {len(edits)} group{'s' if len(edits) != 1 else ''} off {key}",
+                    before={"channel_band": key, "groups": [g['groupName'] for g in glist]},
+                    after={"keep_on_" + key: head['groupName'],
+                           "moves": after_summary},
+                    edits=edits,
+                )
             issues.append(Issue(
                 "error", "tacan",
                 f"TACAN conflict: {key}",
                 f"Multiple groups on TACAN {key}: {names}",
+                fix=fix,
             ))
 
     return issues
 
 
 def _check_icls_conflicts(groups: list) -> list:
-    """Find groups with duplicate ICLS channels."""
+    """Find groups with duplicate ICLS channels. Auto-fix walks
+    odd channels first (5/7/9/11/13 — the canonical carrier set)
+    then evens; first conflicting group keeps its channel."""
     issues = []
     icls_map = defaultdict(list)
 
@@ -172,13 +289,54 @@ def _check_icls_conflicts(groups: list) -> list:
         ch = icls["channel"]
         icls_map[ch].append(g)
 
+    used: set[int] = set()
+    for g in groups:
+        ic = g.get("icls")
+        if ic and ic.get("channel"):
+            used.add(int(ic["channel"]))
+
+    def next_free_icls() -> int:
+        for ch in [1, 3, 5, 7, 9, 11, 13, 15, 17, 19,
+                   2, 4, 6, 8, 10, 12, 14, 16, 18, 20]:
+            if ch not in used:
+                return ch
+        return 1
+
     for ch, glist in icls_map.items():
         if len(glist) > 1:
             names = ", ".join(g["groupName"] for g in glist)
+            head = glist[0]
+            tail = glist[1:]
+            edits = []
+            after_summary = []
+            for g in tail:
+                new_ch = next_free_icls()
+                used.add(new_ch)
+                unit_id = (g.get("units") or [{}])[0].get("unitId")
+                if unit_id is None:
+                    continue
+                edits.append({
+                    "unitId": unit_id,
+                    "groupId": g.get("groupId"),
+                    "field": "icls",
+                    "value": {"channel": new_ch},
+                })
+                after_summary.append(f"{g['groupName']}: ch {new_ch}")
+
+            fix = None
+            if edits:
+                fix = Fix(
+                    description=f"Move {len(edits)} group{'s' if len(edits) != 1 else ''} off ICLS ch {ch}",
+                    before={"channel": ch, "groups": [g['groupName'] for g in glist]},
+                    after={f"keep_on_ch_{ch}": head['groupName'],
+                           "moves": after_summary},
+                    edits=edits,
+                )
             issues.append(Issue(
                 "error", "icls",
                 f"ICLS conflict: Channel {ch}",
                 f"Multiple groups on ICLS channel {ch}: {names}",
+                fix=fix,
             ))
 
     return issues
@@ -208,23 +366,93 @@ def _check_carriers(groups: list) -> list:
             "Mission has no carrier groups.",
         ))
 
+    # Snapshot used TACAN/ICLS slots so the auto-assignments below
+    # land on free channels.
+    used_tacan: set[tuple[int, str]] = set()
+    used_icls: set[int] = set()
+    for og in groups:
+        ot = og.get("tacan")
+        if ot and ot.get("channel"):
+            used_tacan.add((int(ot["channel"]), ot.get("band", "X")))
+        oi = og.get("icls")
+        if oi and oi.get("channel"):
+            used_icls.add(int(oi["channel"]))
+
+    def next_free_carrier_tacan() -> int:
+        # Carrier TACAN convention: channels in the 70s on X band.
+        for ch in [72, 74, 76, 78, 71, 73, 75, 77, 79]:
+            if (ch, "X") not in used_tacan:
+                return ch
+        # Fallback walk
+        for ch in range(1, 127):
+            if (ch, "X") not in used_tacan:
+                return ch
+        return 72
+
+    def next_free_carrier_icls() -> int:
+        # Carrier ICLS convention: 5/7/9/11/13 on odd channels first.
+        for ch in [7, 5, 9, 11, 13, 1, 3, 15, 17, 19,
+                   2, 4, 6, 8, 10, 12, 14, 16, 18, 20]:
+            if ch not in used_icls:
+                return ch
+        return 7
+
     for g in carrier_groups:
+        unit_id = (g.get("units") or [{}])[0].get("unitId")
+
         # Check TACAN
         if not g.get("tacan"):
+            fix = None
+            if unit_id is not None:
+                ch = next_free_carrier_tacan()
+                used_tacan.add((ch, "X"))
+                # Default callsign from hull number when present
+                # (CVN-72 -> "CVN") or use generic.
+                hull = (g.get("units") or [{}])[0].get("type", "")
+                m = re.search(r'CVN[_-]?(\d{2,3})', hull, re.IGNORECASE)
+                callsign = "CVN" if m else "CVN"
+                fix = Fix(
+                    description=f"Assign TACAN {ch}X to {g['groupName']}",
+                    before={"tacan": "(none)"},
+                    after={"channel": ch, "band": "X", "callsign": callsign},
+                    edits=[{
+                        "unitId": unit_id,
+                        "groupId": g.get("groupId"),
+                        "field": "tacan",
+                        "value": {"channel": ch, "band": "X", "callsign": callsign},
+                    }],
+                )
             issues.append(Issue(
                 "error", "carrier",
                 f"Carrier missing TACAN: {g['groupName']}",
                 f"Carrier group '{g['groupName']}' has no TACAN beacon configured.",
                 group_name=g["groupName"],
+                fix=fix,
             ))
 
         # Check ICLS
         if not g.get("icls"):
+            fix = None
+            if unit_id is not None:
+                ch = next_free_carrier_icls()
+                used_icls.add(ch)
+                fix = Fix(
+                    description=f"Assign ICLS ch {ch} to {g['groupName']}",
+                    before={"icls": "(none)"},
+                    after={"channel": ch},
+                    edits=[{
+                        "unitId": unit_id,
+                        "groupId": g.get("groupId"),
+                        "field": "icls",
+                        "value": {"channel": ch},
+                    }],
+                )
             issues.append(Issue(
                 "warning", "carrier",
                 f"Carrier missing ICLS: {g['groupName']}",
                 f"Carrier group '{g['groupName']}' has no ICLS configured.",
                 group_name=g["groupName"],
+                fix=fix,
             ))
 
         # Check waypoints (should have at least WP0, WP1, WP2)

@@ -5,10 +5,25 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore } from '../../store/editStore';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
+
+interface DebugFix {
+  /** Human-readable summary shown above the before/after table.
+   *  ('Move 2 groups off TACAN 74X', 'Assign ICLS ch 7 to ...') */
+  description: string;
+  /** Pre-fix state, rendered as a key-value list. Shape varies per
+   *  category — e.g. { channel: 74, band: "X" } for TACAN. */
+  before: Record<string, unknown>;
+  /** Post-fix state, same shape as before. */
+  after: Record<string, unknown>;
+  /** Edits to dispatch into the editStore queue when the user
+   *  clicks Apply. Same shape as the /api/download unitEdits payload. */
+  edits: Array<{ unitId?: number; groupId?: number; field: string; value: unknown }>;
+}
 
 interface DebugIssue {
   severity: 'error' | 'warning' | 'info';
@@ -17,6 +32,11 @@ interface DebugIssue {
   detail: string;
   groupName?: string;
   unitName?: string;
+  /** Optional auto-fix descriptor. Present when the issue has a
+   *  well-defined remediation (TACAN/ICLS deconflict, missing
+   *  carrier beacon, etc.). Frontend renders a Fix button + a
+   *  before/after preview when expanded. */
+  fix?: DebugFix;
 }
 
 type FilterSeverity = 'all' | 'error' | 'warning' | 'info';
@@ -55,12 +75,65 @@ const runBtnStyle: React.CSSProperties = {
   cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit',
 };
 
+/** Renders one side of the fix preview's before/after pair. The fix
+ *  payload's `before` and `after` are arbitrary dicts shaped per
+ *  category (TACAN: {channel, band}; ICLS: {channel}; carrier-init:
+ *  {tacan: "(none)"}, etc.) — render them as a labeled key-value
+ *  list so the UI works without per-category branching. */
+function FixSideTable({ label, data, accent }: {
+  label: string;
+  data: Record<string, unknown>;
+  accent: string;
+}) {
+  const rows: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (Array.isArray(v)) {
+      rows.push([k, v.map(String).join(', ')]);
+    } else if (v != null && typeof v === 'object') {
+      rows.push([k, JSON.stringify(v)]);
+    } else {
+      rows.push([k, String(v)]);
+    }
+  }
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+        color: accent, marginBottom: 4,
+      }}>
+        {label}
+      </div>
+      <div style={{
+        background: '#0a1218',
+        border: `1px solid ${accent}30`,
+        borderRadius: 3,
+        padding: '6px 10px',
+        fontSize: 11,
+        fontFamily: "'B612 Mono', monospace",
+        color: '#cccccc',
+      }}>
+        {rows.length === 0 ? (
+          <span style={{ color: '#555' }}>(empty)</span>
+        ) : rows.map(([k, v]) => (
+          <div key={k} style={{ padding: '1px 0', display: 'flex', gap: 8 }}>
+            <span style={{ color: '#888', flexShrink: 0 }}>{k}:</span>
+            <span style={{ color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {v}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
 export function MissionDebugTab() {
   const sessionId = useMissionStore((s) => s.sessionId);
+  const addEdit = useEditStore((s) => s.addEdit);
 
   const [issues, setIssues] = useState<DebugIssue[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,6 +141,51 @@ export function MissionDebugTab() {
   const [error, setError] = useState('');
   const [severityFilter, setSeverityFilter] = useState<FilterSeverity>('all');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>('all');
+  // Which issue cards have their Fix preview expanded. Click
+  // "Show Fix" → expand; click "Apply Fix" → dispatch + collapse.
+  const [expandedFixes, setExpandedFixes] = useState<Set<number>>(new Set());
+  // Indices of issues whose fix has been applied this session, so we
+  // can show a confirmation tag and disable the button until re-run.
+  const [appliedFixes, setAppliedFixes] = useState<Set<number>>(new Set());
+
+  const toggleFixExpanded = useCallback((idx: number) => {
+    setExpandedFixes((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }, []);
+
+  const applyFix = useCallback((idx: number, fix: DebugFix) => {
+    for (const e of fix.edits) {
+      // Edits already match the unitEdits payload shape; pushed
+      // straight into editStore so the next download writes them.
+      addEdit(e as never);
+    }
+    setAppliedFixes((prev) => new Set(prev).add(idx));
+    setExpandedFixes((prev) => {
+      const next = new Set(prev);
+      next.delete(idx);
+      return next;
+    });
+  }, [addEdit]);
+
+  const fixableCount = useMemo(
+    () => issues.filter((i) => i.fix).length,
+    [issues],
+  );
+
+  const applyAllFixes = useCallback(() => {
+    const newApplied = new Set(appliedFixes);
+    issues.forEach((i, idx) => {
+      if (!i.fix || newApplied.has(idx)) return;
+      for (const e of i.fix.edits) addEdit(e as never);
+      newApplied.add(idx);
+    });
+    setAppliedFixes(newApplied);
+    setExpandedFixes(new Set());
+  }, [issues, addEdit, appliedFixes]);
 
   const runDebug = useCallback(async () => {
     if (!sessionId) return;
@@ -80,6 +198,11 @@ export function MissionDebugTab() {
         setError(data.error);
       } else {
         setIssues(data.issues || []);
+        // Re-run wipes the "applied" + expanded sets — the indices
+        // referred to the previous issue list and may not match the
+        // new one. User will see fixes as fresh.
+        setAppliedFixes(new Set());
+        setExpandedFixes(new Set());
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to run debug analysis');
@@ -197,6 +320,29 @@ export function MissionDebugTab() {
             >
               {loading ? 'Running...' : 'Re-run'}
             </button>
+            {fixableCount > 0 && (
+              <button
+                onClick={applyAllFixes}
+                disabled={appliedFixes.size === fixableCount}
+                title="Apply every available fix at once"
+                style={{
+                  background: 'rgba(63, 185, 80, 0.15)',
+                  border: '1px solid rgba(63, 185, 80, 0.3)',
+                  borderRadius: 4,
+                  color: '#3fb950',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  cursor: appliedFixes.size === fixableCount ? 'default' : 'pointer',
+                  opacity: appliedFixes.size === fixableCount ? 0.4 : 1,
+                  fontFamily: 'inherit',
+                }}
+              >
+                {appliedFixes.size === fixableCount
+                  ? `✓ ${fixableCount}/${fixableCount} applied`
+                  : `Auto-Fix All (${fixableCount - appliedFixes.size})`}
+              </button>
+            )}
           </div>
 
           {/* Filters */}
@@ -243,40 +389,137 @@ export function MissionDebugTab() {
                   : 'No matching issues for this filter.'}
               </div>
             ) : (
-              filtered.map((issue, idx) => {
+              filtered.map((issue) => {
                 const style = severityColors[issue.severity] || severityColors.info;
+                // Use the index in the unfiltered list as the stable
+                // key for fix expansion / applied state — filtered
+                // indices change when severity or category filters
+                // toggle.
+                const idx = issues.indexOf(issue);
+                const fix = issue.fix;
+                const isExpanded = expandedFixes.has(idx);
+                const isApplied = appliedFixes.has(idx);
                 return (
                   <div key={idx} style={{
                     ...cardStyle,
                     background: style.bg,
                     border: `1px solid ${style.border}`,
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
                   }}>
-                    <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1 }}>
-                      {style.icon}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                        <span style={{ fontWeight: 600, color: style.text, fontSize: 13 }}>
-                          {issue.title}
-                        </span>
-                        <span style={{
-                          fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                          background: 'rgba(90, 122, 138, 0.15)', color: '#aaaaaa',
-                        }}>
-                          {issue.category}
-                        </span>
-                      </div>
-                      <div style={{ color: '#bbbbbb', fontSize: 12, lineHeight: 1.4 }}>
-                        {issue.detail}
-                      </div>
-                      {(issue.groupName || issue.unitName) && (
-                        <div style={{ marginTop: 3, fontSize: 11, color: '#4a4a4a' }}>
-                          {issue.groupName && <span>Group: {issue.groupName}</span>}
-                          {issue.groupName && issue.unitName && <span> | </span>}
-                          {issue.unitName && <span>Unit: {issue.unitName}</span>}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1 }}>
+                        {style.icon}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 600, color: style.text, fontSize: 13 }}>
+                            {issue.title}
+                          </span>
+                          <span style={{
+                            fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                            background: 'rgba(90, 122, 138, 0.15)', color: '#aaaaaa',
+                          }}>
+                            {issue.category}
+                          </span>
+                          {isApplied && (
+                            <span style={{
+                              fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                              background: 'rgba(63, 185, 80, 0.18)',
+                              border: '1px solid rgba(63, 185, 80, 0.3)',
+                              color: '#3fb950', fontWeight: 700, letterSpacing: 0.5,
+                            }}>
+                              ✓ FIX APPLIED — RE-RUN TO VERIFY
+                            </span>
+                          )}
+                          {fix && !isApplied && (
+                            <button
+                              onClick={() => toggleFixExpanded(idx)}
+                              style={{
+                                marginLeft: 'auto',
+                                background: 'rgba(63, 185, 80, 0.10)',
+                                border: '1px solid rgba(63, 185, 80, 0.3)',
+                                borderRadius: 3,
+                                color: '#3fb950',
+                                fontSize: 11, fontWeight: 600,
+                                padding: '2px 10px',
+                                cursor: 'pointer', fontFamily: 'inherit',
+                              }}
+                            >
+                              {isExpanded ? '▲ Hide Fix' : '▼ Show Fix'}
+                            </button>
+                          )}
                         </div>
-                      )}
+                        <div style={{ color: '#bbbbbb', fontSize: 12, lineHeight: 1.4 }}>
+                          {issue.detail}
+                        </div>
+                        {(issue.groupName || issue.unitName) && (
+                          <div style={{ marginTop: 3, fontSize: 11, color: '#4a4a4a' }}>
+                            {issue.groupName && <span>Group: {issue.groupName}</span>}
+                            {issue.groupName && issue.unitName && <span> | </span>}
+                            {issue.unitName && <span>Unit: {issue.unitName}</span>}
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Auto-fix preview — expanded view shows before/after
+                        side-by-side with explicit Apply / Cancel actions.
+                        Lives inside the issue card so the user can see it
+                        in the context of the issue it solves. */}
+                    {fix && isExpanded && (
+                      <div style={{
+                        marginTop: 10,
+                        padding: '10px 12px',
+                        background: 'rgba(0, 0, 0, 0.25)',
+                        border: '1px solid rgba(63, 185, 80, 0.25)',
+                        borderRadius: 4,
+                      }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#3fb950', marginBottom: 8 }}>
+                          AUTO-FIX: {fix.description}
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+                          <FixSideTable label="BEFORE" data={fix.before} accent="#d95050" />
+                          <div style={{
+                            color: '#666', fontSize: 16, alignSelf: 'center',
+                            padding: '0 4px',
+                          }}>→</div>
+                          <FixSideTable label="AFTER" data={fix.after} accent="#3fb950" />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => toggleFixExpanded(idx)}
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid #3a3a3a',
+                              borderRadius: 3,
+                              color: '#aaaaaa',
+                              fontSize: 11,
+                              padding: '4px 12px',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => applyFix(idx, fix)}
+                            style={{
+                              background: 'rgba(63, 185, 80, 0.18)',
+                              border: '1px solid rgba(63, 185, 80, 0.4)',
+                              borderRadius: 3,
+                              color: '#3fb950',
+                              fontSize: 11, fontWeight: 600,
+                              padding: '4px 14px',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            Apply Fix → queue {fix.edits.length} edit{fix.edits.length !== 1 ? 's' : ''}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })
