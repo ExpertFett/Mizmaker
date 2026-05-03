@@ -684,31 +684,28 @@ def _copy_payload_block(text: str, source_uid: int, target_uid: int) -> str:
 
 
 def _replace_unit_name(text: str, unit_id: int, new_name: str) -> str:
-    """Replace the ["name"] field for a specific unit, found by unitId."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_start = max(0, unit_pos - 3000)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[search_start:search_end]
+    """Replace the ["name"] field for a specific unit, found by unitId.
 
-    rel_pos = unit_pos - search_start
+    Scopes the search to the actual unit block (via _find_unit_block_bounds)
+    rather than a fragile ±N-char window around unitId — on player units
+    with full radio preset programming the unit block is well over 30 KB,
+    so the old window couldn't reach the top-of-block ["name"] field.
+
+    Takes the first ["name"] entry in the block. DCS writes the unit's
+    own name near the top of the block, before nested structures (payload,
+    AddPropAircraft, task params) that may carry their own ["name"] keys.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
+
     name_pattern = re.compile(r'\["name"\]\s*=\s*"([^"]*)"')
+    m = name_pattern.search(unit_block)
+    if not m:
+        raise ValueError(f"Name field not found in unit {unit_id} block")
 
-    # Search forward and backward from unitId, pick the closest match
-    best = None
-    best_dist = float('inf')
-    for m in name_pattern.finditer(region):
-        dist = abs(m.start() - rel_pos)
-        if dist < best_dist:
-            best_dist = dist
-            best = m
-
-    if not best or best_dist > 2000:
-        raise ValueError(f"Name field not found near unit {unit_id}")
-
-    abs_start = search_start + best.start(1)
-    abs_end = search_start + best.end(1)
-    text = text[:abs_start] + new_name + text[abs_end:]
-    return text
+    abs_start = block_start + m.start(1)
+    abs_end = block_start + m.end(1)
+    return text[:abs_start] + new_name + text[abs_end:]
 
 
 def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
@@ -759,16 +756,20 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
 
 
 def _replace_heading(text: str, unit_id: int, heading_rad: float) -> str:
-    """Replace heading for a unit (radians)."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[unit_pos:search_end]
+    """Replace heading for a unit (radians).
+
+    Scopes to the unit block via _find_unit_block_bounds so we don't
+    accidentally edit a neighbouring unit's heading. Heading sits near
+    the top of the unit block; the first match wins.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     pattern = r'(\["heading"\]\s*=\s*)([0-9eE.+\-]+)'
-    m = re.search(pattern, region)
+    m = re.search(pattern, unit_block)
     if m:
-        abs_start = unit_pos + m.start(2)
-        abs_end = unit_pos + m.end(2)
+        abs_start = block_start + m.start(2)
+        abs_end = block_start + m.end(2)
         text = text[:abs_start] + str(heading_rad) + text[abs_end:]
     return text
 
@@ -873,7 +874,18 @@ def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
 
 
 def _replace_icls(text: str, unit_id: int, channel: int) -> str:
-    """Replace ActivateICLS channel for a unit's waypoint task."""
+    """Replace ActivateICLS channel for a unit's waypoint task.
+
+    Primary path: locate an ActivateICLS task whose params reference
+    the supplied unitId. That's the strict, unambiguous match.
+
+    Fallback: pick the ActivateICLS closest to the unit's position
+    (in either direction). Needed because the frontend sometimes
+    passes a child unit's id (helo deck on a carrier group) when the
+    actual ICLS target is the carrier hull — the previous fallback
+    only searched BEFORE the unit's position and missed the carrier's
+    waypoint-attached ICLS task entirely on simple.miz.
+    """
     icls_pattern = r'\["id"\]\s*=\s*"ActivateICLS"'
     icls_pos = None
     for m in re.finditer(icls_pattern, text):
@@ -884,13 +896,17 @@ def _replace_icls(text: str, unit_id: int, channel: int) -> str:
             break
 
     if icls_pos is None:
-        unit_pos = _find_unit_block_start(text, unit_id)
+        try:
+            unit_pos = _find_unit_block_start(text, unit_id)
+        except ValueError:
+            return text
         best = None
+        best_dist = float('inf')
         for m in re.finditer(icls_pattern, text):
-            if m.start() < unit_pos:
+            dist = abs(m.start() - unit_pos)
+            if dist < best_dist:
+                best_dist = dist
                 best = m.start()
-            else:
-                break
         if best is None:
             return text
         icls_pos = best
@@ -1050,48 +1066,75 @@ def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
 
 
 def _replace_onboard_num(text: str, unit_id: int, new_num: str) -> str:
-    """Replace onboard_num (tail number) for a unit."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[unit_pos:search_end]
+    """Replace onboard_num (tail number) for a unit.
+
+    Block-scoped to prevent the forward-only search from drifting into
+    an adjacent unit when the current unit's onboard_num happens to sit
+    above its unitId line.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     pattern = r'(\["onboard_num"\]\s*=\s*")([^"]*)'
-    m = re.search(pattern, region)
+    m = re.search(pattern, unit_block)
     if m:
-        abs_start = unit_pos + m.start(2)
-        abs_end = unit_pos + m.end(2)
+        abs_start = block_start + m.start(2)
+        abs_end = block_start + m.end(2)
         text = text[:abs_start] + new_num + text[abs_end:]
     return text
 
 
 def _replace_skill(text: str, unit_id: int, new_skill: str) -> str:
-    """Replace skill level for a unit."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[unit_pos:search_end]
+    """Replace skill level for a unit.
+
+    Block-scoped — the original forward-only search read past the end
+    of the target unit on player units (where ["skill"] sits at the top
+    of the block, ~7K+ chars before the bottom-of-block unitId line)
+    and could land on a neighbouring unit's skill field.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     pattern = r'(\["skill"\]\s*=\s*")([^"]*)'
-    m = re.search(pattern, region)
+    m = re.search(pattern, unit_block)
     if m:
-        abs_start = unit_pos + m.start(2)
-        abs_end = unit_pos + m.end(2)
+        abs_start = block_start + m.start(2)
+        abs_end = block_start + m.end(2)
         text = text[:abs_start] + new_skill + text[abs_end:]
     return text
 
 
 def _replace_radio_frequency(text: str, unit_id: int, freq_hz: int) -> str:
-    """Replace Radio[1] frequency for a unit."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[unit_pos:search_end]
+    """Replace Radio[1] frequency for a unit.
 
-    pattern = r'(\["frequency"\]\s*=\s*)(\d+)'
-    m = re.search(pattern, region)
-    if m:
-        abs_start = unit_pos + m.start(2)
-        abs_end = unit_pos + m.end(2)
-        text = text[:abs_start] + str(freq_hz) + text[abs_end:]
-    return text
+    Scopes to the unit block, then walks into ["Radio"][1] specifically
+    so we don't edit Radio[2]'s frequency by accident. The old code
+    just took the first ["frequency"] within a forward window, which
+    on player units with no Radio[1] block fell back to whatever it
+    found first downstream — usually the next unit's primary radio.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
+
+    radio_m = re.search(r'\["Radio"\]\s*=\s*\n?\s*\{', unit_block)
+    if not radio_m:
+        return text  # unit has no Radio block — silent success (noop)
+
+    # Walk into Radio[1].
+    after_radio = unit_block[radio_m.end():]
+    r1_m = re.search(r'\[1\]\s*=\s*\n?\s*\{', after_radio)
+    if not r1_m:
+        return text  # no Radio[1] sub-block
+
+    radio1_start_in_block = radio_m.end() + r1_m.end()
+    region = unit_block[radio1_start_in_block:]
+    freq_m = re.search(r'(\["frequency"\]\s*=\s*)(\d+)', region)
+    if not freq_m:
+        return text
+
+    abs_start = block_start + radio1_start_in_block + freq_m.start(2)
+    abs_end = block_start + radio1_start_in_block + freq_m.end(2)
+    return text[:abs_start] + str(freq_hz) + text[abs_end:]
 
 
 def _enumerate_unit_ids_in_group(text: str, group_id: int) -> list[int]:

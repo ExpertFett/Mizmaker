@@ -9,16 +9,18 @@ that need a particular kind of unit (e.g. a TACAN beacon, a player
 flight) skip cleanly when the fixture doesn't have one.
 
 These guard the surgical text editor's most fragile property — every
-handler reads a ±N-char window around an anchor and silently no-ops
-when the regex doesn't match. Several of the per-unit handlers
-(_replace_skill, _replace_livery, _replace_unit_name, _replace_heading,
-_replace_radio_frequency) currently ship with a 3000-char window that
-isn't large enough to reach top-of-block fields on player units with
-full radio preset programming — those tests are marked xfail with
-SILENT_FAILURE_BUG until the handlers are fixed. Keeping them in the
-suite as expected-failures means the day a handler is fixed, pytest
-turns them green automatically (XPASS) and the bug-tracking comment
-gets a reminder to remove the marker.
+handler reads a window around an anchor and silently no-ops when the
+regex doesn't match. After the fix in unit_editor.py the affected
+handlers (_replace_skill, _replace_livery, _replace_unit_name,
+_replace_heading, _replace_onboard_num, _replace_radio_frequency,
+_replace_icls) now scope to the actual unit block via
+_find_unit_block_bounds rather than ±N-char windows.
+
+The skill / livery / unitRename / heading / onboard_num assertions
+verify the value landed on the *target* unit specifically — not just
+"somewhere in the file" — using _find_unit_block_bounds in the test.
+This guards against the silent-corruption variant where the old
+handler edited a neighbouring unit's field.
 """
 
 from __future__ import annotations
@@ -28,16 +30,7 @@ import re
 import pytest
 
 from tests.conftest import download_edited
-
-
-# Shared bug reference. Used as the xfail reason for every test that
-# exercises a handler currently afflicted by the ±N-char window bug.
-SILENT_FAILURE_BUG = (
-    "Known: handler's ±3000-char search window can't reach top-of-block "
-    "fields on player units with full radio preset programming. Tracked "
-    "as Phase 1 risk #1 in the standing plan; fix is to either widen the "
-    "window or use _find_unit_block_bounds-based scoping."
-)
+from services.unit_editor import _find_unit_block_bounds
 
 
 # ---------------------------------------------------------------------------
@@ -77,15 +70,12 @@ def _first_group_with_icls(uploaded_session: dict) -> tuple[dict | None, dict | 
     return None, None
 
 
-def _unit_window(text: str, unit_id: int, before: int = 30000, after: int = 5000) -> str:
-    """Slice a generous window around a unitId — wide enough to reach
-    top-of-block fields like skill/livery/name on player units. Default
-    backward window matches the lateActivation handler's ±15k+ scan."""
-    m = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\s*,', text)
-    if not m:
-        return ""
-    start = max(0, m.start() - before)
-    return text[start:m.start() + after]
+def _unit_block(text: str, unit_id: int) -> str:
+    """Extract the exact unit block via the same brace-matching helper the
+    handlers use. Asserts on this rather than a coarse window ensure the
+    edit landed on the target unit specifically — not a neighbour."""
+    bs, be = _find_unit_block_bounds(text, unit_id)
+    return text[bs:be]
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +83,7 @@ def _unit_window(text: str, unit_id: int, before: int = 30000, after: int = 5000
 # ---------------------------------------------------------------------------
 
 class TestSkill:
-    @pytest.mark.xfail(reason=SILENT_FAILURE_BUG, strict=False)
-    def test_skill_change_persists(self, client, uploaded_session):
+    def test_skill_change_persists_in_target_block(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_player_unit(uploaded_session)
         if not unit:
@@ -102,14 +91,13 @@ class TestSkill:
         new_skill = "Excellent" if unit.get("skill") != "Excellent" else "Good"
         edit = {"unitId": unit["unitId"], "field": "skill", "value": new_skill}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert f'"skill"] = "{new_skill}"' in window, \
-            f"skill {new_skill} not written for unit {unit['unitId']}"
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"skill"] = "{new_skill}"' in block, \
+            f"skill {new_skill} not present in unit {unit['unitId']}'s block"
 
 
 class TestLivery:
-    @pytest.mark.xfail(reason=SILENT_FAILURE_BUG, strict=False)
-    def test_livery_change_persists(self, client, uploaded_session):
+    def test_livery_change_persists_in_target_block(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_player_unit(uploaded_session)
         if not unit:
@@ -117,14 +105,13 @@ class TestLivery:
         new_livery = "TEST_LIVERY_ID"
         edit = {"unitId": unit["unitId"], "field": "livery", "value": new_livery}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert f'"livery_id"] = "{new_livery}"' in window, \
-            f"livery_id {new_livery} not written for unit {unit['unitId']}"
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"livery_id"] = "{new_livery}"' in block, \
+            f"livery_id {new_livery} not present in unit {unit['unitId']}'s block"
 
 
 class TestUnitRename:
-    @pytest.mark.xfail(reason=SILENT_FAILURE_BUG, strict=False)
-    def test_unit_rename_persists(self, client, uploaded_session):
+    def test_unit_rename_persists_in_target_block(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_player_unit(uploaded_session)
         if not unit:
@@ -132,13 +119,13 @@ class TestUnitRename:
         new_name = "TEST_PILOT_42"
         edit = {"unitId": unit["unitId"], "field": "unitRename", "value": new_name}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert f'"name"] = "{new_name}"' in window
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"name"] = "{new_name}"' in block, \
+            f"unit name {new_name} not present in unit {unit['unitId']}'s block"
 
 
 class TestHeading:
-    @pytest.mark.xfail(reason=SILENT_FAILURE_BUG, strict=False)
-    def test_heading_change_persists(self, client, uploaded_session):
+    def test_heading_change_persists_in_target_block(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_player_unit(uploaded_session)
         if not unit:
@@ -146,13 +133,16 @@ class TestHeading:
         new_heading = 1.5708
         edit = {"unitId": unit["unitId"], "field": "heading", "value": new_heading}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert re.search(r'\["heading"\]\s*=\s*1\.570', window)
+        block = _unit_block(files["mission"], unit["unitId"])
+        # Match the leading digits — the handler writes Python's str(float)
+        assert re.search(r'\["heading"\]\s*=\s*1\.570', block), \
+            f"heading not updated in unit {unit['unitId']}'s block"
 
 
 class TestLateActivation:
-    """lateActivation walks BACKWARD from the unit position with a 15k window,
-    so this one actually works on player units. Keep the assertion strict."""
+    """lateActivation is a GROUP-level field set via a unit-id anchor.
+    We can't scope the assertion to the unit block — it lives outside.
+    Verify it appears in the broader group region instead."""
 
     def test_late_activation_toggles(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
@@ -161,19 +151,17 @@ class TestLateActivation:
             pytest.skip("no player unit in fixture")
         edit = {"unitId": unit["unitId"], "field": "lateActivation", "value": True}
         files = download_edited(client, sid, [edit])
-        # Look at the broad neighbourhood of the unit — lateActivation is a
-        # group-level field, sometimes inserted near groupId, often above.
-        window = _unit_window(files["mission"], unit["unitId"], before=20000, after=2000)
+        # Pull a wide window straddling the unit and its group; the handler
+        # writes lateActivation to the group block above the units list.
+        m = re.search(rf'\["unitId"\]\s*=\s*{unit["unitId"]}\s*,', files["mission"])
+        assert m
+        window = files["mission"][max(0, m.start() - 25000):m.start() + 2000]
         assert re.search(r'\["lateActivation"\]\s*=\s*true', window), \
             "lateActivation=true not written for the group containing the player unit"
 
 
 class TestOnboardNum:
-    """onboard_num appears AFTER unitId in some fixtures (DCS writers vary on
-    field order). Works on simple.miz today; if a future fixture writes it
-    above unitId, mark xfail."""
-
-    def test_onboard_num_change_persists(self, client, uploaded_session):
+    def test_onboard_num_change_persists_in_target_block(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_player_unit(uploaded_session)
         if not unit:
@@ -181,24 +169,58 @@ class TestOnboardNum:
         new_num = "742"
         edit = {"unitId": unit["unitId"], "field": "onboard_num", "value": new_num}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert f'"onboard_num"] = "{new_num}"' in window, \
-            f"onboard_num {new_num} not written for unit {unit['unitId']}"
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"onboard_num"] = "{new_num}"' in block, \
+            f"onboard_num {new_num} not present in unit {unit['unitId']}'s block"
 
 
 class TestPerUnitRadioFrequency:
-    @pytest.mark.xfail(reason=SILENT_FAILURE_BUG, strict=False)
+    """radioFrequency edits Radio[1].frequency. Many DCS player units boot
+    to a selected channel rather than carrying an explicit Radio[1].frequency
+    field, so this test gates on a unit whose Radio[1] block actually has
+    one. Use the upload's parsed mission as a probe — find the first unit
+    with a Radio block whose [1] contains a frequency we can edit."""
+
+    def _find_unit_with_radio1_freq(self, uploaded_session: dict, mission_text: str) -> int | None:
+        """Walk through the uploaded units; return the first unitId whose
+        unit block contains ["Radio"][1]["frequency"]."""
+        for g in uploaded_session.get("groups", []):
+            for u in g.get("units", []):
+                uid = u.get("unitId")
+                if uid is None:
+                    continue
+                try:
+                    bs, be = _find_unit_block_bounds(mission_text, uid)
+                except ValueError:
+                    continue
+                block = mission_text[bs:be]
+                radio_m = re.search(r'\["Radio"\]\s*=\s*\n?\s*\{', block)
+                if not radio_m:
+                    continue
+                after_radio = block[radio_m.end():]
+                r1_m = re.search(r'\[1\]\s*=\s*\n?\s*\{', after_radio)
+                if not r1_m:
+                    continue
+                inner = after_radio[r1_m.end():r1_m.end() + 800]
+                if re.search(r'\["frequency"\]\s*=\s*\d+', inner):
+                    return uid
+        return None
+
     def test_radio_frequency_change_persists(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
-        unit, _ = _first_player_unit(uploaded_session)
-        if not unit:
-            pytest.skip("no player unit in fixture")
-        # 305.5 MHz expressed in Hz — the per-unit handler takes Hz integers.
+        # Probe the original mission — call /api/download with no edits
+        # to get the pristine output and inspect.
+        original = download_edited(client, sid, [])
+        target_uid = self._find_unit_with_radio1_freq(uploaded_session, original["mission"])
+        if target_uid is None:
+            pytest.skip("no unit in fixture has an explicit Radio[1].frequency field")
+
         new_freq_hz = 305_500_000
-        edit = {"unitId": unit["unitId"], "field": "radioFrequency", "value": new_freq_hz}
+        edit = {"unitId": target_uid, "field": "radioFrequency", "value": new_freq_hz}
         files = download_edited(client, sid, [edit])
-        window = _unit_window(files["mission"], unit["unitId"])
-        assert str(new_freq_hz) in window
+        block = _unit_block(files["mission"], target_uid)
+        assert str(new_freq_hz) in block, \
+            f"radioFrequency {new_freq_hz} Hz not present in unit {target_uid}'s block"
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +239,6 @@ class TestGroupTask:
         new_task = "CAP"
         edit = {"groupId": group["groupId"], "field": "groupTask", "value": new_task}
         files = download_edited(client, sid, [edit])
-        # task appears at group-level after units. Just verify the new value
-        # exists somewhere in the mission, then verify the group's groupId
-        # marker is still present so we know we didn't corrupt the structure.
         assert f'"task"] = "{new_task}"' in files["mission"], \
             f"groupTask {new_task} not written"
         assert f'["groupId"] = {group["groupId"]}' in files["mission"], \
@@ -236,7 +255,6 @@ class TestGroupModulation:
         new_mod = 1 if target.get("modulation", 0) == 0 else 0
         edit = {"groupId": target["groupId"], "field": "groupModulation", "value": new_mod}
         files = download_edited(client, sid, [edit])
-        # Use the same anchored search as TestGroupFrequency.
         gid = target["groupId"]
         group_start_m = re.search(
             rf'\["groupId"\]\s*=\s*{gid}\s*,\s*\n\s*\["hidden"\]',
@@ -266,10 +284,9 @@ class TestGroupModulation:
 # ---------------------------------------------------------------------------
 
 class TestTacanBeacon:
-    """Verifies a tacan edit lands SOMEWHERE in an ActivateBeacon block.
-    The handler picks the closest beacon to a unit; tests that try to
-    pin a specific beacon-by-unit-id are brittle since beacons may use
-    sub-unit IDs not in the upload's groups[].units list."""
+    """Verifies a tacan edit lands in some ActivateBeacon block. We don't pin
+    by unitId because the handler's fallback may have edited a neighbouring
+    beacon block; coarse but adequate for round-trip verification."""
 
     def test_tacan_channel_band_callsign(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
@@ -282,9 +299,6 @@ class TestTacanBeacon:
             "value": {"channel": 73, "band": "Y", "callsign": "TST"},
         }
         files = download_edited(client, sid, [edit])
-        # Verify SOME ActivateBeacon block has all three new values. We
-        # don't pin to the unit's beacon by unitId because the handler's
-        # fallback may have edited a different beacon block.
         beacon_blocks: list[str] = []
         for m in re.finditer(r'\["id"\]\s*=\s*"ActivateBeacon"', files["mission"]):
             beacon_blocks.append(files["mission"][m.start():m.start() + 1500])
@@ -297,18 +311,6 @@ class TestTacanBeacon:
 
 
 class TestIcls:
-    @pytest.mark.xfail(
-        reason=(
-            "Known: _replace_icls' fallback only searches BEFORE the unit's "
-            "unitId line. When the ICLS task is registered in the carrier "
-            "group's waypoints (after the units block), and the test picks "
-            "a non-carrier unit from the group, the handler finds nothing "
-            "to edit. TACAN's _replace_tacan_beacon has the same fallback "
-            "pattern but happens to land correctly on simple.miz. Fix is "
-            "to scope by group block, not by linear text position."
-        ),
-        strict=False,
-    )
     def test_icls_channel_change_persists(self, client, uploaded_session):
         sid = uploaded_session["sessionId"]
         unit, _ = _first_group_with_icls(uploaded_session)
@@ -320,14 +322,11 @@ class TestIcls:
             "value": {"channel": 17},
         }
         files = download_edited(client, sid, [edit])
-        # Same coarse check as TACAN — verify some ActivateICLS block now has
-        # channel=17.
         icls_blocks: list[str] = []
         for m in re.finditer(r'\["id"\]\s*=\s*"ActivateICLS"', files["mission"]):
             icls_blocks.append(files["mission"][m.start():m.start() + 1500])
         if not icls_blocks:
-            pytest.skip("no ActivateICLS task in fixture (fixture's icls field "
-                        "may be reported via a different mechanism)")
+            pytest.skip("no ActivateICLS task in fixture")
         assert any(
             re.search(r'\["channel"\]\s*=\s*17', b)
             for b in icls_blocks
@@ -359,11 +358,48 @@ class TestFindReplace:
 
 
 # ---------------------------------------------------------------------------
+# Adjacent-unit isolation — guards against the silent-corruption variant
+# where a unit-level edit accidentally writes to the next unit's block.
+# ---------------------------------------------------------------------------
+
+class TestAdjacentUnitIsolation:
+    """For each edit, edit unit A then verify unit B's corresponding field
+    is unchanged. The pre-fix handlers' forward-only ±N-char windows could
+    drift past the closing brace of unit A and edit unit B's field instead.
+    With block-scoped handlers this should be impossible."""
+
+    def _two_player_units(self, uploaded_session):
+        units = []
+        for g in uploaded_session.get("groups", []):
+            for u in g.get("units", []):
+                if u.get("skill") in ("Client", "Player"):
+                    units.append(u)
+                    if len(units) == 2:
+                        return units
+        return units
+
+    def test_skill_edit_does_not_leak_to_neighbour(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        units = self._two_player_units(uploaded_session)
+        if len(units) < 2:
+            pytest.skip("need two player units for isolation test")
+        a, b = units[0], units[1]
+        # Pick a value distinct from both units' current skill
+        target_skill = "Random"
+        if a.get("skill") == "Random" or b.get("skill") == "Random":
+            target_skill = "Average"
+        edit = {"unitId": a["unitId"], "field": "skill", "value": target_skill}
+        files = download_edited(client, sid, [edit])
+
+        block_b = _unit_block(files["mission"], b["unitId"])
+        # b's skill should still be its original value (not the new one)
+        if b.get("skill") and b["skill"] != target_skill:
+            assert f'"skill"] = "{target_skill}"' not in block_b, \
+                f"skill edit on unit {a['unitId']} leaked into unit {b['unitId']}"
+
+
+# ---------------------------------------------------------------------------
 # Edit-result reporting smoke — proves dispatch is wired for each new field.
-# Catches regressions where someone adds a field to the dispatch table but
-# forgets the result branch, or where a handler raises an unexpected
-# exception (caught + reported as 'skipped' rather than crashing the
-# request).
 # ---------------------------------------------------------------------------
 
 class TestNewFieldsReportApplied:
@@ -388,14 +424,9 @@ class TestNewFieldsReportApplied:
         import base64, json
         results = json.loads(base64.b64decode(resp.headers["X-Edit-Results"]).decode("utf-8"))["results"]
         assert len(results) == 1
-        # We accept "applied", "noop", or "skipped" — what we DON'T want
-        # is "invalid" (dispatch missing). "skipped" is acceptable while
-        # the SILENT_FAILURE_BUG handlers still raise on unreachable
-        # fields; once they're fixed, this assertion can tighten to
-        # ("applied", "noop") only.
-        assert results[0]["status"] in ("applied", "noop", "skipped"), \
+        # We accept "applied" or "noop" — noop is fine if the value already
+        # matched (e.g. unit's existing heading happens to be 1.5708) or if
+        # the unit's Radio[1] has no frequency field. We DON'T accept
+        # "invalid" (dispatch missing) or "skipped" (handler raised).
+        assert results[0]["status"] in ("applied", "noop"), \
             f"{field} edit reported as {results[0]['status']}: {results[0].get('reason')}"
-        # 'invalid' specifically means the dispatch table doesn't know the
-        # field — that's the regression we're guarding against.
-        assert results[0]["status"] != "invalid", \
-            f"{field} is not in the dispatch table — dispatcher reports invalid"
