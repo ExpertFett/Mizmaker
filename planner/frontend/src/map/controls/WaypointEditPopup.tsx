@@ -140,7 +140,7 @@ export function WaypointEditPopup({
         const updated = currentGroups.map((g) =>
           g.groupName === result.groupName ? { ...g, waypoints: result.waypoints } : g,
         );
-        useMissionStore.setState({ groups: updated });
+        useMissionStore.getState().setGroups(updated);
       }
     } catch (e) { console.error('Edit failed:', e); }
   };

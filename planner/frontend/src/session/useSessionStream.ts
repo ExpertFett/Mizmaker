@@ -24,7 +24,7 @@ export function useSessionStream(sessionId: string | null, enabled: boolean = tr
         const updated = groups.map((g) =>
           g.groupName === groupName ? { ...g, waypoints } : g,
         );
-        useMissionStore.setState({ groups: updated });
+        useMissionStore.getState().setGroups(updated);
       } catch (err) {
         console.error('SSE route_update parse error:', err);
       }

@@ -112,13 +112,13 @@ export function LaserTab() {
         }
         return { ...u, laserCode: idx === 0 ? code : newCode };
       });
-      useMissionStore.setState({ laserCapableUnits: updatedUnits });
+      useMissionStore.getState().setLaserCapableUnits(updatedUnits);
     } else {
       const updated = units.map((u) => {
         if (u.unitId !== unitId) return u;
         return { ...u, laserCode: code };
       });
-      useMissionStore.setState({ laserCapableUnits: updated });
+      useMissionStore.getState().setLaserCapableUnits(updated);
     }
   }, [addEdit]);
 
@@ -142,7 +142,7 @@ export function LaserTab() {
       addEdit({ unitId: u.unitId, field: 'laserCode', value: code });
       return { ...u, laserCode: code };
     });
-    useMissionStore.setState({ laserCapableUnits: updatedUnits });
+    useMissionStore.getState().setLaserCapableUnits(updatedUnits);
 
     setAutoResult(
       `Assigned ${assignedByUnit.size} laser code${assignedByUnit.size !== 1 ? 's' : ''} across ${groupCount} group${groupCount !== 1 ? 's' : ''} starting at ${start}`,

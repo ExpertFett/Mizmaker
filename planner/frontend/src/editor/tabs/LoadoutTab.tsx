@@ -191,13 +191,16 @@ export function LoadoutTab() {
           nextLaserUnits = laserCapableUnits.filter((u) => u.unitId !== unitId);
         }
       }
+      // setClientUnits + setLaserCapableUnits are separate actions — two
+      // shallow updates instead of one. Re-render impact is negligible
+      // (Zustand batches synchronous setState calls in React 19).
+      const store = useMissionStore.getState();
+      store.setClientUnits(updated);
       if (nextLaserUnits !== laserCapableUnits) {
-        useMissionStore.setState({ clientUnits: updated, laserCapableUnits: nextLaserUnits });
-      } else {
-        useMissionStore.setState({ clientUnits: updated });
+        store.setLaserCapableUnits(nextLaserUnits);
       }
     } else {
-      useMissionStore.setState({ clientUnits: updated });
+      useMissionStore.getState().setClientUnits(updated);
     }
   }, [addEdit, pylonOptions]);
 
@@ -222,7 +225,7 @@ export function LoadoutTab() {
       if (u.unitId !== targetId) return u;
       return { ...u, pylons: source.pylons.map((p) => ({ ...p })) };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   /** Apply a loadout preset to every unit in a flight (per-flight, not global). */
@@ -275,7 +278,7 @@ export function LoadoutTab() {
       }
       return { ...u, pylons: newPylons.sort((a, b) => a.number - b.number) };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
     // Remember which preset was applied for each touched flight so we can show a badge
     const touchedGroupNames = new Set(groupUnits.map((u) => u.groupName));
     setAppliedPresetByGroup((prev) => {
@@ -310,7 +313,7 @@ export function LoadoutTab() {
       if (!targetIds.includes(u.unitId)) return u;
       return { ...u, pylons: source.pylons.map((p) => ({ ...p })) };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
     setCopiedUnitId(null);
   }, [addEdit]);
 

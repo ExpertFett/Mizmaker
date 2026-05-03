@@ -589,34 +589,32 @@ export function WeatherTab() {
       addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
 
       // Sync back to store so WeatherPanel on map stays current
-      const { overview } = useMissionStore.getState();
+      const { overview, setOverview } = useMissionStore.getState();
       if (overview) {
-        useMissionStore.setState({
-          overview: {
-            ...overview,
-            weather: {
-              ...overview.weather,
-              wind: next.wind,
-              temperature_c: next.temperature_c,
-              qnh_mmhg: next.qnh_mmhg,
-              qnh_inhg: Math.round(next.qnh_mmhg * 0.03937 * 100) / 100,
-              qnh_hpa: Math.round(next.qnh_mmhg * 1.33322 * 10) / 10,
-              clouds_base_m: next.clouds_base_m,
-              clouds_density: next.clouds_density,
-              clouds_thickness: next.clouds_thickness,
-              clouds_precipitation: next.clouds_precipitation,
-              clouds_preset: next.clouds_preset,
-              visibility_m: next.visibility_m,
-              fog_enabled: (next.fog_mode ?? prev.fog_mode) > 0,
-              fog_visibility: next.fog_visibility,
-              fog_thickness: next.fog_thickness,
-              dust_enabled: next.dust_enabled,
-              dust_density: next.dust_density,
-              turbulence: next.ground_turbulence,
-            },
-            date: `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`,
-            start_time: next.start_time,
+        setOverview({
+          ...overview,
+          weather: {
+            ...overview.weather,
+            wind: next.wind,
+            temperature_c: next.temperature_c,
+            qnh_mmhg: next.qnh_mmhg,
+            qnh_inhg: Math.round(next.qnh_mmhg * 0.03937 * 100) / 100,
+            qnh_hpa: Math.round(next.qnh_mmhg * 1.33322 * 10) / 10,
+            clouds_base_m: next.clouds_base_m,
+            clouds_density: next.clouds_density,
+            clouds_thickness: next.clouds_thickness,
+            clouds_precipitation: next.clouds_precipitation,
+            clouds_preset: next.clouds_preset,
+            visibility_m: next.visibility_m,
+            fog_enabled: (next.fog_mode ?? prev.fog_mode) > 0,
+            fog_visibility: next.fog_visibility,
+            fog_thickness: next.fog_thickness,
+            dust_enabled: next.dust_enabled,
+            dust_density: next.dust_density,
+            turbulence: next.ground_turbulence,
           },
+          date: `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`,
+          start_time: next.start_time,
         });
       }
 
@@ -637,11 +635,9 @@ export function WeatherTab() {
       setHasChanges(true);
       addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
 
-      const { overview } = useMissionStore.getState();
+      const { overview, setOverview } = useMissionStore.getState();
       if (overview) {
-        useMissionStore.setState({
-          overview: { ...overview, weather: { ...overview.weather, wind: next.wind } },
-        });
+        setOverview({ ...overview, weather: { ...overview.weather, wind: next.wind } });
       }
       return next;
     });

@@ -139,7 +139,7 @@ export function MapContainer() {
     const updated = groups.map((g) =>
       g.groupName === groupName ? { ...g, waypoints } : g,
     );
-    useMissionStore.setState({ groups: updated });
+    useMissionStore.getState().setGroups(updated);
   }, []);
 
   // Handle waypoint drag start — block route layer redraws during drag
@@ -178,7 +178,7 @@ export function MapContainer() {
         }
         return { ...g, waypoints: newWps };
       });
-      useMissionStore.setState({ groups: updatedGroups });
+      useMissionStore.getState().setGroups(updatedGroups);
 
       // POST to server — server is source of truth
       try {
@@ -230,7 +230,7 @@ export function MapContainer() {
         if (g.groupId !== selId) return g;
         return { ...g, waypoints: [...g.waypoints, newWp] };
       });
-      useMissionStore.setState({ groups: updatedGroups });
+      useMissionStore.getState().setGroups(updatedGroups);
 
       // POST to server
       try {

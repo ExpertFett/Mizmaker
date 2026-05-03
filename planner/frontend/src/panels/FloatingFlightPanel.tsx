@@ -75,10 +75,8 @@ export function FloatingFlightPanel() {
 
   // Helper: update group waypoints from server response
   const _updateFromServer = useCallback((groupName: string, waypoints: any[]) => {
-    const { groups } = useMissionStore.getState();
-    useMissionStore.setState({
-      groups: groups.map((g) => g.groupName === groupName ? { ...g, waypoints } : g),
-    });
+    const { groups, setGroups } = useMissionStore.getState();
+    setGroups(groups.map((g) => g.groupName === groupName ? { ...g, waypoints } : g));
   }, []);
 
   // Server-authoritative edit handlers
@@ -103,7 +101,7 @@ export function FloatingFlightPanel() {
         return updated;
       })};
     });
-    useMissionStore.setState({ groups: updatedGroups });
+    useMissionStore.getState().setGroups(updatedGroups);
 
     try {
       const result = await sessionEdit(sid, {
@@ -127,7 +125,7 @@ export function FloatingFlightPanel() {
       for (let i = 0; i < newWps.length; i++) newWps[i] = { ...newWps[i], waypoint_number: i };
       return { ...gr, waypoints: newWps };
     });
-    useMissionStore.setState({ groups: updatedGroups });
+    useMissionStore.getState().setGroups(updatedGroups);
 
     try {
       const result = await sessionEdit(sid, {
@@ -151,9 +149,9 @@ export function FloatingFlightPanel() {
     // Optimistic local swap
     [wps[fromIdx], wps[toIdx]] = [wps[toIdx], wps[fromIdx]];
     for (let i = 0; i < wps.length; i++) wps[i] = { ...wps[i], waypoint_number: i };
-    useMissionStore.setState({
-      groups: groups.map((gr) => gr.groupId === groupId ? { ...gr, waypoints: wps } : gr),
-    });
+    useMissionStore.getState().setGroups(
+      groups.map((gr) => gr.groupId === groupId ? { ...gr, waypoints: wps } : gr),
+    );
 
     try {
       const result = await sessionEdit(sid, {
@@ -706,7 +704,7 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
       else if (field === 'stnL16') copy.stnL16 = value;
       return copy;
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   };
 
   const inputSt: React.CSSProperties = {
@@ -814,7 +812,7 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
       }
       return { ...u, pylons: newPylons };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
     if (clsid) setExpandedPylon(`${unitId}-${pylonNum}`);
   };
 

@@ -38,6 +38,24 @@ interface MissionState {
   selectGroup: (groupId: number | null) => void;
   updateGroupData: (groups: MissionGroup[], units: MissionUnit[], threats: ThreatRing[], airbases: Airbase[]) => void;
   setMissionOptions: (opts: MissionOptions) => void;
+  /** Replace the whole groups array. Use when a tab applies a bulk
+   *  edit (e.g. waypoint moves, flight assignments) and produces a
+   *  freshly-mapped array. Same effect as the old direct
+   *  `useMissionStore.setState({ groups })` pattern but routed
+   *  through a typed action so future audit trails / undo can hook it. */
+  setGroups: (groups: MissionGroup[]) => void;
+  /** Replace the whole clientUnits array. Used by Datalink, Loadout,
+   *  and DTC tabs when they re-derive the clientUnit list after a
+   *  per-unit edit. */
+  setClientUnits: (clientUnits: ClientUnit[]) => void;
+  /** Replace the whole laserCapableUnits array. Mirrors setClientUnits
+   *  for the laser-pylon case (LoadoutTab + LaserTab). */
+  setLaserCapableUnits: (units: LaserCapableUnit[]) => void;
+  /** Replace the overview block (weather, theater, sortie, etc.).
+   *  Used by WeatherTab to mirror an edit back to the map's WeatherPanel
+   *  display. The store is the source of truth for read-only display
+   *  state; the actual edit lives in editStore as a queued edit. */
+  setOverview: (overview: MissionOverviewData | null) => void;
   clear: () => void;
   selectedGroup: () => MissionGroup | undefined;
 }
@@ -116,6 +134,14 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     set({ groups, units, threats, airbases }),
 
   setMissionOptions: (opts) => set({ missionOptions: opts }),
+
+  setGroups: (groups) => set({ groups }),
+
+  setClientUnits: (clientUnits) => set({ clientUnits }),
+
+  setLaserCapableUnits: (units) => set({ laserCapableUnits: units }),
+
+  setOverview: (overview) => set({ overview }),
 
   clear: () =>
     set({

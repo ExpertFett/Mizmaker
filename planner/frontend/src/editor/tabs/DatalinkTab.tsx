@@ -84,7 +84,7 @@ export function DatalinkTab() {
       else if (field === 'stnL16') copy.stnL16 = value;
       return copy;
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   const handleAddDonor = useCallback((unitId: number, donor: DonorInfo) => {
@@ -95,7 +95,7 @@ export function DatalinkTab() {
       if (u.donors.some((d) => d.missionUnitId === donor.missionUnitId)) return u;
       return { ...u, donors: [...u.donors, donor] };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   const handleRemoveDonor = useCallback((unitId: number, donorId: number) => {
@@ -105,7 +105,7 @@ export function DatalinkTab() {
       if (u.unitId !== unitId) return u;
       return { ...u, donors: u.donors.filter((d) => d.missionUnitId !== donorId) };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   const handleAddTeamMember = useCallback((unitId: number, member: DonorInfo) => {
@@ -116,7 +116,7 @@ export function DatalinkTab() {
       if (u.teamMembers.some((m) => m.missionUnitId === member.missionUnitId)) return u;
       return { ...u, teamMembers: [...u.teamMembers, member] };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   const handleRemoveTeamMember = useCallback((unitId: number, memberId: number) => {
@@ -126,7 +126,7 @@ export function DatalinkTab() {
       if (u.unitId !== unitId) return u;
       return { ...u, teamMembers: u.teamMembers.filter((m) => m.missionUnitId !== memberId) };
     });
-    useMissionStore.setState({ clientUnits: updated });
+    useMissionStore.getState().setClientUnits(updated);
   }, [addEdit]);
 
   const isChanged = useCallback((unitId: number, field: keyof ClientUnit): boolean => {
