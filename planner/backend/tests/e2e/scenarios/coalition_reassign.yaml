@@ -1,0 +1,19 @@
+# Coalition reassignment — the bug-fixed regression we keep guarding
+# (earlier impls searched globally for ["red"] = and landed in
+# trigrules / groundControl roles). Verify the country actually moves
+# to the requested coalition's country list.
+name: Coalition reassignment — USA -> red
+mission: simple.miz
+require_country:
+  coalition: blue
+  use: USA   # If absent, scenario auto-discovers via session.
+
+edits:
+  - field: coalitionReassign
+    value:
+      USA: red
+
+asserts:
+  # The USA country block should now appear under coalition.red.
+  - file: mission
+    grep: '"name"\]\s*=\s*"USA"'

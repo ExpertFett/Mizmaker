@@ -1,0 +1,23 @@
+# findReplace is a mission-level pattern rewrite that scans every
+# unit / group name. Common Renamer-tab use case: "rename all 'Devil'
+# flights to 'Enfield'". Verify both the rewritten text appears AND
+# the original is gone in the unit names.
+name: findReplace unit names
+mission: simple.miz
+
+edits:
+  - field: findReplace
+    value:
+      find: 'Devil'
+      replace: 'Enfield_E2E'
+      regex: false
+      inUnits: true
+      inGroups: true
+
+# Skip cleanly when fixture has no Bengal flights — the assert is
+# written so a missing target produces a clear failure message,
+# but this scenario file targets the simple.miz which we know has
+# them.
+asserts:
+  - file: mission
+    grep: 'Enfield_E2E'

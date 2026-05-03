@@ -1,0 +1,23 @@
+# Round-trip a briefing edit and verify it lands in the
+# l10n/DEFAULT/dictionary file (NOT just the mission file). This is
+# the regression we kept hitting during the brief-gen rework — edits
+# would update mission Lua but never reach the dictionary, so DCS's
+# loader showed stale text.
+name: Briefing sortie + tasking
+mission: simple.miz
+
+edits:
+  - field: briefing
+    value:
+      sortie: TEST_E2E_SORTIE
+      description: E2E test mission description.
+      descriptionBlueTask: Blue must succeed at the test.
+      descriptionRedTask: Red must defend the test target.
+
+asserts:
+  - file: l10n/DEFAULT/dictionary
+    grep: TEST_E2E_SORTIE
+  - file: l10n/DEFAULT/dictionary
+    grep: 'Blue must succeed'
+  - file: l10n/DEFAULT/dictionary
+    grep: 'Red must defend'

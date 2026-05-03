@@ -1,0 +1,28 @@
+# Multi-edit combo: briefing + findReplace in the same /api/download
+# call. Verifies the dispatcher handles the edit list serially and
+# both end up in the output, with no cross-contamination. Caught a
+# regression earlier where briefing was applied LAST regardless of
+# list order (wiping a prior findReplace inside the briefing string).
+name: Combined briefing + findReplace
+mission: simple.miz
+
+edits:
+  - field: briefing
+    value:
+      sortie: COMBO_E2E
+      description: Combo edit test
+      descriptionBlueTask: ''
+      descriptionRedTask: ''
+  - field: findReplace
+    value:
+      find: 'Devil'
+      replace: 'Combo_Enfield'
+      regex: false
+      inUnits: true
+      inGroups: true
+
+asserts:
+  - file: l10n/DEFAULT/dictionary
+    grep: COMBO_E2E
+  - file: mission
+    grep: 'Combo_Enfield'
