@@ -125,7 +125,7 @@ export function ExportPanel() {
           const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
           for (let p = 0; p < pageCount; p++) {
             const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-            await addCard(sharedType, fname, createElement(ThreatCard, { threats, playerCoalition: coalition, page: p }));
+            await addCard(sharedType, fname, createElement(ThreatCard, { threats, playerCoalition: coalition, page: p, fidelity: kneeboardSettings.threatFidelity ?? 'full' }));
           }
         }
         if (cards.weatherBrief && overview)

@@ -26,6 +26,12 @@ export interface KneeboardSettings {
   speedRef: 'auto' | 'cas' | 'tas' | 'gs' | 'mach';
   machThreshold: number;
   cards: KneeboardCards;
+  /** Threat card information density. 'full' = current behaviour
+   *  (every system named, MGRS, exact rings). 'operational' = rings
+   *  + sizes shown but no designations / MGRS. 'realistic' = vague
+   *  clustered threat zones, intel-summary inventory. Drives the
+   *  ThreatCard's `fidelity` prop. */
+  threatFidelity: 'full' | 'operational' | 'realistic';
 }
 
 interface EditState {
@@ -49,6 +55,7 @@ export const useEditStore = create<EditState>((set) => ({
   injectKneeboards: false,
   kneeboardSettings: {
     coordFormat: 'mgrs', speedRef: 'auto', machThreshold: 18000,
+    threatFidelity: 'full',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,

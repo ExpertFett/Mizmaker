@@ -73,6 +73,8 @@ export function KneeboardTab() {
   const coordFormat = kneeboardSettings.coordFormat;
   const speedRef = kneeboardSettings.speedRef as KneeboardSpeedRef;
   const machThreshold = kneeboardSettings.machThreshold;
+  // Default 'full' for older settings objects that pre-date v0.9.6.
+  const threatFidelity = kneeboardSettings.threatFidelity ?? 'full';
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
@@ -161,7 +163,7 @@ export function KneeboardTab() {
       const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p });
+        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity });
         results.push({ name: fname, blob: await renderCardToBlob(el) });
       }
     }
@@ -327,6 +329,24 @@ export function KneeboardTab() {
           </label>
         )}
 
+        <label
+          style={{ fontSize: 13, color: '#aaaaaa' }}
+          title="How much info the threat card reveals. Realistic = vague threat zones, no specific systems (training scenarios)."
+        >
+          Threat fidelity:
+          <select
+            value={threatFidelity}
+            onChange={(e) => setKneeboardSettings({
+              threatFidelity: e.target.value as 'full' | 'operational' | 'realistic',
+            })}
+            style={{ ...selectStyle, marginLeft: 6 }}
+          >
+            <option value="full">Full (everything)</option>
+            <option value="operational">Operational (no IDs)</option>
+            <option value="realistic">Realistic (vague zones)</option>
+          </select>
+        </label>
+
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering || noCardsSelected} style={btnStyle}>
           {rendering ? 'Rendering...' : 'Download .zip'}
         </button>
@@ -433,6 +453,7 @@ export function KneeboardTab() {
         coordFormat={coordFormat}
         speedRef={speedRef}
         machThreshold={machThreshold}
+        threatFidelity={threatFidelity}
         activeSop={activeSop}
       />
     </div>
@@ -458,6 +479,7 @@ interface CarouselProps {
   coordFormat: 'mgrs' | 'latlon';
   speedRef: KneeboardSpeedRef;
   machThreshold: number;
+  threatFidelity: 'full' | 'operational' | 'realistic';
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
 }
 
@@ -470,6 +492,7 @@ interface CardEntry {
 function CardCarousel({
   selectedGroup, cards, groups, clientUnits, threats,
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
+  threatFidelity,
   activeSop,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
@@ -568,7 +591,7 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `threatCard-${p}`, label: `Threat Card${suffix}`,
-          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p }),
+          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity }),
         });
       }
     }
@@ -586,7 +609,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, activeSop]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop]);
 
   // Clamp index when list changes
   useEffect(() => {
