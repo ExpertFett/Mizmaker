@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useEditStore } from '../store/editStore';
 import { useSopStore } from '../sop/sopStore';
 import { useSessionStream } from '../session/useSessionStream';
 import { ParticipantBar } from '../session/ParticipantBar';
@@ -22,6 +23,7 @@ import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
 import { SopCheckTab } from './tabs/SopCheckTab';
+import { EditsTab } from './tabs/EditsTab';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
@@ -86,6 +88,10 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'OUTPUT' },
   { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: '📋' },
   { kind: 'tab', id: 'briefGen',    label: 'Brief',       icon: '📝' },
+  // Edits preview — read-only inventory of every edit currently
+  // queued for the next download. Lives in OUTPUT because it's a
+  // pre-download summary view, same as Kneeboard / Brief.
+  { kind: 'tab', id: 'edits',       label: 'Edits',       icon: '✎' },
 
   { kind: 'section', label: 'UTIL' },
   { kind: 'tab', id: 'debug',       label: 'Debug',       icon: '🔍' },
@@ -120,6 +126,10 @@ export function MissionEditor() {
     () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
     [activeSopId, sops],
   );
+
+  // Pending-edit count, rendered as a small badge on the Edits tab so
+  // the queue size is visible without leaving the current tab.
+  const pendingEditCount = useEditStore((s) => s.edits.length);
 
   const selectTab = (tab: TabId) => {
     setActiveTab(tab);
@@ -257,6 +267,10 @@ export function MissionEditor() {
             // because they're the SOP-domain tabs; other tabs still
             // show their inline SOP badges in their own headers.
             const showSopDot = activeSop != null && (item.id === 'sop' || item.id === 'sopCheck');
+            // Edits-tab count badge — same spirit as the SOP dot but
+            // shows a number so you can see at a glance how many edits
+            // are queued without switching tabs.
+            const showEditsCount = item.id === 'edits' && pendingEditCount > 0;
             return (
               <button
                 key={item.id}
@@ -311,6 +325,38 @@ export function MissionEditor() {
                         : {}),
                     }}
                   />
+                )}
+                {showEditsCount && (
+                  <span
+                    title={`${pendingEditCount} edit${pendingEditCount !== 1 ? 's' : ''} queued`}
+                    style={{
+                      // Style the count as a compact pill. Blue (not
+                      // red) because queued edits are normal flow, not
+                      // a problem. Red would be alarming.
+                      background: '#1a3050',
+                      border: '1px solid #2a5a8a',
+                      color: '#6ab4f0',
+                      borderRadius: 10,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      letterSpacing: 0.3,
+                      flexShrink: 0,
+                      marginLeft: isCollapsed ? 0 : 'auto',
+                      ...(isCollapsed
+                        ? {
+                            position: 'absolute',
+                            top: 2,
+                            right: 2,
+                            padding: '1px 4px',
+                            fontSize: 9,
+                            marginLeft: 0,
+                          }
+                        : {}),
+                    }}
+                  >
+                    {pendingEditCount}
+                  </span>
                 )}
               </button>
             );
@@ -451,6 +497,11 @@ export function MissionEditor() {
             {visitedTabs.has('briefGen') && (
               <div style={{ display: activeTab === 'briefGen' ? 'block' : 'none', height: '100%' }}>
                 <BriefGenTab />
+              </div>
+            )}
+            {visitedTabs.has('edits') && (
+              <div style={{ display: activeTab === 'edits' ? 'block' : 'none' }}>
+                <EditsTab />
               </div>
             )}
             {visitedTabs.has('upload') && (

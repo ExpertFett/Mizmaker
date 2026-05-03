@@ -34,6 +34,10 @@ interface EditState {
   injectKneeboards: boolean;
   kneeboardSettings: KneeboardSettings;
   addEdit: (edit: WaypointEdit | UnitEdit) => void;
+  /** Remove a single queued edit by its index. Used by the Edits
+   *  preview panel; existing tabs use addEdit/clearEdits and don't
+   *  need to know about indices. */
+  removeEditAt: (index: number) => void;
   clearEdits: () => void;
   setInjectKneeboards: (v: boolean) => void;
   setKneeboardSettings: (s: Partial<KneeboardSettings>) => void;
@@ -54,6 +58,13 @@ export const useEditStore = create<EditState>((set) => ({
 
   addEdit: (edit) =>
     set((s) => ({ edits: [...s.edits, edit], isDirty: true })),
+
+  removeEditAt: (index) =>
+    set((s) => {
+      if (index < 0 || index >= s.edits.length) return s;
+      const next = s.edits.slice(0, index).concat(s.edits.slice(index + 1));
+      return { edits: next, isDirty: next.length > 0 };
+    }),
 
   clearEdits: () => set({ edits: [], isDirty: false }),
 
