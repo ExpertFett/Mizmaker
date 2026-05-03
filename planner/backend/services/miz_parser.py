@@ -440,18 +440,44 @@ def _extract_mission_options(d: dict, options_text: str | None = None) -> dict:
     if not isinstance(forced, dict):
         forced = {}
 
-    # DCS stores these as nested dicts; flatten to simple key-value pairs
-    # Boolean fields (true/false)
+    # DCS stores these as nested dicts; flatten to simple key-value pairs.
+    # Boolean fields (true/false).
     bool_keys = [
         "padlock", "permitCrash", "immortal", "fuel",
         "miniHUD", "easyRadar", "easyFlight",
         "externalViews", "birds", "userMarks", "wakeTurbulence",
         "accidental_failures", "easyComms", "RBDAI",
+        # Added in v0.9.4 — common DCS ME forcedOptions absent from the
+        # original list. weapons = "Unlimited Weapons" force toggle.
+        # spectatorExternalViews = let MP spectators use external views.
+        # helicopterSimplifiedFlightModel = the SFM/PFM toggle on helos.
+        "weapons", "spectatorExternalViews", "helicopterSimplifiedFlightModel",
     ]
-    # Integer/enum fields
+    # Integer/enum fields. NOTE: optionsView and civTraffic accept BOTH
+    # numeric and string forms in DCS; the string normalisation below
+    # converts strings to numbers so the frontend EnumSelect (which
+    # keys on numbers) renders the value correctly.
     enum_keys = [
         "labels", "civTraffic", "geffect", "optionsView",
     ]
+    # String enum fields. Carried through as-is — frontend handles
+    # rendering via a separate OPTION_DEFS entry with format='strenum'.
+    string_enum_keys = [
+        "iconsTheme",  # "nato" / "russian" / "generic"
+    ]
+
+    # DCS uses both "optview_*" strings (newer .miz) and 0-3 ints (older).
+    # Normalise to ints for the frontend, which uses numeric enum keys.
+    OPTIONS_VIEW_STR_TO_INT = {
+        "optview_all":         0,
+        "optview_myallies":    1,
+        "optview_onlymap":     2,
+        "optview_myaircraft":  3,
+    }
+    # civTraffic similarly: "off" / "low" / "medium" / "high" → 0..3.
+    CIV_TRAFFIC_STR_TO_INT = {
+        "off": 0, "low": 1, "medium": 2, "high": 3,
+    }
 
     result: dict = {}
     for k in bool_keys:
@@ -459,6 +485,19 @@ def _extract_mission_options(d: dict, options_text: str | None = None) -> dict:
         if v is not None:
             result[k] = bool(v)
     for k in enum_keys:
+        v = forced.get(k)
+        if v is None:
+            continue
+        # Normalise string enums to ints when DCS shipped them as strings.
+        if isinstance(v, str):
+            if k == "optionsView" and v in OPTIONS_VIEW_STR_TO_INT:
+                result[k] = OPTIONS_VIEW_STR_TO_INT[v]
+                continue
+            if k == "civTraffic" and v.lower() in CIV_TRAFFIC_STR_TO_INT:
+                result[k] = CIV_TRAFFIC_STR_TO_INT[v.lower()]
+                continue
+        result[k] = v
+    for k in string_enum_keys:
         v = forced.get(k)
         if v is not None:
             result[k] = v

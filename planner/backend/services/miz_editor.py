@@ -629,8 +629,14 @@ _DIFFICULTY_SYNCABLE_KEYS = {
     "padlock", "permitCrash", "immortal", "fuel", "miniHUD",
     "easyFlight", "externalViews", "userMarks", "wakeTurbulence",
     "accidental_failures", "RBDAI", "easyRadar",
+    # added v0.9.4 — DCS ME's Forced Options dialog exposes these too.
+    "weapons", "spectatorExternalViews", "helicopterSimplifiedFlightModel",
     # enums — only mirrored if existing difficulty value has matching type
     "labels", "geffect", "optionsView",
+    # iconsTheme is a string enum ("nato"/"russian"/"generic") — string
+    # types are intentionally NOT in this whitelist because the diff
+    # mirror compares Lua type kinds; passes through forcedOptions
+    # block edits but doesn't sync to options/difficulty.
 }
 
 # forcedOptions field name → options/difficulty field name (rename cases only).

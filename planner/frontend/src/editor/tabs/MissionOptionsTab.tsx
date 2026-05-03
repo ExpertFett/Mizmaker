@@ -38,31 +38,46 @@ const OPTIONS_VIEW_MAP: Record<number, string> = {
   3: 'My Aircraft',
 };
 
+const ICONS_THEME_MAP: Record<string, string> = {
+  nato:    'NATO',
+  russian: 'Russian',
+  generic: 'Generic',
+};
+
 interface OptionDef {
   key: string;
   label: string;
   category: string;
-  format: 'bool' | 'enum';
+  format: 'bool' | 'enum' | 'strenum';
   enumMap?: Record<number, string>;
+  strEnumMap?: Record<string, string>;
 }
 
 const OPTION_DEFS: OptionDef[] = [
   // Flight Model
   { key: 'easyFlight',         label: 'Easy Flight',          category: 'Flight Model',    format: 'bool' },
   { key: 'fuel',               label: 'Unlimited Fuel',       category: 'Flight Model',    format: 'bool' },
+  { key: 'weapons',            label: 'Unlimited Weapons',    category: 'Flight Model',    format: 'bool' },
   { key: 'immortal',           label: 'Immortal',             category: 'Flight Model',    format: 'bool' },
   { key: 'geffect',            label: 'G-Effects',            category: 'Flight Model',    format: 'enum', enumMap: GEFFECT_MAP },
   { key: 'wakeTurbulence',     label: 'Wake Turbulence',      category: 'Flight Model',    format: 'bool' },
   { key: 'birds',              label: 'Bird Strikes',         category: 'Flight Model',    format: 'bool' },
   { key: 'accidental_failures', label: 'Random Failures',     category: 'Flight Model',    format: 'bool' },
   { key: 'permitCrash',        label: 'Permit Crash Recovery', category: 'Flight Model',   format: 'bool' },
+  { key: 'helicopterSimplifiedFlightModel',
+                                label: 'Helo Simplified Flight Model',
+                                                              category: 'Flight Model',    format: 'bool' },
 
   // Views & HUD
   { key: 'externalViews',      label: 'External Views',       category: 'Views & HUD',     format: 'bool' },
+  { key: 'spectatorExternalViews',
+                                label: 'Spectator External Views',
+                                                              category: 'Views & HUD',     format: 'bool' },
   { key: 'padlock',            label: 'Padlock',              category: 'Views & HUD',     format: 'bool' },
   { key: 'optionsView',        label: 'F10 Map View',         category: 'Views & HUD',     format: 'enum', enumMap: OPTIONS_VIEW_MAP },
   { key: 'miniHUD',            label: 'Mini HUD',             category: 'Views & HUD',     format: 'bool' },
   { key: 'labels',             label: 'Labels',               category: 'Views & HUD',     format: 'enum', enumMap: LABELS_MAP },
+  { key: 'iconsTheme',         label: 'Icons Theme',          category: 'Views & HUD',     format: 'strenum', strEnumMap: ICONS_THEME_MAP },
 
   // Comms & Traffic
   { key: 'easyComms',          label: 'Easy Comms',           category: 'Comms & Traffic',  format: 'bool' },
@@ -227,6 +242,12 @@ export function MissionOptionsTab() {
                     value={missionOptions[def.key] as boolean | undefined}
                     onChange={(v) => setOption(def.key, v)}
                   />
+                ) : def.format === 'strenum' ? (
+                  <StrEnumSelect
+                    value={missionOptions[def.key] as string | undefined}
+                    enumMap={def.strEnumMap!}
+                    onChange={(v) => setOption(def.key, v)}
+                  />
                 ) : (
                   <EnumSelect
                     value={missionOptions[def.key] as number | undefined}
@@ -298,6 +319,31 @@ function EnumSelect({ value, enumMap, onChange }: {
       onChange={(e) => {
         const v = e.target.value;
         onChange(v === '__unset__' ? undefined : Number(v));
+      }}
+      style={selectStyle}
+    >
+      <option value="__unset__">Not Set (Player Default)</option>
+      {Object.entries(enumMap).map(([k, label]) => (
+        <option key={k} value={k}>{label}</option>
+      ))}
+    </select>
+  );
+}
+
+/** Same shape as EnumSelect but the values are strings (DCS uses both
+ *  forms across different forcedOptions fields — iconsTheme is a string
+ *  enum, optionsView/civTraffic are numbers). */
+function StrEnumSelect({ value, enumMap, onChange }: {
+  value: string | undefined;
+  enumMap: Record<string, string>;
+  onChange: (v: string | undefined) => void;
+}) {
+  return (
+    <select
+      value={value === undefined ? '__unset__' : value}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === '__unset__' ? undefined : v);
       }}
       style={selectStyle}
     >

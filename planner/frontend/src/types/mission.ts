@@ -158,21 +158,27 @@ export interface MissionOptions {
   permitCrash?: boolean;
   immortal?: boolean;
   fuel?: boolean;
+  weapons?: boolean;                          // Unlimited Weapons
   miniHUD?: boolean;
   easyRadar?: boolean;
   easyFlight?: boolean;
   externalViews?: boolean;
+  spectatorExternalViews?: boolean;           // External views for MP spectators
   birds?: boolean;
   userMarks?: boolean;
   wakeTurbulence?: boolean;
   accidental_failures?: boolean;
   easyComms?: boolean;
   RBDAI?: boolean;
-  // Enums / numbers
+  helicopterSimplifiedFlightModel?: boolean;  // SFM toggle on helos
+  // Enums / numbers (DCS sometimes ships these as string enums; backend
+  // normalises optionsView and civTraffic to numbers before sending).
   labels?: number;        // 0=Full, 1=Abbreviated, 2=Dot Only, 3=Neutral Dot, 4=Off
   civTraffic?: number;    // 0=Off, 1=Low, 2=Medium, 3=High
   geffect?: number;       // 0=None, 1=Realistic with recovery, 2=Realistic lethal
   optionsView?: number;   // 0=All, 1=Friendly, 2=Map Only, 3=MyAircraft
+  // String enums
+  iconsTheme?: string;    // "nato" | "russian" | "generic"
   // Catch-all for any other options
   [key: string]: unknown;
 }
