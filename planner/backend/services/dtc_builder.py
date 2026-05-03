@@ -12,7 +12,10 @@ import copy
 def _load_defaults():
     """Load the default ALR67 (RWR + CMDS threat tables) template."""
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "dtc_defaults_fa18.json")
-    with open(path, "r") as f:
+    # encoding='utf-8' is required: Windows defaults to cp1252 and the
+    # threat-table file may contain unicode characters in airframe names
+    # / threat descriptions.
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 

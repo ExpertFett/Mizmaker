@@ -82,3 +82,24 @@ jobs:
         # `|| true` keeps CI green while we work through the backlog.
         # Remove once ESLint exits 0 on a clean checkout.
         run: npm run lint || true
+
+  review:
+    name: Known-bug regex linter
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run scripts/review.py
+        # Scans the whole repo for known-bug patterns we've explicitly
+        # hit before (silent edit drops, missing utf-8 encoding, bare
+        # except clauses, direct store setState, etc.). Exits 1 on any
+        # P0 finding — those are blockers. P1/P2 are reported but not
+        # gated since most P1 findings on main today are documented
+        # tech debt (direct setState calls) we're working through.
+        run: python scripts/review.py --all
