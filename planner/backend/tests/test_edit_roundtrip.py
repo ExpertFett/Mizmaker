@@ -91,6 +91,24 @@ class TestBriefing:
             "Briefing sortie never reached l10n/DEFAULT/dictionary"
         assert "Blue must succeed." in dict_text, "Briefing blueTask missing"
 
+    def test_upload_resolves_dict_keys_in_briefing(self, uploaded_session):
+        """On upload, the briefing fields in the response must be the
+        ACTUAL TEXT, not raw DictKey_descriptionText_5 references.
+        DCS missions store briefing strings indirectly: the mission Lua
+        carries dictionary references and the user-facing text lives in
+        l10n/DEFAULT/dictionary. v0.9.2 shipped without resolving these,
+        so BriefingTab loaded with raw DictKey_... strings and pilots
+        never saw the briefing the mission designer wrote.
+        """
+        ov = uploaded_session.get("overview") or {}
+        for fld in ("sortie", "description", "descriptionBlueTask", "descriptionRedTask"):
+            v = ov.get(fld)
+            if not v:  # field may legitimately be empty in fixture
+                continue
+            assert not (isinstance(v, str) and v.startswith("DictKey_")), \
+                f"upload returned raw dict key for {fld}: {v!r} — backend " \
+                f"isn't resolving against l10n/DEFAULT/dictionary"
+
 
 class TestForcedOptions:
     def test_padlock_applies_to_both_files(self, client, uploaded_session):

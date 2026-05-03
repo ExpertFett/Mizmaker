@@ -163,6 +163,29 @@ def upload():
         except Exception:
             options_text_for_parse = None
         data = extract_full_mission_data(mission_dict, theater, options_text_for_parse)
+
+        # Resolve DictKey references in briefing fields. DCS missions
+        # store sortie/description/blue/red task as references like
+        # `DictKey_descriptionText_5` and the actual user-visible text
+        # lives in `l10n/DEFAULT/dictionary`. Without this resolution
+        # the BriefingTab and brief generator both showed raw keys
+        # instead of the briefing the mission designer actually wrote.
+        try:
+            from services.brief_builder import parse_dictionary, resolve_dict_key
+            from services.miz_editor import extract_dictionary_from_miz
+            dict_text = extract_dictionary_from_miz(miz_bytes)
+            lookup = parse_dictionary(dict_text)
+            ov = data.get("overview") or {}
+            for fld in ("sortie", "description", "descriptionBlueTask", "descriptionRedTask"):
+                v = ov.get(fld)
+                if isinstance(v, str) and v.startswith("DictKey_"):
+                    ov[fld] = resolve_dict_key(v, lookup)
+        except Exception as e:
+            # Resolution failure is non-fatal — the brief shows raw keys
+            # rather than blocking the whole upload. Log so we know.
+            import logging
+            logging.warning(f"Briefing dict resolution failed: {e}")
+
         for group in data["groups"]:
             if group["waypoints"]:
                 group["waypoints"] = recompute_route(group["waypoints"])
