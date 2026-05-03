@@ -13,12 +13,60 @@ import re
 # ---------------------------------------------------------------------------
 
 def _find_unit_block_start(text: str, unit_id: int) -> int:
-    """Find the approximate start position of a unit block by its unitId."""
+    """Find the position of ["unitId"] = N inside the unit's actual block.
+
+    DCS Lua references unit IDs in two distinct contexts:
+      1. The unit definition itself, inside its parent group's
+         ["units"] = { [N] = { ..., ["unitId"] = N, ... } } block.
+      2. Task / waypoint action params (ActivateBeacon, ActivateICLS,
+         AI_TASK, etc.) that target the unit at runtime.
+
+    The first occurrence in mission text is often (2), not (1) — for
+    simple.miz the carrier (unit 2) gets its first ["unitId"] = 2 hit
+    inside an ActivateBeacon's params block, then the actual unit
+    definition is later. Naively returning re.search().start() drove
+    handlers like _replace_livery into the beacon's surroundings,
+    silently no-op-ing the edit.
+
+    Heuristic to prefer the real unit block: a unit definition has
+    ["type"] = "..." within ~1500 chars of its unitId line (typically
+    a few lines before or after, depending on field ordering). Task
+    params don't carry a ["type"] string field — they have ["type"] =
+    <number> (an enum) instead. We check for the string-typed field
+    specifically.
+
+    Falls back to the first match if no candidate has nearby ["type"]
+    — preserves old behaviour for missions with unusual structure.
+    """
     pattern = rf'\["unitId"\]\s*=\s*{unit_id}\s*,'
-    match = re.search(pattern, text)
-    if not match:
+    matches = list(re.finditer(pattern, text))
+    if not matches:
         raise ValueError(f"Unit {unit_id} not found in mission text")
-    return match.start()
+
+    type_string_pattern = re.compile(r'\["type"\]\s*=\s*"[^"]*"')
+    for m in matches:
+        # Look BEFORE the unitId only — unit blocks have ["type"] =
+        # "string" preceding ["unitId"] in field order, while task
+        # params have ["type"] = <number> (an enum). Looking forward
+        # would match the next unit block's type, falsely accepting
+        # the task-param position. Window of 800 chars is plenty for
+        # a unit block (typical block: type, unitId within ~200
+        # chars), and tight enough to avoid bleeding into the previous
+        # unit's fields.
+        window_start = max(0, m.start() - 800)
+        window_end = m.start()
+        if type_string_pattern.search(text[window_start:window_end]):
+            return m.start()
+
+    # Fallback: first match. Logs a warning so we know when this
+    # disambiguator missed.
+    import logging
+    logging.warning(
+        f"_find_unit_block_start({unit_id}): no ['type']=string anchor near "
+        f"any unitId match; falling back to first occurrence (may be a task "
+        f"param, not the unit block)."
+    )
+    return matches[0].start()
 
 
 def _find_unit_block_bounds(text: str, unit_id: int) -> tuple[int, int]:

@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore } from '../../store/editStore';
 import { isCarrierGroup } from '../../utils/groups';
 import { getTriggers, saveTriggers } from '../../api/client';
 import { useTriggerStore } from '../../store/triggerStore';
@@ -304,6 +305,7 @@ export function CarrierSetupPanel() {
     ? s.sops.find((x) => x.id === s.activeId) || null
     : null);
   const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
+  const addEdit = useEditStore((s) => s.addEdit);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);
   const [scriptPreview, setScriptPreview] = useState(false);
@@ -419,6 +421,51 @@ export function CarrierSetupPanel() {
     ));
     setGenerated(false);
   }, []);
+
+  // Auto-dispatch tacan + icls edits whenever the carrier configs
+  // change. Without this, the user would set ICLS=7 in the form,
+  // hit Generate (which only builds a runtime trigger script), save
+  // the .miz, and find the carrier's ActivateBeacon / ActivateICLS
+  // tasks unchanged. The Generate button stays for the trigger
+  // script (separate concern); these edits land alongside.
+  //
+  // Debounced 600ms so dragging through a number spinner doesn't
+  // queue 20 edits per field.
+  const awaDebounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (configs.length === 0) return;
+    if (awaDebounceRef.current != null) window.clearTimeout(awaDebounceRef.current);
+    awaDebounceRef.current = window.setTimeout(() => {
+      for (const c of configs) {
+        const grp = groups.find((g) => g.groupId === c.groupId);
+        const carrierUnitId = grp?.units[0]?.unitId;
+        if (!carrierUnitId) continue;
+
+        // TACAN — every carrier has one. Always dispatch.
+        addEdit({
+          unitId: carrierUnitId,
+          groupId: c.groupId,
+          field: 'tacan',
+          value: { channel: c.tacanCh, band: c.tacanBand, callsign: c.tacanCallsign },
+        } as never);
+
+        // ICLS — only when the carrier supports it AND we have a
+        // non-zero channel. Dispatching with 0 would clobber the
+        // carrier's existing ICLS (LHA/LHD legitimately have 0).
+        if (c.hasIcls && c.iclsCh > 0) {
+          addEdit({
+            unitId: carrierUnitId,
+            groupId: c.groupId,
+            field: 'icls',
+            value: { channel: c.iclsCh },
+          } as never);
+        }
+      }
+    }, 600);
+    return () => {
+      if (awaDebounceRef.current != null) window.clearTimeout(awaDebounceRef.current);
+    };
+  }, [configs, groups, addEdit]);
 
   // Generate script
   const handleGenerate = useCallback(() => {

@@ -109,6 +109,35 @@ class TestLivery:
         assert f'"livery_id"] = "{new_livery}"' in block, \
             f"livery_id {new_livery} not present in unit {unit['unitId']}'s block"
 
+    def test_livery_change_persists_for_ship_unit(self, client, uploaded_session):
+        """Regression: carrier units have their first ["unitId"]=N reference
+        INSIDE an ActivateBeacon's params block, NOT in the actual unit
+        definition. _find_unit_block_start used to return the beacon
+        position and _replace_livery's backward brace-walk landed in the
+        beacon block — silently no-op'ing the livery edit. Fix
+        disambiguates by requiring a nearby ["type"]=string anchor."""
+        sid = uploaded_session["sessionId"]
+        # Find a ship unit (carriers, helicopter destroyers, etc.).
+        ship_unit = None
+        for g in uploaded_session.get("groups", []):
+            if g.get("category") != 'ship':
+                continue
+            for u in g.get("units", []):
+                ship_unit = u
+                break
+            if ship_unit:
+                break
+        if not ship_unit:
+            pytest.skip("fixture has no ship units")
+
+        new_livery = "TEST_SHIP_LIVERY"
+        edit = {"unitId": ship_unit["unitId"], "field": "livery", "value": new_livery}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], ship_unit["unitId"])
+        assert f'"livery_id"] = "{new_livery}"' in block, \
+            f"ship livery edit didn't land in unit {ship_unit['unitId']}'s block " \
+            f"— likely _find_unit_block_start picked the wrong unitId match"
+
 
 class TestUnitRename:
     def test_unit_rename_persists_in_target_block(self, client, uploaded_session):

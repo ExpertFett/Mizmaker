@@ -6,7 +6,7 @@
  * airbases, time, threats).
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { Button } from '../../components/Button';
@@ -256,6 +256,24 @@ export function BriefingTab() {
     setApplied(true);
   }, [sortie, description, blueTask, redTask, addEdit]);
 
+  // Auto-stage briefing edits as the user types. Without this, changes
+  // typed into the four fields are silently dropped on download —
+  // every other tab in the planner auto-saves, and we kept hitting
+  // the "I typed it but it didn't save" trap. Debounce 800 ms so we
+  // don't queue an edit per keystroke; that keeps the Edits tab
+  // count sane (one briefing edit batched at a time).
+  const stageRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!hasChanges) return;
+    if (stageRef.current != null) window.clearTimeout(stageRef.current);
+    stageRef.current = window.setTimeout(() => {
+      handleApply();
+    }, 800);
+    return () => {
+      if (stageRef.current != null) window.clearTimeout(stageRef.current);
+    };
+  }, [hasChanges, handleApply]);
+
   return (
     <div style={{ maxWidth: 750 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -335,20 +353,24 @@ export function BriefingTab() {
         />
       </div>
 
-      {/* Apply button */}
+      {/* Status — briefing edits auto-stage as you type (debounced 800 ms).
+          The button stays for users who want to force a stage right
+          now, but it's no longer required. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           onClick={handleApply}
           disabled={!hasChanges && !applied}
           style={applied ? { ...btnApply, opacity: 0.6, cursor: 'default' } : hasChanges ? btnApply : { ...btnApply, opacity: 0.4, cursor: 'not-allowed' }}
         >
-          {applied ? 'Changes Staged' : 'Stage Briefing Changes'}
+          {applied ? '✓ Staged' : 'Stage Now'}
         </button>
-        {applied && (
-          <span style={{ fontSize: 12, color: '#3fb950' }}>
-            Changes will be saved when you download the .miz
-          </span>
-        )}
+        <span style={{ fontSize: 12, color: '#888' }}>
+          {applied
+            ? 'Auto-saved. Will write to the .miz on download.'
+            : hasChanges
+            ? 'Auto-saving in 0.8 s — or click Stage Now.'
+            : 'Type in any field — changes auto-save.'}
+        </span>
       </div>
     </div>
   );
