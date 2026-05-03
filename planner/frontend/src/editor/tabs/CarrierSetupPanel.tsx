@@ -90,45 +90,89 @@ const HULL_DB: Record<string, HullData> = {
 };
 
 function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
+  // Step 1: pick up whatever the carrier's existing AWA tasks already
+  // declare. The backend's miz_parser already walks the carrier's
+  // waypoint tasks and parses ActivateBeacon → g.tacan and
+  // ActivateICLS → g.icls. Pre-existing mission values WIN over the
+  // hull-database guess — overriding what's already in the .miz with
+  // a "canonical" hull lookup was the v0.9.1 testing-day complaint
+  // ("ICLS for instance do not match, TCN callsigns etc.").
+  const existing: Partial<CarrierConfig> = {};
+  if (g.tacan) {
+    existing.tacanCh = g.tacan.channel;
+    existing.tacanBand = (g.tacan.band || 'X').toUpperCase();
+    existing.tacanCallsign = g.tacan.callsign || '';
+  }
+  if (g.icls && g.icls.channel > 0) {
+    existing.iclsCh = g.icls.channel;
+    existing.hasIcls = true;
+  }
+
   const name = g.groupName.toLowerCase();
   const utype = (g.units[0]?.type || '').toLowerCase();
   const combined = name + ' ' + utype;
   // Normalize separators: "CVN 73" and "CVN_73" both become "CVN-73" for matching
   const normalized = combined.replace(/[\s_]/g, '-');
 
+  // Step 2: hull-database lookup as fallback for fields the .miz didn't carry.
   for (const [key, data] of Object.entries(HULL_DB)) {
     if (normalized.includes(key.toLowerCase())) {
       return {
         label: data.label,
         callsign: data.callsign,
-        tacanCh: data.tacan,
-        tacanCallsign: data.label,
-        // Forward the canonical ICLS for this hull. The handleDetect
-        // collision pass below dedups when a multi-carrier mission
-        // would otherwise land two carriers on the same channel.
-        iclsCh: data.icls,
+        // Existing AWA values override hull-DB defaults wherever set.
+        tacanCh: existing.tacanCh ?? data.tacan,
+        tacanCallsign: existing.tacanCallsign ?? data.label,
+        tacanBand: existing.tacanBand,
+        iclsCh: existing.iclsCh ?? data.icls,
         tiwSpeed: data.tiwSpeed,
-        hasIcls: data.hasIcls,
-        aclsEnabled: data.hasIcls,
+        hasIcls: existing.hasIcls ?? data.hasIcls,
+        aclsEnabled: existing.hasIcls ?? data.hasIcls,
       };
     }
   }
 
-  // Dynamic extraction: if group name has "CVN <number>" but wasn't in HULL_DB
+  // Step 3: Dynamic CVN-NNN extraction.
   const cvnMatch = normalized.match(/cvn-?(\d+)/);
   if (cvnMatch) {
     const hull = parseInt(cvnMatch[1], 10);
     return {
-      label: 'CVN', callsign: 'Carrier', tacanCh: hull > 0 && hull <= 126 ? hull : 72,
-      tacanCallsign: 'CVN', tiwSpeed: 25, hasIcls: true, aclsEnabled: true,
+      label: 'CVN', callsign: 'Carrier',
+      tacanCh: existing.tacanCh ?? (hull > 0 && hull <= 126 ? hull : 72),
+      tacanCallsign: existing.tacanCallsign ?? 'CVN',
+      tacanBand: existing.tacanBand,
+      iclsCh: existing.iclsCh,
+      tiwSpeed: 25,
+      hasIcls: existing.hasIcls ?? true,
+      aclsEnabled: existing.hasIcls ?? true,
     };
   }
 
-  // Fallback: detect type
+  // Step 4: LHA/LHD fallback (smaller flat-tops with no ICLS).
   if (/lha|lhd|tarawa|wasp/i.test(combined)) {
-    return { label: 'LHA', callsign: 'Eagle', tacanCh: 1, tacanCallsign: 'LHA', tiwSpeed: 10, hasIcls: false, aclsEnabled: false };
+    return {
+      label: 'LHA', callsign: 'Eagle',
+      tacanCh: existing.tacanCh ?? 1,
+      tacanCallsign: existing.tacanCallsign ?? 'LHA',
+      tacanBand: existing.tacanBand,
+      iclsCh: existing.iclsCh ?? 0,
+      tiwSpeed: 10,
+      hasIcls: existing.hasIcls ?? false,
+      aclsEnabled: existing.hasIcls ?? false,
+    };
   }
-  return { label: 'CVN', callsign: 'Carrier', tacanCh: 72, tacanCallsign: 'CVN', tiwSpeed: 25, hasIcls: true, aclsEnabled: true };
+
+  // Step 5: Generic CVN fallback.
+  return {
+    label: 'CVN', callsign: 'Carrier',
+    tacanCh: existing.tacanCh ?? 72,
+    tacanCallsign: existing.tacanCallsign ?? 'CVN',
+    tacanBand: existing.tacanBand,
+    iclsCh: existing.iclsCh,
+    tiwSpeed: 25,
+    hasIcls: existing.hasIcls ?? true,
+    aclsEnabled: existing.hasIcls ?? true,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -300,11 +344,9 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
 export function CarrierSetupPanel() {
   const groups = useMissionStore((s) => s.groups);
   const sessionId = useMissionStore((s) => s.sessionId);
-  const missionOptions = useMissionStore((s) => s.missionOptions);
   const activeSop = useSopStore((s) => s.activeId
     ? s.sops.find((x) => x.id === s.activeId) || null
     : null);
-  const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
   const addEdit = useEditStore((s) => s.addEdit);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);
@@ -313,24 +355,6 @@ export function CarrierSetupPanel() {
   const [copied, setCopied] = useState(false);
   const [addingToTriggers, setAddingToTriggers] = useState(false);
   const [addedToTriggers, setAddedToTriggers] = useState(false);
-
-  // Mission-wide Supercarrier toggles. DCS stores these in
-  //   forcedOptions.Supercarrier.{deck_crew, speakers_enabled}
-  // Both are added by the April 29 2026 ED update; both default to ON
-  // when the field is absent from the .miz.
-  const scOpts = (missionOptions?.Supercarrier as
-    | { deck_crew?: boolean; speakers_enabled?: boolean }
-    | undefined) || {};
-  const deckCrewEnabled = scOpts.deck_crew !== false;       // default ON
-  const fiveMcEnabled   = scOpts.speakers_enabled !== false; // default ON
-
-  const setSupercarrierOption = useCallback((key: 'deck_crew' | 'speakers_enabled', value: boolean) => {
-    const prev = (missionOptions?.Supercarrier as Record<string, unknown>) || {};
-    setMissionOptions({
-      ...missionOptions,
-      Supercarrier: { ...prev, [key]: value },
-    });
-  }, [missionOptions, setMissionOptions]);
 
   // Detect carriers
   const carrierGroups = useMemo(() =>
@@ -395,8 +419,9 @@ export function CarrierSetupPanel() {
         coalition: g.coalition,
         label: info.label || 'CVN',
         callsign: info.callsign || 'Carrier',
+        // Precedence: SOP override > existing AWA value > hull-DB > default.
         tacanCh: sopTacan?.channel || info.tacanCh || 72,
-        tacanBand: sopTacan?.band || 'X',
+        tacanBand: sopTacan?.band || info.tacanBand || 'X',
         tacanCallsign: sopTacan?.callsign || info.tacanCallsign || 'CVN',
         iclsCh,
         aclsEnabled: info.aclsEnabled ?? hasIcls,
@@ -731,45 +756,9 @@ export function CarrierSetupPanel() {
         </div>
       </div>
 
-      {/* Mission-wide Supercarrier options (DCS forcedOptions.Supercarrier).
-          Added by ED in the April 29 2026 update — these toggles control
-          whether deck crew is rendered on the flight deck and whether the
-          5MC PA system plays announcements during launch / recovery. */}
-      <div style={{
-        marginBottom: 12, padding: '10px 14px',
-        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
-      }}>
-        <div style={{
-          fontSize: 11, fontWeight: 700, color: '#6ab4f0',
-          letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8,
-        }}>Mission-wide Carrier Options</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={deckCrewEnabled}
-              onChange={(e) => setSupercarrierOption('deck_crew', e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <span style={{ color: '#e0e0e0' }}>Enable Deck Crew</span>
-            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
-              forcedOptions.Supercarrier.deck_crew
-            </span>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={fiveMcEnabled}
-              onChange={(e) => setSupercarrierOption('speakers_enabled', e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <span style={{ color: '#e0e0e0' }}>Enable 5MC Messages</span>
-            <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
-              forcedOptions.Supercarrier.speakers_enabled
-            </span>
-          </label>
-        </div>
-      </div>
+      {/* Supercarrier mission-wide toggles moved to the Mission Options
+          tab in v0.9.2 — they're forced-options, not per-carrier
+          settings. Look under "Supercarrier (Modules)" there. */}
 
       {/* Config cards */}
       {configs.length === 0 && (

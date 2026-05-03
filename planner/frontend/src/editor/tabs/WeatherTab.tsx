@@ -802,9 +802,11 @@ function SimpleMode({
               <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <label style={fieldLabelStyle}>
-                  Speed (m/s)
-                  <input type="number" value={weather.wind[layer].speed} min={0} max={50}
-                    onChange={(e) => updateWind(layer, 'speed', Number(e.target.value))}
+                  Speed (kts)
+                  <input type="number" step="1"
+                    value={Math.round(weather.wind[layer].speed * 1.94384)}
+                    min={0} max={97}
+                    onChange={(e) => updateWind(layer, 'speed', Number(e.target.value) / 1.94384)}
                     style={numInputStyle} />
                 </label>
                 <label style={fieldLabelStyle}>
@@ -972,10 +974,11 @@ function AdvancedMode({
               <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>{label}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={fieldLabelStyle}>
-                  Speed (m/s)
-                  <input type="number" value={weather.wind[layer].speed}
-                    onChange={(e) => updateWind(layer, 'speed', Number(e.target.value))}
-                    style={{ ...numInputStyle, ...(hasChanges ? changedBorder : {}) }} min={0} max={50} />
+                  Speed (kts)
+                  <input type="number" step="1"
+                    value={Math.round(weather.wind[layer].speed * 1.94384)}
+                    onChange={(e) => updateWind(layer, 'speed', Number(e.target.value) / 1.94384)}
+                    style={{ ...numInputStyle, ...(hasChanges ? changedBorder : {}) }} min={0} max={97} />
                 </label>
                 <label style={fieldLabelStyle}>
                   Direction (deg)

@@ -77,7 +77,10 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'PLANNING' },
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
-  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '📐' },
+  // 🎯 reads as "training range / target practice" — the previous 📐
+  // (set square / ruler) was reading as "measure distance" and pilots
+  // kept skipping past it expecting the map's measure tool.
+  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '🎯' },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },

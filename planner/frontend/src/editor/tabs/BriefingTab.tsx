@@ -212,19 +212,35 @@ const btnApply: React.CSSProperties = {
 
 export function BriefingTab() {
   const overview = useMissionStore((s) => s.overview);
+  const sessionId = useMissionStore((s) => s.sessionId);
   const addEdit = useEditStore((s) => s.addEdit);
 
-  const [sortie, setSortie] = useState(overview?.sortie || '');
-  const [description, setDescription] = useState(
-    (overview?.description || '').replace(/\\n/g, '\n')
-  );
-  const [blueTask, setBlueTask] = useState(
-    (overview?.descriptionBlueTask || '').replace(/\\n/g, '\n')
-  );
-  const [redTask, setRedTask] = useState(
-    (overview?.descriptionRedTask || '').replace(/\\n/g, '\n')
-  );
+  // Local edit state. Initialized from overview on every NEW session
+  // (see sync effect below) — useState alone fires only on first
+  // mount, so if BriefingTab mounted before the mission upload
+  // finished, the fields would stay empty even after overview loaded
+  // — and v0.9.1's auto-stage would then dispatch a briefing edit
+  // with empty strings, wiping the original briefing on download.
+  const [sortie, setSortie] = useState('');
+  const [description, setDescription] = useState('');
+  const [blueTask, setBlueTask] = useState('');
+  const [redTask, setRedTask] = useState('');
   const [applied, setApplied] = useState(false);
+
+  // Sync local state from the mission overview on first arrival per
+  // session. Only fires when sessionId changes — once the user starts
+  // editing within a session, we don't clobber their typing.
+  const lastSyncedSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!overview || !sessionId) return;
+    if (lastSyncedSessionRef.current === sessionId) return;
+    setSortie(overview.sortie || '');
+    setDescription((overview.description || '').replace(/\\n/g, '\n'));
+    setBlueTask((overview.descriptionBlueTask || '').replace(/\\n/g, '\n'));
+    setRedTask((overview.descriptionRedTask || '').replace(/\\n/g, '\n'));
+    setApplied(false);
+    lastSyncedSessionRef.current = sessionId;
+  }, [overview, sessionId]);
 
   const hasChanges = useMemo(() => {
     return sortie !== (overview?.sortie || '') ||

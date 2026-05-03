@@ -170,6 +170,26 @@ export function MissionOptionsTab() {
     }
   }, [missionOptions, setMissionOptions]);
 
+  // Supercarrier sub-options live one level deeper:
+  //   forcedOptions.Supercarrier.{deck_crew, speakers_enabled}
+  // Defaults to ON when absent — DCS treats the missing key as "render
+  // deck crew / play 5MC". This used to live on the Carriers tab; moved
+  // here in v0.9.2 because it's a mission-wide forced option, not a
+  // per-carrier setting.
+  const scOpts = (missionOptions?.Supercarrier as
+    | { deck_crew?: boolean; speakers_enabled?: boolean }
+    | undefined) || {};
+  const setSupercarrierOpt = useCallback(
+    (key: 'deck_crew' | 'speakers_enabled', value: boolean) => {
+      const prev = (missionOptions?.Supercarrier as Record<string, unknown>) || {};
+      setMissionOptions({
+        ...missionOptions,
+        Supercarrier: { ...prev, [key]: value },
+      });
+    },
+    [missionOptions, setMissionOptions],
+  );
+
   // Group defined options by category
   const grouped = new Map<string, OptionDef[]>();
   for (const cat of CATEGORY_ORDER) grouped.set(cat, []);
@@ -219,6 +239,46 @@ export function MissionOptionsTab() {
           </div>
         );
       })}
+
+      {/* Supercarrier — only meaningful on missions with a CVN, but the
+          forcedOptions key is mission-wide so it lives here, not on the
+          per-carrier Carriers tab. Two-state plain checkbox (no NOT SET)
+          because DCS' default-when-absent IS true; users picking OFF
+          want the 5MC silenced or the deck cleared. */}
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>Supercarrier (Modules)</div>
+        <p style={{ fontSize: 11, color: '#888', padding: '0 12px 8px', margin: 0 }}>
+          Mission-wide rendering toggles for the DCS Supercarrier module.
+          Default to ON when not set in the .miz; flip OFF to silence the
+          5MC PA system or hide deck crew (e.g. for cinematic recovery
+          videos).
+        </p>
+        {([
+          { key: 'deck_crew',         label: 'Render Deck Crew' },
+          { key: 'speakers_enabled',  label: '5MC PA System' },
+        ] as const).map((opt, i) => {
+          const checked = scOpts[opt.key] !== false;  // missing -> ON
+          return (
+            <div key={opt.key} style={i % 2 === 0 ? rowStyle : altRow}>
+              <span style={{ color: '#e0e0e0' }}>{opt.label}</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setSupercarrierOpt(opt.key, e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+                <span style={{
+                  fontSize: 11, fontWeight: 600, minWidth: 30,
+                  color: checked ? '#3fb950' : '#aaaaaa',
+                }}>
+                  {checked ? 'ON' : 'OFF'}
+                </span>
+              </label>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
