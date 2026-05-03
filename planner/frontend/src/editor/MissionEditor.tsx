@@ -24,6 +24,7 @@ import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
 import { SopCheckTab } from './tabs/SopCheckTab';
 import { EditsTab } from './tabs/EditsTab';
+import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
@@ -370,6 +371,7 @@ export function MissionEditor() {
               <PlayerGroupsButton />
               <InviteManager />
             </div>
+            <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />
             <ExportPanel />
           </>
         )}
@@ -377,6 +379,7 @@ export function MissionEditor() {
         {/* Export at bottom for non-map tabs */}
         {!isMap && (
           <div style={{ marginTop: 'auto' }}>
+            <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />
             <ExportPanel />
           </div>
         )}
