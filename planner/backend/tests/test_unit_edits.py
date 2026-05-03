@@ -366,7 +366,16 @@ class TestAdjacentUnitIsolation:
     """For each edit, edit unit A then verify unit B's corresponding field
     is unchanged. The pre-fix handlers' forward-only ±N-char windows could
     drift past the closing brace of unit A and edit unit B's field instead.
-    With block-scoped handlers this should be impossible."""
+    With block-scoped handlers this should be impossible.
+
+    These tests are the strongest single guard against silent cross-unit
+    contamination — the bug class that motivated the whole audit. Each
+    one writes a distinctive marker value to unit A, then asserts the
+    marker does NOT appear in unit B's exact block. False positives are
+    extremely unlikely (the markers are deliberately exotic strings or
+    out-of-range numbers); a failure means a handler's window bled past
+    the unit boundary.
+    """
 
     def _two_player_units(self, uploaded_session):
         units = []
@@ -384,7 +393,6 @@ class TestAdjacentUnitIsolation:
         if len(units) < 2:
             pytest.skip("need two player units for isolation test")
         a, b = units[0], units[1]
-        # Pick a value distinct from both units' current skill
         target_skill = "Random"
         if a.get("skill") == "Random" or b.get("skill") == "Random":
             target_skill = "Average"
@@ -392,10 +400,74 @@ class TestAdjacentUnitIsolation:
         files = download_edited(client, sid, [edit])
 
         block_b = _unit_block(files["mission"], b["unitId"])
-        # b's skill should still be its original value (not the new one)
         if b.get("skill") and b["skill"] != target_skill:
             assert f'"skill"] = "{target_skill}"' not in block_b, \
                 f"skill edit on unit {a['unitId']} leaked into unit {b['unitId']}"
+
+    def test_livery_edit_does_not_leak_to_neighbour(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        units = self._two_player_units(uploaded_session)
+        if len(units) < 2:
+            pytest.skip("need two player units for isolation test")
+        a, b = units[0], units[1]
+        # Marker chosen so it cannot already be present in any livery_id
+        # field on simple.miz.
+        marker = "TEST_LEAK_LIVERY_DO_NOT_USE"
+        edit = {"unitId": a["unitId"], "field": "livery", "value": marker}
+        files = download_edited(client, sid, [edit])
+        block_b = _unit_block(files["mission"], b["unitId"])
+        assert f'"livery_id"] = "{marker}"' not in block_b, \
+            f"livery edit on unit {a['unitId']} leaked into unit {b['unitId']}"
+
+    def test_unit_rename_does_not_leak_to_neighbour(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        units = self._two_player_units(uploaded_session)
+        if len(units) < 2:
+            pytest.skip("need two player units for isolation test")
+        a, b = units[0], units[1]
+        marker = "TEST_LEAK_NAME_42"
+        edit = {"unitId": a["unitId"], "field": "unitRename", "value": marker}
+        files = download_edited(client, sid, [edit])
+        block_b = _unit_block(files["mission"], b["unitId"])
+        # The unit_name handler writes ["name"] = "marker" inside unit A's
+        # block. If it leaked, B's block would carry the marker.
+        assert marker not in block_b, \
+            f"unitRename on unit {a['unitId']} leaked into unit {b['unitId']}"
+
+    def test_heading_edit_does_not_leak_to_neighbour(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        units = self._two_player_units(uploaded_session)
+        if len(units) < 2:
+            pytest.skip("need two player units for isolation test")
+        a, b = units[0], units[1]
+        # 4.7123 radians ≈ 270.0° — an exotic value the fixture is
+        # extremely unlikely to carry on any unit by coincidence.
+        target_heading = 4.7123
+        edit = {"unitId": a["unitId"], "field": "heading", "value": target_heading}
+        files = download_edited(client, sid, [edit])
+        block_b = _unit_block(files["mission"], b["unitId"])
+        # B's heading field — if it exists — must NOT carry the marker.
+        b_heading_m = re.search(r'\["heading"\]\s*=\s*([0-9.\-eE]+)', block_b)
+        if b_heading_m and b_heading_m.group(1).startswith("4.7123"):
+            pytest.fail(
+                f"heading edit on unit {a['unitId']} leaked into unit {b['unitId']}"
+            )
+
+    def test_onboard_num_does_not_leak_to_neighbour(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        units = self._two_player_units(uploaded_session)
+        if len(units) < 2:
+            pytest.skip("need two player units for isolation test")
+        a, b = units[0], units[1]
+        marker = "999"  # 999 is unlikely to be the existing tail number on B
+        edit = {"unitId": a["unitId"], "field": "onboard_num", "value": marker}
+        files = download_edited(client, sid, [edit])
+        block_b = _unit_block(files["mission"], b["unitId"])
+        # Check b's onboard_num field specifically, not just "999" anywhere.
+        ob_m = re.search(r'\["onboard_num"\]\s*=\s*"([^"]*)"', block_b)
+        if ob_m:
+            assert ob_m.group(1) != marker, \
+                f"onboard_num edit on unit {a['unitId']} leaked into unit {b['unitId']}"
 
 
 # ---------------------------------------------------------------------------
