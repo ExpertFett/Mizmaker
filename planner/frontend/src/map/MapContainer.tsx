@@ -23,6 +23,7 @@ import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer'
 import { createTriggerZoneLayer, populateTriggerZoneLayer } from './layers/triggerZoneLayer';
 import { createPlannerDrawingLayer, populatePlannerDrawingLayer } from './layers/plannerDrawingLayer';
 import { useDrawingStore } from '../store/drawingStore';
+import { useDmpiStore } from '../store/dmpiStore';
 import { latLonToDcs } from '../projection/dcsProjection';
 import { formatLatLon, metersToFeet } from '../utils/conversions';
 import { haversineDistance, bearing } from '../utils/navmath';
@@ -107,7 +108,15 @@ function createTopoLayer(): TileLayer {
   });
 }
 
-export function MapContainer() {
+interface MapContainerProps {
+  /** Called after the user clicks on the map while in DMPI pick mode.
+   *  Editor uses this to flip back to the DMPI tab. Optional — when
+   *  unset, picking still completes and writes coordinates, the user
+   *  just stays on the map. */
+  onDmpiPicked?: () => void;
+}
+
+export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const baseLayers = useRef<{ dark: TileLayer; osm: TileLayer; satellite: TileLayer; topo: TileLayer } | null>(null);
@@ -324,6 +333,19 @@ export function MapContainer() {
     map.on('click', (e) => {
       const { addWaypointMode, measureMode } = useMapStore.getState();
       if (addWaypointMode || measureMode) return;
+
+      // DMPI placement mode — when armed from the DMPI tab, the next
+      // click captures coords into the targeted DMPI and triggers the
+      // editor to flip back. Runs BEFORE feature-hit detection so a
+      // click that lands on a unit / waypoint still goes to the DMPI
+      // (the user wanted those coordinates, not to select the unit).
+      const { pickingForId, finishPicking } = useDmpiStore.getState();
+      if (pickingForId) {
+        const [lon, lat] = toLonLat(e.coordinate);
+        finishPicking(lat, lon);
+        onDmpiPicked?.();
+        return;
+      }
 
       // Collect all features at click point
       const hits: any[] = [];
@@ -707,6 +729,7 @@ export function MapContainer() {
           Click to measure &middot; Double-click to finish &middot; Esc to cancel
         </div>
       )}
+      <DmpiPickBanner />
 
       <div
         id="map-tooltip"
@@ -725,6 +748,39 @@ export function MapContainer() {
           whiteSpace: 'nowrap',
         }}
       />
+    </div>
+  );
+}
+
+/** Top-of-map banner shown when a DMPI is armed for click-to-place.
+ *  Lives below MapContainer; reads pickingForId / dmpis from the
+ *  store so it's a self-contained widget with no props. */
+function DmpiPickBanner() {
+  const pickingForId = useDmpiStore((s) => s.pickingForId);
+  const dmpi = useDmpiStore((s) => {
+    if (!s.pickingForId) return null;
+    return s.dmpis.find((d) => d.id === s.pickingForId) ?? null;
+  });
+  const cancel = useDmpiStore((s) => s.cancelPicking);
+  if (!pickingForId) return null;
+  return (
+    <div style={{
+      position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+      background: 'rgba(74, 143, 212, 0.15)', border: '1px solid #4a8fd4', borderRadius: 6,
+      padding: '8px 20px', color: '#4a8fd4', fontSize: 13, fontWeight: 500, zIndex: 200,
+      display: 'flex', alignItems: 'center', gap: 14,
+    }}>
+      <span>📍 Click anywhere to set coordinates for <strong>{dmpi?.name ?? '—'}</strong></span>
+      <button
+        onClick={cancel}
+        style={{
+          background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+          color: '#aaaaaa', cursor: 'pointer', fontSize: 12, padding: '3px 10px',
+          fontFamily: 'inherit',
+        }}
+      >
+        Cancel
+      </button>
     </div>
   );
 }

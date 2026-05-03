@@ -394,7 +394,7 @@ export function MissionEditor() {
         {isMap && (
           <>
             <ParticipantBar />
-            <MapContainer />
+            <MapContainer onDmpiPicked={() => selectTab('dmpi')} />
             {selectedGroupId && <FloatingFlightPanel />}
           </>
         )}
@@ -462,7 +462,7 @@ export function MissionEditor() {
             )}
             {visitedTabs.has('dmpi') && (
               <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
-                <DmpiTab />
+                <DmpiTab onPickOnMap={() => selectTab('map')} />
               </div>
             )}
             {visitedTabs.has('rangePlan') && (
