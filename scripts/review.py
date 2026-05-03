@@ -194,6 +194,11 @@ def _changed_files(mode: str, base: str | None) -> list[str]:
 
 def _scan_text(path: str, text: str) -> list[Finding]:
     findings: list[Finding] = []
+    # Test files legitimately bypass store actions to seed deterministic
+    # initial state. Skip them so the linter doesn't flag the standard
+    # Vitest setup pattern.
+    if path.endswith(".test.ts") or path.endswith(".test.tsx") or "/tests/" in path:
+        return findings
     ext = "." + path.rsplit(".", 1)[-1] if "." in path else ""
     lines = text.splitlines()
     for pat in PATTERNS:

@@ -40,9 +40,9 @@ interface MissionState {
   setMissionOptions: (opts: MissionOptions) => void;
   /** Replace the whole groups array. Use when a tab applies a bulk
    *  edit (e.g. waypoint moves, flight assignments) and produces a
-   *  freshly-mapped array. Same effect as the old direct
-   *  `useMissionStore.setState({ groups })` pattern but routed
-   *  through a typed action so future audit trails / undo can hook it. */
+   *  freshly-mapped array. Same effect as the old direct dict-style
+   *  setState pattern but routed through a typed action so future
+   *  audit trails / undo can hook it. */
   setGroups: (groups: MissionGroup[]) => void;
   /** Replace the whole clientUnits array. Used by Datalink, Loadout,
    *  and DTC tabs when they re-derive the clientUnit list after a

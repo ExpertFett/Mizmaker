@@ -25,6 +25,12 @@ interface MapState {
   setEditorMode: (on: boolean) => void;
   setFloatingPanelPos: (pos: { x: number; y: number }) => void;
   setSelectedWpIndex: (idx: number | null) => void;
+  /** Pin the basemap selection (one of "dark" | "light" | "satellite" | ...).
+   *  Lives in the layers map alongside the boolean show/hide flags. */
+  setBaseMap: (id: string) => void;
+  /** Pin the OSM language layer (e.g. "en", "ru"). Same nesting as
+   *  setBaseMap — a single string in the layers record. */
+  setMapLang: (lang: string) => void;
 }
 
 export const useMapStore = create<MapState>((set) => ({
@@ -69,4 +75,8 @@ export const useMapStore = create<MapState>((set) => ({
   setEditorMode: (on) => set({ editorMode: on }),
   setFloatingPanelPos: (pos) => set({ floatingPanelPos: pos }),
   setSelectedWpIndex: (idx) => set({ selectedWpIndex: idx }),
+
+  setBaseMap: (id) => set((s) => ({ layers: { ...s.layers, baseMap: id } })),
+
+  setMapLang: (lang) => set((s) => ({ layers: { ...s.layers, mapLang: lang } })),
 }));

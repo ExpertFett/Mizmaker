@@ -36,13 +36,11 @@ export function LayerSwitcher() {
   const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable('layerSwitcher');
   const [collapsed, setCollapsed] = useState(false);
 
-  const setBaseMap = (id: string) => {
-    useMapStore.setState((s) => ({ layers: { ...s.layers, baseMap: id } }));
-  };
-
-  const setMapLang = (lang: string) => {
-    useMapStore.setState((s) => ({ layers: { ...s.layers, mapLang: lang } }));
-  };
+  // Use the typed actions on mapStore — same effect as the previous
+  // inline setState calls but goes through the action interface so
+  // future audit / replay can hook it.
+  const setBaseMap = useMapStore((s) => s.setBaseMap);
+  const setMapLang = useMapStore((s) => s.setMapLang);
 
   return (
     <>

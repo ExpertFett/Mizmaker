@@ -23,6 +23,7 @@
 import { useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { Button } from '../../components/Button';
 import type { UnitEdit, WaypointEdit, MissionGroup } from '../../types/mission';
 
 type AnyEdit = UnitEdit | WaypointEdit;
@@ -202,26 +203,18 @@ export function EditsTab() {
           ) : null
         ))}
         {rows.length > 0 && (
-          <button
+          <Button
+            variant="danger"
+            size="sm"
+            style={{ marginLeft: 'auto' }}
             onClick={() => {
               if (confirm(`Clear all ${rows.length} queued edits? This cannot be undone.`)) {
                 clearEdits();
               }
             }}
-            style={{
-              marginLeft: 'auto',
-              background: '#3a1a1a',
-              border: '1px solid #5a2a2a',
-              borderRadius: 4,
-              color: '#d95050',
-              padding: '4px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
           >
             Clear All
-          </button>
+          </Button>
         )}
       </div>
 
@@ -287,21 +280,15 @@ export function EditsTab() {
                   {r.valueLabel}
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  <button
+                  <Button
+                    variant="subtle"
+                    size="sm"
                     onClick={() => removeEditAt(r.index)}
                     title="Remove this edit from the queue"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid #3a3a3a',
-                      borderRadius: 3,
-                      color: '#888',
-                      fontSize: 11,
-                      padding: '3px 8px',
-                      cursor: 'pointer',
-                    }}
+                    style={{ background: 'transparent', fontSize: 11 }}
                   >
                     Remove
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}

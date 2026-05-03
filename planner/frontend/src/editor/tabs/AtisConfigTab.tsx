@@ -357,12 +357,7 @@ export function AtisConfigTab() {
       await saveTriggers(sessionId, { rules: newRules });
 
       // Update local store so TriggerTab reflects the change
-      useTriggerStore.setState({
-        rules: newRules,
-        selectedRuleId: atisRule.id,
-        isDirty: false,
-        loaded: true,
-      });
+      useTriggerStore.getState().replaceRulesAfterSave(newRules, atisRule.id);
 
       setAdded(true);
     } catch (e: unknown) {

@@ -9,6 +9,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { Button } from '../../components/Button';
 import { isCarrierGroup, getAirRoleLabel } from '../../utils/groups';
 
 /* ------------------------------------------------------------------ */
@@ -197,11 +198,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit', boxSizing: 'border-box',
 };
 
-const btnStyle: React.CSSProperties = {
-  background: '#4a4a4a', border: '1px solid #4a8fd4', borderRadius: 4,
-  color: '#4a8fd4', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-  padding: '8px 16px', fontFamily: 'inherit',
-};
+// btnStyle was extracted into <Button> in src/components/Button.tsx
 
 const btnApply: React.CSSProperties = {
   background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)',
@@ -270,9 +267,9 @@ export function BriefingTab() {
             Edit mission briefing text or auto-fill from mission data.
           </p>
         </div>
-        <button onClick={handleAutoFill} style={btnStyle}>
+        <Button onClick={handleAutoFill} style={{ padding: '8px 16px' }}>
           Auto-Fill from Mission
-        </button>
+        </Button>
       </div>
 
       {/* Sortie Name */}

@@ -20,6 +20,12 @@ interface TriggerState {
   addAudioFile: (file: AudioFile) => void;
   removeAudioFile: (path: string) => void;
   markClean: () => void;
+  /** Apply server-confirmed rules after a save round-trip. AtisConfigTab
+   *  + CarrierSetupPanel call this once /api/triggers responds; we
+   *  replace rules, highlight the just-saved rule, and mark the store
+   *  clean. Doesn't touch flags or audioFiles (callers assume those
+   *  are unaffected by the kind of edits these tabs make). */
+  replaceRulesAfterSave: (rules: TriggerRule[], selectedRuleId: number | null) => void;
   clear: () => void;
 }
 
@@ -104,6 +110,9 @@ export const useTriggerStore = create<TriggerState>((set, get) => ({
     set((s) => ({ audioFiles: s.audioFiles.filter((f) => f.path !== path) })),
 
   markClean: () => set({ isDirty: false }),
+
+  replaceRulesAfterSave: (rules, selectedRuleId) =>
+    set({ rules, selectedRuleId, isDirty: false, loaded: true }),
 
   clear: () =>
     set({

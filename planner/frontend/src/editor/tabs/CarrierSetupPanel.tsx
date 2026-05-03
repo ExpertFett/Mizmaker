@@ -623,12 +623,7 @@ export function CarrierSetupPanel() {
 
       // Sync the trigger store so the Triggers tab shows the new rule
       // immediately without a manual refresh.
-      useTriggerStore.setState({
-        rules: filtered,
-        selectedRuleId: carrierRule.id,
-        isDirty: false,
-        loaded: true,
-      });
+      useTriggerStore.getState().replaceRulesAfterSave(filtered, carrierRule.id);
 
       setAddedToTriggers(true);
       setTimeout(() => setAddedToTriggers(false), 4000);
