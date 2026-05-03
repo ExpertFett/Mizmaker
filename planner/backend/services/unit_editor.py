@@ -118,23 +118,25 @@ def _find_group_block_start(text: str, group_id: int) -> int:
 # ---------------------------------------------------------------------------
 
 def _replace_prop_field(text: str, unit_id: int, lua_field: str, new_value: str) -> str:
-    """Replace a string field in AddPropAircraft for a specific unit."""
-    unit_pos = _find_unit_block_start(text, unit_id)
+    """Replace a string field in AddPropAircraft for a specific unit.
 
-    search_start = max(0, unit_pos - 3000)
-    search_end = min(len(text), unit_pos + 3000)
-    region = text[search_start:search_end]
+    Block-scoped via _find_unit_block_bounds — the AddPropAircraft block
+    on player units sits well above unitId in the file, way past the old
+    ±3000-char window. Used for voiceCallsignLabel, voiceCallsignNumber,
+    and STN_L16 fields.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     pattern = rf'(\["{lua_field}"\]\s*=\s*)"([^"]*)"'
-    match = re.search(pattern, region)
+    match = re.search(pattern, unit_block)
     if not match:
-        raise ValueError(f"Field {lua_field} not found near unit {unit_id}")
+        raise ValueError(f"Field {lua_field} not found in unit {unit_id} block")
 
-    abs_start = search_start + match.start()
-    abs_end = search_start + match.end()
+    abs_start = block_start + match.start()
+    abs_end = block_start + match.end()
     replacement = f'{match.group(1)}"{new_value}"'
-    text = text[:abs_start] + replacement + text[abs_end:]
-    return text
+    return text[:abs_start] + replacement + text[abs_end:]
 
 
 def _build_network_list_block(key: str, unit_ids: list, base_indent: str) -> str:
@@ -161,40 +163,42 @@ def _build_network_list_block(key: str, unit_ids: list, base_indent: str) -> str
 
 
 def _replace_network_list(text: str, unit_id: int, key: str, unit_ids: list) -> str:
-    """Replace or insert a donors/teamMembers block for a specific unit."""
-    unit_pos = _find_unit_block_start(text, unit_id)
+    """Replace or insert a donors/teamMembers block for a specific unit.
 
-    # Network/datalinks can be far from unitId (payload data in between)
-    search_start = max(0, unit_pos - 5000)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[search_start:search_end]
+    Block-scoped via _find_unit_block_bounds — the datalink ["network"]
+    section on player units lives near the top of the unit block, far
+    above the old ±5000-char window's reach. Without proper scoping
+    this used to silently no-op the donor list update on player units.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     # Try to find existing block: ["key"] = { ... }
     pattern = rf'\["{key}"\]\s*=\s*\n?\s*\{{'
-    match = re.search(pattern, region)
+    match = re.search(pattern, unit_block)
 
     if match:
-        # Found existing block -- brace-match to find its closing brace
+        # Found existing block — brace-match to find its closing brace.
         brace_start = match.end() - 1
         depth = 0
         i = brace_start
-        while i < len(region):
-            if region[i] == '{':
+        while i < len(unit_block):
+            if unit_block[i] == '{':
                 depth += 1
-            elif region[i] == '}':
+            elif unit_block[i] == '}':
                 depth -= 1
                 if depth == 0:
                     break
             i += 1
-        block_end = i + 1
-        # Include trailing comment
-        rest = region[block_end:]
+        block_close = i + 1
+        # Include trailing comment if present
+        rest = unit_block[block_close:]
         eol = re.match(r',\s*-- end of \["' + re.escape(key) + r'"\]', rest)
         if eol:
-            block_end += eol.end()
+            block_close += eol.end()
 
-        # Detect indentation
-        lines_before = region[:match.start()].split("\n")
+        # Detect indentation from the line that contains the existing block.
+        lines_before = unit_block[:match.start()].split("\n")
         base_indent = ""
         for line in reversed(lines_before):
             if line.strip():
@@ -202,30 +206,27 @@ def _replace_network_list(text: str, unit_id: int, key: str, unit_ids: list) -> 
                 break
 
         replacement = _build_network_list_block(key, unit_ids, base_indent)
-        abs_start = search_start + match.start()
-        abs_end = search_start + block_end
-        text = text[:abs_start] + replacement + text[abs_end:]
-    else:
-        # No existing block -- insert into ["network"] = { ... }
-        network_pattern = r'\["network"\]\s*=\s*\n?\s*\{'
-        net_match = re.search(network_pattern, region)
-        if not net_match:
-            raise ValueError(f"Network block not found near unit {unit_id}")
+        abs_start = block_start + match.start()
+        abs_end = block_start + block_close
+        return text[:abs_start] + replacement + text[abs_end:]
 
-        lines_before = region[:net_match.start()].split("\n")
-        base_indent = ""
-        for line in reversed(lines_before):
-            if line.strip():
-                base_indent = re.match(r"(\s*)", line).group(1)
-                break
-        inner_indent = base_indent + "\t"
+    # No existing block — insert into ["network"] = { ... } within the unit.
+    network_pattern = r'\["network"\]\s*=\s*\n?\s*\{'
+    net_match = re.search(network_pattern, unit_block)
+    if not net_match:
+        raise ValueError(f"Network block not found in unit {unit_id} block")
 
-        new_block = "\n" + inner_indent + _build_network_list_block(key, unit_ids, inner_indent)
+    lines_before = unit_block[:net_match.start()].split("\n")
+    base_indent = ""
+    for line in reversed(lines_before):
+        if line.strip():
+            base_indent = re.match(r"(\s*)", line).group(1)
+            break
+    inner_indent = base_indent + "\t"
 
-        insert_pos = search_start + net_match.end()
-        text = text[:insert_pos] + new_block + text[insert_pos:]
-
-    return text
+    new_block = "\n" + inner_indent + _build_network_list_block(key, unit_ids, inner_indent)
+    insert_pos = block_start + net_match.end()
+    return text[:insert_pos] + new_block + text[insert_pos:]
 
 
 def _replace_donors(text: str, unit_id: int, donor_ids: list) -> str:
@@ -636,38 +637,40 @@ def _replace_payload_block(text: str, unit_id: int, payload_dict: dict) -> str:
 
 
 def _extract_payload_block(text: str, unit_id: int) -> str:
-    """Extract the raw Lua text of a unit's payload block."""
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_start = max(0, unit_pos - 5000)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[search_start:search_end]
+    """Extract the raw Lua text of a unit's payload block.
 
-    # Find ["payload"] = { ... }, matching braces
-    match = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', region)
+    Block-scoped — the previous ±5000-char window picked up a neighbouring
+    unit's payload block on tightly-packed group definitions, which then
+    propagated through _copy_payload_block as silent cross-unit
+    contamination during loadout copy.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
+
+    match = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', unit_block)
     if not match:
-        raise ValueError(f"Payload block not found near unit {unit_id}")
+        raise ValueError(f"Payload block not found in unit {unit_id} block")
 
-    # Brace-match to find the closing brace
+    # Brace-match to find the closing brace, scoped to the unit block.
     brace_start = match.end() - 1
     depth = 0
     i = brace_start
-    while i < len(region):
-        if region[i] == '{':
+    while i < len(unit_block):
+        if unit_block[i] == '{':
             depth += 1
-        elif region[i] == '}':
+        elif unit_block[i] == '}':
             depth -= 1
             if depth == 0:
                 break
         i += 1
 
-    # Include the end-of comment if present
     end = i + 1
-    rest = region[end:]
+    rest = unit_block[end:]
     eol_match = re.match(r',\s*-- end of \["payload"\]', rest)
     if eol_match:
         end += eol_match.end()
 
-    return region[match.start():end]
+    return unit_block[match.start():end]
 
 
 def _copy_payload_block(text: str, source_uid: int, target_uid: int) -> str:
@@ -1022,45 +1025,46 @@ def _replace_callsign(text: str, unit_id: int, name_idx: int, flight: int,
             [3] = <position_in_flight>,
             ["name"] = "<NameFF>",
         },
+
+    Block-scoped via _find_unit_block_bounds — the callsign block sits
+    near the top of the unit block, well above the bottom-of-block
+    unitId line on player units. Forward-only ±5000 search couldn't
+    reach it on player flights with full radio preset programming.
     """
-    unit_pos = _find_unit_block_start(text, unit_id)
-    search_end = min(len(text), unit_pos + 5000)
-    region = text[unit_pos:search_end]
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
 
-    # Replace [1] = name index
-    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[1\]\s*=\s*)(\d+)', region)
+    # The callsign sub-block is identified by ["callsign"] = { ... }.
+    # We do all four edits on a freshly-sliced unit_block view, then
+    # apply absolute offsets back to the full text after each one. This
+    # is what the original did with `region`, but bounded.
+    def _slice(text: str) -> str:
+        # Recompute bounds on every iteration since text length shifts.
+        bs, be = _find_unit_block_bounds(text, unit_id)
+        return text[bs:be], bs
+
+    # [1] = name index
+    unit_block, bs = _slice(text)
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[1\]\s*=\s*)(\d+)', unit_block)
     if m:
-        abs_s = unit_pos + m.start(2)
-        abs_e = unit_pos + m.end(2)
-        text = text[:abs_s] + str(name_idx) + text[abs_e:]
+        text = text[:bs + m.start(2)] + str(name_idx) + text[bs + m.end(2):]
 
-    # Re-read region after text shift
-    region = text[unit_pos:min(len(text), unit_pos + 5000)]
-
-    # Replace [2] = flight number
-    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[2\]\s*=\s*)(\d+)', region)
+    # [2] = flight number
+    unit_block, bs = _slice(text)
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[2\]\s*=\s*)(\d+)', unit_block)
     if m:
-        abs_s = unit_pos + m.start(2)
-        abs_e = unit_pos + m.end(2)
-        text = text[:abs_s] + str(flight) + text[abs_e:]
+        text = text[:bs + m.start(2)] + str(flight) + text[bs + m.end(2):]
 
-    region = text[unit_pos:min(len(text), unit_pos + 5000)]
-
-    # Replace [3] = position
-    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[3\]\s*=\s*)(\d+)', region)
+    # [3] = position
+    unit_block, bs = _slice(text)
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\[3\]\s*=\s*)(\d+)', unit_block)
     if m:
-        abs_s = unit_pos + m.start(2)
-        abs_e = unit_pos + m.end(2)
-        text = text[:abs_s] + str(pos) + text[abs_e:]
+        text = text[:bs + m.start(2)] + str(pos) + text[bs + m.end(2):]
 
-    region = text[unit_pos:min(len(text), unit_pos + 5000)]
-
-    # Replace ["name"] = "..."
-    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\["name"\]\s*=\s*")([^"]*)', region)
+    # ["name"] = "..." inside the callsign sub-block
+    unit_block, bs = _slice(text)
+    m = re.search(r'(\["callsign"\]\s*=\s*\{[^}]*?\["name"\]\s*=\s*")([^"]*)', unit_block)
     if m:
-        abs_s = unit_pos + m.start(2)
-        abs_e = unit_pos + m.end(2)
-        text = text[:abs_s] + name_str + text[abs_e:]
+        text = text[:bs + m.start(2)] + name_str + text[bs + m.end(2):]
 
     return text
 

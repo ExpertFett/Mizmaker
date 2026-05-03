@@ -399,6 +399,319 @@ class TestAdjacentUnitIsolation:
 
 
 # ---------------------------------------------------------------------------
+# AddPropAircraft fields — voiceCallsignLabel/Number, STN_L16
+# ---------------------------------------------------------------------------
+
+def _player_unit_with_prop(uploaded_session: dict, mission_text: str, lua_field: str):
+    """First player unit whose block actually contains the named prop field.
+    Skip-friendly — returns None when nothing matches."""
+    for g in uploaded_session.get("groups", []):
+        for u in g.get("units", []):
+            if u.get("skill") not in ("Client", "Player"):
+                continue
+            uid = u.get("unitId")
+            if uid is None:
+                continue
+            try:
+                bs, be = _find_unit_block_bounds(mission_text, uid)
+            except ValueError:
+                continue
+            if re.search(rf'\["{lua_field}"\]\s*=\s*"', mission_text[bs:be]):
+                return u
+    return None
+
+
+class TestVoiceCallsignLabel:
+    def test_voice_callsign_label_persists(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])  # pristine
+        unit = _player_unit_with_prop(uploaded_session, original["mission"],
+                                       "VoiceCallsignLabel")
+        if not unit:
+            pytest.skip("no player unit has a VoiceCallsignLabel field")
+        new_label = "TST"
+        edit = {"unitId": unit["unitId"], "field": "voiceCallsignLabel", "value": new_label}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"VoiceCallsignLabel"] = "{new_label}"' in block, \
+            f"VoiceCallsignLabel did not update in unit {unit['unitId']}'s block"
+
+
+class TestVoiceCallsignNumber:
+    def test_voice_callsign_number_persists(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit = _player_unit_with_prop(uploaded_session, original["mission"],
+                                       "VoiceCallsignNumber")
+        if not unit:
+            pytest.skip("no player unit has a VoiceCallsignNumber field")
+        new_num = "451"
+        edit = {"unitId": unit["unitId"], "field": "voiceCallsignNumber", "value": new_num}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"VoiceCallsignNumber"] = "{new_num}"' in block
+
+
+class TestStnL16:
+    def test_stn_l16_persists(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit = _player_unit_with_prop(uploaded_session, original["mission"], "STN_L16")
+        if not unit:
+            pytest.skip("no player unit has an STN_L16 field")
+        new_stn = "00777"
+        edit = {"unitId": unit["unitId"], "field": "stnL16", "value": new_stn}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"STN_L16"] = "{new_stn}"' in block
+
+
+# ---------------------------------------------------------------------------
+# Datalink — donors, teamMembers
+# ---------------------------------------------------------------------------
+
+def _player_unit_with_network(uploaded_session: dict, mission_text: str):
+    """First player unit whose block contains a ["network"] section."""
+    for g in uploaded_session.get("groups", []):
+        for u in g.get("units", []):
+            if u.get("skill") not in ("Client", "Player"):
+                continue
+            uid = u.get("unitId")
+            if uid is None:
+                continue
+            try:
+                bs, be = _find_unit_block_bounds(mission_text, uid)
+            except ValueError:
+                continue
+            if re.search(r'\["network"\]\s*=\s*\n?\s*\{', mission_text[bs:be]):
+                return u
+    return None
+
+
+class TestDonors:
+    def test_donor_list_persists(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit = _player_unit_with_network(uploaded_session, original["mission"])
+        if not unit:
+            pytest.skip("no player unit has a network/datalink block")
+        donor_ids = [101, 202, 303]
+        edit = {"unitId": unit["unitId"], "field": "donors", "value": donor_ids}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        # All donor ids must appear inside the unit's block. Donors are
+        # the only place ["missionUnitId"] gets written, and we know the
+        # original mission didn't have these specific ids — so finding
+        # them in the unit block proves the donor list landed.
+        assert '["donors"]' in block, "donors section missing from unit"
+        for did in donor_ids:
+            assert f'["missionUnitId"] = {did}' in block, \
+                f"donor id {did} not in unit {unit['unitId']}'s block"
+
+
+class TestTeamMembers:
+    def test_team_member_list_persists(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit = _player_unit_with_network(uploaded_session, original["mission"])
+        if not unit:
+            pytest.skip("no player unit has a network/datalink block")
+        member_ids = [42, 99]
+        edit = {"unitId": unit["unitId"], "field": "teamMembers", "value": member_ids}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert '["teamMembers"]' in block, "teamMembers section missing from unit"
+        for mid in member_ids:
+            assert f'["missionUnitId"] = {mid}' in block, \
+                f"team member id {mid} not in unit {unit['unitId']}'s block"
+
+
+# ---------------------------------------------------------------------------
+# Callsign block (voice) — AI / Client units with ["callsign"] = { [1], [2], [3], name }
+# ---------------------------------------------------------------------------
+
+def _unit_with_callsign_block(uploaded_session: dict, mission_text: str):
+    """First unit whose block contains ["callsign"] = { [1] = N, [2] = N, [3] = N, ["name"] = ... }."""
+    for g in uploaded_session.get("groups", []):
+        for u in g.get("units", []):
+            uid = u.get("unitId")
+            if uid is None:
+                continue
+            try:
+                bs, be = _find_unit_block_bounds(mission_text, uid)
+            except ValueError:
+                continue
+            block = mission_text[bs:be]
+            if re.search(r'\["callsign"\]\s*=\s*\{[^}]*?\[1\]\s*=\s*\d+', block):
+                return u
+    return None
+
+
+class TestCallsign:
+    def test_voice_callsign_replaces_all_four_fields(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit = _unit_with_callsign_block(uploaded_session, original["mission"])
+        if not unit:
+            pytest.skip("no unit has a callsign block in fixture")
+        edit = {
+            "unitId": unit["unitId"],
+            "field": "callsign",
+            "value": {"nameIdx": 5, "flight": 7, "pos": 3, "name": "TestForce71"},
+        }
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        # All four sub-fields should reflect the new values inside the
+        # unit's callsign sub-block.
+        cs_m = re.search(r'\["callsign"\]\s*=\s*\{(.+?)\}', block, flags=re.DOTALL)
+        assert cs_m, "callsign block missing"
+        cs = cs_m.group(1)
+        assert re.search(r'\[1\]\s*=\s*5', cs), "name index didn't update to 5"
+        assert re.search(r'\[2\]\s*=\s*7', cs), "flight number didn't update to 7"
+        assert re.search(r'\[3\]\s*=\s*3', cs), "position didn't update to 3"
+        assert '"name"] = "TestForce71"' in cs, "name string didn't update"
+
+
+# ---------------------------------------------------------------------------
+# Loadout copy — _copy_payload_block via copyLoadout dispatch
+# ---------------------------------------------------------------------------
+
+def _two_player_units_with_payload(uploaded_session: dict, mission_text: str):
+    """Two player units whose blocks both have a ["payload"] section.
+    Returns (source, target) so we can verify a copy round-trip."""
+    found = []
+    for g in uploaded_session.get("groups", []):
+        for u in g.get("units", []):
+            if u.get("skill") not in ("Client", "Player"):
+                continue
+            uid = u.get("unitId")
+            if uid is None:
+                continue
+            try:
+                bs, be = _find_unit_block_bounds(mission_text, uid)
+            except ValueError:
+                continue
+            if re.search(r'\["payload"\]\s*=', mission_text[bs:be]):
+                found.append(u)
+                if len(found) == 2:
+                    return found[0], found[1]
+    return None, None
+
+
+class TestCopyLoadout:
+    def test_copy_payload_clones_pylons(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        source, target = _two_player_units_with_payload(uploaded_session, original["mission"])
+        if not source or not target:
+            pytest.skip("need two player units with payload blocks")
+
+        # Read source's payload block from the pristine mission so we know
+        # what should end up on target after the copy.
+        src_block = _unit_block(original["mission"], source["unitId"])
+        src_payload_m = re.search(r'\["payload"\]\s*=\s*\n?\s*\{(.+?)\}\s*,\s*-- end of \["payload"\]',
+                                  src_block, flags=re.DOTALL)
+        if not src_payload_m:
+            pytest.skip("could not extract source payload block from fixture")
+
+        # Pick a CLSID that exists on source — that's the payload signature.
+        src_clsids = re.findall(r'\["CLSID"\]\s*=\s*"([^"]+)"', src_payload_m.group(1))
+        if not src_clsids:
+            pytest.skip("source unit has no pylons with CLSIDs")
+        src_signature = src_clsids[0]
+
+        edit = {"unitId": target["unitId"], "field": "copyLoadout", "value": source["unitId"]}
+        files = download_edited(client, sid, [edit])
+        target_block = _unit_block(files["mission"], target["unitId"])
+        # After copy, target's payload should contain at least one pylon
+        # whose CLSID matches the source signature.
+        assert f'"CLSID"] = "{src_signature}"' in target_block, \
+            f"copyLoadout did not clone source's CLSID {src_signature!r} onto target"
+
+
+# ---------------------------------------------------------------------------
+# Pylon swap — _replace_pylon_clsid
+# ---------------------------------------------------------------------------
+
+def _player_unit_with_pylon(uploaded_session: dict, mission_text: str):
+    """First player unit with at least one pylon. Returns (unit, pylon_num)."""
+    for g in uploaded_session.get("groups", []):
+        for u in g.get("units", []):
+            if u.get("skill") not in ("Client", "Player"):
+                continue
+            uid = u.get("unitId")
+            if uid is None:
+                continue
+            try:
+                bs, be = _find_unit_block_bounds(mission_text, uid)
+            except ValueError:
+                continue
+            block = mission_text[bs:be]
+            payload_m = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', block)
+            if not payload_m:
+                continue
+            payload_region = block[payload_m.start():]
+            pylons_m = re.search(r'\["pylons"\]\s*=\s*\n?\s*\{', payload_region)
+            if not pylons_m:
+                continue
+            inner = payload_region[pylons_m.end():]
+            pn_m = re.search(r'\[(\d+)\]\s*=\s*\n?\s*\{', inner)
+            if pn_m:
+                return u, int(pn_m.group(1))
+    return None, None
+
+
+class TestPylonChange:
+    def test_pylon_clsid_replaces(self, client, uploaded_session):
+        """Swap a pylon's CLSID to a marker string — should appear in the
+        target unit's pylons block on round-trip."""
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit, pylon_num = _player_unit_with_pylon(uploaded_session, original["mission"])
+        if not unit:
+            pytest.skip("no player unit with at least one pylon")
+        marker_clsid = "TEST_MARKER_CLSID_42"
+        edit = {
+            "unitId": unit["unitId"],
+            "field": "pylonChange",
+            "value": {"pylon": pylon_num, "clsid": marker_clsid},
+        }
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"CLSID"] = "{marker_clsid}"' in block, \
+            f"pylonChange did not write CLSID for pylon {pylon_num} on unit {unit['unitId']}"
+
+
+# ---------------------------------------------------------------------------
+# Payload swap — _replace_payload_block via payloadReplace dispatch
+# ---------------------------------------------------------------------------
+
+class TestPayloadReplace:
+    def test_payload_replace_writes_new_pylons(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        original = download_edited(client, sid, [])
+        unit, _pn = _player_unit_with_pylon(uploaded_session, original["mission"])
+        if not unit:
+            pytest.skip("no player unit with payload to replace")
+        marker_clsid = "TEST_PAYLOAD_REPLACE_42"
+        new_payload = {
+            "fuel": 4900,
+            "chaff": 60,
+            "flare": 60,
+            "gun": 100,
+            "ammo_type": 1,
+            "pylons": [
+                {"CLSID": marker_clsid},
+            ],
+        }
+        edit = {"unitId": unit["unitId"], "field": "payloadReplace", "value": new_payload}
+        files = download_edited(client, sid, [edit])
+        block = _unit_block(files["mission"], unit["unitId"])
+        assert f'"CLSID"] = "{marker_clsid}"' in block, \
+            "payloadReplace did not insert the new CLSID into target unit"
+
+
+# ---------------------------------------------------------------------------
 # Edit-result reporting smoke — proves dispatch is wired for each new field.
 # ---------------------------------------------------------------------------
 
