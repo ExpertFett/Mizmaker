@@ -31,7 +31,6 @@ import json
 import os
 import time
 import uuid
-import threading
 from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 from flask_cors import CORS
 import io
@@ -84,6 +83,7 @@ from services.dtc_builder import (
 )
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
+from services.session_store import default_store as _store
 import srtm
 
 # Initialize SRTM elevation data (downloads HGT tiles on first use, caches locally)
@@ -98,72 +98,19 @@ app = Flask(__name__, static_folder=None)
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB — kneeboard mod packs can be 50-100+ MB
 
-# In-memory session store — server is the source of truth for waypoint state
-sessions = {}
-SESSION_TTL = 7200  # 2 hours for collaborative planning
-MAX_SESSIONS = 20
-_lock = threading.Lock()
-
-
-def _cleanup_sessions():
-    now = time.time()
-    with _lock:
-        expired = [k for k, v in sessions.items() if now - v.get("last_activity", v["created_at"]) > SESSION_TTL]
-        for k in expired:
-            del sessions[k]
-
-
-def _create_session(miz_bytes, mission_text, theater, filename, group_waypoints):
-    _cleanup_sessions()
-    if len(sessions) >= MAX_SESSIONS:
-        oldest = min(sessions, key=lambda k: sessions[k]["created_at"])
-        del sessions[oldest]
-    sid = str(uuid.uuid4())
-    host_token = str(uuid.uuid4())
-
-    # Detect at upload time whether the original .miz uses inline trigger
-    # format. We pin this to the session so subsequent saves always use
-    # the append path, even if the in-memory mission_text gets corrupted
-    # mid-session by a bad rewrite (e.g. user uploaded an _edited.miz).
-    orig_inline_format = False
-    try:
-        from services.miz_parser import parse_mission_text as _pmt
-        from services.trigger_editor import extract_triggers as _et
-        _md = _pmt(mission_text)
-        _data = _et(_md)
-        orig_inline_format = bool(_data.get("inlineFormat"))
-    except Exception:
-        pass
-
-    with _lock:
-        sessions[sid] = {
-            "miz_bytes": miz_bytes,
-            "original_mission_text": mission_text,  # never mutated
-            "theater": theater,
-            "filename": filename,
-            "created_at": time.time(),
-            "last_activity": time.time(),
-            # Server-authoritative waypoint state
-            "group_waypoints": group_waypoints,  # { group_name: [wp, wp, ...] }
-            "dirty_groups": set(),  # groups that were actually edited
-            # Server-authoritative unit edits (loadouts, datalink, etc.)
-            "unit_edits": [],  # accumulated from all participants
-            "pending_triggers": None,  # trigger edits, applied at download
-            # Sticky format hint — see save_triggers handler.
-            "orig_inline_format": orig_inline_format,
-            # Collaborative session fields
-            "host_token": host_token,
-            "participants": {},  # { token: { name, group, connected, ready } }
-            "status": "planning",
-            "sse_clients": [],
-            "planner_drawings": [],
-        }
-    return sid, host_token
-
-
-def _get_session(sid):
-    with _lock:
-        return sessions.get(sid)
+# Session storage. The dict + lock + helpers that lived here moved to
+# services.session_store as part of Phase 2 (Supabase migration). Step 1
+# of that plan is keeping the in-memory backend; Step 2 will swap in a
+# Supabase-backed implementation behind the same interface so sessions
+# survive Railway restarts. Keep these aliases so existing call sites
+# read the same way.
+sessions = _store._sessions          # exposed for SSE diagnostics; do NOT mutate directly
+_lock = _store.lock                   # short alias; legacy callers still use `with _lock:`
+SESSION_TTL = _store.ttl_seconds      # imported elsewhere?  preserve as a public name
+MAX_SESSIONS = _store.max_sessions
+_create_session = _store.create
+_get_session = _store.get
+_cleanup_sessions = _store.cleanup
 
 
 # --------------------------------------------------------------------------
