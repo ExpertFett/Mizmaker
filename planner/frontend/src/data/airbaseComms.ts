@@ -146,3 +146,58 @@ export function getAirbaseComms(name: string): AirbaseCommsData | null {
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ */
+/* ATIS frequency suggester                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Deterministic ATIS frequency suggestion for an airbase that doesn't
+ * have a known value in the DB above.
+ *
+ * Output range: 250.000 – 269.975 MHz UHF (military 25 kHz grid),
+ * matching the band DCS Caucasus uses for its built-in ATIS broadcasts
+ * (Batumi 260.0, Sochi 261.0, etc.). Same airbase name always yields
+ * the same suggestion across sessions, so users can rely on the
+ * planner-generated value matching their own kneeboards.
+ *
+ * Use case: AtisConfigTab calls this when the user adds an airbase
+ * whose DB entry has no `atis` field. The 251.0 generic default that
+ * AtisConfigTab used to fall back to was the v0.9.6 pain point — every
+ * airbase landed on the same channel and pilots had to manually
+ * re-pick.
+ */
+export function suggestAtisFreq(airbaseName: string): number {
+  // Simple FNV-1a-style hash. Doesn't need to be cryptographically
+  // strong — just stable and well-distributed across the name space.
+  let h = 2166136261;
+  const key = airbaseName.toLowerCase();
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  // Map hash → 0..799 → 250.000–269.975 in 25 kHz steps.
+  // 800 = (270 - 250) MHz / 0.025 MHz step.
+  const step = h % 800;
+  return Math.round((250 + step * 0.025) * 1000) / 1000;
+}
+
+/**
+ * Best-effort ATIS frequency for an airbase. Returns the DB-known
+ * value when present, the deterministic suggestion otherwise.
+ *
+ * Callers can branch on the discriminator:
+ *   const { freq, source } = atisForAirbase(name);
+ *   if (source === 'db') ...   // freq came from the static DB
+ *   if (source === 'suggested') // freq came from suggestAtisFreq()
+ */
+export function atisForAirbase(name: string): {
+  freq: number;
+  source: 'db' | 'suggested';
+} {
+  const comms = getAirbaseComms(name);
+  if (comms?.atis && comms.atis > 0) {
+    return { freq: comms.atis, source: 'db' };
+  }
+  return { freq: suggestAtisFreq(name), source: 'suggested' };
+}

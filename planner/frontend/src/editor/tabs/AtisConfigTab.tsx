@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useTriggerStore } from '../../store/triggerStore';
 import { getTriggers, saveTriggers } from '../../api/client';
-import { getAirbaseComms } from '../../data/airbaseComms';
+import { getAirbaseComms, atisForAirbase } from '../../data/airbaseComms';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -29,6 +29,48 @@ interface AtisEntry {
   modulation: 'AM' | 'FM';
   coalition: 0 | 1 | 2;    // 0=all, 1=red, 2=blue
   enabled: boolean;
+  /** Where the freq came from when this entry was first created.
+   *  'db'        — airbaseComms.ts had a published value (DCS-canonical
+   *                Caucasus ATIS, etc.) — pilot can trust it matches
+   *                the in-game broadcast.
+   *  'suggested' — deterministic-by-name UHF suggestion in 250-270 MHz
+   *                range; no published value, but stable across sessions.
+   *  'custom'    — user manually edited the freq away from db/suggested.
+   *  Used to render the "DB" / "AUTO" / "EDIT" badge next to the freq
+   *  input + decide what "Reset" does. */
+  freqSource: 'db' | 'suggested' | 'custom';
+}
+
+/** Compact pill that tells the user where the ATIS frequency on a row
+ *  came from. Helps pilots tell "this is the canonical DCS value" from
+ *  "we made this up but it's stable" from "I edited this myself". */
+function FreqSourceBadge({ source }: { source: 'db' | 'suggested' | 'custom' }) {
+  const cfg = {
+    db:        { label: 'DB',     bg: '#1a3a1a', border: '#2a5a2a', fg: '#3fb950',
+                 title: 'Frequency from the airbase comms database — matches DCS' },
+    suggested: { label: 'AUTO',   bg: '#2a2e1a', border: '#4a4a2a', fg: '#d29922',
+                 title: 'Suggested UHF frequency (deterministic by airbase name) — no published DCS value in the database for this field' },
+    custom:    { label: 'EDIT',   bg: '#1a2a3a', border: '#2a4a6a', fg: '#6ab4f0',
+                 title: 'Customised — you edited this away from the default' },
+  }[source];
+  return (
+    <span
+      title={cfg.title}
+      style={{
+        padding: '1px 6px',
+        borderRadius: 3,
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        color: cfg.fg,
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: 0.5,
+        flexShrink: 0,
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
 }
 
 /** Build a sensible default initials string from a DCS airbase name.
@@ -281,18 +323,32 @@ export function AtisConfigTab() {
 
   const handleAddAirbase = useCallback((name: string) => {
     if (entries.some((e) => e.airbaseName === name)) return;
-    const comms = getAirbaseComms(name);
+    const { freq, source } = atisForAirbase(name);
     setEntries((prev) => [...prev, {
       airbaseName: name,
       displayName: name,                  // user can override to prettier form
       initials: defaultInitials(name),    // user can override to ICAO
-      freq: comms?.atis ? comms.atis.toFixed(1) : '251.0',
+      freq: freq.toFixed(3),
       modulation: 'AM',
       coalition: 0,
       enabled: true,
+      freqSource: source,
     }]);
     setAdded(false);
   }, [entries]);
+
+  /** Restore the freq column to whatever atisForAirbase() returns —
+   *  DB-known if available, suggested otherwise. Useful when a user
+   *  edited the freq and wants to revert. */
+  const handleResetFreq = useCallback((name: string) => {
+    const { freq, source } = atisForAirbase(name);
+    setEntries((prev) => prev.map((e) =>
+      e.airbaseName === name
+        ? { ...e, freq: freq.toFixed(3), freqSource: source }
+        : e,
+    ));
+    setAdded(false);
+  }, []);
 
   const handleRemove = useCallback((name: string) => {
     setEntries((prev) => prev.filter((e) => e.airbaseName !== name));
@@ -490,9 +546,34 @@ export function AtisConfigTab() {
                 <input
                   type="text"
                   value={entry.freq}
-                  onChange={(e) => handleUpdate(entry.airbaseName, { freq: e.target.value })}
+                  onChange={(e) => handleUpdate(entry.airbaseName, {
+                    freq: e.target.value,
+                    // Once a user types in the box the value is no longer
+                    // "from the database" or "auto-suggested" — track it
+                    // so the badge + Reset button mean what they say.
+                    freqSource: 'custom',
+                  })}
                   style={{ ...inputStyle, width: 80 }}
                 />
+                <FreqSourceBadge source={entry.freqSource ?? 'custom'} />
+                {entry.freqSource !== 'db' && (
+                  <button
+                    onClick={() => handleResetFreq(entry.airbaseName)}
+                    title="Restore the database / suggested frequency"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #3a3a3a',
+                      borderRadius: 3,
+                      color: '#aaaaaa',
+                      cursor: 'pointer',
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Reset
+                  </button>
+                )}
               </label>
 
               <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
