@@ -150,7 +150,17 @@ class Issue:
 # ---------------------------------------------------------------------------
 
 def _check_frequency_conflicts(groups: list) -> list:
-    """Find groups sharing the same radio frequency."""
+    """Find groups sharing the same radio frequency.
+
+    Auto-fix mirrors the TACAN/ICLS deconflict pattern: the first
+    group on the conflict keeps its frequency, every other group on
+    the same freq gets pushed to the next free slot in a 250 kHz
+    grid starting one step above the conflict point. We don't try to
+    pick a perfectly-aligned squadron pool here — the user can clean
+    up the assignment in RadioTab afterwards. The point of the fix is
+    to get rid of the conflict without forcing the user to chase
+    duplicate-freq tooltips one at a time.
+    """
     issues = []
     freq_map = defaultdict(list)
 
@@ -161,20 +171,76 @@ def _check_frequency_conflicts(groups: list) -> list:
         freq_mhz = round(_mhz_from_hz(freq), 3)
         freq_map[freq_mhz].append(g)
 
+    # Snapshot every frequency in use so the deconflict pass below
+    # doesn't bump a duplicate onto another already-occupied slot.
+    used_freq_mhz: set[float] = set(freq_map.keys())
+
+    def next_free_freq_after(start_mhz: float) -> float:
+        # Walk upward in 250 kHz steps, then wrap to 225-399 MHz UHF
+        # band if we somehow run out (we won't in any realistic mission).
+        candidates = []
+        whole = int(start_mhz)
+        for step in (0.250, 0.500, 0.750):
+            candidates.append(round(start_mhz + step, 3))
+        for w in range(whole + 1, 400):
+            for step in (0.0, 0.250, 0.500, 0.750):
+                candidates.append(round(w + step, 3))
+        for w in range(225, whole + 1):
+            for step in (0.0, 0.250, 0.500, 0.750):
+                candidates.append(round(w + step, 3))
+        for cand in candidates:
+            if cand not in used_freq_mhz:
+                return cand
+        return start_mhz + 0.250  # fallback, shouldn't be reachable
+
     for freq_mhz, glist in freq_map.items():
-        if len(glist) > 1:
-            names = ", ".join(g["groupName"] for g in glist)
-            # Same coalition sharing freq is a conflict; cross-coalition is expected
-            coalitions = set(g["coalition"] for g in glist)
-            for coal in coalitions:
-                coal_groups = [g for g in glist if g["coalition"] == coal]
-                if len(coal_groups) > 1:
-                    coal_names = ", ".join(g["groupName"] for g in coal_groups)
-                    issues.append(Issue(
-                        "warning", "frequency",
-                        f"Frequency conflict: {freq_mhz} MHz",
-                        f"Multiple {coal} groups share {freq_mhz} MHz: {coal_names}",
-                    ))
+        if len(glist) <= 1:
+            continue
+        # Same coalition sharing freq is a conflict; cross-coalition is expected
+        coalitions = set(g["coalition"] for g in glist)
+        for coal in coalitions:
+            coal_groups = [g for g in glist if g["coalition"] == coal]
+            if len(coal_groups) <= 1:
+                continue
+            coal_names = ", ".join(g["groupName"] for g in coal_groups)
+
+            # Build a fix: keep the first group on freq_mhz, move
+            # every other group on that conflict to the next free slot.
+            head = coal_groups[0]
+            tail = coal_groups[1:]
+            edits = []
+            after_summary = []
+            for g in tail:
+                unit_id = (g.get("units") or [{}])[0].get("unitId")
+                if unit_id is None:
+                    continue
+                new_mhz = next_free_freq_after(freq_mhz)
+                used_freq_mhz.add(new_mhz)
+                f_hz = int(round(new_mhz * 1_000_000))
+                edits.append({
+                    "unitId": unit_id,
+                    "groupId": g.get("groupId"),
+                    "field": "radioFrequency",
+                    "value": f_hz,
+                })
+                after_summary.append(f"{g['groupName']}: {new_mhz:.3f} MHz")
+
+            fix = None
+            if edits:
+                fix = Fix(
+                    description=f"Move {len(edits)} {coal} group{'s' if len(edits) != 1 else ''} off {freq_mhz} MHz",
+                    before={"frequency_mhz": f"{freq_mhz:.3f}",
+                            "groups": [g['groupName'] for g in coal_groups]},
+                    after={f"keep_on_{freq_mhz:.3f}_mhz": head['groupName'],
+                           "moves": after_summary},
+                    edits=edits,
+                )
+            issues.append(Issue(
+                "warning", "frequency",
+                f"Frequency conflict: {freq_mhz} MHz",
+                f"Multiple {coal} groups share {freq_mhz} MHz: {coal_names}",
+                fix=fix,
+            ))
 
     return issues
 
@@ -503,7 +569,20 @@ def _check_carriers(groups: list) -> list:
 
 
 def _check_tankers(groups: list) -> list:
-    """Check tanker configuration."""
+    """Check tanker configuration.
+
+    Auto-fixes for missing TACAN / missing frequency follow squadron
+    convention:
+      - TACAN walks Y-band channels in the carrier-tanker pool
+        (1Y, 3Y, 5Y, 7Y, 9Y, 11Y, ...). X-band is reserved for
+        carriers / land beacons; Y-band is the long-standing convention
+        for airborne tankers.
+      - Frequencies cycle through a UHF tanker pool (271.0, 272.0, ...
+        279.0 MHz). DCS stores frequency as Hz (e.g. 271_000_000), and
+        the radioFrequency edit handler accepts the raw Hz value.
+    Both fixes deconflict against everything currently in use so we
+    don't auto-bump a tanker onto another group's slot.
+    """
     issues = []
     tanker_groups = []
 
@@ -523,22 +602,96 @@ def _check_tankers(groups: list) -> list:
         ))
         return issues
 
-    # Check TACAN on tankers
+    # Snapshot used TACAN channels (Y-band only — that's what the fix
+    # walks). Track frequencies in MHz to keep the deconflict logic
+    # readable.
+    used_y_tacan: set[int] = set()
+    used_freq_mhz: set[float] = set()
+    for og in groups:
+        ot = og.get("tacan")
+        if ot and ot.get("channel") and ot.get("band", "X") == "Y":
+            used_y_tacan.add(int(ot["channel"]))
+        of = og.get("frequency")
+        if of and of > 0:
+            used_freq_mhz.add(round(_mhz_from_hz(of), 3))
+
+    def next_free_tanker_tacan() -> int:
+        # Carrier-tanker convention: odd Y-band channels first, then evens.
+        for ch in [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23,
+                   2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]:
+            if ch not in used_y_tacan:
+                return ch
+        return 1
+
+    def next_free_tanker_freq_mhz() -> float:
+        # Squadron pool: 271-279 MHz UHF (250 kHz steps) — leaves the
+        # 280-289 band clear for AWACS so the two pools never collide.
+        for whole in range(271, 280):
+            for step in (0.0, 0.250, 0.500, 0.750):
+                f = round(whole + step, 3)
+                if f not in used_freq_mhz:
+                    return f
+        return 271.0
+
+    # Check TACAN on tankers — emit a fix when the group has at least
+    # one unit (the ActivateBeacon target). Headless / empty groups
+    # are skipped, same as the carrier path.
     for g in tanker_groups:
         if not g.get("tacan"):
+            unit_id = (g.get("units") or [{}])[0].get("unitId")
+            fix = None
+            if unit_id is not None:
+                ch = next_free_tanker_tacan()
+                used_y_tacan.add(ch)
+                # Default callsign: first 3 letters of the group name,
+                # uppercased, falling back to "TKR" if the name is
+                # shorter or non-alpha. Matches what most squadrons
+                # type into the TacanTab when they fill it manually.
+                base = re.sub(r'[^A-Za-z]', '', g["groupName"])[:3].upper()
+                callsign = base if len(base) >= 2 else "TKR"
+                fix = Fix(
+                    description=f"Assign TACAN {ch}Y to {g['groupName']}",
+                    before={"tacan": "(none)"},
+                    after={"channel": ch, "band": "Y", "callsign": callsign},
+                    edits=[{
+                        "unitId": unit_id,
+                        "groupId": g.get("groupId"),
+                        "field": "tacan",
+                        "value": {"channel": ch, "band": "Y", "callsign": callsign},
+                    }],
+                )
             issues.append(Issue(
                 "warning", "tanker",
                 f"Tanker missing TACAN: {g['groupName']}",
                 f"Tanker '{g['groupName']}' has no TACAN beacon.",
                 group_name=g["groupName"],
+                fix=fix,
             ))
 
         if not g.get("frequency") or g["frequency"] == 0:
+            unit_id = (g.get("units") or [{}])[0].get("unitId")
+            fix = None
+            if unit_id is not None:
+                f_mhz = next_free_tanker_freq_mhz()
+                used_freq_mhz.add(f_mhz)
+                f_hz = int(round(f_mhz * 1_000_000))
+                fix = Fix(
+                    description=f"Set {g['groupName']} radio to {f_mhz:.3f} MHz",
+                    before={"frequency": "(none)"},
+                    after={"frequency_mhz": f"{f_mhz:.3f}", "modulation": "AM"},
+                    edits=[{
+                        "unitId": unit_id,
+                        "groupId": g.get("groupId"),
+                        "field": "radioFrequency",
+                        "value": f_hz,
+                    }],
+                )
             issues.append(Issue(
                 "warning", "tanker",
                 f"Tanker missing frequency: {g['groupName']}",
                 f"Tanker '{g['groupName']}' has no radio frequency set.",
                 group_name=g["groupName"],
+                fix=fix,
             ))
 
     # Check altitude deconfliction between tankers
@@ -571,7 +724,13 @@ def _check_tankers(groups: list) -> list:
 
 
 def _check_awacs(groups: list) -> list:
-    """Check AWACS configuration."""
+    """Check AWACS configuration.
+
+    Auto-fix for missing frequency assigns from a 280-289 MHz pool
+    (250 kHz steps), deconflicting against everything in use. The
+    280-band is squadron convention for AWACS so it doesn't collide
+    with the 271-279 tanker pool used in `_check_tankers`.
+    """
     issues = []
     awacs_groups = []
 
@@ -591,13 +750,46 @@ def _check_awacs(groups: list) -> list:
         ))
         return issues
 
+    # Snapshot used freqs (MHz) so we can pick a free slot.
+    used_freq_mhz: set[float] = set()
+    for og in groups:
+        of = og.get("frequency")
+        if of and of > 0:
+            used_freq_mhz.add(round(_mhz_from_hz(of), 3))
+
+    def next_free_awacs_freq_mhz() -> float:
+        for whole in range(280, 290):
+            for step in (0.0, 0.250, 0.500, 0.750):
+                f = round(whole + step, 3)
+                if f not in used_freq_mhz:
+                    return f
+        return 280.0
+
     for g in awacs_groups:
         if not g.get("frequency") or g["frequency"] == 0:
+            unit_id = (g.get("units") or [{}])[0].get("unitId")
+            fix = None
+            if unit_id is not None:
+                f_mhz = next_free_awacs_freq_mhz()
+                used_freq_mhz.add(f_mhz)
+                f_hz = int(round(f_mhz * 1_000_000))
+                fix = Fix(
+                    description=f"Set {g['groupName']} radio to {f_mhz:.3f} MHz",
+                    before={"frequency": "(none)"},
+                    after={"frequency_mhz": f"{f_mhz:.3f}", "modulation": "AM"},
+                    edits=[{
+                        "unitId": unit_id,
+                        "groupId": g.get("groupId"),
+                        "field": "radioFrequency",
+                        "value": f_hz,
+                    }],
+                )
             issues.append(Issue(
                 "warning", "awacs",
                 f"AWACS missing frequency: {g['groupName']}",
                 f"AWACS '{g['groupName']}' has no radio frequency set.",
                 group_name=g["groupName"],
+                fix=fix,
             ))
 
     return issues
