@@ -365,7 +365,7 @@ export function KneeboardTab() {
 
         <label
           style={{ fontSize: 13, color: '#aaaaaa' }}
-          title="How much info the threat card reveals. Realistic = vague threat zones, no specific systems (training scenarios)."
+          title="How much info the threat card reveals. Realistic = vague threat zones, no specific systems (training default)."
         >
           Threat fidelity:
           <select
@@ -373,11 +373,24 @@ export function KneeboardTab() {
             onChange={(e) => setKneeboardSettings({
               threatFidelity: e.target.value as 'full' | 'operational' | 'realistic',
             })}
-            style={{ ...selectStyle, marginLeft: 6 }}
+            style={{
+              ...selectStyle,
+              marginLeft: 6,
+              // Tint the dropdown red when the user has chosen a
+              // revealing fidelity, so they're reminded that the
+              // kneeboards they're about to print will spoil the
+              // threat picture for pilots. Realistic stays neutral.
+              color: threatFidelity === 'full' ? '#d95050'
+                : threatFidelity === 'operational' ? '#d29922'
+                : '#3fb950',
+              borderColor: threatFidelity === 'full' ? '#5a2a2a'
+                : threatFidelity === 'operational' ? '#5a4a2a'
+                : '#3a3a3a',
+            }}
           >
-            <option value="full">Full (everything)</option>
-            <option value="operational">Operational (no IDs)</option>
-            <option value="realistic">Realistic (vague zones)</option>
+            <option value="realistic">Realistic — vague zones (default)</option>
+            <option value="operational">Operational — rings, no IDs</option>
+            <option value="full">Full — everything (DEBRIEF ONLY)</option>
           </select>
         </label>
 
@@ -470,6 +483,38 @@ export function KneeboardTab() {
           </label>
         </div>
       </div>
+
+      {/* Spoiler banner — shown when the user has chosen a fidelity
+          that reveals enemy positions to the pilot. Easy to miss the
+          dropdown when generating kneeboards in a hurry; the banner
+          is the second-chance surface. */}
+      {cards.threatCard && threatFidelity !== 'realistic' && (
+        <div
+          style={{
+            margin: '10px 0',
+            padding: '10px 14px',
+            background: threatFidelity === 'full'
+              ? 'rgba(217, 80, 80, 0.10)'
+              : 'rgba(210, 153, 34, 0.08)',
+            border: `1px solid ${threatFidelity === 'full' ? '#5a2a2a' : '#5a4a2a'}`,
+            borderRadius: 6,
+            fontSize: 13,
+            color: threatFidelity === 'full' ? '#d95050' : '#d29922',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>
+            {threatFidelity === 'full' ? 'SPOILER WARNING' : 'PARTIAL REVEAL'}
+          </span>
+          <span style={{ color: '#cccccc' }}>
+            {threatFidelity === 'full'
+              ? 'Threat card will show every SAM with name, range, and MGRS — only print this for instructor / debrief copies.'
+              : 'Threat card will show ring sizes and rough positions. Pilot kneeboards usually want "Realistic — vague zones" instead.'}
+          </span>
+        </div>
+      )}
 
       {/* Live Preview Carousel */}
       <CardCarousel

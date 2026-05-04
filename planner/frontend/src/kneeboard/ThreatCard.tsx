@@ -346,29 +346,43 @@ function ThreatMap({
       <TileMap width={mapW} height={mapH} minLat={minLat} maxLat={maxLat} minLon={minLon} maxLon={maxLon}>
         <svg width={mapW} height={mapH} style={{ display: 'block' }}>
           {fidelity === 'realistic' ? (
-            /* Realistic: render each cluster as a fuzzy radial gradient.
-               No exact positions, no rings, no labels. */
+            /* Realistic fog-of-war: each cluster renders as a soft
+               radial gradient with a ragged jittered blob outline so
+               there's no exact extent to read off. No labels, no
+               crosshairs, no rings. The radius is derived purely from
+               the cluster's geographic spread + a fixed 15 km buffer
+               so SAM range data doesn't leak through the visual. */
             clusters.map((c, i) => {
               const [cx, cy] = proj.project(c.centerLat, c.centerLon);
               const r = proj.metersToPixels(c.radiusM);
               const color = CAT_COLORS[c.worstCategory] || '#d95050';
               const gid = `threat-zone-${i}`;
+              // Stable jittered blob path — same cluster always
+              // produces the same shape so a re-render doesn't make
+              // threats appear to "drift". 12 anchors around the
+              // perimeter, each pulled in by 5-25% pseudo-random.
+              const blobPath = makeJitteredBlob(cx, cy, r, i);
               return (
                 <g key={gid}>
                   <defs>
                     <radialGradient id={gid} cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor={color} stopOpacity={0.45} />
-                      <stop offset="65%" stopColor={color} stopOpacity={0.18} />
+                      <stop offset="0%" stopColor={color} stopOpacity={0.5} />
+                      <stop offset="40%" stopColor={color} stopOpacity={0.28} />
+                      <stop offset="80%" stopColor={color} stopOpacity={0.08} />
                       <stop offset="100%" stopColor={color} stopOpacity={0} />
                     </radialGradient>
                   </defs>
+                  {/* Fuzzy fill — covers the cluster with a soft glow */}
                   <circle cx={cx} cy={cy} r={r} fill={`url(#${gid})`} />
-                  <circle cx={cx} cy={cy} r={r}
+                  {/* Jittered blob outline — gives the zone a ragged
+                      shape so it doesn't read as a precise circle.
+                      Stays low-opacity so it suggests an area rather
+                      than a hard boundary. */}
+                  <path d={blobPath}
                     fill="none"
                     stroke={color}
                     strokeWidth={1}
-                    strokeDasharray="2 6"
-                    strokeOpacity={0.5} />
+                    strokeOpacity={0.35} />
                 </g>
               );
             })
@@ -449,7 +463,6 @@ function clusterThreats(
   const clusters: {
     lats: number[]; lons: number[];
     cats: string[];
-    maxRangeM: number;
   }[] = [];
 
   for (const t of threats) {
@@ -466,7 +479,6 @@ function clusterThreats(
         c.lats.push(t.lat);
         c.lons.push(t.lon);
         c.cats.push(cat);
-        c.maxRangeM = Math.max(c.maxRangeM, t.range);
         merged = true;
         break;
       }
@@ -475,7 +487,6 @@ function clusterThreats(
       clusters.push({
         lats: [t.lat], lons: [t.lon],
         cats: [cat],
-        maxRangeM: t.range,
       });
     }
   }
@@ -483,16 +494,20 @@ function clusterThreats(
   return clusters.map((c) => {
     const cLat = c.lats.reduce((a, b) => a + b, 0) / c.lats.length;
     const cLon = c.lons.reduce((a, b) => a + b, 0) / c.lons.length;
-    // Cluster radius: max distance from centre to any member, plus the
-    // worst threat's engagement range (fuzzes the edge so a pilot
-    // entering from any direction sees danger before reaching points).
+    // Cluster radius is purely geographic — the spread of its
+    // members plus a fixed 15 km buffer. Crucially this does NOT
+    // include the worst SAM's actual range; that would let pilots
+    // back-solve "this is a 120 km zone, must be S-300". Generic
+    // buffer keeps the visual neutral regardless of what's actually
+    // in the cluster.
+    const FOG_BUFFER_KM = 15;
     const memberDistsKm = c.lats.map((lat, i) => {
       const dLat = (lat - cLat) * KM_PER_DEG_LAT;
       const dLon = (c.lons[i] - cLon) * KM_PER_DEG_LAT * Math.cos(cLat * Math.PI / 180);
       return Math.sqrt(dLat * dLat + dLon * dLon);
     });
     const maxMemberKm = Math.max(0, ...memberDistsKm);
-    const radiusM = (maxMemberKm * 1000) + c.maxRangeM;
+    const radiusM = (maxMemberKm + FOG_BUFFER_KM) * 1000;
     let worst = 'unknown';
     for (const cat of CATEGORY_PRIORITY) {
       if (c.cats.includes(cat)) { worst = cat; break; }
@@ -504,6 +519,58 @@ function clusterThreats(
       worstCategory: worst,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Jittered blob path — for realistic-mode fog-of-war zones           */
+/* ------------------------------------------------------------------ */
+
+/** Tiny PRNG for stable per-cluster jitter. Same seed -> same shape,
+ *  so the blob doesn't drift between renders. Mulberry32-ish. */
+function seededRand(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Build an SVG path for a closed irregular blob centered at (cx, cy)
+ *  with mean radius r. 12 anchors around the perimeter, each randomly
+ *  pulled in 0-25% so the outline reads as "rough threat area" rather
+ *  than "exact engagement ring". `seed` keeps the same cluster's shape
+ *  stable across re-renders. */
+function makeJitteredBlob(cx: number, cy: number, r: number, seed: number): string {
+  const POINTS = 12;
+  const rand = seededRand(seed * 7919 + 13);
+  const pts: [number, number][] = [];
+  for (let i = 0; i < POINTS; i++) {
+    const angle = (i / POINTS) * Math.PI * 2;
+    // 0.75–1.0 of the nominal radius — pull in only, never push out,
+    // so the visual cue underrepresents threat extent rather than
+    // overrepresenting it (safer for training).
+    const k = 0.75 + rand() * 0.25;
+    pts.push([cx + Math.cos(angle) * r * k, cy + Math.sin(angle) * r * k]);
+  }
+  // Close-loop quadratic-bezier smoothing so the blob doesn't look
+  // like a polygon — adjacent points are joined through their mid-
+  // points, giving rounded contours.
+  const cmds: string[] = [];
+  const last = pts[pts.length - 1];
+  const first = pts[0];
+  cmds.push(`M ${(last[0] + first[0]) / 2} ${(last[1] + first[1]) / 2}`);
+  for (let i = 0; i < POINTS; i++) {
+    const cur = pts[i];
+    const next = pts[(i + 1) % POINTS];
+    const mx = (cur[0] + next[0]) / 2;
+    const my = (cur[1] + next[1]) / 2;
+    cmds.push(`Q ${cur[0]} ${cur[1]} ${mx} ${my}`);
+  }
+  cmds.push('Z');
+  return cmds.join(' ');
 }
 
 /* ------------------------------------------------------------------ */

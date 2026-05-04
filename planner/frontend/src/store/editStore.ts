@@ -35,11 +35,13 @@ export interface KneeboardSettings {
   speedRef: 'auto' | 'cas' | 'tas' | 'gs' | 'mach';
   machThreshold: number;
   cards: KneeboardCards;
-  /** Threat card information density. 'full' = current behaviour
-   *  (every system named, MGRS, exact rings). 'operational' = rings
-   *  + sizes shown but no designations / MGRS. 'realistic' = vague
-   *  clustered threat zones, intel-summary inventory. Drives the
-   *  ThreatCard's `fidelity` prop. */
+  /** Threat card information density. 'full' = every system named,
+   *  MGRS, exact rings (mission-debrief / mission-design view).
+   *  'operational' = rings + sizes shown but no designations /
+   *  MGRS. 'realistic' = vague clustered threat zones, intel-summary
+   *  inventory (default — printed kneeboards shouldn't spoil the
+   *  mission for training pilots). Drives the ThreatCard's
+   *  `fidelity` prop. */
   threatFidelity: 'full' | 'operational' | 'realistic';
 }
 
@@ -64,7 +66,10 @@ export const useEditStore = create<EditState>((set) => ({
   injectKneeboards: false,
   kneeboardSettings: {
     coordFormat: 'mgrs', speedRef: 'auto', machThreshold: 18000,
-    threatFidelity: 'full',
+    // Default to 'realistic' fog-of-war so a fresh setup never
+    // spoils a training mission. Mission designers / instructors
+    // can switch to 'full' for their own debrief copy.
+    threatFidelity: 'realistic',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
