@@ -796,7 +796,20 @@ def _check_awacs(groups: list) -> list:
 
 
 def _check_client_flights(groups: list, client_units: list) -> list:
-    """Check client flight configuration."""
+    """Check client flight configuration.
+
+    Auto-fix for missing Hornet STN walks the same flight*10+wing
+    scheme the Auto-Setup datalink applier uses. Each unit on a
+    missing-STN issue gets a fresh slot pulled from the global pool
+    after snapshotting every STN already in use, so applying
+    multiple fixes in sequence won't collide.
+
+    Note: the Auto-Setup orchestrator already does cross-flight
+    allocation when a SOP is active. This fix is for the case where
+    the user wants to deal with one straggler unit without re-running
+    the whole orchestrator (e.g. a single late-add slot that didn't
+    get an STN from the original pass).
+    """
     issues = []
 
     if not client_units:
@@ -807,18 +820,57 @@ def _check_client_flights(groups: list, client_units: list) -> list:
         ))
         return issues
 
+    # Snapshot every STN already taken so the auto-fix below picks
+    # something genuinely free. STNs are stored as 5-char decimal
+    # strings in the planner ("00011" etc.) — preserve that shape so
+    # the read/write round-trip stays identical.
+    used_stns: set[str] = set()
+    for cu in client_units:
+        s = (cu.get("stnL16") or "").strip()
+        if s and s != "0":
+            used_stns.add(s.zfill(5))
+
+    def next_free_stn() -> str:
+        # Walk flight 1 wing 1..4, then flight 2 wing 1..4, etc.
+        # Same shape as autoSetup/datalink.ts so a hand-fixed unit
+        # ends up in the same family of numbers an auto-setup pass
+        # would assign — keeps the eventual cleanup pass tidy.
+        for flight in range(1, 100):
+            for wing in range(1, 5):
+                cand = str(flight * 10 + wing).zfill(5)
+                if cand not in used_stns:
+                    return cand
+        return "00099"  # absurdly unlikely to hit, but safe fallback
+
     # Check Hornets have STN L16
     for cu in client_units:
         unit_type = cu.get("type", "")
         if unit_type in HORNET_TYPES:
             stn = cu.get("stnL16", "")
             if not stn or stn == "0" or stn == "":
+                unit_id = cu.get("unitId")
+                fix = None
+                if unit_id is not None:
+                    new_stn = next_free_stn()
+                    used_stns.add(new_stn)
+                    fix = Fix(
+                        description=f"Assign STN {new_stn} to {cu.get('name', '?')}",
+                        before={"stnL16": "(none)"},
+                        after={"stnL16": new_stn},
+                        edits=[{
+                            "unitId": unit_id,
+                            "groupId": None,
+                            "field": "stnL16",
+                            "value": new_stn,
+                        }],
+                    )
                 issues.append(Issue(
                     "warning", "client",
                     f"Hornet missing STN: {cu.get('name', '?')}",
                     f"'{cu.get('name', '?')}' ({unit_type}) has no Link16 STN set.",
                     unit_name=cu.get("name", ""),
                     group_name=cu.get("groupName", ""),
+                    fix=fix,
                 ))
 
     # Check for client groups with no frequency

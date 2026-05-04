@@ -20,6 +20,7 @@ from planner.backend.services.mission_debugger import (
     _check_frequency_conflicts,
     _check_tacan_conflicts,
     _check_icls_conflicts,
+    _check_client_flights,
 )
 
 
@@ -205,6 +206,82 @@ class TestFrequencyConflictFix:
 # ---------------------------------------------------------------------------
 # Existing fix builders — sanity checks that the v0.9.8 contract still holds
 # ---------------------------------------------------------------------------
+
+class TestHornetMissingStn:
+    def _mk_client(self, unit_id: int, name: str, *, stn: str = "") -> dict:
+        return {
+            "unitId": unit_id,
+            "name": name,
+            "type": "FA-18C_hornet",
+            "groupName": "Bengal 1",
+            "stnL16": stn,
+        }
+
+    def test_emits_fix_with_stn_edit(self):
+        clients = [self._mk_client(101, "Bengal 1-1")]
+        issues = _check_client_flights([], clients)
+        missing = [i for i in issues if "STN" in i.title]
+        assert len(missing) == 1
+        fix = missing[0].fix
+        assert fix is not None
+        assert len(fix.edits) == 1
+        e = fix.edits[0]
+        assert e["field"] == "stnL16"
+        assert e["unitId"] == 101
+        # First free slot in the flight*10+wing scheme is 00011.
+        assert e["value"] == "00011"
+
+    def test_skips_used_stns(self):
+        # Bengal 1-1 already has 00011, Bengal 1-2 should pick 00012.
+        clients = [
+            self._mk_client(101, "Bengal 1-1", stn="00011"),
+            self._mk_client(102, "Bengal 1-2"),
+        ]
+        issues = _check_client_flights([], clients)
+        missing = [i for i in issues if "STN" in i.title]
+        assert len(missing) == 1
+        assert missing[0].fix.edits[0]["value"] == "00012"
+
+    def test_jumps_to_next_flight_when_first_full(self):
+        # 00011..00014 all taken — fix should jump to 00021 (next flight).
+        clients = [
+            self._mk_client(101, "Bengal 1-1", stn="00011"),
+            self._mk_client(102, "Bengal 1-2", stn="00012"),
+            self._mk_client(103, "Bengal 1-3", stn="00013"),
+            self._mk_client(104, "Bengal 1-4", stn="00014"),
+            self._mk_client(201, "Hawk 2-1"),
+        ]
+        issues = _check_client_flights([], clients)
+        missing = [i for i in issues if "STN" in i.title]
+        assert len(missing) == 1
+        assert missing[0].fix.edits[0]["value"] == "00021"
+
+    def test_treats_blank_string_as_missing(self):
+        # Empty string and "0" both trigger the fix path.
+        clients = [
+            self._mk_client(101, "Bengal 1-1", stn=""),
+            self._mk_client(102, "Bengal 1-2", stn="0"),
+        ]
+        issues = _check_client_flights([], clients)
+        missing = [i for i in issues if "STN" in i.title]
+        assert len(missing) == 2
+        # Each gets a unique STN.
+        assigned = [i.fix.edits[0]["value"] for i in missing]
+        assert len(set(assigned)) == 2
+
+    def test_non_hornet_skipped(self):
+        # F-16 has no STN warning today (planner only checks Hornets).
+        clients = [{
+            "unitId": 101,
+            "name": "Viper 1-1",
+            "type": "F-16C_50",
+            "groupName": "Viper 1",
+            "stnL16": "",
+        }]
+        issues = _check_client_flights([], clients)
+        missing = [i for i in issues if "STN" in i.title]
+        assert missing == []
+
 
 class TestExistingFixesUnchanged:
     def test_tacan_conflict_fix_shape(self):
