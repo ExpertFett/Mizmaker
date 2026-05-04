@@ -19,6 +19,7 @@ import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
+import { createBullseyeLayer, populateBullseyeLayer } from './layers/bullseyeLayer';
 import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
 import { createTriggerZoneLayer, populateTriggerZoneLayer } from './layers/triggerZoneLayer';
 import { createPlannerDrawingLayer, populatePlannerDrawingLayer } from './layers/plannerDrawingLayer';
@@ -125,10 +126,11 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     route: ReturnType<typeof createRouteLayer> | null;
     threat: ReturnType<typeof createThreatLayer> | null;
     airbase: ReturnType<typeof createAirbaseLayer> | null;
+    bullseye: ReturnType<typeof createBullseyeLayer> | null;
     drawing: ReturnType<typeof createDrawingLayer> | null;
     triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
     plannerDrawing: ReturnType<typeof createPlannerDrawingLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null, drawing: null, triggerZone: null, plannerDrawing: null });
+  }>({ unit: null, route: null, threat: null, airbase: null, bullseye: null, drawing: null, triggerZone: null, plannerDrawing: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
   const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
@@ -138,7 +140,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     measureLayer: VectorLayer | null;
   }>({ addDraw: null, measureDraw: null, measureLayer: null });
   const coordRef = useRef<HTMLDivElement>(null);
-  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup } =
+  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
 
@@ -273,10 +275,11 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     const routeLayer = createRouteLayer();
     const threatLayer = createThreatLayer();
     const airbaseLayer = createAirbaseLayer();
+    const bullseyeLayer = createBullseyeLayer();
     const drawingLayer = createDrawingLayer();
     const triggerZoneLayer = createTriggerZoneLayer();
     const plannerDrawingLayer = createPlannerDrawingLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, bullseye: bullseyeLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
 
     // Compute initial center from mission data already in store (avoids Caucasus flash on tab-switch remounts)
     const initStore = useMissionStore.getState();
@@ -303,7 +306,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, routeLayer, unitLayer,
+        drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, bullseyeLayer, routeLayer, unitLayer,
       ],
       interactions: defaultInteractions({ doubleClickZoom: false }),
       view: new View({
@@ -649,6 +652,10 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
   }, [airbases]);
 
   useEffect(() => {
+    if (layerRefs.current.bullseye) populateBullseyeLayer(layerRefs.current.bullseye, overview?.bullseye);
+  }, [overview?.bullseye]);
+
+  useEffect(() => {
     if (layerRefs.current.drawing) populateDrawingLayer(layerRefs.current.drawing, drawings);
   }, [drawings]);
 
@@ -662,6 +669,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     if (layerRefs.current.route) layerRefs.current.route.setVisible(layers.routes);
     if (layerRefs.current.threat) layerRefs.current.threat.setVisible(layers.threats);
     if (layerRefs.current.airbase) layerRefs.current.airbase.setVisible(layers.airbases);
+    if (layerRefs.current.bullseye) layerRefs.current.bullseye.setVisible(layers.bullseye !== false);
     if (layerRefs.current.drawing) layerRefs.current.drawing.setVisible(layers.drawings !== false);
     if (layerRefs.current.plannerDrawing) layerRefs.current.plannerDrawing.setVisible(layers.plannerDrawings !== false);
   }, [layers]);

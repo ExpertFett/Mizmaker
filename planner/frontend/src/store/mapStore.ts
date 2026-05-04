@@ -39,6 +39,7 @@ export const useMapStore = create<MapState>((set) => ({
     routes: true,
     threats: true,
     airbases: true,
+    bullseye: true,  // BE per coalition — visible by default for nav reference
     statics: false,  // hidden by default — declutter
     plannerDrawings: true,
     triggerZones: true,

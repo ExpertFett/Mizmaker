@@ -8,6 +8,7 @@ const OVERLAY_LAYERS = [
   { id: 'routes', label: 'Routes' },
   { id: 'threats', label: 'Threats' },
   { id: 'airbases', label: 'Airbases' },
+  { id: 'bullseye', label: 'Bullseye' },
   { id: 'drawings', label: 'Drawings' },
   { id: 'plannerDrawings', label: 'Plan Overlays' },
   { id: 'triggerZones', label: 'Trigger Zones' },
