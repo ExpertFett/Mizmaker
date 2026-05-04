@@ -15,6 +15,35 @@ not effort.
   map control strip. Affects `MapContainer.tsx` + the unit-render
   layer; the unit-type metadata is already on each MissionGroup.
 
+## Collaboration / Roles
+
+- **Per-unit visibility for flight leads (intel control).** Mission
+  maker wants to expose some units on the battlefield to joined
+  flight leads while hiding others — same shape as the threat-card
+  fog-of-war but per-unit and authored by the mission maker, not a
+  global fidelity toggle. Use case: the briefed target is visible
+  ("here's the convoy you're hunting"), but the surprise SAM that
+  pops up at the IP is hidden until game time, so flight leads
+  can't pre-plan their evasion. Mission maker always sees every
+  unit; flight leads see only what's been opted in.
+  Implementation sketch:
+    - Add a `plannerVisibleToParticipants: boolean` flag per
+      MissionGroup (default true so existing missions stay
+      unchanged).
+    - Mission-maker-only UI to toggle it — probably right-click
+      on the map marker → "Hide from flight leads", plus a
+      bulk "Visibility" tab listing every unit with checkboxes.
+    - Map render layer filters units by role: `role === 'mission_maker'
+      || group.plannerVisibleToParticipants !== false`.
+    - Threat rings should respect the flag too (a hidden SAM
+      shouldn't leak via its threat ring).
+    - Persist into the .miz under a planner-private mission key
+      (same pattern as `["plannerDmpis"]` in v0.9.15) so the
+      visibility plan round-trips through download/re-upload.
+  The role + assignedGroup machinery already exists in
+  `useMissionStore`; the missing piece is the per-unit flag plus
+  the render-time filter.
+
 ## Persistence
 
 - **Goals/DMPI roundtrip integration test.** We have unit tests for
