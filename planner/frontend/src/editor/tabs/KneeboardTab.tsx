@@ -96,6 +96,15 @@ export function KneeboardTab() {
   );
   const [rendering, setRendering] = useState(false);
 
+  // Rebuild stamp — milliseconds since epoch, bumped when the user
+  // hits the Rebuild button. Cards already re-render on state change
+  // via their own useMemo deps, but cross-tab edits (e.g. a SOP
+  // tweak in the SOP tab while the kneeboard tab is mounted) can
+  // make the user uncertain whether the carousel is current. The
+  // timestamp + key bump gives them a visible "yes, fresh" cue
+  // without forcing them to reload the page.
+  const [rebuildAt, setRebuildAt] = useState(() => Date.now());
+
   // Auto-select first player group when groups load
   useEffect(() => {
     if (selectedGroupId === null && playerGroups.length > 0) {
@@ -516,8 +525,54 @@ export function KneeboardTab() {
         </div>
       )}
 
+      {/* Rebuild bar — sits between the settings panel and the
+          carousel. Bumps `rebuildAt` which both re-mounts the
+          carousel (key prop) and refreshes the timestamp the user
+          reads to confirm freshness. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          margin: '0 0 10px',
+          padding: '8px 12px',
+          background: '#1a1a1a',
+          border: '1px solid #3a3a3a',
+          borderRadius: 6,
+          fontSize: 12,
+        }}
+      >
+        <button
+          onClick={() => setRebuildAt(Date.now())}
+          style={{
+            background: '#262626',
+            border: '1px solid #4a8fd4',
+            borderRadius: 4,
+            color: '#4a8fd4',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            padding: '4px 12px',
+            fontFamily: 'inherit',
+          }}
+          title="Force re-render of every preview card"
+        >
+          ↻ Rebuild
+        </button>
+        <span style={{ color: '#aaaaaa' }}>
+          Last built:{' '}
+          <span style={{ color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+            {new Date(rebuildAt).toLocaleTimeString()}
+          </span>
+        </span>
+        <span style={{ color: '#666', fontSize: 11, marginLeft: 'auto' }}>
+          Cards auto-update on edits — Rebuild is a manual refresh / sanity check.
+        </span>
+      </div>
+
       {/* Live Preview Carousel */}
       <CardCarousel
+        key={rebuildAt}
         selectedGroup={selectedGroup}
         playerGroups={playerGroups}
         cards={cards}

@@ -632,6 +632,12 @@ function CustomTemplateFlow() {
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Rebuild stamp — bumped when the user hits the Rebuild button.
+  // The token-resolution useMemo below depends on it, so a click
+  // forces tokens to re-resolve against the current mission state.
+  // Useful if the user edited something (loadout, freq, callsign)
+  // in another tab and wants to confirm the briefing is fresh.
+  const [rebuildAt, setRebuildAt] = useState(() => Date.now());
 
   useEffect(() => {
     fetch('/api/brief/capabilities')
@@ -649,7 +655,12 @@ function CustomTemplateFlow() {
       const final = override !== undefined ? override : (auto ?? '');
       return { token, auto, final, isAutoResolved: auto !== null, isOverridden: override !== undefined };
     });
-  }, [scan, store, overrides]);
+    // `rebuildAt` is here on purpose: clicking Rebuild bumps it,
+    // forcing this memo to recompute even if the store reference
+    // looks unchanged (e.g. for token resolution that pulls from
+    // useGoalsStore / useDmpiStore via getState() — those reads
+    // bypass the missionStore deps).
+  }, [scan, store, overrides, rebuildAt]);
 
   const handleUpload = async (file: File) => {
     setError(null); setOverrides({});
@@ -706,9 +717,27 @@ function CustomTemplateFlow() {
       )}
       {scan && (
         <>
-          <div style={{ marginBottom: 10, fontSize: 13 }}>
-            <strong>{scan.filename}</strong> — {scan.tokens.length} tokens
-            <button onClick={() => setScan(null)} style={{ ...btnSecondary, marginLeft: 12 }}>Different file</button>
+          <div style={{ marginBottom: 10, fontSize: 13, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <strong>{scan.filename}</strong>
+            <span style={{ color: '#aaaaaa' }}>— {scan.tokens.length} tokens</span>
+            <button onClick={() => setScan(null)} style={{ ...btnSecondary }}>Different file</button>
+            {/* Rebuild + last-built stamp. Tokens auto-update when the
+                mission store changes, but cross-store reads (goals,
+                DMPIs, SOP) need the explicit nudge — clicking forces
+                a full re-resolution against the current state. */}
+            <button
+              onClick={() => setRebuildAt(Date.now())}
+              style={{ ...btnSecondary, marginLeft: 'auto' }}
+              title="Re-resolve tokens against the current mission state"
+            >
+              ↻ Rebuild
+            </button>
+            <span style={{ color: '#888', fontSize: 11 }}>
+              Last built:{' '}
+              <span style={{ color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+                {new Date(rebuildAt).toLocaleTimeString()}
+              </span>
+            </span>
           </div>
           <table style={tableStyle}>
             <thead><tr><th style={th}>Token</th><th style={th}>Source</th><th style={th}>Value</th></tr></thead>
