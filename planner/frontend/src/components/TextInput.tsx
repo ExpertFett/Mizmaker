@@ -21,7 +21,11 @@ import { type InputHTMLAttributes, type CSSProperties, forwardRef } from 'react'
 
 export type TextInputSize = 'sm' | 'md';
 
-interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
+// Native <input> already has a numeric `size` attribute (visual width
+// in characters), so we drop it before extending and reuse the slot
+// for our 'sm' | 'md' visual variant. Callers using this primitive
+// don't need the native size hint.
+interface TextInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: TextInputSize;
   /** Render with a red border so the user can spot a validation
    *  failure inline without adding a separate error element. The

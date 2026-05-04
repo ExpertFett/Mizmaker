@@ -20,7 +20,10 @@ import { type SelectHTMLAttributes, type CSSProperties, forwardRef } from 'react
 
 export type SelectSize = 'sm' | 'md';
 
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+// Drop native `size` (number of visible options) so we can repurpose
+// the slot for our 'sm' | 'md' visual variant — same reasoning as
+// TextInput. Multi-row select isn't a pattern this primitive serves.
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   size?: SelectSize;
 }
 
