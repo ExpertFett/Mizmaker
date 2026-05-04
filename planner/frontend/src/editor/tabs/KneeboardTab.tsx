@@ -23,9 +23,11 @@ import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { GoalsCard } from '../../kneeboard/GoalsCard';
+import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { useSopStore } from '../../sop/sopStore';
 import { useGoalsStore } from '../../store/goalsStore';
+import { useDmpiStore } from '../../store/dmpiStore';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
 
@@ -47,6 +49,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
   { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
+  { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
 ];
 
 export function KneeboardTab() {
@@ -78,6 +81,8 @@ export function KneeboardTab() {
   // empty-state placeholder so an enabled checkbox can't silently
   // produce a blank PNG.
   const goals = useGoalsStore((s) => s.goals);
+  // DMPIs feed the DMPI card — same pattern (v0.9.16).
+  const dmpis = useDmpiStore((s) => s.dmpis);
 
   const coordFormat = kneeboardSettings.coordFormat;
   const speedRef = kneeboardSettings.speedRef as KneeboardSpeedRef;
@@ -199,6 +204,14 @@ export function KneeboardTab() {
         overview: overview || undefined,
       });
       results.push({ name: 'Mission_Goals.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.dmpiCard) {
+      const el = createElement(DmpiCard, {
+        dmpis,
+        squadron: activeSop?.squadron,
+        overview: overview || undefined,
+      });
+      results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el) });
     }
     return results;
   };
@@ -477,6 +490,7 @@ export function KneeboardTab() {
         threatFidelity={threatFidelity}
         activeSop={activeSop}
         goals={goals}
+        dmpis={dmpis}
       />
     </div>
   );
@@ -504,6 +518,7 @@ interface CarouselProps {
   threatFidelity: 'full' | 'operational' | 'realistic';
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
   goals: ReturnType<typeof useGoalsStore.getState>['goals'];
+  dmpis: ReturnType<typeof useDmpiStore.getState>['dmpis'];
 }
 
 interface CardEntry {
@@ -518,6 +533,7 @@ function CardCarousel({
   threatFidelity,
   activeSop,
   goals,
+  dmpis,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -642,9 +658,17 @@ function CardCarousel({
         }),
       });
     }
+    if (cards.dmpiCard) {
+      list.push({
+        key: 'dmpiCard', label: 'DMPI List',
+        element: createElement(DmpiCard, {
+          dmpis, squadron: activeSop?.squadron, overview: overview || undefined,
+        }),
+      });
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop, goals]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop, goals, dmpis]);
 
   // Clamp index when list changes
   useEffect(() => {

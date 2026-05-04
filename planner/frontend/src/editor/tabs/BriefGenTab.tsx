@@ -16,6 +16,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useSopStore } from '../../sop/sopStore';
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
+import { useDmpiStore } from '../../store/dmpiStore';
+import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 
 // ---------------------------------------------------------------------------
@@ -784,6 +786,27 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     }).join('\n');
   };
 
+  // DMPIs — same pattern. Filter blank-name placeholders so the
+  // template doesn't render "DMPI 3 - 0.000 / 0.000" lines for
+  // un-set rows.
+  const dmpis = useDmpiStore.getState().dmpis.filter(
+    (d) => d.name.trim().length > 0 && (d.lat !== 0 || d.lon !== 0),
+  );
+  const formatDmpiList = (mode: 'full' | 'names' | 'coords'): string | null => {
+    if (dmpis.length === 0) return null;
+    if (mode === 'names') return dmpis.map((d) => d.name).join(', ');
+    if (mode === 'coords') {
+      return dmpis.map((d) => formatLatLon(d.lat, d.lon)).join('\n');
+    }
+    // 'full' — bullet list with coords + weapon delivery if set
+    return dmpis.map((d) => {
+      const coord = formatLatLon(d.lat, d.lon);
+      const wd = d.weaponDelivery ? ` [${d.weaponDelivery}]` : '';
+      const desc = d.description ? ` — ${d.description}` : '';
+      return `• ${d.name}${wd}: ${coord}${desc}`;
+    }).join('\n');
+  };
+
   const direct: Record<string, () => string | null> = {
     'mission.theater':      () => s.theater ?? null,
     'mission.sortie':       () => s.overview?.sortie ?? null,
@@ -825,6 +848,14 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
       const total = goals.reduce((sum, g) => sum + (g.points || 0), 0);
       return total > 0 ? String(total) : null;
     },
+    // DMPI tokens (v0.9.16) — bullet-listed targets with coords.
+    // {dmpis.list} = full bullet list with coords + weapon + desc.
+    // {dmpis.names} = comma-separated names. {dmpis.coords} = stacked
+    // coords only (handy for a "TARGETS" column on a kneeboard).
+    'dmpis.list':      () => formatDmpiList('full'),
+    'dmpis.names':     () => formatDmpiList('names'),
+    'dmpis.coords':    () => formatDmpiList('coords'),
+    'dmpis.count':     () => dmpis.length > 0 ? String(dmpis.length) : null,
   };
   if (direct[token]) return direct[token]!();
 

@@ -24,6 +24,10 @@ export interface KneeboardCards {
    *  the goals list is empty so an enabled checkbox can't silently
    *  produce a blank card. */
   goalsCard: boolean;
+  /** DMPI Card — target list with coordinates / elevation / weapon
+   *  delivery. Pulls from useDmpiStore. Renders an empty-state
+   *  placeholder when the DMPI list is empty. (v0.9.16) */
+  dmpiCard: boolean;
 }
 
 export interface KneeboardSettings {
@@ -64,7 +68,7 @@ export const useEditStore = create<EditState>((set) => ({
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
-      sopComms: true, goalsCard: true,
+      sopComms: true, goalsCard: true, dmpiCard: true,
     },
   },
 

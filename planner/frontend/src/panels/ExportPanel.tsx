@@ -17,6 +17,7 @@ import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { SopCommsCard } from '../kneeboard/SopCommsCard';
 import { GoalsCard } from '../kneeboard/GoalsCard';
+import { DmpiCard } from '../kneeboard/DmpiCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import { useSopStore } from '../sop/sopStore';
 import { useGoalsStore } from '../store/goalsStore';
@@ -174,6 +175,9 @@ export function ExportPanel() {
         if (cards.goalsCard)
           await addCard(sharedType, 'Mission_Goals.png',
             createElement(GoalsCard, { goals, squadron: activeSop?.squadron, overview: overview || undefined }));
+        if (cards.dmpiCard)
+          await addCard(sharedType, 'DMPI_List.png',
+            createElement(DmpiCard, { dmpis, squadron: activeSop?.squadron, overview: overview || undefined }));
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
       }
