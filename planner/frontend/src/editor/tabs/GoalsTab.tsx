@@ -13,6 +13,8 @@
  */
 
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
+import { TextInput } from '../../components/TextInput';
+import { Select } from '../../components/Select';
 
 const SIDE_COLORS: Record<GoalSide, string> = {
   blue: '#4a8fd4',
@@ -138,40 +140,44 @@ export function GoalsTab() {
                   {i + 1}
                 </td>
                 <td style={tdStyle}>
-                  <input
+                  <TextInput
+                    size="sm"
                     value={g.text}
                     onChange={(e) => update(g.id, { text: e.target.value })}
                     placeholder="e.g. Destroy SA-11 site at bullseye 035/22"
-                    style={{ ...inputStyle, width: '95%', fontWeight: 500, color: '#e0e0e0' }}
+                    style={{ width: '95%', fontWeight: 500, color: '#e0e0e0' }}
                   />
                 </td>
                 <td style={tdStyle}>
-                  <select
+                  <Select
+                    size="sm"
                     value={g.side}
                     onChange={(e) => update(g.id, { side: e.target.value as GoalSide })}
-                    style={{ ...inputStyle, width: '95%', color: SIDE_COLORS[g.side], fontWeight: 600 }}
+                    style={{ width: '95%', color: SIDE_COLORS[g.side], fontWeight: 600 }}
                   >
                     <option value="blue">BLUE</option>
                     <option value="red">RED</option>
                     <option value="neutral">NEUTRAL</option>
                     <option value="all">ALL</option>
-                  </select>
+                  </Select>
                 </td>
                 <td style={tdStyle}>
-                  <input
+                  <TextInput
+                    size="sm"
                     type="number"
                     value={g.points || ''}
                     onChange={(e) => update(g.id, { points: parseInt(e.target.value, 10) || 0 })}
                     placeholder="0"
-                    style={{ ...inputStyle, width: '95%', fontFamily: "'B612 Mono', monospace" }}
+                    style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }}
                   />
                 </td>
                 <td style={tdStyle}>
-                  <input
+                  <TextInput
+                    size="sm"
                     value={g.notes}
                     onChange={(e) => update(g.id, { notes: e.target.value })}
                     placeholder="Internal notes (not exported)"
-                    style={{ ...inputStyle, width: '95%', color: '#888' }}
+                    style={{ width: '95%', color: '#888' }}
                   />
                 </td>
                 <td style={{ ...tdStyle, display: 'flex', gap: 4, paddingTop: 6 }}>
@@ -221,16 +227,6 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '4px 6px',
   verticalAlign: 'top',
-};
-
-const inputStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
-  borderRadius: 3,
-  color: '#cccccc',
-  fontSize: 12,
-  padding: '3px 6px',
-  fontFamily: 'inherit',
 };
 
 const addBtn: React.CSSProperties = {

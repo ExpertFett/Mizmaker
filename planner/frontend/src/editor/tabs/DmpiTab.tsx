@@ -12,6 +12,8 @@
 
 import { forward as toMGRS } from 'mgrs';
 import { useDmpiStore, type Dmpi } from '../../store/dmpiStore';
+import { TextInput } from '../../components/TextInput';
+import { Select } from '../../components/Select';
 
 interface Props {
   /** Map-tab navigator. Set when the user starts picking on map so we
@@ -127,34 +129,37 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                   {i + 1}
                 </td>
                 <td style={tdStyle}>
-                  <input value={d.name} onChange={(e) => update(d.id, { name: e.target.value })}
-                    style={{ ...inputStyle, width: '95%', fontWeight: 600, color: '#e0e0e0' }} />
+                  <TextInput size="sm" value={d.name}
+                    onChange={(e) => update(d.id, { name: e.target.value })}
+                    style={{ width: '95%', fontWeight: 600, color: '#e0e0e0' }} />
                 </td>
                 <td style={tdStyle}>
-                  <input type="number" step="0.0001" value={d.lat || ''}
+                  <TextInput size="sm" type="number" step="0.0001" value={d.lat || ''}
                     onChange={(e) => update(d.id, { lat: parseFloat(e.target.value) || 0 })}
-                    style={{ ...inputStyle, width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="N 00.0000" />
+                    style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="N 00.0000" />
                 </td>
                 <td style={tdStyle}>
-                  <input type="number" step="0.0001" value={d.lon || ''}
+                  <TextInput size="sm" type="number" step="0.0001" value={d.lon || ''}
                     onChange={(e) => update(d.id, { lon: parseFloat(e.target.value) || 0 })}
-                    style={{ ...inputStyle, width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="E 00.0000" />
+                    style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="E 00.0000" />
                 </td>
                 <td style={tdStyle}>
-                  <input type="number" value={d.elevation || ''}
+                  <TextInput size="sm" type="number" value={d.elevation || ''}
                     onChange={(e) => update(d.id, { elevation: parseInt(e.target.value, 10) || 0 })}
-                    style={{ ...inputStyle, width: '95%', fontFamily: "'B612 Mono', monospace" }} />
+                    style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} />
                 </td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#cccccc' }}>
                   {d.lat && d.lon ? fmtMgrs(d.lat, d.lon) : '—'}
                 </td>
                 <td style={tdStyle}>
-                  <input value={d.description} onChange={(e) => update(d.id, { description: e.target.value })}
-                    style={{ ...inputStyle, width: '95%' }} placeholder="Target description" />
+                  <TextInput size="sm" value={d.description}
+                    onChange={(e) => update(d.id, { description: e.target.value })}
+                    style={{ width: '95%' }} placeholder="Target description" />
                 </td>
                 <td style={tdStyle}>
-                  <select value={d.weaponDelivery} onChange={(e) => update(d.id, { weaponDelivery: e.target.value })}
-                    style={{ ...inputStyle, width: '95%' }}>
+                  <Select size="sm" value={d.weaponDelivery}
+                    onChange={(e) => update(d.id, { weaponDelivery: e.target.value })}
+                    style={{ width: '95%' }}>
                     <option value="">—</option>
                     <option value="CCRP">CCRP</option>
                     <option value="CCIP">CCIP</option>
@@ -166,7 +171,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                     <option value="Maverick">Maverick</option>
                     <option value="Strafe">Strafe</option>
                     <option value="Rockets">Rockets</option>
-                  </select>
+                  </Select>
                 </td>
                 <td style={tdStyle}>
                   <button
@@ -201,10 +206,6 @@ const thStyle: React.CSSProperties = {
 };
 const tdStyle: React.CSSProperties = {
   padding: '4px 6px', verticalAlign: 'top',
-};
-const inputStyle: React.CSSProperties = {
-  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
-  color: '#cccccc', fontSize: 12, padding: '3px 6px', fontFamily: 'inherit',
 };
 const addBtn: React.CSSProperties = {
   background: '#4a4a4a', border: '1px solid #4a8fd4', borderRadius: 4,
