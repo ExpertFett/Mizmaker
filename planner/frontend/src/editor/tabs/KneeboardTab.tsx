@@ -22,8 +22,10 @@ import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
+import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { useSopStore } from '../../sop/sopStore';
+import { useGoalsStore } from '../../store/goalsStore';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
 
@@ -44,6 +46,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
+  { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
 ];
 
 export function KneeboardTab() {
@@ -69,6 +72,12 @@ export function KneeboardTab() {
     () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
     [activeSopId, sops],
   );
+
+  // Goals feed the Mission Goals card. Even if the goals list is
+  // empty we still pass it through — the card renders an explicit
+  // empty-state placeholder so an enabled checkbox can't silently
+  // produce a blank PNG.
+  const goals = useGoalsStore((s) => s.goals);
 
   const coordFormat = kneeboardSettings.coordFormat;
   const speedRef = kneeboardSettings.speedRef as KneeboardSpeedRef;
@@ -178,6 +187,18 @@ export function KneeboardTab() {
     if (cards.sopComms && activeSop) {
       const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined });
       results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el) });
+    }
+    // Mission Goals card — emitted even when the goals list is empty
+    // so the user gets a clear "no goals defined" placeholder rather
+    // than a missing card. The squadron line falls through from the
+    // active SOP for consistency with the SopCommsCard header.
+    if (cards.goalsCard) {
+      const el = createElement(GoalsCard, {
+        goals,
+        squadron: activeSop?.squadron,
+        overview: overview || undefined,
+      });
+      results.push({ name: 'Mission_Goals.png', blob: await renderCardToBlob(el) });
     }
     return results;
   };
@@ -455,6 +476,7 @@ export function KneeboardTab() {
         machThreshold={machThreshold}
         threatFidelity={threatFidelity}
         activeSop={activeSop}
+        goals={goals}
       />
     </div>
   );
@@ -481,6 +503,7 @@ interface CarouselProps {
   machThreshold: number;
   threatFidelity: 'full' | 'operational' | 'realistic';
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
+  goals: ReturnType<typeof useGoalsStore.getState>['goals'];
 }
 
 interface CardEntry {
@@ -494,6 +517,7 @@ function CardCarousel({
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
   threatFidelity,
   activeSop,
+  goals,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -607,9 +631,20 @@ function CardCarousel({
         element: createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }),
       });
     }
+    // Mission Goals card always renders when enabled, even with an
+    // empty goals list — the card has its own empty-state placeholder
+    // so the preview carousel matches what the PNG export will emit.
+    if (cards.goalsCard) {
+      list.push({
+        key: 'goalsCard', label: 'Mission Goals',
+        element: createElement(GoalsCard, {
+          goals, squadron: activeSop?.squadron, overview: overview || undefined,
+        }),
+      });
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop, goals]);
 
   // Clamp index when list changes
   useEffect(() => {

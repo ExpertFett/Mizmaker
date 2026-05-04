@@ -19,6 +19,11 @@ export interface KneeboardCards {
   /** SOP Comms Card — synthesised from the active SOP. Emits a placeholder
    *  if no SOP is active so the checkbox doesn't silently produce nothing. */
   sopComms: boolean;
+  /** Mission Goals Card — squadron objective list grouped by side.
+   *  Pulls from useGoalsStore. Renders an empty-state placeholder when
+   *  the goals list is empty so an enabled checkbox can't silently
+   *  produce a blank card. */
+  goalsCard: boolean;
 }
 
 export interface KneeboardSettings {
@@ -59,7 +64,7 @@ export const useEditStore = create<EditState>((set) => ({
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
-      sopComms: true,
+      sopComms: true, goalsCard: true,
     },
   },
 

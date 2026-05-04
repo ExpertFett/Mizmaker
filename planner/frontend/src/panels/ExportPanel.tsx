@@ -16,8 +16,10 @@ import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { SopCommsCard } from '../kneeboard/SopCommsCard';
+import { GoalsCard } from '../kneeboard/GoalsCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import { useSopStore } from '../sop/sopStore';
+import { useGoalsStore } from '../store/goalsStore';
 import type { Weather } from '../utils/atmosphere';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
@@ -50,6 +52,10 @@ export function ExportPanel() {
   const sopList = useSopStore((s) => s.sops);
   const activeSopId = useSopStore((s) => s.activeId);
   const activeSop = activeSopId ? sopList.find((s) => s.id === activeSopId) ?? null : null;
+  // Goals feed the Mission Goals kneeboard card on inject. Read directly
+  // from the store rather than via store-action prop drilling — this
+  // panel is small and the card has its own empty-state placeholder.
+  const goals = useGoalsStore((s) => s.goals);
 
   const handleDownload = async () => {
     if (!sessionId) { alert('No session'); return; }
@@ -137,6 +143,13 @@ export function ExportPanel() {
         if (cards.sopComms && activeSop)
           await addCard(sharedType, 'SOP_Comms.png',
             createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }));
+        // Mission Goals — always emitted when the toggle is on, even
+        // with an empty list. The card itself shows an explicit
+        // placeholder so a "no goals" mission still gets a visible
+        // card rather than a missing slot.
+        if (cards.goalsCard)
+          await addCard(sharedType, 'Mission_Goals.png',
+            createElement(GoalsCard, { goals, squadron: activeSop?.squadron, overview: overview || undefined }));
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
       }
