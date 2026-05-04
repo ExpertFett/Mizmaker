@@ -9,9 +9,11 @@
  *      next click anywhere on the map captures (lat, lon) and writes
  *      them into the named DMPI's row.
  *
- * Session-only — DMPIs are NOT written into the .miz today (per the
- * tab's own docstring). Refactoring to persist them is a separate
- * concern; this store keeps the same scope.
+ * Persistence (v0.9.15): DMPIs aren't a native DCS field, so they
+ * ride into the .miz under a planner-private `["plannerDmpis"]` key
+ * inside the mission table (DCS ignores unknown top-level keys).
+ * ExportPanel pushes a `plannerDmpis` edit on download; UploadPanel
+ * seeds via `setAll` from the upload response.
  */
 
 import { create } from 'zustand';
@@ -43,6 +45,9 @@ interface DmpiState {
    *  lat/lon and clears picking mode. */
   finishPicking: (lat: number, lon: number) => void;
   cancelPicking: () => void;
+  /** Bulk replacement, used by UploadPanel to seed from the parsed
+   *  `["plannerDmpis"]` block on session load (v0.9.15). */
+  setAll: (dmpis: Dmpi[]) => void;
 }
 
 function makeId(): string {
@@ -99,4 +104,6 @@ export const useDmpiStore = create<DmpiState>((set, get) => ({
   },
 
   cancelPicking: () => set({ pickingForId: null }),
+
+  setAll: (dmpis) => set({ dmpis, pickingForId: null }),
 }));

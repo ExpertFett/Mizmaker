@@ -2070,6 +2070,95 @@ def _replace_mission_goals(text: str, goals: list) -> str:
     return text
 
 
+def _replace_planner_dmpis(text: str, dmpis: list) -> str:
+    """Replace the planner-private ["plannerDmpis"] block in mission Lua.
+
+    DMPIs aren't a native DCS field — DCS ignores unknown top-level keys
+    in the mission table, so we use a custom `["plannerDmpis"]` slot
+    that:
+      - Round-trips cleanly through the planner (write -> read -> write)
+      - Doesn't interfere with anything DCS reads at runtime
+      - Survives re-save in this editor (DCS ME may strip it on its
+        own re-save, which is acceptable — planner-authored sessions
+        are the use case)
+
+    `dmpis` is the frontend Dmpi[] payload — list of {id, name, lat,
+    lon, elevation, description, weaponDelivery, notes} dicts. We
+    drop the `id` (re-derived deterministically on read) and write
+    every other field.
+
+    Empty list writes an empty block — same shape this writer emits
+    for goals so the read path can rely on the block's existence as
+    the "DMPIs were touched" signal.
+    """
+    valid = [d for d in dmpis if (d.get("name") or "").strip()]
+
+    def _esc(s: str) -> str:
+        return (
+            (s or "")
+            .replace('\\', '\\\\')
+            .replace('"', '\\"')
+            .replace('\n', ' ')
+            .replace('\r', '')
+        )
+
+    if not valid:
+        new_block = '["plannerDmpis"] = {}'
+    else:
+        entries = []
+        for i, d in enumerate(valid, start=1):
+            lat = float(d.get("lat") or 0)
+            lon = float(d.get("lon") or 0)
+            elev = float(d.get("elevation") or 0)
+            entries.append(
+                f'        [{i}] = \n'
+                f'        {{\n'
+                f'            ["name"] = "{_esc(d.get("name", ""))}",\n'
+                f'            ["lat"] = {lat},\n'
+                f'            ["lon"] = {lon},\n'
+                f'            ["elevation"] = {elev},\n'
+                f'            ["description"] = "{_esc(d.get("description", ""))}",\n'
+                f'            ["weaponDelivery"] = "{_esc(d.get("weaponDelivery", ""))}",\n'
+                f'            ["notes"] = "{_esc(d.get("notes", ""))}",\n'
+                f'        }}, -- end of [{i}]'
+            )
+        inner = '\n'.join(entries)
+        new_block = f'["plannerDmpis"] = \n    {{\n{inner}\n    }}'
+
+    # Replace existing or insert before mission close — same brace
+    # walk pattern as `_replace_forced_options` and `_replace_mission_goals`.
+    block_match = re.search(r'\["plannerDmpis"\]\s*=\s*\n?\s*\{', text)
+    if block_match:
+        block_open = block_match.end() - 1
+        depth = 0
+        fi = block_open
+        in_str = False
+        while fi < len(text):
+            ch = text[fi]
+            if ch == '"' and (fi == 0 or text[fi - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            fi += 1
+        text = text[:block_match.start()] + new_block + text[fi + 1:]
+    else:
+        # No existing block — insert before mission root close.
+        insert_pattern = re.compile(r'(\n\} -- end of mission)', re.IGNORECASE)
+        if insert_pattern.search(text):
+            text = insert_pattern.sub(f'\n    {new_block},\\1', text)
+        else:
+            last_brace = text.rfind("}")
+            if last_brace > 0:
+                text = text[:last_brace] + f'    {new_block},\n' + text[last_brace:]
+
+    return text
+
+
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
     import os as _os
@@ -2503,6 +2592,11 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                 # `value` is the frontend MissionGoal[] payload.
                 # Persists Mission Goals tab edits into .miz on download.
                 text = _replace_mission_goals(text, value)
+            elif field == "plannerDmpis":
+                # `value` is the frontend Dmpi[] payload. Persists
+                # DMPI list into a planner-private mission key on
+                # download (DCS ignores unknown top-level keys).
+                text = _replace_planner_dmpis(text, value)
             elif field == "findReplace":
                 text, _ = _find_replace_names(
                     text, value["find"], value["replace"],

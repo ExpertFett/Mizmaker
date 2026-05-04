@@ -20,6 +20,7 @@ import { GoalsCard } from '../kneeboard/GoalsCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import { useSopStore } from '../sop/sopStore';
 import { useGoalsStore } from '../store/goalsStore';
+import { useDmpiStore } from '../store/dmpiStore';
 import type { Weather } from '../utils/atmosphere';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
@@ -56,6 +57,9 @@ export function ExportPanel() {
   // from the store rather than via store-action prop drilling — this
   // panel is small and the card has its own empty-state placeholder.
   const goals = useGoalsStore((s) => s.goals);
+  // DMPIs ride into the .miz under a planner-private `["plannerDmpis"]`
+  // key (v0.9.15). Read here so the dispatch below can include them.
+  const dmpis = useDmpiStore((s) => s.dmpis);
 
   const handleDownload = async () => {
     if (!sessionId) { alert('No session'); return; }
@@ -79,6 +83,14 @@ export function ExportPanel() {
     const validGoals = goals.filter((g) => g.text.trim().length > 0);
     if (validGoals.length > 0) {
       unitEdits.push({ field: 'missionGoals', value: validGoals });
+    }
+
+    // Same shape for DMPIs (v0.9.15). Only dispatch when at least
+    // one named DMPI is staged — keeps the .miz untouched when the
+    // user hasn't engaged with the DMPI tab.
+    const validDmpis = dmpis.filter((d) => d.name.trim().length > 0);
+    if (validDmpis.length > 0) {
+      unitEdits.push({ field: 'plannerDmpis', value: validDmpis });
     }
 
     // Render kneeboard PNGs if inject is enabled

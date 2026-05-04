@@ -213,6 +213,11 @@ export interface UploadResponse {
    *  interface; structural typing means we don't need to import it
    *  here. */
   missionGoals: { id: string; text: string; side: 'blue' | 'red' | 'neutral' | 'all'; points: number; notes: string }[];
+  /** Parsed planner-private `["plannerDmpis"]` block (v0.9.15).
+   *  Empty array for DCS-ME-authored missions (no key) and for
+   *  planner missions that haven't touched the DMPI tab yet. Same
+   *  shape as the dmpiStore Dmpi interface. */
+  plannerDmpis: { id: string; name: string; lat: number; lon: number; elevation: number; description: string; weaponDelivery: string; notes: string }[];
 }
 
 export interface ClientUnit {

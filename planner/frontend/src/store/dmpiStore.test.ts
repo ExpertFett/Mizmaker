@@ -102,4 +102,31 @@ describe('dmpiStore', () => {
       expect(useDmpiStore.getState().pickingForId).toBe(a);
     });
   });
+
+  describe('setAll', () => {
+    it('replaces the DMPI list with the given seed', () => {
+      // Stage some local edits.
+      useDmpiStore.getState().add();
+      useDmpiStore.getState().add();
+      // Then "upload" lands — replace, don't merge.
+      const seeded = [
+        { id: 'imp_1', name: 'From .miz A', lat: 41.5, lon: 41.5,
+          elevation: 1000, description: '', weaponDelivery: '', notes: '' },
+        { id: 'imp_2', name: 'From .miz B', lat: -10, lon: 30,
+          elevation: 0, description: '', weaponDelivery: '', notes: '' },
+      ];
+      useDmpiStore.getState().setAll(seeded);
+      expect(useDmpiStore.getState().dmpis).toEqual(seeded);
+    });
+
+    it('clears pickingForId on bulk replace', () => {
+      // If a session-load happens while the user was mid-pick, we
+      // must clear the pick mode so the new list isn't immediately
+      // overwritten by a stale handshake.
+      const a = useDmpiStore.getState().add();
+      useDmpiStore.getState().startPicking(a);
+      useDmpiStore.getState().setAll([]);
+      expect(useDmpiStore.getState().pickingForId).toBeNull();
+    });
+  });
 });

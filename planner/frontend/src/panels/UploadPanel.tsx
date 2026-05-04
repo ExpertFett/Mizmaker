@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
 import { useGoalsStore } from '../store/goalsStore';
+import { useDmpiStore } from '../store/dmpiStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 import { VERSION } from '../version';
 import { useAiStore } from '../ai/aiStore';
@@ -35,6 +36,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         // shipped in v0.9.13 — re-uploading a planner-generated mission
         // now shows the existing goals instead of a blank tab.
         useGoalsStore.getState().setAll(data.missionGoals || []);
+        // Same pattern for DMPIs — read out of the planner-private
+        // `["plannerDmpis"]` key (v0.9.15). DCS-ME-authored missions
+        // have no key so this is a no-op for fresh uploads.
+        useDmpiStore.getState().setAll(data.plannerDmpis || []);
         onLoaded?.();
       } catch (e: any) {
         setError(e.message || 'Upload failed');
