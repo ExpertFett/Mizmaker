@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useSopStore } from '../../sop/sopStore';
+import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { isPlayerGroup } from '../../utils/groups';
 
 // ---------------------------------------------------------------------------
@@ -767,6 +768,22 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     ? sopState.sops.find((x) => x.id === sopState.activeId) || null
     : null;
 
+  // Mission goals — same cheap getState() pattern. Format as a
+  // bullet list per side. Empty list returns null so a missing-side
+  // token renders as the literal "{goals.red}" rather than a blank
+  // line, alerting the template designer.
+  const goals = useGoalsStore.getState().goals;
+  const formatGoalsForSide = (side: GoalSide | 'any'): string | null => {
+    const filtered = goals.filter(
+      side === 'any' ? () => true : (g) => g.side === side || g.side === 'all',
+    );
+    if (filtered.length === 0) return null;
+    return filtered.map((g) => {
+      const pts = g.points > 0 ? ` (${g.points}pt)` : '';
+      return `• ${g.text}${pts}`;
+    }).join('\n');
+  };
+
   const direct: Record<string, () => string | null> = {
     'mission.theater':      () => s.theater ?? null,
     'mission.sortie':       () => s.overview?.sortie ?? null,
@@ -795,6 +812,18 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     'sop.guard_freq':       () => {
       const guard = activeSop?.comms.find((c) => /guard/i.test(c.role));
       return guard?.frequency.toFixed(3) ?? null;
+    },
+    // Mission goals tokens — bullet-listed objectives by side. {goals.all}
+    // emits every goal regardless of side; {goals.blue} / {goals.red} /
+    // {goals.neutral} include side-specific PLUS goals tagged 'all'.
+    'goals.all':       () => formatGoalsForSide('any'),
+    'goals.blue':      () => formatGoalsForSide('blue'),
+    'goals.red':       () => formatGoalsForSide('red'),
+    'goals.neutral':   () => formatGoalsForSide('neutral'),
+    'goals.count':     () => goals.length > 0 ? String(goals.length) : null,
+    'goals.points':    () => {
+      const total = goals.reduce((sum, g) => sum + (g.points || 0), 0);
+      return total > 0 ? String(total) : null;
     },
   };
   if (direct[token]) return direct[token]!();

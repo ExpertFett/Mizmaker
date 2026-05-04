@@ -24,6 +24,7 @@ import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
 import { SopCheckTab } from './tabs/SopCheckTab';
 import { EditsTab } from './tabs/EditsTab';
+import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
@@ -57,6 +58,10 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'tab', id: 'sopCheck',    label: 'SOP Check',   icon: '✓' },
   { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
   { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
+  // Mission Goals — squadron-style objective list. Sits next to
+  // Mission because that's where the briefing-adjacent settings
+  // live. Tokens flow into Brief tab via {goals.*}.
+  { kind: 'tab', id: 'goals',       label: 'Goals',       icon: '🎖' },
   { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
 
   { kind: 'section', label: 'ENTITIES' },
@@ -453,6 +458,11 @@ export function MissionEditor() {
             {visitedTabs.has('missionEdit') && (
               <div style={{ display: activeTab === 'missionEdit' ? 'block' : 'none' }}>
                 <MissionEditTab />
+              </div>
+            )}
+            {visitedTabs.has('goals') && (
+              <div style={{ display: activeTab === 'goals' ? 'block' : 'none' }}>
+                <GoalsTab />
               </div>
             )}
             {visitedTabs.has('debug') && (
