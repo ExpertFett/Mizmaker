@@ -1970,6 +1970,106 @@ def _replace_forced_options(text: str, options: dict) -> str:
     return text
 
 
+def _replace_mission_goals(text: str, goals: list) -> str:
+    """Replace the top-level ["goals"] block with a fresh list of goals.
+
+    `goals` is the frontend's MissionGoal[] payload — a list of
+    {id, text, side, points, notes} dicts. We translate each into a
+    minimal DCS goal entry:
+
+        [N] = {
+            ["score"] = <points>,
+            ["flag"] = N,
+            ["comment"] = "[<SIDE>] <text>",
+            ["predicates"] = {},
+            ["rules"] = {},
+        },
+
+    Empty `rules` means DCS won't auto-evaluate the goal at runtime
+    — perfect for training scenarios where the instructor scores
+    manually. The `[<SIDE>]` prefix in the comment encodes the
+    coalition for human readers without us having to wire DCS
+    coalition predicates (which would require a real evaluation
+    rule, out of scope for v1).
+
+    `notes` is editor-only and intentionally NOT written into the
+    .miz — it's pilot-internal context, not a goal description.
+
+    Empty goals list (or all-empty-text goals) writes an empty
+    `["goals"] = {}` block, same shape DCS ME emits when the user
+    has no goals defined.
+    """
+    # Filter out blank-text rows the editor lets the user stage.
+    valid = [g for g in goals if (g.get("text") or "").strip()]
+
+    if not valid:
+        new_block = '["goals"] = {}'
+    else:
+        entries = []
+        for i, g in enumerate(valid, start=1):
+            side = (g.get("side") or "all").upper()
+            comment_raw = (g.get("text") or "").strip()
+            # Escape Lua string special chars: backslash, double quote,
+            # newline. DCS comments live on a single line so we collapse
+            # newlines to spaces rather than emitting "\n".
+            comment_safe = (
+                comment_raw
+                .replace('\\', '\\\\')
+                .replace('"', '\\"')
+                .replace('\n', ' ')
+                .replace('\r', '')
+            )
+            comment_full = f'[{side}] {comment_safe}'
+            score = int(g.get("points") or 0)
+            entries.append(
+                f'        [{i}] = \n'
+                f'        {{\n'
+                f'            ["score"] = {score},\n'
+                f'            ["flag"] = {i},\n'
+                f'            ["comment"] = "{comment_full}",\n'
+                f'            ["predicates"] = {{}},\n'
+                f'            ["rules"] = {{}},\n'
+                f'        }}, -- end of [{i}]'
+            )
+        inner = '\n'.join(entries)
+        new_block = f'["goals"] = \n    {{\n{inner}\n    }}'
+
+    # Find existing goals block — brace-match like _replace_forced_options
+    # so we cleanly replace whatever shape DCS ME left (empty {}, or
+    # a populated block with N entries).
+    goals_match = re.search(r'\["goals"\]\s*=\s*\n?\s*\{', text)
+    if goals_match:
+        block_open = goals_match.end() - 1  # position of {
+        depth = 0
+        fi = block_open
+        in_str = False
+        while fi < len(text):
+            ch = text[fi]
+            if ch == '"' and (fi == 0 or text[fi - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            fi += 1
+        text = text[:goals_match.start()] + new_block + text[fi + 1:]
+    else:
+        # No existing block (extremely rare — DCS always emits at least
+        # `["goals"] = {}`). Insert right before mission root close.
+        insert_pattern = re.compile(r'(\n\} -- end of mission)', re.IGNORECASE)
+        if insert_pattern.search(text):
+            text = insert_pattern.sub(f'\n    {new_block},\\1', text)
+        else:
+            last_brace = text.rfind("}")
+            if last_brace > 0:
+                text = text[:last_brace] + f'    {new_block},\n' + text[last_brace:]
+
+    return text
+
+
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
     import os as _os
@@ -2399,6 +2499,10 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                 text = _replace_coalition_assignments(text, value)
             elif field == "weather":
                 text = _replace_weather_block(text, value)
+            elif field == "missionGoals":
+                # `value` is the frontend MissionGoal[] payload.
+                # Persists Mission Goals tab edits into .miz on download.
+                text = _replace_mission_goals(text, value)
             elif field == "findReplace":
                 text, _ = _find_replace_names(
                     text, value["find"], value["replace"],

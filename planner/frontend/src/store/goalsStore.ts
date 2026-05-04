@@ -1,23 +1,27 @@
 /**
  * Mission Goals store — squadron-style objective list.
  *
- * Mirrors the "Mission Goals" tab in DCS ME but kept simple for v1:
- * a flat list of text objectives, each tagged blue/red/neutral/all
- * and optionally weighted with a point value. Session-only — goals
- * are NOT written into the .miz's `goals` block today (that's a
- * Phase-2 feature requiring a new backend edit handler + DCS
- * condition predicate machinery, which I scoped out of this release
- * to keep the change reviewable).
+ * Mirrors the "Mission Goals" tab in DCS ME but kept simple: a flat
+ * list of text objectives, each tagged blue/red/neutral/all and
+ * optionally weighted with a point value.
  *
  * Where goals show up:
  *   - GoalsTab — full editor.
  *   - BriefGenTab — accessible via {goals.blue}, {goals.red},
  *     {goals.neutral}, {goals.all} template tokens.
+ *   - Kneeboard "Mission Goals" card (v0.9.10).
+ *   - The .miz file itself, written into the `["goals"]` block on
+ *     download via the backend `missionGoals` edit handler (v0.9.13).
+ *     Goals land with empty `predicates` + `rules` so DCS shows them
+ *     in the briefing/scoring UI without auto-evaluating — squadrons
+ *     score training sorties manually, not via DCS condition logic.
  *
- * Where they DON'T show up yet (intentional):
- *   - The .miz file itself (no backend edit dispatch).
- *   - The Briefing tab description (would need a render path).
- *   - Kneeboards (separate card, follow-up).
+ * Not yet:
+ *   - Read-back on upload — uploading a .miz with a populated goals
+ *     block doesn't seed the store today (the editor starts blank
+ *     each session). Adding that requires a parser pass in
+ *     `app.py` upload route similar to how briefing fields are
+ *     resolved through the dictionary.
  */
 
 import { create } from 'zustand';

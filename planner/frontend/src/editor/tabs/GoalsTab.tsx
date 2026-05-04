@@ -3,10 +3,13 @@
  *
  * Mirrors what DCS ME's "Mission Goals" dialog shows: a flat list of
  * named objectives, each with a side and an optional point value.
- * For v1 these are session-only and surface in the brief generator
- * via {goals.blue} / {goals.red} / {goals.neutral} / {goals.all}
- * template tokens. Persistence into the .miz `goals` block + DCS
- * condition predicates is queued for a follow-up.
+ * Surfaces in:
+ *   - The brief generator via {goals.blue} / {goals.red} /
+ *     {goals.neutral} / {goals.all} / {goals.count} / {goals.points}.
+ *   - The "Mission Goals" kneeboard card (carousel + PNG export).
+ *   - The .miz on download — written into the `["goals"]` block via
+ *     the backend `missionGoals` edit handler (v0.9.13). DCS shows
+ *     them in the in-game briefing/scoring screen.
  */
 
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
@@ -49,11 +52,14 @@ export function GoalsTab() {
             Mission Goals & Objectives
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
-            Session-only objective list. Available in the Brief tab via{' '}
+            Squadron objective list. Written into the .miz on download
+            and available in the Brief tab via{' '}
             <code style={{ color: '#cccccc' }}>{'{goals.blue}'}</code>{' / '}
             <code style={{ color: '#cccccc' }}>{'{goals.red}'}</code>{' / '}
             <code style={{ color: '#cccccc' }}>{'{goals.all}'}</code>{' '}
-            template tokens. Not yet written into the .miz goals block.
+            tokens. Side prefix encoded into the comment (e.g.{' '}
+            <code style={{ color: '#cccccc' }}>[BLUE] Destroy SAM</code>) since
+            DCS goals don't carry a coalition field natively.
           </p>
         </div>
         <button onClick={add} style={addBtn}>+ Add Goal</button>

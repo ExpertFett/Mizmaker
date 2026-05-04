@@ -69,6 +69,18 @@ export function ExportPanel() {
       unitEdits.push({ field: 'forcedOptions', value: missionOptions });
     }
 
+    // Persist Mission Goals into the .miz on download. We always emit
+    // the missionGoals edit when the user has at least one non-blank
+    // goal staged — the backend handler tolerates an empty payload
+    // (writes an empty goals block) but we'd rather avoid touching
+    // the goals block at all when the user hasn't engaged with the
+    // tab. That keeps the diff minimal for missions where the goals
+    // tab was never opened.
+    const validGoals = goals.filter((g) => g.text.trim().length > 0);
+    if (validGoals.length > 0) {
+      unitEdits.push({ field: 'missionGoals', value: validGoals });
+    }
+
     // Render kneeboard PNGs if inject is enabled
     let kneeboards: { aircraft_type: string; filename: string; data: string }[] = [];
     if (injectKneeboards) {
