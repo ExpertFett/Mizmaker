@@ -51,6 +51,13 @@ interface GoalsState {
    *  see goals in the brief — typically primary objective first. */
   move: (id: string, direction: 'up' | 'down') => void;
   clearAll: () => void;
+  /** Seed the store from a fresh upload payload (v0.9.14). The
+   *  backend parses the .miz's `["goals"]` block and returns it on
+   *  every `/api/upload`; UploadPanel calls this so the editor
+   *  shows whatever goals the previous editor (DCS-ME or this
+   *  planner) left behind. Replaces — does not merge — to keep
+   *  re-upload semantics predictable. */
+  setAll: (goals: MissionGoal[]) => void;
 }
 
 function makeId(): string {
@@ -99,4 +106,6 @@ export const useGoalsStore = create<GoalsState>((set) => ({
     }),
 
   clearAll: () => set({ goals: [] }),
+
+  setAll: (goals) => set({ goals }),
 }));

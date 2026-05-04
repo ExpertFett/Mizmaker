@@ -185,6 +185,22 @@ def upload():
             # rather than blocking the whole upload. Log so we know.
             import logging
             logging.warning(f"Briefing dict resolution failed: {e}")
+            lookup = {}
+
+        # Parse the mission goals block so the GoalsTab can seed from
+        # whatever the previous editor (DCS-ME or this planner) left
+        # behind. v0.9.13 added the writer; v0.9.14 closes the round
+        # trip on the read side. Failures are non-fatal — empty list
+        # is the safe default.
+        parsed_goals: list[dict] = []
+        try:
+            from services.mission_goals_parser import parse_mission_goals
+            from services.miz_editor import extract_mission_text_from_miz
+            mission_text_for_goals = extract_mission_text_from_miz(miz_bytes)
+            parsed_goals = parse_mission_goals(mission_text_for_goals, lookup)
+        except Exception as e:
+            import logging
+            logging.warning(f"Goals parse failed: {e}")
 
         for group in data["groups"]:
             if group["waypoints"]:
@@ -253,6 +269,11 @@ def upload():
                 "ground": GROUND_TASKS,
                 "ship": SHIP_TASKS,
             },
+            # Parsed `["goals"]` block (v0.9.14). Empty list when the
+            # mission has no goals or the parse failed. Frontend seeds
+            # useGoalsStore from this on session load so re-uploading
+            # a planner-generated .miz brings the goals back.
+            "missionGoals": parsed_goals,
         })
     except Exception as e:
         import traceback

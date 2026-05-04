@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
+import { useGoalsStore } from '../store/goalsStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 import { VERSION } from '../version';
 import { useAiStore } from '../ai/aiStore';
@@ -29,6 +30,11 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         const data = await uploadMission(file);
         setActiveTheater(data.theater);
         loadMission(data);
+        // Seed the Mission Goals store from whatever the .miz had in
+        // its `["goals"]` block. Closes the round-trip the writer
+        // shipped in v0.9.13 — re-uploading a planner-generated mission
+        // now shows the existing goals instead of a blank tab.
+        useGoalsStore.getState().setAll(data.missionGoals || []);
         onLoaded?.();
       } catch (e: any) {
         setError(e.message || 'Upload failed');

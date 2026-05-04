@@ -620,6 +620,15 @@ def extract_options_from_miz(miz_bytes: bytes) -> str | None:
             return None
 
 
+def extract_mission_text_from_miz(miz_bytes: bytes) -> str | None:
+    """Read the raw mission Lua from a .miz. Returns None if absent."""
+    with zipfile.ZipFile(io.BytesIO(miz_bytes), "r") as zf:
+        try:
+            return zf.read("mission").decode("utf-8")
+        except KeyError:
+            return None
+
+
 # Whitelist of forcedOptions fields to mirror into options/difficulty.
 # NOT listed: "birds" (bool in forcedOptions vs int count in difficulty),
 # "optionsViewExtended" (complex nested, not in difficulty), "civTraffic"

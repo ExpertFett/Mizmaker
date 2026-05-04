@@ -206,6 +206,13 @@ export interface UploadResponse {
   statistics: unknown;
   countries: CountryInfo[];
   taskLists: { air: string[]; ground: string[]; ship: string[] };
+  /** Parsed `["goals"]` block (v0.9.14). Empty array when the mission
+   *  has no goals or the parser couldn't read them. Frontend seeds
+   *  useGoalsStore so re-uploaded planner-generated missions show
+   *  their existing goals. Same shape as the goalsStore MissionGoal
+   *  interface; structural typing means we don't need to import it
+   *  here. */
+  missionGoals: { id: string; text: string; side: 'blue' | 'red' | 'neutral' | 'all'; points: number; notes: string }[];
 }
 
 export interface ClientUnit {

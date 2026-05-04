@@ -98,4 +98,26 @@ describe('goalsStore', () => {
       expect(useGoalsStore.getState().goals).toEqual([]);
     });
   });
+
+  describe('setAll', () => {
+    it('replaces the existing goals with the given list', () => {
+      // Stage some local edits the user has been making.
+      useGoalsStore.getState().add();
+      useGoalsStore.getState().add();
+      // Then "upload" arrives — replace, don't merge.
+      const seeded = [
+        { id: 'imp_1', text: 'From .miz A', side: 'blue' as const, points: 50, notes: '' },
+        { id: 'imp_2', text: 'From .miz B', side: 'red' as const, points: 25, notes: '' },
+      ];
+      useGoalsStore.getState().setAll(seeded);
+      const list = useGoalsStore.getState().goals;
+      expect(list).toEqual(seeded);
+    });
+
+    it('accepts an empty list (mission has no goals)', () => {
+      useGoalsStore.getState().add();
+      useGoalsStore.getState().setAll([]);
+      expect(useGoalsStore.getState().goals).toEqual([]);
+    });
+  });
 });
