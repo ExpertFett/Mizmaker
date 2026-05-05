@@ -43,6 +43,14 @@ export interface KneeboardSettings {
    *  mission for training pilots). Drives the ThreatCard's
    *  `fidelity` prop. */
   threatFidelity: 'full' | 'operational' | 'realistic';
+  /** When true, the threat card draws its map (rings in full /
+   *  operational, fuzzy blobs in realistic). When false, the map
+   *  is suppressed entirely — pilots see only the inventory /
+   *  expected-resistance summary text and a "positions withheld"
+   *  notice. Independent of fidelity so the user can pick
+   *  "realistic + map" or "realistic + no map" without changing
+   *  the inventory presentation. (v0.9.23) */
+  threatMapVisible: boolean;
 }
 
 interface EditState {
@@ -70,6 +78,7 @@ export const useEditStore = create<EditState>((set) => ({
     // spoils a training mission. Mission designers / instructors
     // can switch to 'full' for their own debrief copy.
     threatFidelity: 'realistic',
+    threatMapVisible: true,
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,

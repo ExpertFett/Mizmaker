@@ -89,6 +89,10 @@ export function KneeboardTab() {
   const machThreshold = kneeboardSettings.machThreshold;
   // Default 'full' for older settings objects that pre-date v0.9.6.
   const threatFidelity = kneeboardSettings.threatFidelity ?? 'full';
+  // Default true for older settings objects that pre-date v0.9.23
+  // — preserves the existing fog-of-war map render unless the
+  // user explicitly turns it off.
+  const threatMapVisible = kneeboardSettings.threatMapVisible !== false;
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
@@ -186,7 +190,7 @@ export function KneeboardTab() {
       const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity });
+        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible });
         results.push({ name: fname, blob: await renderCardToBlob(el) });
       }
     }
@@ -403,6 +407,33 @@ export function KneeboardTab() {
           </select>
         </label>
 
+        {/* Map-visible tickbox — independent of fidelity. When off,
+            the threat card replaces its map portion with a
+            "Threat positions withheld" placeholder; the inventory
+            text below it still renders. Lets the user pick "show
+            inventory but no positions on the map at all" — useful
+            when even the realistic blobs are too revealing. */}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 13,
+            color: '#aaaaaa',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+          title="When off, the threat card hides the map entirely. The inventory / expected-resistance text still shows."
+        >
+          <input
+            type="checkbox"
+            checked={threatMapVisible}
+            onChange={(e) => setKneeboardSettings({ threatMapVisible: e.target.checked })}
+            style={{ accentColor: '#4a8fd4' }}
+          />
+          Show threats on map
+        </label>
+
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering || noCardsSelected} style={btnStyle}>
           {rendering ? 'Rendering...' : 'Download .zip'}
         </button>
@@ -588,6 +619,7 @@ export function KneeboardTab() {
         speedRef={speedRef}
         machThreshold={machThreshold}
         threatFidelity={threatFidelity}
+        threatMapVisible={threatMapVisible}
         activeSop={activeSop}
         goals={goals}
         dmpis={dmpis}
@@ -616,6 +648,7 @@ interface CarouselProps {
   speedRef: KneeboardSpeedRef;
   machThreshold: number;
   threatFidelity: 'full' | 'operational' | 'realistic';
+  threatMapVisible: boolean;
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
   goals: ReturnType<typeof useGoalsStore.getState>['goals'];
   dmpis: ReturnType<typeof useDmpiStore.getState>['dmpis'];
@@ -631,6 +664,7 @@ function CardCarousel({
   selectedGroup, cards, groups, clientUnits, threats,
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
   threatFidelity,
+  threatMapVisible,
   activeSop,
   goals,
   dmpis,
@@ -731,7 +765,7 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `threatCard-${p}`, label: `Threat Card${suffix}`,
-          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity }),
+          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible }),
         });
       }
     }
@@ -768,7 +802,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, activeSop, goals, dmpis]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis]);
 
   // Clamp index when list changes
   useEffect(() => {

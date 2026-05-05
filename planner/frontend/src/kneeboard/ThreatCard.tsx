@@ -37,6 +37,12 @@ interface ThreatCardProps {
   /** Information density — see ThreatFidelity comment. Default 'full'
    *  preserves the original behaviour for backward compatibility. */
   fidelity?: ThreatFidelity;
+  /** When false, the threat map is suppressed entirely — pilots
+   *  see only the inventory / expected-resistance text and a
+   *  "positions withheld" placeholder where the map would go.
+   *  Default true preserves the existing fog-of-war behaviour
+   *  for callers that don't pass the prop. (v0.9.23) */
+  mapVisible?: boolean;
 }
 
 /** First-page inventory has the map above it, so it fits fewer rows
@@ -107,6 +113,7 @@ function fmtCoord(lat?: number, lon?: number): string {
 
 export function ThreatCard({
   threats, playerCoalition, overview, page = 0, fidelity = 'full',
+  mapVisible = true,
 }: ThreatCardProps) {
   const enemy = threats.filter((t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
 
@@ -134,6 +141,9 @@ export function ThreatCard({
   }
 
   // Note: bounds + map only matter on page 0. Page 1+ skip the map.
+  // The mapVisible prop is the user-controlled gate that suppresses
+  // the map portion entirely regardless of fidelity — used when even
+  // the realistic blobs are too revealing.
 
   // Map bounds — must encompass each threat's full engagement RING,
   // not just the threat point. With the old 'threat points + 15% pad'
@@ -143,7 +153,7 @@ export function ThreatCard({
   // Fix: compute each threat's lat/lon delta from its range in metres
   // (≈111 km per degree latitude, scales by cos(lat) for longitude),
   // and use the union of those extents as the bounds.
-  const hasMap = isFirstPage && enriched.length >= 1;
+  const hasMap = isFirstPage && enriched.length >= 1 && mapVisible;
   let minLat = 0, maxLat = 0, minLon = 0, maxLon = 0;
   if (hasMap) {
     const KM_PER_DEG_LAT = 111.0;
@@ -214,6 +224,32 @@ export function ThreatCard({
           maxLon={maxLon}
           fidelity={fidelity}
         />
+      )}
+
+      {/* Map suppressed by user toggle — replace with an obvious
+          placeholder so the empty space doesn't read as a render
+          bug. Only fires when there ARE threats but the user chose
+          to hide them; missions with zero threats fall through to
+          the existing "no hostile systems" message below. */}
+      {isFirstPage && !mapVisible && enriched.length >= 1 && (
+        <div
+          style={{
+            margin: '0 16px 8px',
+            padding: '20px 16px',
+            background: 'rgba(217, 80, 80, 0.06)',
+            border: `1px dashed rgba(217, 80, 80, 0.4)`,
+            borderRadius: 4,
+            textAlign: 'center',
+            color: '#cccccc',
+            fontSize: 17,
+            fontStyle: 'italic',
+          }}
+        >
+          Threat positions withheld
+          <div style={{ fontSize: 14, color: DIM, marginTop: 4, fontStyle: 'normal' }}>
+            See inventory below for expected resistance.
+          </div>
+        </div>
       )}
 
       {/* Inventory section. In 'realistic' fidelity the per-system
