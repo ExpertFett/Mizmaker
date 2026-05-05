@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -141,6 +141,14 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     measureLayer: VectorLayer | null;
   }>({ addDraw: null, measureDraw: null, measureLayer: null });
   const coordRef = useRef<HTMLDivElement>(null);
+
+  // Right-click context menu state (v0.9.28). `null` when no menu
+  // is open; otherwise carries the click viewport coords + the
+  // target group ID so the menu component can render at the
+  // cursor and toggle the right group.
+  const [contextMenu, setContextMenu] = useState<
+    { x: number; y: number; groupId: number } | null
+  >(null);
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
@@ -473,11 +481,49 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       }
     });
 
-    // Right-click to deselect group
+    // Right-click handler — two paths:
+    //   1. Right-click on a group marker → open the visibility
+    //      context menu so the mission maker can flip
+    //      "hide from flight leads" without leaving the map
+    //      (v0.9.28 follow-up to the bulk Visibility tab).
+    //   2. Right-click on empty map → deselect (existing behaviour).
     map.getViewport().addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      // Translate the browser event to a map pixel + look for a
+      // feature there. We only fire the context menu for unit
+      // markers (which carry `groupId`) — clicks on routes,
+      // threats, airbases, etc. fall through to deselect.
+      const rect = map.getViewport().getBoundingClientRect();
+      const pixel: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+      let foundGroupId: number | null = null;
+      map.forEachFeatureAtPixel(
+        pixel,
+        (f) => {
+          const gid = f.get('groupId');
+          if (typeof gid === 'number') {
+            foundGroupId = gid;
+            return true;
+          }
+          return undefined;
+        },
+        { hitTolerance: 10 },
+      );
+
+      if (foundGroupId != null && useMissionStore.getState().role !== 'flight_lead') {
+        // Show the menu in viewport coords so it sits where the
+        // cursor was, regardless of map pan/zoom.
+        setContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          groupId: foundGroupId,
+        });
+        return;
+      }
+
+      // Fallthrough — empty-map right-click deselects.
       useMissionStore.getState().selectGroup(null as any);
       useMapStore.getState().setSelectedWpIndex(null);
+      setContextMenu(null);
     });
 
     // Esc key to cancel modes
@@ -738,6 +784,17 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       <WeatherPanel coordRef={coordRef} />
       <LayerSwitcher />
 
+      {/* Visibility context menu — opens when the mission maker
+          right-clicks a unit marker. v0.9.28. */}
+      {contextMenu && (
+        <UnitContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          groupId={contextMenu.groupId}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
       {/* Instructional overlays */}
       {addWaypointMode && (
         <div style={{
@@ -810,6 +867,123 @@ function DmpiPickBanner() {
         }}
       >
         Cancel
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Unit Context Menu — right-click visibility toggle (v0.9.28)         */
+/* ------------------------------------------------------------------ */
+
+interface UnitContextMenuProps {
+  x: number;
+  y: number;
+  groupId: number;
+  onClose: () => void;
+}
+
+function UnitContextMenu({ x, y, groupId, onClose }: UnitContextMenuProps) {
+  const groups = useMissionStore((s) => s.groups);
+  const hiddenSet = useVisibilityStore((s) => s.hiddenForParticipants);
+  const toggle = useVisibilityStore((s) => s.toggle);
+
+  const group = groups.find((g) => g.groupId === groupId);
+  const isHidden = hiddenSet.has(groupId);
+
+  // Outside-click + Escape both close the menu. The mousedown
+  // capture-phase listener fires before the menu's own click
+  // handlers, so a click on the toggle button still works.
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest('[data-unit-context-menu]')) return;
+      onClose();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose]);
+
+  if (!group) return null;
+
+  const handleToggle = () => {
+    toggle(groupId);
+    onClose();
+  };
+
+  // Clamp the menu inside the viewport so right-clicking near the
+  // bottom or right edge doesn't push it off-screen.
+  const menuWidth = 240;
+  const menuHeight = 110;
+  const clampedX = Math.min(x, window.innerWidth - menuWidth - 8);
+  const clampedY = Math.min(y, window.innerHeight - menuHeight - 8);
+
+  return (
+    <div
+      data-unit-context-menu
+      style={{
+        position: 'fixed',
+        left: clampedX,
+        top: clampedY,
+        width: menuWidth,
+        background: 'rgba(10, 20, 35, 0.97)',
+        border: '1px solid #4a4a4a',
+        borderRadius: 6,
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
+        zIndex: 5000,
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: 13,
+        color: '#e0e0e0',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header — group name + side, so the user knows which
+          unit they're acting on (right-click can be ambiguous on
+          a dense map). */}
+      <div
+        style={{
+          padding: '6px 10px',
+          background: 'rgba(20, 40, 70, 0.4)',
+          borderBottom: '1px solid #3a3a3a',
+          fontSize: 12,
+          fontWeight: 600,
+        }}
+      >
+        <div style={{ color: '#cccccc' }}>{group.groupName}</div>
+        <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          {group.coalition} · {group.category}
+        </div>
+      </div>
+
+      {/* The actual action — toggle visibility for this group. */}
+      <button
+        onClick={handleToggle}
+        style={{
+          width: '100%',
+          padding: '10px 12px',
+          background: 'transparent',
+          border: 'none',
+          textAlign: 'left',
+          color: isHidden ? '#3fb950' : '#d95050',
+          cursor: 'pointer',
+          fontSize: 13,
+          fontFamily: 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <span style={{ fontSize: 14 }}>{isHidden ? '👁' : '🚫'}</span>
+        <span>{isHidden ? 'Show to flight leads' : 'Hide from flight leads'}</span>
       </button>
     </div>
   );

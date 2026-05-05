@@ -26,8 +26,11 @@ not effort.
     "Preview as Flight Lead" toggle on the Visibility tab so the
     mission maker can render their map exactly as a joined
     participant would see it for sanity-checking the intel plan.
-  - ⏳ later: right-click context menu on map markers ("Hide from
-    flight leads") so the bulk tab isn't the only path.
+  - ✅ v0.9.28 shipped: right-click context menu on unit markers
+    with "Hide from flight leads" / "Show to flight leads" toggle.
+    Closes the visibility feature loop — quick path for ad-hoc
+    hides while looking at the map, bulk Visibility tab for
+    multi-group operations.
 
 ## Persistence
 
