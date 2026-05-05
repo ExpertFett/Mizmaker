@@ -65,6 +65,11 @@ export interface ThreatRing {
   lon?: number;
   range: number;
   coalition: string;
+  /** Originating group's ID. Populated by the backend (v0.9.27)
+   *  so the visibility filter can drop threat rings for hidden
+   *  groups on the flight-lead map. Optional because older payloads
+   *  pre-dating the change may not include it. */
+  groupId?: number;
 }
 
 export interface Airbase {

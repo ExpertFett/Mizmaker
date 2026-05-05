@@ -17,6 +17,12 @@ interface MapState {
   hiddenGroupIds: Set<number>;
   /** Per-category unit visibility — see UnitCategoryFilter. */
   unitCategoryFilter: UnitCategoryFilter;
+  /** When true, the mission maker's map render mimics a joined
+   *  flight lead's view — applies the visibility filter, drops
+   *  red coalition + threats, etc. Off by default; toggled from
+   *  the Visibility tab so the user can sanity-check their intel
+   *  plan before flight leads join. (v0.9.27) */
+  previewAsFlightLead: boolean;
   adminMode: boolean;
   speedMode: SpeedMode;
   addWaypointMode: boolean;
@@ -34,6 +40,7 @@ interface MapState {
   /** Bulk-set the filter — used by the "All" / "None" buttons in the
    *  category dropdown. */
   setUnitCategoryFilter: (filter: UnitCategoryFilter) => void;
+  setPreviewAsFlightLead: (on: boolean) => void;
   setAdminMode: (on: boolean) => void;
   setSpeedMode: (mode: SpeedMode) => void;
   setAddWaypointMode: (on: boolean) => void;
@@ -71,6 +78,7 @@ export const useMapStore = create<MapState>((set) => ({
     ship: true,
     static: false,  // mirrors the v0.9.23 `layers.statics` default
   },
+  previewAsFlightLead: false,
   adminMode: false,
   speedMode: 'gs' as SpeedMode,
   addWaypointMode: false,
@@ -98,6 +106,8 @@ export const useMapStore = create<MapState>((set) => ({
     })),
 
   setUnitCategoryFilter: (filter) => set({ unitCategoryFilter: filter }),
+
+  setPreviewAsFlightLead: (on) => set({ previewAsFlightLead: on }),
 
   setAdminMode: (on) => set({ adminMode: on }),
   setSpeedMode: (mode) => set({ speedMode: mode }),

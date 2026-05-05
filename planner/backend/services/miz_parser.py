@@ -232,6 +232,14 @@ def extract_full_mission_data(mission_dict: dict, theater: str, options_text: st
                                 "lon": unit.get("lon"),
                                 "range": SAM_THREAT_RANGES[unit["type"]],
                                 "coalition": side,
+                                # Group link so the v0.9.25 visibility
+                                # filter (mission-maker-controlled
+                                # intel control) can drop threat rings
+                                # for hidden groups on the flight-lead
+                                # map. Without this a hidden SAM
+                                # leaks via its ring even though its
+                                # marker is suppressed.
+                                "groupId": g["groupId"],
                             })
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)

@@ -21,9 +21,11 @@ not effort.
   - ✅ v0.9.26 shipped: planner-private `["plannerHiddenGroups"]`
     writer + parser; visibility plan round-trips through download
     / re-upload.
-  - ⏳ v0.9.27 follow-up: extend the filter to threat rings — a
-    hidden SAM shouldn't leak via its threat ring on the flight
-    lead's map.
+  - ✅ v0.9.27 shipped: ThreatRing.groupId in the backend payload
+    (future-proofing for when flight leads see threats), plus a
+    "Preview as Flight Lead" toggle on the Visibility tab so the
+    mission maker can render their map exactly as a joined
+    participant would see it for sanity-checking the intel plan.
   - ⏳ later: right-click context menu on map markers ("Hide from
     flight leads") so the bulk tab isn't the only path.
 

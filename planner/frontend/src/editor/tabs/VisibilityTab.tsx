@@ -19,6 +19,7 @@
 import { useMemo, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useVisibilityStore } from '../../store/visibilityStore';
+import { useMapStore } from '../../store/mapStore';
 
 const COALITION_COLORS: Record<string, string> = {
   blue: '#4a8fd4',
@@ -42,6 +43,12 @@ export function VisibilityTab() {
   const toggle = useVisibilityStore((s) => s.toggle);
   const setAll = useVisibilityStore((s) => s.setAll);
   const clearAll = useVisibilityStore((s) => s.clearAll);
+
+  // Preview-as-flight-lead — when on, the map renders as a
+  // joined flight lead would see it (v0.9.27). Toggle here so it
+  // sits next to the visibility list it's verifying.
+  const previewAsFlightLead = useMapStore((s) => s.previewAsFlightLead);
+  const setPreviewAsFlightLead = useMapStore((s) => s.setPreviewAsFlightLead);
 
   // Filter UI — coalition + category + name search. Lets the user
   // hone in on the trap-convoy among 30 vehicles without scrolling
@@ -106,6 +113,42 @@ export function VisibilityTab() {
           </div>
         )}
       </div>
+
+      {/* Preview-as-flight-lead toggle — sanity check for the
+          mission maker's intel plan. Lit up when active so the
+          user knows their map is in a restricted view. */}
+      {role !== 'flight_lead' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 12,
+            padding: '8px 12px',
+            background: previewAsFlightLead ? 'rgba(74, 143, 212, 0.10)' : '#1a1a1a',
+            border: `1px solid ${previewAsFlightLead ? '#4a8fd4' : '#3a3a3a'}`,
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={previewAsFlightLead}
+              onChange={(e) => setPreviewAsFlightLead(e.target.checked)}
+              style={{ accentColor: '#4a8fd4' }}
+            />
+            <span style={{ color: previewAsFlightLead ? '#4a8fd4' : '#e0e0e0', fontWeight: 600 }}>
+              Preview as Flight Lead
+            </span>
+          </label>
+          <span style={{ color: '#888', fontSize: 12 }}>
+            {previewAsFlightLead
+              ? '↻ Map shows the restricted view a joined flight lead would see.'
+              : 'Toggle to see exactly what flight leads will see when they join.'}
+          </span>
+        </div>
+      )}
 
       {/* Summary strip */}
       <div

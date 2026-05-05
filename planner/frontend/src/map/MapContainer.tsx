@@ -143,7 +143,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
   const coordRef = useRef<HTMLDivElement>(null);
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview } =
     useMissionStore();
-  const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -624,17 +624,30 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
 
   // Filter data for flight leads — blue only, plus the
   // mission-maker-authored intel filter from useVisibilityStore
-  // (v0.9.25). Mission makers themselves bypass both filters and
-  // always see every group.
+  // (v0.9.25). Mission makers themselves bypass both filters by
+  // default and always see every group.
+  //
+  // The `previewAsFlightLead` toggle (v0.9.27) lets a mission
+  // maker temporarily render their map exactly as a joined flight
+  // lead would see it — same restrictive filter — to sanity-check
+  // their visibility plan before flight leads join.
   const isFlightLead = role === 'flight_lead';
+  const useFlightLeadView = isFlightLead || previewAsFlightLead;
   const hiddenForParticipants = useVisibilityStore((s) => s.hiddenForParticipants);
-  const visibleUnits = isFlightLead
+  const visibleUnits = useFlightLeadView
     ? units.filter((u) => u.coalition === 'blue' && !hiddenForParticipants.has(u.groupId))
     : units;
-  const visibleGroups = isFlightLead
+  const visibleGroups = useFlightLeadView
     ? groups.filter((g) => g.coalition === 'blue' && !hiddenForParticipants.has(g.groupId))
     : groups;
-  const visibleThreats = isFlightLead ? [] : threats;
+  // Threats: flight leads see none today (existing behaviour); the
+  // preview-as-flight-lead toggle matches that. The new
+  // ThreatRing.groupId field (v0.9.27) is in place for when we
+  // eventually let participants see threats — at that point the
+  // filter would drop hidden ones via groupId.
+  const visibleThreats = useFlightLeadView
+    ? []
+    : threats;
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
