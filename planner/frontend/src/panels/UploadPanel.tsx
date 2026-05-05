@@ -3,6 +3,7 @@ import { uploadMission } from '../api/client';
 import { useMissionStore } from '../store/missionStore';
 import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
+import { useVisibilityStore } from '../store/visibilityStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 import { VERSION } from '../version';
 import { useAiStore } from '../ai/aiStore';
@@ -40,6 +41,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         // `["plannerDmpis"]` key (v0.9.15). DCS-ME-authored missions
         // have no key so this is a no-op for fresh uploads.
         useDmpiStore.getState().setAll(data.plannerDmpis || []);
+        // Visibility filter (v0.9.26) — seed the per-group hidden set
+        // from the mission's `["plannerHiddenGroups"]`. Same no-op
+        // semantics for DCS-ME-authored / un-touched missions.
+        useVisibilityStore.getState().setAll(data.plannerHiddenGroups || []);
         onLoaded?.();
       } catch (e: any) {
         setError(e.message || 'Upload failed');

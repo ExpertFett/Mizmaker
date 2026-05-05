@@ -22,6 +22,7 @@ import { renderCardToBlob } from '../kneeboard/renderCard';
 import { useSopStore } from '../sop/sopStore';
 import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
+import { useVisibilityStore } from '../store/visibilityStore';
 import type { Weather } from '../utils/atmosphere';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
@@ -61,6 +62,9 @@ export function ExportPanel() {
   // DMPIs ride into the .miz under a planner-private `["plannerDmpis"]`
   // key (v0.9.15). Read here so the dispatch below can include them.
   const dmpis = useDmpiStore((s) => s.dmpis);
+  // Visibility filter — group IDs hidden from flight leads (v0.9.26).
+  // Read as a Set; dispatch as a sorted unique array.
+  const hiddenForParticipants = useVisibilityStore((s) => s.hiddenForParticipants);
 
   const handleDownload = async () => {
     if (!sessionId) { alert('No session'); return; }
@@ -92,6 +96,17 @@ export function ExportPanel() {
     const validDmpis = dmpis.filter((d) => d.name.trim().length > 0);
     if (validDmpis.length > 0) {
       unitEdits.push({ field: 'plannerDmpis', value: validDmpis });
+    }
+
+    // Visibility filter (v0.9.26) — dispatch when the mission
+    // maker has any groups marked hidden from flight leads.
+    // Empty set leaves the .miz alone so a user who never opens
+    // the Visibility tab gets no spurious diff.
+    if (hiddenForParticipants.size > 0) {
+      unitEdits.push({
+        field: 'plannerHiddenGroups',
+        value: Array.from(hiddenForParticipants),
+      });
     }
 
     // Render kneeboard PNGs if inject is enabled

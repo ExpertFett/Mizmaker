@@ -218,6 +218,10 @@ export interface UploadResponse {
    *  planner missions that haven't touched the DMPI tab yet. Same
    *  shape as the dmpiStore Dmpi interface. */
   plannerDmpis: { id: string; name: string; lat: number; lon: number; elevation: number; description: string; weaponDelivery: string; notes: string }[];
+  /** Group IDs the mission maker had marked hidden from flight
+   *  leads (v0.9.26). Frontend seeds useVisibilityStore on session
+   *  load. Empty for DCS-ME-authored / un-touched missions. */
+  plannerHiddenGroups: number[];
 }
 
 export interface ClientUnit {

@@ -2159,6 +2159,66 @@ def _replace_planner_dmpis(text: str, dmpis: list) -> str:
     return text
 
 
+def _replace_planner_hidden_groups(text: str, group_ids: list) -> str:
+    """Replace the planner-private ["plannerHiddenGroups"] block.
+
+    Persists the v0.9.25 visibility filter — group IDs the mission
+    maker has marked hidden from joined flight leads. DCS itself
+    ignores unknown top-level mission keys, so the slot doesn't
+    affect runtime behaviour; it only round-trips through this
+    planner.
+
+    `group_ids` is a list of integer group IDs. Empty list writes
+    an empty block, same convention the goals + DMPI writers use
+    so the read path can rely on the block's existence as the
+    "visibility was authored" signal.
+    """
+    valid_ids = [int(g) for g in (group_ids or []) if g is not None]
+
+    if not valid_ids:
+        new_block = '["plannerHiddenGroups"] = {}'
+    else:
+        # Sort + dedupe so the same set always serialises to the
+        # same byte sequence — keeps the .miz diff stable when the
+        # user re-saves without changes.
+        unique_sorted = sorted(set(valid_ids))
+        entries = [f'        [{i}] = {gid},' for i, gid in enumerate(unique_sorted, start=1)]
+        inner = '\n'.join(entries)
+        new_block = f'["plannerHiddenGroups"] = \n    {{\n{inner}\n    }}'
+
+    # Replace existing or insert before mission close — same brace
+    # walk pattern as `_replace_planner_dmpis`.
+    block_match = re.search(r'\["plannerHiddenGroups"\]\s*=\s*\n?\s*\{', text)
+    if block_match:
+        block_open = block_match.end() - 1
+        depth = 0
+        fi = block_open
+        in_str = False
+        while fi < len(text):
+            ch = text[fi]
+            if ch == '"' and (fi == 0 or text[fi - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            fi += 1
+        text = text[:block_match.start()] + new_block + text[fi + 1:]
+    else:
+        insert_pattern = re.compile(r'(\n\} -- end of mission)', re.IGNORECASE)
+        if insert_pattern.search(text):
+            text = insert_pattern.sub(f'\n    {new_block},\\1', text)
+        else:
+            last_brace = text.rfind("}")
+            if last_brace > 0:
+                text = text[:last_brace] + f'    {new_block},\n' + text[last_brace:]
+
+    return text
+
+
 def _replace_weather_block(text: str, weather_data: dict) -> str:
     """Apply all weather changes via surgical text replacement."""
     import os as _os
@@ -2597,6 +2657,11 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                 # DMPI list into a planner-private mission key on
                 # download (DCS ignores unknown top-level keys).
                 text = _replace_planner_dmpis(text, value)
+            elif field == "plannerHiddenGroups":
+                # `value` is a list of group IDs the mission maker
+                # has marked hidden from flight leads (v0.9.26).
+                # Stored under `["plannerHiddenGroups"]` for round-trip.
+                text = _replace_planner_hidden_groups(text, value)
             elif field == "findReplace":
                 text, _ = _find_replace_names(
                     text, value["find"], value["replace"],

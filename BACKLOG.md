@@ -18,10 +18,9 @@ not effort.
   - ✅ v0.9.25 shipped: useVisibilityStore + Visibility tab + map
     render filter for unit markers and routes. Mission makers see
     every group; flight leads see only what's opted in.
-  - ⏳ v0.9.26 follow-up: persist into the .miz under a planner-
-    private `["plannerHiddenGroups"]` key so the visibility plan
-    round-trips through download / re-upload (mirrors plannerDmpis
-    in v0.9.15).
+  - ✅ v0.9.26 shipped: planner-private `["plannerHiddenGroups"]`
+    writer + parser; visibility plan round-trips through download
+    / re-upload.
   - ⏳ v0.9.27 follow-up: extend the filter to threat rings — a
     hidden SAM shouldn't leak via its threat ring on the flight
     lead's map.

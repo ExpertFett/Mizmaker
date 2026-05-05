@@ -194,18 +194,24 @@ def upload():
         # is the safe default.
         parsed_goals: list[dict] = []
         parsed_dmpis: list[dict] = []
+        parsed_hidden_groups: list[int] = []
         try:
             from services.mission_goals_parser import parse_mission_goals
             from services.planner_dmpis_parser import parse_planner_dmpis
+            from services.planner_hidden_groups_parser import parse_planner_hidden_groups
             from services.miz_editor import extract_mission_text_from_miz
             mission_text_for_parse = extract_mission_text_from_miz(miz_bytes)
             parsed_goals = parse_mission_goals(mission_text_for_parse, lookup)
             # DMPIs (v0.9.15) — planner-private key. DCS-ME-authored
             # missions don't have it, in which case we get an empty list.
             parsed_dmpis = parse_planner_dmpis(mission_text_for_parse)
+            # Visibility filter (v0.9.26) — IDs of groups the mission
+            # maker had marked hidden from flight leads. Same
+            # planner-private-key pattern as plannerDmpis.
+            parsed_hidden_groups = parse_planner_hidden_groups(mission_text_for_parse)
         except Exception as e:
             import logging
-            logging.warning(f"Goals/DMPI parse failed: {e}")
+            logging.warning(f"Goals/DMPI/visibility parse failed: {e}")
 
         for group in data["groups"]:
             if group["waypoints"]:
@@ -283,6 +289,11 @@ def upload():
             # Empty list for DCS-ME-authored missions (no key) and for
             # planner missions that haven't touched the DMPI tab yet.
             "plannerDmpis": parsed_dmpis,
+            # Visibility filter — group IDs hidden from flight leads
+            # (v0.9.26). Frontend seeds useVisibilityStore on session
+            # load. Empty list for DCS-ME-authored / un-touched
+            # missions.
+            "plannerHiddenGroups": parsed_hidden_groups,
         })
     except Exception as e:
         import traceback
