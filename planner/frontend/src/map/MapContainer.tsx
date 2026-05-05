@@ -142,7 +142,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
   const coordRef = useRef<HTMLDivElement>(null);
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview } =
     useMissionStore();
-  const { layers, viewMode, hiddenGroupIds, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -629,8 +629,8 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
-    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, visibleUnits, visibleGroups, viewMode, hiddenGroupIds, !!layers.statics);
-  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, layers.statics]);
+    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, visibleUnits, visibleGroups, viewMode, hiddenGroupIds, unitCategoryFilter);
+  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, unitCategoryFilter]);
 
   useEffect(() => {
     if (!layerRefs.current.route) return;
@@ -639,9 +639,9 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       pendingRedraw.current = true;
       return;
     }
-    populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds);
+    populateRouteLayer(layerRefs.current.route, visibleGroups, selectedGroupId, viewMode, hiddenGroupIds, unitCategoryFilter);
     pendingRedraw.current = false;
-  }, [visibleGroups, selectedGroupId, viewMode, hiddenGroupIds]);
+  }, [visibleGroups, selectedGroupId, viewMode, hiddenGroupIds, unitCategoryFilter]);
 
   useEffect(() => {
     if (layerRefs.current.threat) populateThreatLayer(layerRefs.current.threat, visibleThreats, viewMode);

@@ -5,7 +5,7 @@ import Point from 'ol/geom/Point';
 import { fromLonLat } from 'ol/proj';
 import { Style, Fill, Stroke, RegularShape, Text } from 'ol/style';
 import type { MissionUnit, MissionGroup } from '../../types/mission';
-import type { ViewMode } from '../../store/mapStore';
+import type { ViewMode, UnitCategoryFilter } from '../../store/mapStore';
 import { isPlayerGroup, isCarrierGroup } from '../../utils/groups';
 
 const COALITION_COLORS: Record<string, string> = {
@@ -30,7 +30,11 @@ export function populateUnitLayer(
   groups: MissionGroup[],
   viewMode: ViewMode = 'all',
   hiddenGroupIds: Set<number> = new Set(),
-  showStatics: boolean = false,
+  // v0.9.24: replaces the old `showStatics: boolean` arg with the
+  // full per-category filter. Callers without category awareness
+  // can pass undefined to get the legacy "everything but statics"
+  // behaviour.
+  categoryFilter?: UnitCategoryFilter,
 ): void {
   const source = layer.getSource()!;
   source.clear();
@@ -40,7 +44,13 @@ export function populateUnitLayer(
   else if (viewMode === 'red') filteredGroups = groups.filter((g) => g.coalition === 'red');
   else if (viewMode === 'players') filteredGroups = groups.filter((g) => isPlayerGroup(g));
   filteredGroups = filteredGroups.filter((g) => !hiddenGroupIds.has(g.groupId));
-  if (!showStatics) filteredGroups = filteredGroups.filter((g) => g.category !== 'static');
+  // Per-category filter — drops groups whose category is set to false.
+  // Default (filter undefined) keeps everything except statics, matching
+  // pre-v0.9.24 behaviour.
+  const effective: UnitCategoryFilter = categoryFilter ?? {
+    plane: true, helicopter: true, vehicle: true, ship: true, static: false,
+  };
+  filteredGroups = filteredGroups.filter((g) => effective[g.category as keyof UnitCategoryFilter] !== false);
 
 
   for (const group of filteredGroups) {

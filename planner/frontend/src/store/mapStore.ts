@@ -1,12 +1,22 @@
 import { create } from 'zustand';
+import type { UnitCategory } from '../types/mission';
 
 export type ViewMode = 'all' | 'blue' | 'red' | 'players';
 export type SpeedMode = 'gs' | 'cas' | 'tas' | 'mach';
+
+/** Per-category visibility filter (v0.9.24). The `layers.statics`
+ *  toggle was the only category-level filter through v0.9.23; this
+ *  generalises it to all 5 DCS unit categories. Default: every
+ *  category visible EXCEPT statics, mirroring the previous default
+ *  (statics hidden to declutter). */
+export type UnitCategoryFilter = Record<UnitCategory, boolean>;
 
 interface MapState {
   layers: Record<string, any>;
   viewMode: ViewMode;
   hiddenGroupIds: Set<number>;
+  /** Per-category unit visibility — see UnitCategoryFilter. */
+  unitCategoryFilter: UnitCategoryFilter;
   adminMode: boolean;
   speedMode: SpeedMode;
   addWaypointMode: boolean;
@@ -18,6 +28,12 @@ interface MapState {
   toggleLayer: (id: string) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleGroupVisibility: (groupId: number) => void;
+  /** Flip a single unit category in the filter (e.g. show/hide all
+   *  vehicles). Pairs with the dropdown UI in MapToolbar / LayerSwitcher. */
+  toggleUnitCategory: (cat: UnitCategory) => void;
+  /** Bulk-set the filter — used by the "All" / "None" buttons in the
+   *  category dropdown. */
+  setUnitCategoryFilter: (filter: UnitCategoryFilter) => void;
   setAdminMode: (on: boolean) => void;
   setSpeedMode: (mode: SpeedMode) => void;
   setAddWaypointMode: (on: boolean) => void;
@@ -48,6 +64,13 @@ export const useMapStore = create<MapState>((set) => ({
   },
   viewMode: 'all',
   hiddenGroupIds: new Set(),
+  unitCategoryFilter: {
+    plane: true,
+    helicopter: true,
+    vehicle: true,
+    ship: true,
+    static: false,  // mirrors the v0.9.23 `layers.statics` default
+  },
   adminMode: false,
   speedMode: 'gs' as SpeedMode,
   addWaypointMode: false,
@@ -68,6 +91,13 @@ export const useMapStore = create<MapState>((set) => ({
       else next.add(groupId);
       return { hiddenGroupIds: next };
     }),
+
+  toggleUnitCategory: (cat) =>
+    set((s) => ({
+      unitCategoryFilter: { ...s.unitCategoryFilter, [cat]: !s.unitCategoryFilter[cat] },
+    })),
+
+  setUnitCategoryFilter: (filter) => set({ unitCategoryFilter: filter }),
 
   setAdminMode: (on) => set({ adminMode: on }),
   setSpeedMode: (mode) => set({ speedMode: mode }),

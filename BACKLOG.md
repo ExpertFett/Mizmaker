@@ -6,14 +6,11 @@ not effort.
 
 ## Map UX
 
-- **Map unit-type filter dropdown.** Today the map's "filter out
-  units" UI is binary — units are either visible or hidden.
-  Add a dropdown / multiselect so the user can pick which TYPES
-  of units render (e.g. show only carriers + tankers, or hide
-  ground vehicles to declutter a CAS planning view). Should
-  probably live next to the existing visibility toggle on the
-  map control strip. Affects `MapContainer.tsx` + the unit-render
-  layer; the unit-type metadata is already on each MissionGroup.
+- ~~**Map unit-type filter dropdown.**~~ Shipped in v0.9.24 — inline
+  collapsible "Unit Types (N/5)" dropdown in the LayerSwitcher with
+  per-category checkboxes for plane / helicopter / ship / vehicle /
+  static, plus All / None bulk toggles. Replaces the v0.9.23 single
+  Statics toggle.
 
 ## Collaboration / Roles
 

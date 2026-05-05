@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMapStore, type ViewMode } from '../../store/mapStore';
+import type { UnitCategory } from '../../types/mission';
 import { useDraggable } from './useDraggable';
 
 
@@ -12,7 +13,18 @@ const OVERLAY_LAYERS = [
   { id: 'drawings', label: 'Drawings' },
   { id: 'plannerDrawings', label: 'Plan Overlays' },
   { id: 'triggerZones', label: 'Trigger Zones' },
-  { id: 'statics', label: 'Statics' },
+];
+
+// Per-category filter labels — order matches the typical
+// importance for a flight planner (planes / helos first since
+// they're what pilots care about, statics last since they're
+// usually scenery / debris).
+const UNIT_CATEGORIES: { id: UnitCategory; label: string }[] = [
+  { id: 'plane',      label: 'Aircraft' },
+  { id: 'helicopter', label: 'Helicopters' },
+  { id: 'ship',       label: 'Ships' },
+  { id: 'vehicle',    label: 'Vehicles' },
+  { id: 'static',     label: 'Statics' },
 ];
 
 const BASE_MAPS = [
@@ -36,6 +48,14 @@ export function LayerSwitcher() {
   } = useMapStore();
   const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable('layerSwitcher');
   const [collapsed, setCollapsed] = useState(false);
+  // Unit-category dropdown — collapsed by default to keep the
+  // panel compact. Counts in the button label so the user knows
+  // their filter state at a glance without expanding.
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const unitCategoryFilter = useMapStore((s) => s.unitCategoryFilter);
+  const toggleUnitCategory = useMapStore((s) => s.toggleUnitCategory);
+  const setUnitCategoryFilter = useMapStore((s) => s.setUnitCategoryFilter);
+  const visibleCategoryCount = UNIT_CATEGORIES.filter((c) => unitCategoryFilter[c.id]).length;
 
   // Use the typed actions on mapStore — same effect as the previous
   // inline setState calls but goes through the action interface so
@@ -200,6 +220,94 @@ export function LayerSwitcher() {
                   {l.label}
                 </label>
               ))}
+
+              {/* Unit Type filter — replaces the v0.9.23 single
+                  "Statics" toggle. Renders as an inline dropdown:
+                  click the button to expand 5 category checkboxes,
+                  click again to collapse. Count in the label
+                  ("4/5") gives the user their filter state at a
+                  glance even when collapsed. */}
+              <button
+                onClick={() => setCategoryOpen((o) => !o)}
+                style={{
+                  marginTop: 4,
+                  width: '100%',
+                  padding: '4px 8px',
+                  background: '#262626',
+                  border: '1px solid #3a3a3a',
+                  borderRadius: 3,
+                  color: '#cccccc',
+                  fontSize: 12,
+                  fontFamily: 'inherit',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+                title="Filter map units by category"
+              >
+                <span>
+                  Unit Types{' '}
+                  <span style={{ color: '#888', fontSize: 11 }}>
+                    ({visibleCategoryCount}/{UNIT_CATEGORIES.length})
+                  </span>
+                </span>
+                <span style={{ color: '#888', fontSize: 10 }}>{categoryOpen ? '▴' : '▾'}</span>
+              </button>
+
+              {categoryOpen && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    padding: '6px 8px',
+                    background: '#1a1a1a',
+                    border: '1px solid #3a3a3a',
+                    borderRadius: 3,
+                  }}
+                >
+                  {/* All / None bulk toggles. "All" turns every
+                      category back on, "None" hides everything —
+                      handy when the user wants a clean threat-only
+                      view (uncheck all unit types but leave the
+                      threat layer on in the section above). */}
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                    <button
+                      onClick={() => setUnitCategoryFilter({
+                        plane: true, helicopter: true, vehicle: true, ship: true, static: true,
+                      })}
+                      style={categoryBulkBtn}
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setUnitCategoryFilter({
+                        plane: false, helicopter: false, vehicle: false, ship: false, static: false,
+                      })}
+                      style={categoryBulkBtn}
+                    >
+                      None
+                    </button>
+                  </div>
+                  {UNIT_CATEGORIES.map((c) => (
+                    <label
+                      key={c.id}
+                      style={{
+                        cursor: 'pointer', display: 'flex', alignItems: 'center',
+                        gap: 6, marginBottom: 2, fontSize: 12,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={unitCategoryFilter[c.id]}
+                        onChange={() => toggleUnitCategory(c.id)}
+                        style={{ accentColor: '#4a8fd4' }}
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Tools */}
@@ -241,4 +349,11 @@ export function LayerSwitcher() {
 const sectionLabel: React.CSSProperties = {
   fontSize: 11, color: '#aaaaaa', marginBottom: 4,
   textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600,
+};
+
+const categoryBulkBtn: React.CSSProperties = {
+  flex: 1, padding: '2px 4px', fontSize: 11,
+  background: '#262626', border: '1px solid #3a3a3a',
+  borderRadius: 3, color: '#aaaaaa', cursor: 'pointer',
+  fontFamily: 'inherit',
 };

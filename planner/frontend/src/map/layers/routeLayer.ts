@@ -6,7 +6,7 @@ import LineString from 'ol/geom/LineString';
 import { fromLonLat } from 'ol/proj';
 import { Style, Fill, Stroke, Circle as CircleStyle, RegularShape, Text } from 'ol/style';
 import type { MissionGroup } from '../../types/mission';
-import type { ViewMode } from '../../store/mapStore';
+import type { ViewMode, UnitCategoryFilter } from '../../store/mapStore';
 import { getFlightColor, isPlayerGroup, getAirRoleLabel } from '../../utils/groups';
 import { hexToRgba } from '../../utils/conversions';
 
@@ -35,11 +35,20 @@ export function populateRouteLayer(
   selectedGroupId: number | null,
   viewMode: ViewMode = 'all',
   hiddenGroupIds: Set<number> = new Set(),
+  // v0.9.24 — same per-category filter as unitLayer. Keeps routes
+  // and unit markers in sync (hiding all vehicles drops their
+  // routes too, not just the markers).
+  categoryFilter?: UnitCategoryFilter,
 ): void {
   const source = layer.getSource()!;
   source.clear();
 
-  const filtered = filterGroups(groups, viewMode).filter((g) => !hiddenGroupIds.has(g.groupId));
+  const effective: UnitCategoryFilter = categoryFilter ?? {
+    plane: true, helicopter: true, vehicle: true, ship: true, static: false,
+  };
+  const filtered = filterGroups(groups, viewMode)
+    .filter((g) => !hiddenGroupIds.has(g.groupId))
+    .filter((g) => effective[g.category as keyof UnitCategoryFilter] !== false);
 
   let playerIdx = 0;
   for (const group of filtered) {
