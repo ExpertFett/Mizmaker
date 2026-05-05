@@ -14,6 +14,7 @@ import type VectorLayer from 'ol/layer/Vector';
 import 'ol/ol.css';
 
 import { useMissionStore } from '../store/missionStore';
+import { useVisibilityStore } from '../store/visibilityStore';
 import { useMapStore } from '../store/mapStore';
 import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
@@ -621,10 +622,18 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
     hasFitted.current = true;
   }, [theater, groups, role]);
 
-  // Filter data for flight leads — blue only
+  // Filter data for flight leads — blue only, plus the
+  // mission-maker-authored intel filter from useVisibilityStore
+  // (v0.9.25). Mission makers themselves bypass both filters and
+  // always see every group.
   const isFlightLead = role === 'flight_lead';
-  const visibleUnits = isFlightLead ? units.filter((u) => u.coalition === 'blue') : units;
-  const visibleGroups = isFlightLead ? groups.filter((g) => g.coalition === 'blue') : groups;
+  const hiddenForParticipants = useVisibilityStore((s) => s.hiddenForParticipants);
+  const visibleUnits = isFlightLead
+    ? units.filter((u) => u.coalition === 'blue' && !hiddenForParticipants.has(u.groupId))
+    : units;
+  const visibleGroups = isFlightLead
+    ? groups.filter((g) => g.coalition === 'blue' && !hiddenForParticipants.has(g.groupId))
+    : groups;
   const visibleThreats = isFlightLead ? [] : threats;
 
   // Populate layers (re-filter when viewMode changes)

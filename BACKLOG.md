@@ -14,32 +14,19 @@ not effort.
 
 ## Collaboration / Roles
 
-- **Per-unit visibility for flight leads (intel control).** Mission
-  maker wants to expose some units on the battlefield to joined
-  flight leads while hiding others — same shape as the threat-card
-  fog-of-war but per-unit and authored by the mission maker, not a
-  global fidelity toggle. Use case: the briefed target is visible
-  ("here's the convoy you're hunting"), but the surprise SAM that
-  pops up at the IP is hidden until game time, so flight leads
-  can't pre-plan their evasion. Mission maker always sees every
-  unit; flight leads see only what's been opted in.
-  Implementation sketch:
-    - Add a `plannerVisibleToParticipants: boolean` flag per
-      MissionGroup (default true so existing missions stay
-      unchanged).
-    - Mission-maker-only UI to toggle it — probably right-click
-      on the map marker → "Hide from flight leads", plus a
-      bulk "Visibility" tab listing every unit with checkboxes.
-    - Map render layer filters units by role: `role === 'mission_maker'
-      || group.plannerVisibleToParticipants !== false`.
-    - Threat rings should respect the flag too (a hidden SAM
-      shouldn't leak via its threat ring).
-    - Persist into the .miz under a planner-private mission key
-      (same pattern as `["plannerDmpis"]` in v0.9.15) so the
-      visibility plan round-trips through download/re-upload.
-  The role + assignedGroup machinery already exists in
-  `useMissionStore`; the missing piece is the per-unit flag plus
-  the render-time filter.
+- **Per-unit visibility for flight leads (intel control).**
+  - ✅ v0.9.25 shipped: useVisibilityStore + Visibility tab + map
+    render filter for unit markers and routes. Mission makers see
+    every group; flight leads see only what's opted in.
+  - ⏳ v0.9.26 follow-up: persist into the .miz under a planner-
+    private `["plannerHiddenGroups"]` key so the visibility plan
+    round-trips through download / re-upload (mirrors plannerDmpis
+    in v0.9.15).
+  - ⏳ v0.9.27 follow-up: extend the filter to threat rings — a
+    hidden SAM shouldn't leak via its threat ring on the flight
+    lead's map.
+  - ⏳ later: right-click context menu on map markers ("Hide from
+    flight leads") so the bulk tab isn't the only path.
 
 ## Persistence
 

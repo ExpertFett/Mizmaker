@@ -27,6 +27,7 @@ import { EditsTab } from './tabs/EditsTab';
 import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
+import { VisibilityTab } from './tabs/VisibilityTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
 import { CarriersTab } from './tabs/CarriersTab';
@@ -82,6 +83,10 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'PLANNING' },
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
+  // Visibility — mission-maker-controlled per-group intel filter.
+  // Lives in PLANNING because it's a planning-time decision: what
+  // does each flight lead get to see when they join the session?
+  { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: '👁' },
   // 🎯 reads as "training range / target practice" — the previous 📐
   // (set square / ruler) was reading as "measure distance" and pilots
   // kept skipping past it expecting the map's measure tool.
@@ -473,6 +478,11 @@ export function MissionEditor() {
             {visitedTabs.has('dmpi') && (
               <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
                 <DmpiTab onPickOnMap={() => selectTab('map')} />
+              </div>
+            )}
+            {visitedTabs.has('visibility') && (
+              <div style={{ display: activeTab === 'visibility' ? 'block' : 'none' }}>
+                <VisibilityTab />
               </div>
             )}
             {visitedTabs.has('rangePlan') && (
