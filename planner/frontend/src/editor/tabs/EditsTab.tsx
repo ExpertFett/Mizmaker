@@ -23,6 +23,9 @@
 import { useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useGoalsStore } from '../../store/goalsStore';
+import { useDmpiStore } from '../../store/dmpiStore';
+import { useVisibilityStore } from '../../store/visibilityStore';
 import { Button } from '../../components/Button';
 import type { UnitEdit, WaypointEdit, MissionGroup } from '../../types/mission';
 
@@ -136,9 +139,20 @@ function targetLabel(e: AnyEdit, groupsById: Map<number, MissionGroup>): string 
 
 export function EditsTab() {
   const groups = useMissionStore((s) => s.groups);
+  const missionOptions = useMissionStore((s) => s.missionOptions);
   const edits = useEditStore((s) => s.edits);
   const removeEditAt = useEditStore((s) => s.removeEditAt);
   const clearEdits = useEditStore((s) => s.clearEdits);
+  const injectKneeboards = useEditStore((s) => s.injectKneeboards);
+  const kneeboardCards = useEditStore((s) => s.kneeboardSettings.cards);
+
+  // Cross-store reads for the auto-attach summary (v0.9.30). These
+  // payloads bypass the regular `edits` queue and get appended by
+  // ExportPanel right before download — pre-v0.9.30 the user had
+  // no way to see them queued.
+  const goals = useGoalsStore((s) => s.goals);
+  const dmpis = useDmpiStore((s) => s.dmpis);
+  const hiddenForParticipants = useVisibilityStore((s) => s.hiddenForParticipants);
 
   const groupsById = useMemo(() => {
     const m = new Map<number, MissionGroup>();
@@ -165,6 +179,74 @@ export function EditsTab() {
     for (const r of rows) t[r.category] = (t[r.category] ?? 0) + 1;
     return t;
   }, [rows]);
+
+  // Auto-attach inventory — payloads ExportPanel pushes onto the
+  // unitEdits array right before /api/download is called. Each
+  // entry is gated by a "user has actually engaged" condition so
+  // that a freshly-uploaded mission with no edits doesn't show
+  // a noisy list of empty rows.
+  const validGoals = useMemo(() => goals.filter((g) => g.text.trim().length > 0), [goals]);
+  const validDmpis = useMemo(() => dmpis.filter((d) => d.name.trim().length > 0), [dmpis]);
+  const hiddenGroupNames = useMemo(() => {
+    return Array.from(hiddenForParticipants)
+      .map((gid) => groupsById.get(gid)?.groupName ?? `[id ${gid}]`)
+      .sort((a, b) => a.localeCompare(b));
+  }, [hiddenForParticipants, groupsById]);
+  const enabledKneeboardCount = useMemo(
+    () => Object.values(kneeboardCards).filter(Boolean).length,
+    [kneeboardCards],
+  );
+  const missionOptionsCount = Object.keys(missionOptions).length;
+
+  type AutoAttachRow = {
+    label: string;
+    detail: string;
+    accent: string;
+  };
+  const autoAttach = useMemo<AutoAttachRow[]>(() => {
+    const out: AutoAttachRow[] = [];
+    if (missionOptionsCount > 0) {
+      out.push({
+        label: 'Mission options',
+        detail: `${missionOptionsCount} option${missionOptionsCount !== 1 ? 's' : ''} customized — forcedOptions block written`,
+        accent: '#4a8fd4',
+      });
+    }
+    if (validGoals.length > 0) {
+      out.push({
+        label: 'Mission goals',
+        detail: `${validGoals.length} goal${validGoals.length !== 1 ? 's' : ''} → ["goals"] block`,
+        accent: '#3fb950',
+      });
+    }
+    if (validDmpis.length > 0) {
+      out.push({
+        label: 'DMPIs',
+        detail: `${validDmpis.length} target${validDmpis.length !== 1 ? 's' : ''} → ["plannerDmpis"] (planner-private)`,
+        accent: '#d29922',
+      });
+    }
+    if (hiddenGroupNames.length > 0) {
+      const preview = hiddenGroupNames.slice(0, 4).join(', ');
+      const more = hiddenGroupNames.length > 4 ? `, +${hiddenGroupNames.length - 4} more` : '';
+      out.push({
+        label: 'Hidden from flight leads',
+        detail: `${hiddenGroupNames.length} group${hiddenGroupNames.length !== 1 ? 's' : ''}: ${preview}${more}`,
+        accent: '#d95050',
+      });
+    }
+    if (injectKneeboards && enabledKneeboardCount > 0) {
+      out.push({
+        label: 'Inject kneeboards',
+        detail: `${enabledKneeboardCount} card type${enabledKneeboardCount !== 1 ? 's' : ''} enabled — PNGs added to KNEEBOARDS folder`,
+        accent: '#a371f7',
+      });
+    }
+    return out;
+  }, [
+    missionOptionsCount, validGoals, validDmpis, hiddenGroupNames,
+    injectKneeboards, enabledKneeboardCount,
+  ]);
 
   return (
     <div style={{ maxWidth: 1100, padding: '0 4px' }}>
@@ -218,8 +300,70 @@ export function EditsTab() {
         )}
       </div>
 
-      {/* Empty state */}
-      {rows.length === 0 ? (
+      {/* Auto-attach inventory (v0.9.30) — payloads ExportPanel
+          adds right before download. Pre-v0.9.30 these were
+          invisible to the user; now they show up so the testing
+          flow can verify "yes, my goals + DMPIs + hidden groups
+          are about to ship." Hidden when no auto-attaches are
+          active to avoid noise on a fresh upload. */}
+      {autoAttach.length > 0 && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '10px 14px',
+            background: '#0a1218',
+            border: '1px solid #1a2a3a',
+            borderRadius: 6,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: '#888',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            Auto-attached on download
+          </div>
+          {autoAttach.map((row) => (
+            <div
+              key={row.label}
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 10,
+                padding: '4px 0',
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: row.accent,
+                  flexShrink: 0,
+                  alignSelf: 'center',
+                }}
+              />
+              <span style={{ color: '#e0e0e0', fontWeight: 600, minWidth: 200 }}>
+                {row.label}
+              </span>
+              <span style={{ color: '#aaa' }}>{row.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state — only fires when nothing AT ALL is queued
+          (no unit/waypoint edits AND no auto-attaches). The
+          auto-attach panel above already surfaces goals / DMPIs /
+          hidden groups / etc., so this banner shouldn't claim
+          "nothing queued" while those rows are visible. */}
+      {rows.length === 0 && autoAttach.length === 0 ? (
         <div
           style={{
             padding: 28,
@@ -233,6 +377,19 @@ export function EditsTab() {
         >
           No edits queued. Click around in any other tab to start building a
           batch — they'll show up here as they're queued.
+        </div>
+      ) : rows.length === 0 ? (
+        <div
+          style={{
+            padding: 16,
+            textAlign: 'center',
+            color: '#888',
+            fontSize: 12,
+            fontStyle: 'italic',
+          }}
+        >
+          No per-unit edits queued — only the auto-attached
+          payloads above will land in the .miz on download.
         </div>
       ) : (
         <table
