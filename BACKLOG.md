@@ -34,11 +34,12 @@ not effort.
 
 ## Persistence
 
-- **Goals/DMPI roundtrip integration test.** We have unit tests for
-  the writer and the reader independently, but no end-to-end test
-  that uploads simple.miz → writes goals → downloads → re-uploads
-  the downloaded bytes → verifies the upload response includes the
-  same goals. Strong correctness signal for the .miz roundtrip.
+- ~~**Goals/DMPI roundtrip integration test.**~~ Shipped in
+  v0.9.31 — `test_planner_roundtrip_e2e.py` exercises the full
+  upload → edit → download → re-upload pipeline for goals,
+  DMPIs, and hidden-from-flight-leads groups. Catches any
+  regression in the planner-private persistence layer before a
+  real user hits it.
 - **Phase 2 Supabase implementation.** Blocked on user provisioning
   the Supabase project + creds. Auth scope decided: invite-only.
 
