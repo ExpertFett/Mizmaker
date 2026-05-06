@@ -35,6 +35,12 @@ export function populateUnitLayer(
   // can pass undefined to get the legacy "everything but statics"
   // behaviour.
   categoryFilter?: UnitCategoryFilter,
+  // v0.9.29: groups the mission maker has marked hidden from
+  // flight leads via useVisibilityStore. The render still draws
+  // them on the mission-maker's map (they need to see what they
+  // marked) but with a muted style so the user can spot intel
+  // exposure at a glance without toggling preview-as-flight-lead.
+  hiddenFromParticipants: Set<number> = new Set(),
 ): void {
   const source = layer.getSource()!;
   source.clear();
@@ -57,7 +63,15 @@ export function populateUnitLayer(
     const firstUnit = group.units.find((u) => u.lat && u.lon);
     if (!firstUnit) continue;
 
-    const color = COALITION_COLORS[group.coalition] || '#888';
+    const isHiddenFromFLs = hiddenFromParticipants.has(group.groupId);
+    const baseColor = COALITION_COLORS[group.coalition] || '#888';
+    // Muted appearance for hidden groups — translucent fill +
+    // dashed gray stroke. Distinct enough to spot at a glance
+    // but not so loud that it competes with the rest of the
+    // tactical picture.
+    const color = isHiddenFromFLs ? `${baseColor}66` : baseColor;
+    const strokeColor = isHiddenFromFLs ? '#888' : '#fff';
+    const strokeDash = isHiddenFromFLs ? [3, 3] : undefined;
     const player = isPlayerGroup(group);
     const isAir = AIR_CATEGORIES.has(group.category);
 
@@ -88,12 +102,21 @@ export function populateUnitLayer(
     const carrier = isCarrierGroup(group);
     const showLabel = player || carrier;
 
+    // Prepend a 🚫 prefix to the label when the group is hidden
+    // from participants — only fires for already-labelled groups
+    // (player flights + carriers) so the map doesn't get noisy.
+    const labelText = (showLabel ? group.groupName.slice(0, 22) : '');
+    const finalLabelText = isHiddenFromFLs && labelText ? `🚫 ${labelText}` : labelText;
     const label = showLabel
       ? new Text({
-          text: group.groupName.slice(0, 22),
+          text: finalLabelText,
           offsetY: -18,
           font: `${player ? 'bold 13px' : '12px'} sans-serif`,
-          fill: new Fill({ color: player ? '#fff' : 'rgba(255,255,255,0.8)' }),
+          fill: new Fill({
+            color: isHiddenFromFLs
+              ? 'rgba(170, 170, 170, 0.85)'
+              : (player ? '#fff' : 'rgba(255,255,255,0.8)'),
+          }),
           stroke: new Stroke({ color: '#000', width: 2.5 }),
         })
       : undefined;
@@ -106,7 +129,11 @@ export function populateUnitLayer(
           radius: player ? 10 : 8,
           angle: 0, // points up
           fill: new Fill({ color }),
-          stroke: new Stroke({ color: '#fff', width: player ? 2 : 1 }),
+          stroke: new Stroke({
+            color: strokeColor,
+            width: player ? 2 : 1,
+            lineDash: strokeDash,
+          }),
         }),
         text: label,
       }));
@@ -119,7 +146,11 @@ export function populateUnitLayer(
           radius2: 7,
           angle: 0,
           fill: new Fill({ color }),
-          stroke: new Stroke({ color: '#fff', width: 1.5 }),
+          stroke: new Stroke({
+            color: strokeColor,
+            width: 1.5,
+            lineDash: strokeDash,
+          }),
         }),
         text: label,
       }));

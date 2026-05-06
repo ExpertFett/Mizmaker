@@ -697,8 +697,19 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
-    if (layerRefs.current.unit) populateUnitLayer(layerRefs.current.unit, visibleUnits, visibleGroups, viewMode, hiddenGroupIds, unitCategoryFilter);
-  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, unitCategoryFilter]);
+    if (layerRefs.current.unit) {
+      // Pass the hidden-from-flight-leads set so the unit layer
+      // can render a muted style on those markers (v0.9.29).
+      // Only the mission-maker view shows them at all — flight
+      // leads have already had them filtered out of visibleGroups
+      // upstream — so this is a pure visual cue for the author.
+      populateUnitLayer(
+        layerRefs.current.unit, visibleUnits, visibleGroups,
+        viewMode, hiddenGroupIds, unitCategoryFilter,
+        useFlightLeadView ? new Set() : hiddenForParticipants,
+      );
+    }
+  }, [visibleUnits, visibleGroups, viewMode, hiddenGroupIds, unitCategoryFilter, hiddenForParticipants, useFlightLeadView]);
 
   useEffect(() => {
     if (!layerRefs.current.route) return;
