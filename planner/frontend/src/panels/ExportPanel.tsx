@@ -49,7 +49,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export function ExportPanel() {
   const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
-  const { edits, isDirty, clearEdits, injectKneeboards, kneeboardSettings } = useEditStore();
+  const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, kneeboardSettings } = useEditStore();
   // Active SOP — needed if the user has the SOP Comms kneeboard card
   // enabled and wants it injected into the .miz on download.
   const sopList = useSopStore((s) => s.sops);
@@ -107,6 +107,14 @@ export function ExportPanel() {
         field: 'plannerHiddenGroups',
         value: Array.from(hiddenForParticipants),
       });
+    }
+
+    // Strip required modules (v0.9.32) — empties the .miz's
+    // requiredModules block so anyone can load the mission
+    // regardless of which mods they have. Default ON; user can
+    // opt out via the toggle on the Mission tab.
+    if (stripRequiredModules) {
+      unitEdits.push({ field: 'stripRequiredModules', value: true });
     }
 
     // Render kneeboard PNGs if inject is enabled

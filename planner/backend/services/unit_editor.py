@@ -2159,6 +2159,49 @@ def _replace_planner_dmpis(text: str, dmpis: list) -> str:
     return text
 
 
+def _strip_required_modules(text: str) -> str:
+    """Empty the mission's `["requiredModules"]` block.
+
+    DCS embeds the list of mods the mission depends on into the
+    .miz file. When a player loads the mission, DCS refuses if any
+    required module is missing. That's annoying when the mission
+    maker had a mod installed but doesn't actually use it in this
+    sortie — every joiner has to install the same mod just to load
+    in. Stripping the list lets anyone play; if the mission really
+    needs a mod (e.g. the briefing references a CSG-3 unit) it'll
+    just fail at runtime in a more useful way.
+
+    We replace whatever's inside with an empty table rather than
+    deleting the key entirely — DCS-ME emits the key on save
+    regardless, so an empty `{}` is the cleanest "no requirements"
+    state and round-trips through DCS-ME without surprises.
+    """
+    new_block = '["requiredModules"] = {}'
+    block_match = re.search(r'\["requiredModules"\]\s*=\s*\n?\s*\{', text)
+    if block_match:
+        block_open = block_match.end() - 1
+        depth = 0
+        fi = block_open
+        in_str = False
+        while fi < len(text):
+            ch = text[fi]
+            if ch == '"' and (fi == 0 or text[fi - 1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            fi += 1
+        text = text[:block_match.start()] + new_block + text[fi + 1:]
+    # If the key is missing entirely (very old DCS missions), we
+    # don't insert one — vanilla DCS treats the absence as
+    # "no requirements" the same way.
+    return text
+
+
 def _replace_planner_hidden_groups(text: str, group_ids: list) -> str:
     """Replace the planner-private ["plannerHiddenGroups"] block.
 
@@ -2662,6 +2705,12 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                 # has marked hidden from flight leads (v0.9.26).
                 # Stored under `["plannerHiddenGroups"]` for round-trip.
                 text = _replace_planner_hidden_groups(text, value)
+            elif field == "stripRequiredModules":
+                # `value` is unused — presence of the edit signals
+                # the user wants the requiredModules block emptied
+                # so anyone can load the mission regardless of
+                # installed mods. (v0.9.32)
+                text = _strip_required_modules(text)
             elif field == "findReplace":
                 text, _ = _find_replace_names(
                     text, value["find"], value["replace"],

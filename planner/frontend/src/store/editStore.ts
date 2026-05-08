@@ -57,6 +57,13 @@ interface EditState {
   edits: (WaypointEdit | UnitEdit)[];
   isDirty: boolean;
   injectKneeboards: boolean;
+  /** When true, the download path empties the .miz's
+   *  `["requiredModules"]` block so anyone can load the mission
+   *  regardless of which DCS mods they have installed. Defaults
+   *  to true — most squadron missions want to be playable by all
+   *  members, and stripping is reversible (DCS-ME re-adds entries
+   *  when the user opens the mission and re-saves). v0.9.32. */
+  stripRequiredModules: boolean;
   kneeboardSettings: KneeboardSettings;
   addEdit: (edit: WaypointEdit | UnitEdit) => void;
   /** Remove a single queued edit by its index. Used by the Edits
@@ -65,6 +72,7 @@ interface EditState {
   removeEditAt: (index: number) => void;
   clearEdits: () => void;
   setInjectKneeboards: (v: boolean) => void;
+  setStripRequiredModules: (v: boolean) => void;
   setKneeboardSettings: (s: Partial<KneeboardSettings>) => void;
 }
 
@@ -72,6 +80,7 @@ export const useEditStore = create<EditState>((set) => ({
   edits: [],
   isDirty: false,
   injectKneeboards: false,
+  stripRequiredModules: true,  // squadron-friendly default (v0.9.32)
   kneeboardSettings: {
     coordFormat: 'mgrs', speedRef: 'auto', machThreshold: 18000,
     // Default to 'realistic' fog-of-war so a fresh setup never
@@ -99,6 +108,8 @@ export const useEditStore = create<EditState>((set) => ({
   clearEdits: () => set({ edits: [], isDirty: false }),
 
   setInjectKneeboards: (v) => set({ injectKneeboards: v }),
+
+  setStripRequiredModules: (v) => set({ stripRequiredModules: v }),
 
   setKneeboardSettings: (s) =>
     set((prev) => ({ kneeboardSettings: { ...prev.kneeboardSettings, ...s } })),

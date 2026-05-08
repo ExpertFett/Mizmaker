@@ -5,6 +5,7 @@
 
 import { useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEditStore } from '../../store/editStore';
 
 /* ------------------------------------------------------------------ */
 /* Human-readable mappings for DCS option values                       */
@@ -173,6 +174,12 @@ export function MissionOptionsTab() {
   const missionOptions = useMissionStore((s) => s.missionOptions);
   const setMissionOptions = useMissionStore((s) => s.setMissionOptions);
   const overview = useMissionStore((s) => s.overview);
+  // Strip-required-modules toggle (v0.9.32) — lives in editStore
+  // because it's a download-time decision, not a mission-state
+  // value. Surfaced here because users associate "compatibility"
+  // with the mission options tab.
+  const stripRequiredModules = useEditStore((s) => s.stripRequiredModules);
+  const setStripRequiredModules = useEditStore((s) => s.setStripRequiredModules);
 
   const setOption = useCallback((key: string, value: unknown) => {
     if (value === undefined) {
@@ -228,6 +235,53 @@ export function MissionOptionsTab() {
         <strong style={{ color: '#3fb950' }}>ON</strong> = forced enabled &nbsp;|&nbsp;
         <strong style={{ color: '#d95050' }}>OFF</strong> = forced disabled
       </p>
+
+      {/* Compatibility section — non-forcedOptions stuff that
+          affects how the .miz is repackaged on download. Sits at
+          the top so it's visible without scrolling past the tri-
+          state toggle wall. (v0.9.32) */}
+      <div
+        style={{
+          marginBottom: 20,
+          padding: '10px 14px',
+          background: '#0a1218',
+          border: '1px solid #1a2a3a',
+          borderRadius: 6,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11, color: '#888', textTransform: 'uppercase',
+            letterSpacing: 1, fontWeight: 600, marginBottom: 8,
+          }}
+        >
+          Compatibility
+        </div>
+        <label
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            fontSize: 13, cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={stripRequiredModules}
+            onChange={(e) => setStripRequiredModules(e.target.checked)}
+            style={{ accentColor: '#4a8fd4', marginTop: 2 }}
+          />
+          <span>
+            <span style={{ color: '#e0e0e0', fontWeight: 600 }}>
+              Strip required modules on download
+            </span>
+            <span style={{ color: '#888', display: 'block', fontSize: 12, marginTop: 2 }}>
+              Empties the .miz's <code style={{ color: '#cccccc' }}>requiredModules</code> block
+              so anyone can load the mission, regardless of which DCS mods they have installed.
+              On by default — turn off if your mission genuinely needs a specific mod and you
+              want DCS to enforce it.
+            </span>
+          </span>
+        </label>
+      </div>
 
       {CATEGORY_ORDER.map((cat) => {
         const defs = grouped.get(cat) || [];
