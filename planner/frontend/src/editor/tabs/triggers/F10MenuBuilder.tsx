@@ -50,6 +50,25 @@ const COALITION_COLOR: Record<MenuCoalition, string> = {
   all:  '#aaaaaa',
 };
 
+// Subtle row-tint backgrounds per coalition. Mostly transparent so
+// the row reads as a normal table row but the side stays scannable
+// when the list grows past ~6 entries (v0.9.39).
+const COALITION_TINT: Record<MenuCoalition, string> = {
+  blue: 'rgba(74, 143, 212, 0.05)',
+  red:  'rgba(217, 80, 80, 0.05)',
+  all:  'rgba(170, 170, 170, 0.04)',
+};
+
+// Action color encodes intent — green = constructive (activate),
+// amber = neutral (deactivate AI but keep alive), red = destructive
+// (destroy). Matches the standard color language the rest of the
+// planner uses for impact severity.
+const ACTION_COLOR: Record<MenuAction, string> = {
+  activate:   '#3fb950',
+  deactivate: '#d29922',
+  destroy:    '#d95050',
+};
+
 interface MenuEntry {
   id: string;
   coalition: MenuCoalition;
@@ -176,6 +195,26 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
     label: '',
     action: 'activate',
     groupName: '',
+  });
+
+  // Filter state for the staged-entries table (v0.9.39). Display
+  // only — doesn't affect what goes into the generated rule.
+  // Helps when the menu grows past 8-10 entries and the user
+  // wants to focus on just the blue activations or hunt for a
+  // typo in a specific action group.
+  const [filterCoalition, setFilterCoalition] = useState<'all' | MenuCoalition>('all');
+  const [filterAction, setFilterAction] = useState<'all' | MenuAction>('all');
+  const [filterSearch, setFilterSearch] = useState('');
+
+  const visibleEntries = entries.filter((e) => {
+    if (filterCoalition !== 'all' && e.coalition !== filterCoalition) return false;
+    if (filterAction !== 'all' && e.action !== filterAction) return false;
+    if (filterSearch.trim()) {
+      const q = filterSearch.toLowerCase();
+      if (!e.label.toLowerCase().includes(q)
+          && !e.groupName.toLowerCase().includes(q)) return false;
+    }
+    return true;
   });
 
   const groupNames = groups.map((g) => g.groupName).sort((a, b) => a.localeCompare(b));
@@ -314,42 +353,136 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
           No menu entries staged yet. Use the form above to add one.
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
-              <th style={th}>SIDE</th>
-              <th style={th}>LABEL</th>
-              <th style={th}>ACTION</th>
-              <th style={th}>TARGET GROUP</th>
-              <th style={{ ...th, width: 60 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e) => (
-              <tr key={e.id} style={{ borderBottom: '1px solid #262626' }}>
-                <td style={{ ...td, color: COALITION_COLOR[e.coalition], fontWeight: 600 }}>
-                  {COALITION_LABEL[e.coalition]}
-                </td>
-                <td style={{ ...td, color: '#e0e0e0' }}>{e.label}</td>
-                <td style={{ ...td, color: '#cccccc' }}>{ACTION_LABEL[e.action]}</td>
-                <td style={{ ...td, color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
-                  {e.groupName}
-                </td>
-                <td style={td}>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => removeEntry(e.id)}
-                    title="Remove entry"
-                    style={{ padding: '2px 8px', fontSize: 11 }}
-                  >
-                    ×
-                  </Button>
-                </td>
+        <>
+          {/* Filter toolbar — display-only, doesn't change what gets
+              generated. Lets the user narrow the staged list by
+              coalition / action / label-or-group search. (v0.9.39) */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginBottom: 8,
+              alignItems: 'center',
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: '#888', marginRight: 4 }}>Filter:</span>
+            <Select
+              size="sm"
+              value={filterCoalition}
+              onChange={(e) => setFilterCoalition(e.target.value as 'all' | MenuCoalition)}
+              style={{
+                color: filterCoalition === 'all' ? '#aaaaaa' : COALITION_COLOR[filterCoalition],
+                fontWeight: filterCoalition === 'all' ? 400 : 600,
+              }}
+            >
+              <option value="all">All sides</option>
+              {(Object.keys(COALITION_LABEL) as MenuCoalition[]).map((c) => (
+                <option key={c} value={c}>{COALITION_LABEL[c]}</option>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              value={filterAction}
+              onChange={(e) => setFilterAction(e.target.value as 'all' | MenuAction)}
+              style={{
+                color: filterAction === 'all' ? '#aaaaaa' : ACTION_COLOR[filterAction],
+                fontWeight: filterAction === 'all' ? 400 : 600,
+              }}
+            >
+              <option value="all">All actions</option>
+              {(Object.keys(ACTION_LABEL) as MenuAction[]).map((a) => (
+                <option key={a} value={a}>{ACTION_LABEL[a]}</option>
+              ))}
+            </Select>
+            <TextInput
+              size="sm"
+              value={filterSearch}
+              onChange={(e) => setFilterSearch(e.target.value)}
+              placeholder="Search label or group..."
+              style={{ flex: 1, maxWidth: 280 }}
+            />
+            <span style={{ color: '#888', marginLeft: 'auto' }}>
+              {visibleEntries.length} / {entries.length} shown
+            </span>
+            {(filterCoalition !== 'all' || filterAction !== 'all' || filterSearch.trim()) && (
+              <button
+                onClick={() => {
+                  setFilterCoalition('all');
+                  setFilterAction('all');
+                  setFilterSearch('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #3a3a3a',
+                  borderRadius: 3,
+                  color: '#aaaaaa',
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+                title="Clear all filters"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
+                <th style={th}>SIDE</th>
+                <th style={th}>LABEL</th>
+                <th style={th}>ACTION</th>
+                <th style={th}>TARGET GROUP</th>
+                <th style={{ ...th, width: 60 }}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visibleEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{
+                    ...td, textAlign: 'center', color: '#666',
+                    fontStyle: 'italic', padding: '12px',
+                  }}>
+                    No entries match the current filters.
+                  </td>
+                </tr>
+              ) : visibleEntries.map((e) => (
+                <tr
+                  key={e.id}
+                  style={{
+                    borderBottom: '1px solid #262626',
+                    background: COALITION_TINT[e.coalition],
+                  }}
+                >
+                  <td style={{ ...td, color: COALITION_COLOR[e.coalition], fontWeight: 600 }}>
+                    {COALITION_LABEL[e.coalition]}
+                  </td>
+                  <td style={{ ...td, color: '#e0e0e0' }}>{e.label}</td>
+                  <td style={{ ...td, color: ACTION_COLOR[e.action], fontWeight: 600 }}>
+                    {ACTION_LABEL[e.action]}
+                  </td>
+                  <td style={{ ...td, color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+                    {e.groupName}
+                  </td>
+                  <td style={td}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => removeEntry(e.id)}
+                      title="Remove entry"
+                      style={{ padding: '2px 8px', fontSize: 11 }}
+                    >
+                      ×
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
 
       {/* Generated script preview + Generate button */}
