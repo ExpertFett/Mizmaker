@@ -386,6 +386,17 @@ export function DtcTab() {
 
   const [selectedFlight, setSelectedFlight] = useState<string>(dtcFlights[0] ?? '');
   const [dtcData, setDtcData] = useState<DtcData | null>(null);
+
+  // DTC clipboard for cross-flight copy/paste (v0.9.38). Lives in
+  // tab-level state so the buffer survives switching between
+  // flights, but resets when the user leaves the DTC tab. Stores
+  // the source flight name alongside the data so the paste UI
+  // can show "Pasted from Bengal 1" feedback.
+  const [dtcClipboard, setDtcClipboard] = useState<{
+    sourceFlight: string;
+    data: DtcData;
+  } | null>(null);
+  const [clipboardMsg, setClipboardMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('comm');
@@ -554,6 +565,48 @@ export function DtcTab() {
           <button onClick={handleExport} disabled={exporting} style={{ ...btnStyle, background: '#1a4a2a', borderColor: '#2a6a3a' }}>
             {exporting ? 'Exporting...' : 'Export .dtc'}
           </button>
+        )}
+
+        {/* Copy/Paste DTC across flights (v0.9.38). Copy stages
+            the current dtcData in a tab-scoped clipboard;
+            Paste applies it to the currently-loaded flight,
+            wholesale. Useful for "I already configured Bengal 1
+            with all my COMMs / CMDS / waypoints — copy that
+            same setup to Hawk 2 / 3 / 4 instead of re-typing." */}
+        {dtcData && (
+          <button
+            onClick={() => {
+              setDtcClipboard({ sourceFlight: selectedFlight, data: dtcData });
+              setClipboardMsg(`Copied DTC from ${selectedFlight}`);
+              setTimeout(() => setClipboardMsg(null), 3000);
+            }}
+            style={{ ...btnStyle, background: '#262626', borderColor: '#4a8fd4', color: '#4a8fd4' }}
+            title="Copy this flight's full DTC (COMM, CMDS, waypoints, NAV) to the clipboard"
+          >
+            📋 Copy DTC
+          </button>
+        )}
+        {dtcData && dtcClipboard && dtcClipboard.sourceFlight !== selectedFlight && (
+          <button
+            onClick={() => {
+              if (!confirm(
+                `Paste DTC from "${dtcClipboard.sourceFlight}" onto "${selectedFlight}"?\n\n` +
+                `This replaces COMM, CMDS, waypoints, and NAV settings on the current flight.`,
+              )) return;
+              setDtcData(dtcClipboard.data);
+              setClipboardMsg(`Pasted DTC from ${dtcClipboard.sourceFlight} → ${selectedFlight}`);
+              setTimeout(() => setClipboardMsg(null), 3000);
+            }}
+            style={{ ...btnStyle, background: '#262626', borderColor: '#3fb950', color: '#3fb950' }}
+            title={`Paste the DTC copied from "${dtcClipboard.sourceFlight}"`}
+          >
+            📥 Paste DTC
+          </button>
+        )}
+        {clipboardMsg && (
+          <span style={{ color: '#3fb950', fontSize: 12, marginLeft: 8 }}>
+            ✓ {clipboardMsg}
+          </span>
         )}
       </div>
 
