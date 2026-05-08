@@ -192,16 +192,33 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
 
   const handleGenerate = () => {
     if (entries.length === 0) return;
-    const nextId = (rules.length === 0 ? 1 : Math.max(...rules.map((r) => r.id)) + 1);
-    const newRule = buildRule(entries, nextId);
-    // Append directly via setState — the trigger store's addRule
-    // creates a blank rule, which isn't what we want. We're adding
-    // a fully-built rule and need to mark dirty.
-    setRules((s) => ({
-      rules: [...s.rules, newRule],
-      isDirty: true,
-      selectedRuleId: newRule.id,
-    }));
+    // Check for an existing rule with the same name. If one exists,
+    // REPLACE its body in-place rather than appending — otherwise
+    // the backend's append_inline_rules dedupes by name and silently
+    // skips the new rule, leaving the user with a stale (possibly
+    // empty) menu. v0.9.35 fix; user reported this as "no new
+    // triggers in the mission" after v0.9.34.
+    const existingIdx = rules.findIndex((r) => r.name === 'F10 Radio Menu');
+    if (existingIdx >= 0) {
+      const existing = rules[existingIdx];
+      const replaced = buildRule(entries, existing.id);
+      setRules((s) => {
+        const next = [...s.rules];
+        next[existingIdx] = replaced;
+        return { rules: next, isDirty: true, selectedRuleId: replaced.id };
+      });
+    } else {
+      const nextId = (rules.length === 0 ? 1 : Math.max(...rules.map((r) => r.id)) + 1);
+      const newRule = buildRule(entries, nextId);
+      // Append directly via setState — the trigger store's addRule
+      // creates a blank rule, which isn't what we want. We're adding
+      // a fully-built rule and need to mark dirty.
+      setRules((s) => ({
+        rules: [...s.rules, newRule],
+        isDirty: true,
+        selectedRuleId: newRule.id,
+      }));
+    }
     setEntries([]);
     onAdded?.();
   };

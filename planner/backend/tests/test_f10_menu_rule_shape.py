@@ -103,20 +103,65 @@ def test_wrong_action_type_a_do_script_drops_into_fallback_with_empty_lua():
     assert '["text"] = ""' in out
 
 
-def test_skips_duplicate_by_name():
-    """append_inline_rules normalizes whitespace + case when matching
-    by `name` to avoid shipping the same F10 menu rule twice. If the
-    user clicks Generate Trigger twice in a row this is what saves
-    them. (Not strictly an F10 bug — guarded for general safety.)
+def test_upsert_replaces_existing_same_named_rule_v0_9_35():
+    """v0.9.35 changed `append_inline_rules` from skip-by-name to
+    upsert-by-name. This test guards the new behaviour: when a rule
+    with the same name already exists, its BODY is replaced in
+    place (preserving the original [N] index) rather than the new
+    rule being silently dropped.
+
+    The user reported this as "I still don't see the new triggers
+    in the mission" after the v0.9.34 action-shape fix — they had
+    a v0.9.33-broken empty rule sitting in their .miz, and the
+    pre-v0.9.35 dedupe was skipping the corrected version.
     """
-    rule = {
+    original = {
         "id": 99, "name": "F10 Radio Menu",
         "enabled": True, "oneTime": True, "eventType": "onMissionStart",
         "conditions": [],
-        "actions": [{"type": "DO_SCRIPT", "params": {"lua": "x = 1"}}],
+        "actions": [{"type": "DO_SCRIPT", "params": {"lua": "OLD_BODY"}}],
     }
-    once = append_inline_rules(INLINE_MISSION, [rule])
-    twice = append_inline_rules(once, [rule])
-    # Second call is a no-op — the name already exists.
-    assert once == twice
-    assert once.count('"F10 Radio Menu"') == 1
+    once = append_inline_rules(INLINE_MISSION, [original])
+    assert "OLD_BODY" in once
+
+    # Second pass with a NEW body, same name — should replace.
+    updated = {
+        **original,
+        "actions": [{"type": "DO_SCRIPT", "params": {"lua": "NEW_BODY"}}],
+    }
+    twice = append_inline_rules(once, [updated])
+    assert "NEW_BODY" in twice
+    assert "OLD_BODY" not in twice  # body was replaced, not appended
+    # And only ONE rule with that name — no duplication.
+    assert twice.count('"F10 Radio Menu"') == 1
+
+
+def test_upsert_preserves_unrelated_rules():
+    """Rules with names not in the incoming list stay byte-for-byte
+    untouched. Important — the user might have hand-written rules
+    in their .miz alongside the planner-generated F10 menu, and
+    saving from the planner shouldn't disturb them."""
+    # First add an unrelated rule.
+    other = {
+        "id": 1, "name": "Hand-written Rule",
+        "enabled": True, "oneTime": True, "eventType": "onMissionStart",
+        "conditions": [],
+        "actions": [{"type": "DO_SCRIPT", "params": {"lua": "untouched_lua"}}],
+    }
+    with_other = append_inline_rules(INLINE_MISSION, [other])
+    assert "untouched_lua" in with_other
+    assert "Hand-written Rule" in with_other
+
+    # Now add an F10 menu rule alongside it.
+    f10 = {
+        "id": 2, "name": "F10 Radio Menu",
+        "enabled": True, "oneTime": True, "eventType": "onMissionStart",
+        "conditions": [],
+        "actions": [{"type": "DO_SCRIPT", "params": {"lua": "f10_lua"}}],
+    }
+    final = append_inline_rules(with_other, [f10])
+    # Both rules present, both bodies preserved.
+    assert "untouched_lua" in final
+    assert "f10_lua" in final
+    assert final.count('"Hand-written Rule"') == 1
+    assert final.count('"F10 Radio Menu"') == 1

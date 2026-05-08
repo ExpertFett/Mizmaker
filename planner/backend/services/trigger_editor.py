@@ -1059,19 +1059,32 @@ def _max_existing_rule_id(text: str) -> int:
     return max_id
 
 
-def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
-    """Insert new rules in inline format at the end of the trigrules block.
+def _normalize_rule_name(name: str) -> str:
+    """Whitespace + case normalization for rule-name matching. Same
+    rule used to be hidden inside append_inline_rules; promoted to
+    module-level for reuse from the upsert path (v0.9.35)."""
+    return re.sub(r'\s+', ' ', name or '').strip().lower()
 
-    Skips rules that already exist (by name). Each new rule is given an
-    id one greater than the current max.
+
+def _find_inline_rule_bounds_by_name(
+    mission_text: str, name: str,
+) -> Optional[Tuple[int, int, int]]:
+    """Locate an existing inline rule entry by its `["comment"]` value.
+
+    Returns (entry_start, entry_end_exclusive, rule_id) or None when no
+    match. `entry_start` points at the leading `[N]` of the rule;
+    `entry_end_exclusive` is one past the closing `}` (and any trailing
+    `,` if present). The caller can substitute the slice in-place to
+    replace the rule's body.
+
+    Match is whitespace + case-insensitive, mirroring the dedupe rule.
     """
-    if not new_rules:
-        return mission_text
-
+    target = _normalize_rule_name(name)
+    if not target:
+        return None
     m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
     if not m:
-        return mission_text
-
+        return None
     open_pos = mission_text.index('{', m.start())
     depth = 1
     i = open_pos + 1
@@ -1081,35 +1094,123 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
         elif mission_text[i] == '}':
             depth -= 1
         i += 1
-    close_pos = i - 1  # position of the closing `}` of trigrules
+    close_pos = i - 1
 
-    # Collect existing rule comments so we can skip duplicates by name.
-    # Normalize whitespace + case so 'Activate  CVN TACAN' (double space —
-    # observed in Fett's TIC template) matches our generated 'Activate
-    # CVN TACAN' (single space) and we don't ship duplicate trigger
-    # rules that fire identical actions on the same flag.
-    def _normalize(name: str) -> str:
-        return re.sub(r'\s+', ' ', name or '').strip().lower()
+    # Walk the trigrules body looking for `[N] = {` at depth 1 (the
+    # rule entries themselves). For each, brace-match its body and
+    # check whether the body contains the target name.
+    cs_depth = 0
+    cs_i = open_pos + 1
+    while cs_i < close_pos:
+        ch = mission_text[cs_i]
+        if ch == '{':
+            cs_depth += 1
+        elif ch == '}':
+            cs_depth -= 1
+        elif ch == '[' and cs_depth == 0:
+            id_match = re.match(r'\[(\d+)\]\s*=\s*\{', mission_text[cs_i:])
+            if id_match:
+                rule_id = int(id_match.group(1))
+                rule_open = cs_i + id_match.end() - 1  # the `{`
+                # Brace-walk to find this rule's matching `}`
+                rd = 1
+                rj = rule_open + 1
+                while rj < close_pos and rd > 0:
+                    rch = mission_text[rj]
+                    if rch == '{':
+                        rd += 1
+                    elif rch == '}':
+                        rd -= 1
+                    rj += 1
+                rule_close = rj - 1
+                rule_body = mission_text[rule_open:rule_close + 1]
+                # Pull the comment value from the rule body
+                cm = re.search(r'\["comment"\]\s*=\s*"([^"]*)"', rule_body)
+                if cm and _normalize_rule_name(cm.group(1)) == target:
+                    # Include trailing `,` (and surrounding whitespace
+                    # on the same logical line) so the splice doesn't
+                    # leave dangling commas.
+                    end = rule_close + 1
+                    tail = mission_text[end:end + 32]
+                    tm = re.match(r',?', tail)
+                    if tm:
+                        end += tm.end()
+                    return (cs_i, end, rule_id)
+                # Not a match — skip past this rule and keep scanning.
+                cs_i = rule_close + 1
+                continue
+        cs_i += 1
+    return None
 
-    block = mission_text[open_pos:close_pos + 1]
-    existing_names = {
-        _normalize(n) for n in re.findall(r'\["comment"\]\s*=\s*"([^"]*)"', block)
-    }
+
+def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
+    """Upsert rules into the inline-format trigrules block.
+
+    For each incoming rule:
+      - If a rule with the SAME (whitespace-normalized, case-insensitive)
+        name already exists in the mission, REPLACE its body in place,
+        preserving the original `[N]` index. This is the path the F10
+        Menu Builder relies on so a regenerated menu actually updates
+        the .miz instead of being silently skipped (v0.9.35 fix —
+        before this, the upsert was a skip).
+      - Otherwise APPEND at the end of the block with a fresh id one
+        above the current max.
+
+    Original rules with no incoming match stay byte-for-byte intact.
+    """
+    if not new_rules:
+        return mission_text
+
+    m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
+    if not m:
+        return mission_text
+
+    # Replace-by-name pass first so the append pass below sees the
+    # latest existing names (post-replace) when computing next_id.
+    to_append: List[Dict] = []
+    for rule in new_rules:
+        name = rule.get("name", "")
+        bounds = _find_inline_rule_bounds_by_name(mission_text, name)
+        if bounds is None:
+            to_append.append(rule)
+            continue
+        start, end, rule_id = bounds
+        replacement = _render_inline_rule(rule, rule_id, indent="\t\t")
+        # Preserve the trailing newline that would have followed the
+        # original entry by appending one if the slice didn't already
+        # include it. Keeps the file readable after multiple upserts.
+        if not replacement.endswith(",") and mission_text[end - 1:end] == ",":
+            replacement += ","
+        mission_text = mission_text[:start] + replacement + mission_text[end:]
+
+    if not to_append:
+        return mission_text
+
+    # Recompute open/close positions because the replace pass moved them.
+    m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
+    if not m:
+        return mission_text
+    open_pos = mission_text.index('{', m.start())
+    depth = 1
+    i = open_pos + 1
+    while i < len(mission_text) and depth > 0:
+        if mission_text[i] == '{':
+            depth += 1
+        elif mission_text[i] == '}':
+            depth -= 1
+        i += 1
+    close_pos = i - 1
 
     next_id = _max_existing_rule_id(mission_text) + 1
     pieces: List[str] = []
-    for rule in new_rules:
-        if _normalize(rule.get("name", "")) in existing_names:
-            continue  # skip duplicate by name (whitespace-tolerant)
+    for rule in to_append:
         pieces.append(_render_inline_rule(rule, next_id, indent="\t\t"))
         next_id += 1
 
     if not pieces:
-        return mission_text  # nothing new to add
+        return mission_text
 
     insertion = "\n" + "\n".join(pieces)
-    # Inject before the closing `}` of trigrules. Find the start of the
-    # line containing close_pos so we land cleanly above it.
     line_start = mission_text.rfind("\n", 0, close_pos)
     if line_start < 0:
         line_start = close_pos
