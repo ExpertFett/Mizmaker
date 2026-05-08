@@ -834,7 +834,7 @@ function CmdsSubTab({ data, onUpdate }: {
         Auto Fill
       </button>
     </div>
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0', maxWidth: 700 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0', maxWidth: 760 }}>
       <thead>
         <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
           <th style={thStyle}>Program</th>
@@ -842,11 +842,16 @@ function CmdsSubTab({ data, onUpdate }: {
           <th style={thStyle}>Chaff Interval</th>
           <th style={thStyle}>Flare Qty</th>
           <th style={thStyle}>Flare Interval</th>
+          {/* v0.9.37 — total expendables per program button-press
+              (chaff + flare). Helps the user see at a glance how
+              loud each program is before settling on the loadout. */}
+          <th style={thStyle} title="Chaff + Flare per program activation">Total</th>
         </tr>
       </thead>
       <tbody>
         {CMDS_PROGRAMS.map((prog) => {
           const p = data[prog] ?? { chaffQty: 0, chaffInterval: 0, flareQty: 0, flareInterval: 0 };
+          const rowTotal = (p.chaffQty || 0) + (p.flareQty || 0);
           return (
             <tr key={prog} style={{ borderBottom: '1px solid #262626' }}>
               <td style={{ ...tdStyle, color: '#cccccc', fontWeight: 600 }}>{programLabel(prog)}</td>
@@ -884,9 +889,40 @@ function CmdsSubTab({ data, onUpdate }: {
                   style={{ ...monoInputStyle, width: 70 }}
                 />
               </td>
+              <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
+                color: rowTotal === 0 ? '#666' : '#e0e0e0', fontWeight: 600 }}>
+                {rowTotal}
+              </td>
             </tr>
           );
         })}
+        {/* Column totals row — sum across every program. Useful for
+            "if I burn through every program once, here's the ammo
+            cost" quick math. Right-aligned faded for visual weight. */}
+        <tr style={{ borderTop: '2px solid #3a3a3a', background: '#0a1218' }}>
+          <td style={{ ...tdStyle, color: '#888', fontWeight: 600,
+            textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
+            Total
+          </td>
+          {(() => {
+            const sumChaff = CMDS_PROGRAMS.reduce(
+              (s, prog) => s + (data[prog]?.chaffQty || 0), 0);
+            const sumFlare = CMDS_PROGRAMS.reduce(
+              (s, prog) => s + (data[prog]?.flareQty || 0), 0);
+            return (
+              <>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
+                  color: '#e0e0e0', fontWeight: 600 }}>{sumChaff}</td>
+                <td style={tdStyle} />
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
+                  color: '#e0e0e0', fontWeight: 600 }}>{sumFlare}</td>
+                <td style={tdStyle} />
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
+                  color: '#ffa500', fontWeight: 700 }}>{sumChaff + sumFlare}</td>
+              </>
+            );
+          })()}
+        </tr>
       </tbody>
     </table>
     </>
