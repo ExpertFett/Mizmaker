@@ -365,6 +365,13 @@ export function TriggerTab() {
             // store; flip to overview so the user sees it appear
             // in the list and can hit Save Triggers next.
             setViewMode('overview');
+            // Briefly flash a status message so the user notices
+            // the next step. Without this, in v0.9.33 testing the
+            // user generated the rule, downloaded directly, and
+            // got no triggers in the .miz because Save was never
+            // hit. v0.9.34 makes the next step explicit.
+            setStatusMsg('Trigger added — click Save Triggers, then Download.');
+            setTimeout(() => setStatusMsg(null), 4000);
           }}
         />
       )}

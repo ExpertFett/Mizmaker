@@ -125,9 +125,19 @@ function generateScript(entries: MenuEntry[]): string {
 }
 
 /** Build a complete TriggerRule from the menu entries. The store
- *  picks the next free numeric ID; we just provide the shape. */
+ *  picks the next free numeric ID; we just provide the shape.
+ *
+ *  IMPORTANT: action `type` is 'DO_SCRIPT' (the backend's
+ *  ACTION_TYPE_TO_PREDICATE key, not the raw Lua predicate
+ *  'a_do_script'); and the script body lives in `params.lua`
+ *  (not `params.script`). The backend's `_render_inline_action`
+ *  reads exactly those keys — wrong names land an empty
+ *  `["text"] = ""` on save and the user gets a no-op trigger
+ *  in DCS-ME. (v0.9.34 — fixed silent drop reported during
+ *  testing of v0.9.33.)
+ */
 function buildRule(entries: MenuEntry[], nextId: number): TriggerRule {
-  const script = generateScript(entries);
+  const lua = generateScript(entries);
   return {
     id: nextId,
     name: 'F10 Radio Menu',
@@ -137,8 +147,8 @@ function buildRule(entries: MenuEntry[], nextId: number): TriggerRule {
     conditions: [],
     actions: [
       {
-        type: 'a_do_script',
-        params: { script },
+        type: 'DO_SCRIPT',
+        params: { lua },
       },
     ],
   };
