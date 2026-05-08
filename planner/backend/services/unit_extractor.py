@@ -594,13 +594,24 @@ def build_unit_id_map(mission: dict) -> dict:
 
 # ─── Client unit extraction ───────────────────────────────────────────────
 
+# DCS has two skill levels that mean "human-controllable":
+#   - "Client"  — multiplayer slot anyone can join
+#   - "Player"  — single-player, the local human
+# Through v0.9.35 the planner only matched "Client", which silently
+# dropped any Hornet (or other airframe) the user added with the
+# default DCS-ME single-player skill. They wouldn't appear in the
+# Loadout / Datalink / DTC / SOP dropdowns. v0.9.36 accepts both so
+# planning works for SP missions as well as MP.
+PLAYABLE_SKILLS = ("Client", "Player")
+
+
 def find_client_units(mission: dict) -> list:
-    """Find all client (player) units and extract datalink info."""
+    """Find all client (or single-player) units and extract datalink info."""
     unit_id_map = build_unit_id_map(mission)
     clients = []
 
     for coal_name, country_name, cat, group, unit in _iter_units(mission):
-        if unit.get("skill") != "Client":
+        if unit.get("skill") not in PLAYABLE_SKILLS:
             continue
 
         props = unit.get("AddPropAircraft", {})
@@ -847,7 +858,11 @@ def find_laser_capable_units(mission: dict) -> list:
             "type": unit.get("type", "?"),
             "groupName": group.get("name", "?"),
             "coalition": coal_name,
-            "isClient": unit.get("skill") == "Client",
+            # v0.9.36: include single-player Player skill alongside
+            # multiplayer Client. Mirrors find_client_units' filter
+            # so this flag stays consistent with what shows in
+            # client-unit dropdowns.
+            "isClient": unit.get("skill") in PLAYABLE_SKILLS,
             "pylons": pylons,
             "laserCode": laser_code,
         })
