@@ -5,6 +5,7 @@ import {
   getTriggers, saveTriggers, uploadAudio, deleteAudio, audioStreamUrl,
 } from '../../api/client';
 import type { TriggerRule, TriggerCondition, TriggerAction, AudioFile } from '../../types/mission';
+import { F10MenuBuilder } from './triggers/F10MenuBuilder';
 
 // ── Condition & Action type definitions for the dropdowns ─────────────────
 
@@ -85,7 +86,7 @@ export function TriggerTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'overview' | 'editor' | 'builder'>('overview');
+  const [viewMode, setViewMode] = useState<'overview' | 'editor' | 'builder' | 'f10menu'>('overview');
 
   // Load triggers on mount
   useEffect(() => {
@@ -166,6 +167,18 @@ export function TriggerTab() {
           }}
         >
           Builder
+        </button>
+        <button
+          onClick={() => setViewMode('f10menu')}
+          style={{
+            background: viewMode === 'f10menu' ? '#4a4a4a' : 'transparent',
+            border: `1px solid ${viewMode === 'f10menu' ? '#3fb950' : '#3a3a3a'}`,
+            borderRadius: 14, color: viewMode === 'f10menu' ? '#3fb950' : '#aaaaaa',
+            cursor: 'pointer', fontSize: 13, padding: '5px 16px', fontWeight: viewMode === 'f10menu' ? 600 : 400,
+          }}
+          title="Generate F10 radio menu entries that activate / deactivate / destroy groups"
+        >
+          F10 Menus
         </button>
 
         <div style={{ flex: 1 }} />
@@ -340,6 +353,18 @@ export function TriggerTab() {
             }
             if (lastId) selectRule(lastId);
             setViewMode('editor');
+          }}
+        />
+      )}
+
+      {/* ── F10 Menu Builder Mode (v0.9.33) ──────────────── */}
+      {viewMode === 'f10menu' && (
+        <F10MenuBuilder
+          onAdded={() => {
+            // After "Generate Trigger" the new rule is in the
+            // store; flip to overview so the user sees it appear
+            // in the list and can hit Save Triggers next.
+            setViewMode('overview');
           }}
         />
       )}
