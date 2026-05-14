@@ -9,6 +9,62 @@ import re
 
 
 # ---------------------------------------------------------------------------
+# Lua string escape helpers
+# ---------------------------------------------------------------------------
+#
+# DCS mission Lua uses double-quoted string literals with C-style escapes:
+# `\"` for an embedded double quote, `\\` for a backslash, `\n` for newline.
+# A surgical writer that pastes a user-supplied name directly into the
+# source text MUST escape these chars first — otherwise an inner `"` ends
+# the string mid-name, the brace-matcher downstream chokes, and DCS
+# refuses to load the .miz ("'}' expected near 'X'").
+#
+# The matching read-side pattern `_LUA_STR_VALUE` accepts `\"` and `\\`
+# inside the captured value so that names containing escaped quotes round-
+# trip through the find/replace path without being truncated at the first
+# inner quote (the old `([^"]*)` capture stopped there and rewrote only
+# the prefix).
+_LUA_STR_VALUE = r'((?:[^"\\]|\\.)*)'  # capture group: 0+ non-"-non-\\ or \X
+
+
+def _lua_str_escape(s: str) -> str:
+    """Escape a Python string for embedding inside a Lua double-quoted literal.
+
+    Order matters — escape backslash first so we don't double-escape the
+    backslashes we ourselves emit for `"` and `\\n`.
+    """
+    return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
+
+def _lua_str_unescape(s: str) -> str:
+    """Inverse of _lua_str_escape. `\\n` → newline, `\\"` → `"`, `\\\\` → `\\`.
+
+    Used when round-tripping an existing Lua string value through a
+    user-facing transform (e.g. find/replace), where the user types
+    against the unescaped form.
+    """
+    out = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == '\\' and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt == 'n':
+                out.append('\n')
+            elif nxt == 't':
+                out.append('\t')
+            elif nxt == 'r':
+                out.append('\r')
+            else:
+                out.append(nxt)  # \", \\, \', etc.
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+# ---------------------------------------------------------------------------
 # Location finders
 # ---------------------------------------------------------------------------
 
@@ -749,14 +805,17 @@ def _replace_unit_name(text: str, unit_id: int, new_name: str) -> str:
     block_start, block_end = _find_unit_block_bounds(text, unit_id)
     unit_block = text[block_start:block_end]
 
-    name_pattern = re.compile(r'\["name"\]\s*=\s*"([^"]*)"')
+    name_pattern = re.compile(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"')
     m = name_pattern.search(unit_block)
     if not m:
         raise ValueError(f"Name field not found in unit {unit_id} block")
 
     abs_start = block_start + m.start(1)
     abs_end = block_start + m.end(1)
-    return text[:abs_start] + new_name + text[abs_end:]
+    # Escape Lua-string specials in new_name before splicing — otherwise an
+    # inner `"` (e.g. in a name like 'A-11 "Kiryati" Brigade') ends the
+    # string mid-name and DCS refuses to load the .miz.
+    return text[:abs_start] + _lua_str_escape(new_name) + text[abs_end:]
 
 
 def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
@@ -1439,13 +1498,14 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
         units_end = i  # position right after closing }
 
         # Find the first ["name"] after the units block -- that's the group name
-        name_match = re.search(r'\["name"\]\s*=\s*"([^"]*)"', text[units_end:units_end + 500])
+        name_match = re.search(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"', text[units_end:units_end + 500])
         if not name_match:
             raise ValueError(f"Group name not found after units block for group {group_id}")
 
         abs_start = units_end + name_match.start(1)
         abs_end = units_end + name_match.end(1)
-        text = text[:abs_start] + new_group_name + text[abs_end:]
+        # See _replace_unit_name for the escape rationale — same bug class.
+        text = text[:abs_start] + _lua_str_escape(new_group_name) + text[abs_end:]
 
     return text
 
@@ -2628,13 +2688,17 @@ def _find_replace_names(text: str, find: str, replace: str, use_regex: bool,
             count += n
         return new_s, n > 0
 
-    # Find all name fields and replace
+    # Find all name fields and replace.
+    # The capture is the raw Lua-escaped value; user-supplied find/replace
+    # strings operate on the unescaped form (matches what the user sees in
+    # the editor). Unescape → replace → re-escape so embedded `"` survives.
     if in_units or in_groups:
-        for m in reversed(list(re.finditer(r'\["name"\]\s*=\s*"([^"]*)"', text))):
-            old_name = m.group(1)
-            new_name, changed = do_replace(old_name)
+        name_re = re.compile(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"')
+        for m in reversed(list(name_re.finditer(text))):
+            old_unescaped = _lua_str_unescape(m.group(1))
+            new_unescaped, changed = do_replace(old_unescaped)
             if changed:
-                text = text[:m.start(1)] + new_name + text[m.end(1):]
+                text = text[:m.start(1)] + _lua_str_escape(new_unescaped) + text[m.end(1):]
 
     return text, count
 
