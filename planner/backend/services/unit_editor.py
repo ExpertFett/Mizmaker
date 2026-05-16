@@ -228,19 +228,22 @@ def _replace_prop_field(text: str, unit_id: int, lua_field: str, new_value: str)
     on player units sits well above unitId in the file, way past the old
     ±3000-char window. Used for voiceCallsignLabel, voiceCallsignNumber,
     and STN_L16 fields.
+
+    Uses _LUA_STR_VALUE so an existing escaped value (e.g. a callsign
+    label containing `\\"`) doesn't truncate the capture at the first
+    inner quote; new_value is _lua_str_escape'd before splicing.
     """
     block_start, block_end = _find_unit_block_bounds(text, unit_id)
     unit_block = text[block_start:block_end]
 
-    pattern = rf'(\["{lua_field}"\]\s*=\s*)"([^"]*)"'
+    pattern = rf'\["{lua_field}"\]\s*=\s*"' + _LUA_STR_VALUE + r'"'
     match = re.search(pattern, unit_block)
     if not match:
         raise ValueError(f"Field {lua_field} not found in unit {unit_id} block")
 
-    abs_start = block_start + match.start()
-    abs_end = block_start + match.end()
-    replacement = f'{match.group(1)}"{new_value}"'
-    return text[:abs_start] + replacement + text[abs_end:]
+    abs_start = block_start + match.start(1)
+    abs_end = block_start + match.end(1)
+    return text[:abs_start] + _lua_str_escape(str(new_value)) + text[abs_end:]
 
 
 def _build_network_list_block(key: str, unit_ids: list, base_indent: str) -> str:
@@ -1537,7 +1540,25 @@ def _replace_weather_field(text: str, field_path: str, new_value) -> str:
 
 
 def _replace_briefing_fields(text: str, value: dict) -> str:
-    """Replace mission briefing text fields (sortie, descriptionText, blue/red task)."""
+    """Replace mission briefing text fields (sortie, descriptionText, blue/red task).
+
+    The old implementation had two coupled bugs that destroyed M5 + M7 on
+    2026-05-15:
+
+    1. Locator regex `"([^"]*)"` truncated at the first `\\"` inside an
+       existing escaped brief — e.g. inches-of-mercury `29.92\\"`. The
+       capture covered only the prefix, leaving the tail of the OLD brief
+       stranded in the file after the new closing `"`. Lua bailed on the
+       first `\\n` it saw outside a string ("'}' expected near '\\'").
+
+    2. The replacement string `rf'\\1"{new_val}"'` was fed to re.sub, which
+       re-interprets `\\`-sequences in replacement text. Escaped backslashes
+       in new_val survived by luck of how re.sub handles unknown escapes,
+       but the path was fragile.
+
+    Both fixed by switching to _LUA_STR_VALUE (walks `\\"`) for the locator
+    and direct splicing of the escaped value (no re.sub on the replacement).
+    """
     field_map = {
         "sortie": "sortie",
         "description": "descriptionText",
@@ -1547,10 +1568,12 @@ def _replace_briefing_fields(text: str, value: dict) -> str:
     for key, lua_key in field_map.items():
         if key not in value:
             continue
-        new_val = str(value[key]).replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-        pattern = rf'(\["{lua_key}"\]\s*=\s*)"([^"]*)"'
-        replacement = rf'\1"{new_val}"'
-        text = re.sub(pattern, replacement, text, count=1)
+        pattern = re.compile(rf'\["{lua_key}"\]\s*=\s*"' + _LUA_STR_VALUE + r'"')
+        m = pattern.search(text)
+        if not m:
+            continue
+        escaped = _lua_str_escape(str(value[key]))
+        text = text[:m.start(1)] + escaped + text[m.end(1):]
     return text
 
 
