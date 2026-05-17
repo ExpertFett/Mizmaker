@@ -407,22 +407,49 @@ def _link_script_files_to_reskeys(
     )
     mission_text = pat_b.sub(_replace_inline, mission_text)
 
-    # Indexed format: a_do_script_file("Moose_.lua") inside trig.actions
-    # gets converted to a_do_script_file(getValueResourceByKey("ResKey_…"))
+    # Indexed format: a_do_script_file("Moose_.lua") inside trig.actions.
+    # Two sub-forms to handle:
+    #   (a) bare quotes  — `a_do_script_file("Moose_.lua")`  (raw Lua code)
+    #   (b) escaped form — `a_do_script_file(\\"Moose_.lua\\")`  (stored
+    #                      inside a Lua-source string literal in trig.actions)
+    # For (a) we rewrite to a getValueResourceByKey indirection so the
+    # ResKey/mapResource mechanism resolves it. For (b) we leave the call
+    # alone — DCS evaluates the trigger source at runtime and resolves the
+    # bare filename against `l10n/DEFAULT/<name>` directly, AND rewriting
+    # the escaped form to the getValueResourceByKey wrapper would require
+    # nesting another layer of `\\"…\\"` which is brittle. Either way we
+    # ALWAYS add the filename to embed_set so the file gets bundled.
     def _replace_indexed(match: re.Match) -> str:
-        fname = match.group(1)
+        escape = match.group(1)  # '' or '\\'
+        fname = match.group(2)
         if fname not in candidate_filenames:
             return match.group(0)
-        key = _ensure_key(fname)
         embed_set.add(fname)
+        if escape:
+            # Escaped form — preserve verbatim. Bundling alone is enough.
+            return match.group(0)
+        # Bare form — rewrite to ResKey indirection (original behaviour).
+        key = _ensure_key(fname)
         return f'a_do_script_file(getValueResourceByKey("{key}"))'
 
+    # Capture an optional backslash so we know which sub-form we hit. The
+    # content `[^"\\]+` rejects both quotes and backslashes (so a stray
+    # `\\` inside a filename — unlikely but possible — doesn't fool us).
     mission_text = re.sub(
-        r'a_do_script_file\s*\(\s*"([^"]+)"\s*\)', _replace_indexed, mission_text,
+        r'a_do_script_file\s*\(\s*(\\?)"([^"\\]+)\\?"\s*\)',
+        _replace_indexed, mission_text,
     )
 
     if not needed_for:
-        return mission_text, "", set()
+        # No ResKeys were allocated (e.g. every match was an escaped-form
+        # indexed call that doesn't need ResKey indirection). Skip the
+        # mapResource emit but STILL return embed_set — the bundling
+        # step downstream depends on it to write the .lua files into
+        # the .miz at l10n/DEFAULT/. Returning an empty set here was
+        # the source of the v0.9.46 "DCS hangs at Terrain Init" bug:
+        # the trigger references Moose_.lua / TIC_v1.1.lua but the
+        # files never got bundled.
+        return mission_text, "", embed_set
 
     # Re-emit the mapResource block with the additional entries appended.
     # If the original was empty / missing we synthesize a fresh one.
@@ -498,11 +525,25 @@ def _scan_script_file_references(mission_text: str) -> set[str]:
     Both rendering shapes are picked up:
       - inline:  ["predicate"] = "a_do_script_file", ["file"] = "Moose_.lua"
       - indexed: a_do_script_file("Moose_.lua")  (in trig.actions[N])
+
+    The indexed form is stored inside a Lua-source string literal:
+        [1] = "a_do_script_file(\\"Moose_.lua\\")"
+    so the inner `"` chars appear as `\\"` (backslash + quote) in the
+    raw file bytes Python reads. The optional `\\?` in the regex makes
+    it tolerant of both the unescaped form (rare — only present when
+    the trigger source isn't wrapped in another string literal) and
+    the escaped form (the common case in trig.actions arrays). Pre-
+    v0.9.46 a bare quote-only pattern missed the escaped form, so the
+    script-auto-bundling silently skipped and DCS hung at terrain
+    init looking for the missing Moose_.lua / TIC_v1.1.lua.
     """
     import re as _re
     refs: set[str] = set()
-    # Indexed: bare function call as a string in trig.actions
-    for m in _re.finditer(r'a_do_script_file\s*\(\s*"([^"]+)"\s*\)', mission_text):
+    # Indexed: function call inside trig.actions, with or without
+    # backslash-escaping on the surrounding quotes.
+    for m in _re.finditer(
+        r'a_do_script_file\s*\(\s*\\?"([^"\\]+)\\?"\s*\)', mission_text,
+    ):
         refs.add(m.group(1))
     # Inline: ["file"] = "..." inside an a_do_script_file action block.
     # Match "file" key followed (within ~200 chars) by predicate=a_do_script_file

@@ -565,3 +565,63 @@ class TestWaypointTasks:
             f"WP2 missing t+11 token: {wp2_name!r}"
         assert "end point" in wp2_name, \
             f"WP2 original 'end point' text was stripped: {wp2_name!r}"
+
+
+# ---------------------------------------------------------------------------
+# Script auto-bundling (v0.9.47 — fixed escaped-form indexed do_script_file)
+# ---------------------------------------------------------------------------
+
+class TestScriptAutoBundle:
+    """Guard the regression that hung DCS at Terrain Init on 2026-05-17.
+
+    The user's .miz stored its TIC + MOOSE init triggers in the INDEXED
+    `trig.actions[N] = "..."` form, where the actions are raw Lua source
+    strings stored inside Lua string literals. The escape rule produces:
+
+        [1] = "a_do_script_file(\\"Moose_.lua\\")",
+
+    so the inner `"` chars appear as `\\"` in the file bytes. The pre-v0.9.47
+    scanner regex `a_do_script_file\\s*\\(\\s*"([^"]+)"\\s*\\)` required
+    BARE `"`, so it missed the escaped form, the bundling step skipped, and
+    DCS hung looking for the missing Moose_.lua / TIC_v1.1.lua at l10n/DEFAULT/.
+
+    These tests are unit tests on _scan_script_file_references — much
+    cheaper than a full upload/download round-trip since the regex is
+    self-contained.
+    """
+
+    def test_scanner_finds_bare_form(self):
+        from services.miz_editor import _scan_script_file_references
+        sample = 'a_do_script_file("Moose_.lua")'
+        assert _scan_script_file_references(sample) == {"Moose_.lua"}
+
+    def test_scanner_finds_escaped_form(self):
+        """The form actually emitted into trig.actions[N] = "..." strings."""
+        from services.miz_editor import _scan_script_file_references
+        sample = r'[1] = "a_do_script_file(\"Moose_.lua\")",'
+        assert _scan_script_file_references(sample) == {"Moose_.lua"}
+
+    def test_scanner_finds_both_forms_together(self):
+        """A mission can mix forms (e.g. bare in one trigger source string,
+        inline `["file"]` in another). Both must be collected."""
+        from services.miz_editor import _scan_script_file_references
+        sample = (
+            r'[1] = "a_do_script_file(\"Moose_.lua\")",' "\n"
+            r'[2] = "a_do_script_file(\"TIC_v1.1.lua\")",'
+        )
+        assert _scan_script_file_references(sample) == {"Moose_.lua", "TIC_v1.1.lua"}
+
+    def test_link_script_files_preserves_escaped_calls_but_still_embeds(self):
+        """The ResKey rewrite is for the inline `["file"]` form. The
+        escaped indexed form should be left verbatim (rewriting it would
+        require nesting another layer of `\\"…\\"` which is brittle), but
+        the file MUST still land in embed_set so the bundler writes it."""
+        from services.miz_editor import _link_script_files_to_reskeys
+        sample = r'[1] = "a_do_script_file(\"Moose_.lua\")",'
+        new_text, _, embed = _link_script_files_to_reskeys(
+            sample, "", {"Moose_.lua"},
+        )
+        assert "Moose_.lua" in embed, \
+            f"escaped-form indexed call should add to embed_set; got {embed}"
+        assert r'a_do_script_file(\"Moose_.lua\")' in new_text, \
+            f"escaped-form call should NOT be rewritten in-place; got: {new_text!r}"
