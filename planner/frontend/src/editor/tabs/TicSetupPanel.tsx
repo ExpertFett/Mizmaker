@@ -397,7 +397,6 @@ export function TicSetupPanel() {
   const addEdit = useEditStore((s) => s.addEdit);
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
-  const [applied, setApplied] = useState(false);
 
   // v0.9.42 — TIC + waypoint task integration (v1: goto / goto_at_time)
   // Per-WP task assignments, keyed by groupId then wpIndex (1-based DCS index).
@@ -465,7 +464,6 @@ export function TicSetupPanel() {
       }
 
       setAssignments(result);
-      setApplied(false);
     } catch (err) {
       console.error('[TIC] generateAssignments error:', err);
       setAssignments([]);
@@ -637,7 +635,6 @@ export function TicSetupPanel() {
       return next;
     });
     setDirtyGroups(new Set());
-    setApplied(true);
   }, [assignments, addEdit, taskAssignments]);
 
   // Summary stats — must be before any early return to satisfy Rules of Hooks
@@ -684,7 +681,7 @@ export function TicSetupPanel() {
         <div style={{ display: 'flex', gap: 6 }}>
           <select
             value={coalitionFilter}
-            onChange={(e) => { setCoalitionFilter(e.target.value as any); setApplied(false); }}
+            onChange={(e) => setCoalitionFilter(e.target.value as any)}
             style={selectStyle}
           >
             <option value="all">Both Sides</option>
