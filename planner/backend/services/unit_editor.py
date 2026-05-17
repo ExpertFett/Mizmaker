@@ -1583,13 +1583,14 @@ def _set_lua_scalar_field(text: str, block_start: int, block_end: int,
     return text[:insert_at] + insertion + text[insert_at:]
 
 
-# Pattern that matches a TIC `t+N` offset token, case-insensitive, with
-# word boundaries so we don't strip something like `xt+5` (unlikely but
-# safer). Mirrors the Lua pattern `t%+(%d+)` from TIC_v1.1.lua::extractOffsetTime,
-# but with stricter boundaries on the Python side — the planner is the
-# authoritative writer, so we can be a little more conservative than the
-# parser.
-_TIC_OFFSET_RE = re.compile(r'(?i)(?:(?<=^)|(?<=\s))t\+\d+(?=\s|$)')
+# Pattern that matches a TIC `t+N` offset token, case-insensitive.
+# Mirrors the Lua pattern `t%+(%d+)` from TIC_v1.1.lua::extractOffsetTime,
+# wrapped with word boundaries so we don't strip something like `xt+5`
+# (unlikely but defensive — the planner is the authoritative writer so
+# we can be conservative). `\b` is a position assertion between word
+# `[a-zA-Z0-9_]` and non-word characters; for space-separated TIC names
+# it matches at exactly the boundaries we want.
+_TIC_OFFSET_RE = re.compile(r'\bt\+\d+\b', re.IGNORECASE)
 
 
 def _set_offset_in_tic_name(name: str, minutes: int | None) -> str:

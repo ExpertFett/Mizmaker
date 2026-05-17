@@ -935,7 +935,16 @@ export function TicSetupPanel() {
                             </thead>
                             <tbody>
                               {selWaypoints.map((wp) => {
-                                const wpIndex = wp.waypoint_number;
+                                // `wp.waypoint_number` is 0-indexed from the
+                                // parser (it follows the F/A-18 steerpoint
+                                // convention — see miz_parser.py:737). DCS
+                                // Lua tables and the TIC editor are 1-indexed
+                                // though, so convert at the boundary: the
+                                // user sees WP1/WP2/WP3 (matches DCS ME),
+                                // the backend receives 1-indexed wpIndex
+                                // (matches its `_find_waypoint_block_bounds`
+                                // lookup which scans for `[N] = {`).
+                                const wpIndex = wp.waypoint_number + 1;
                                 const groupTasks = taskAssignments.get(sel.groupId);
                                 const fromState = groupTasks?.get(wpIndex);
                                 // Seed from the waypoint NAME, not from DCS-native
