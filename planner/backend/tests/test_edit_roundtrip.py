@@ -625,3 +625,88 @@ class TestScriptAutoBundle:
             f"escaped-form indexed call should add to embed_set; got {embed}"
         assert r'a_do_script_file(\"Moose_.lua\")' in new_text, \
             f"escaped-form call should NOT be rewritten in-place; got: {new_text!r}"
+
+
+# ---------------------------------------------------------------------------
+# TIC-rename auto-clears scheduling locks (v0.9.48 — DCS warning fix)
+# ---------------------------------------------------------------------------
+
+class TestTicRenameClearsLocks:
+    """When a group is renamed to TIC format the planner clears
+    ETA_locked + speed_locked on every waypoint. TIC's runtime drives
+    its own scheduling and emits warnings of the form
+    "All waypoints (N-M) have locked speed and surrounded by waypoints
+    with locked time" when those DCS-native flags remain true."""
+
+    def test_tic_rename_clears_locks_on_every_waypoint(self, client, uploaded_session):
+        sid = uploaded_session["sessionId"]
+        # simple.miz's group 2 (carrier) starts with ETA_locked=true on
+        # WP1 and speed_locked=true on multiple WPs — a perfect target.
+        edit = {
+            "field": "groupRename",
+            "value": {
+                "groupId": 2,
+                "newGroupName": "TIC!Test-Formation#",
+                "unitNames": {},
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        # After the rename, every waypoint in group 2's route must have
+        # both flags false. We use the production locator (same trap as
+        # TestWaypointTasks — nested ComboTask `[N]` would fool a
+        # depth-blind regex).
+        from services.unit_editor import (
+            _find_route_points_bounds, _find_waypoint_block_bounds,
+            _enumerate_waypoint_indices,
+        )
+        mission = files["mission"]
+        ps, pe = _find_route_points_bounds(mission, 2)
+        indices = _enumerate_waypoint_indices(mission, 2)
+        assert indices, "no waypoints found — fixture changed?"
+        for idx in indices:
+            ws, we = _find_waypoint_block_bounds(mission, ps, pe, idx)
+            region = mission[ws:we]
+            eta_m = re.search(r'\["ETA_locked"\]\s*=\s*(\w+)', region)
+            spd_m = re.search(r'\["speed_locked"\]\s*=\s*(\w+)', region)
+            assert eta_m and eta_m.group(1) == "false", \
+                f"WP{idx} ETA_locked not cleared; saw {eta_m.group(1) if eta_m else 'absent'}"
+            assert spd_m and spd_m.group(1) == "false", \
+                f"WP{idx} speed_locked not cleared; saw {spd_m.group(1) if spd_m else 'absent'}"
+
+    def test_non_tic_rename_leaves_locks_alone(self, client, uploaded_session):
+        """Renaming to a NON-TIC name shouldn't touch the locks — the
+        clear is gated on the TIC prefix. Mission designers who rename
+        groups for other reasons keep their original scheduling intact."""
+        sid = uploaded_session["sessionId"]
+        edit = {
+            "field": "groupRename",
+            "value": {
+                "groupId": 2,
+                "newGroupName": "Just A Regular Name",
+                "unitNames": {},
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        from services.unit_editor import (
+            _find_route_points_bounds, _find_waypoint_block_bounds,
+        )
+        mission = files["mission"]
+        ps, pe = _find_route_points_bounds(mission, 2)
+        # WP1 of group 2 in simple.miz starts with ETA_locked = true.
+        ws, we = _find_waypoint_block_bounds(mission, ps, pe, 1)
+        region = mission[ws:we]
+        m = re.search(r'\["ETA_locked"\]\s*=\s*(\w+)', region)
+        assert m and m.group(1) == "true", \
+            f"non-TIC rename should leave WP1 ETA_locked=true; saw {m.group(1) if m else 'absent'}"
+
+    def test_is_tic_format_name_predicate(self):
+        """Spot-check the prefix predicate so future TIC name format
+        changes get caught here before they regress the auto-clear."""
+        from services.unit_editor import _is_tic_format_name
+        assert _is_tic_format_name("TIC!A-1st-Bn-69th-Armor#")
+        assert _is_tic_format_name("TIC:B-2nd-Bn-34th-Armor#")
+        assert _is_tic_format_name("TIC!1-4th-Gds-Tank-Bn+#")  # leader + grouped
+        assert not _is_tic_format_name("Ground-1")
+        assert not _is_tic_format_name("ticky")          # case-sensitive on purpose
+        assert not _is_tic_format_name("")
+        assert not _is_tic_format_name(None)

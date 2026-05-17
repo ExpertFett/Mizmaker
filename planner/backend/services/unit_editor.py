@@ -1720,6 +1720,90 @@ def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# TIC-prep: clear DCS-native scheduling locks on a group's waypoints
+# ---------------------------------------------------------------------------
+
+def _enumerate_waypoint_indices(text: str, group_id: int) -> list[int]:
+    """Return the 1-based waypoint indices present in a group's route, in order.
+
+    Scans the route's ["points"] block at depth 1 (so nested ComboTask sub-
+    table indices don't leak in). Useful for "for every WP of this group"
+    operations like the TIC scheduling-lock clearer below.
+    """
+    points_start, points_end = _find_route_points_bounds(text, group_id)
+    region = text[points_start:points_end]
+    indices: list[int] = []
+    depth = 0
+    i = 0
+    anchor = re.compile(r'\[(\d+)\]\s*=\s*\n?\s*\{')
+    while i < len(region):
+        ch = region[i]
+        if ch == '{':
+            depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            depth -= 1
+            i += 1
+            continue
+        if depth == 1:
+            m = anchor.match(region, i)
+            if m:
+                indices.append(int(m.group(1)))
+                # Skip past the opening brace so the next iter starts inside
+                # the WP body — at depth 2 — and we don't re-match the same
+                # `[N] =` line.
+                i = m.end()
+                depth += 1
+                continue
+        i += 1
+    return indices
+
+
+def _clear_tic_scheduling_locks(text: str, group_id: int) -> str:
+    """Set ["ETA_locked"] = false and ["speed_locked"] = false on every
+    waypoint of the given group.
+
+    The TIC runtime (TIC_v1.1.lua) drives its own scheduling and speed
+    profiles — when DCS's native ETA_locked / speed_locked stay true on a
+    TIC-managed group's waypoints, DCS tries to enforce its own schedule
+    in parallel and TIC emits warnings of the form "All waypoints (N-M)
+    have locked speed and surrounded by waypoints with locked time".
+
+    Invoked automatically by _rename_group_and_units whenever a group is
+    renamed to a TIC format (prefix `TIC!` or `TIC:`). Walk WPs in
+    REVERSE index order so earlier splices don't shift offsets used for
+    later indices.
+    """
+    indices = _enumerate_waypoint_indices(text, group_id)
+    for wp_idx in sorted(indices, reverse=True):
+        # Re-find bounds each iteration — _set_lua_scalar_field can change
+        # the byte length of the file (when it inserts a missing field).
+        ps, pe = _find_route_points_bounds(text, group_id)
+        ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
+        # Clear speed_locked first (later in field order → earlier byte
+        # mutation if anything inserts), then ETA_locked. Both calls are
+        # idempotent on already-false values; _set_lua_scalar_field
+        # mutates in place when the field exists and only inserts when
+        # it's truly absent (rare on DCS-emitted WPs).
+        text = _set_lua_scalar_field(text, ws, we, "speed_locked", "false")
+        ps, pe = _find_route_points_bounds(text, group_id)
+        ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
+        text = _set_lua_scalar_field(text, ws, we, "ETA_locked", "false")
+    return text
+
+
+def _is_tic_format_name(name: str | None) -> bool:
+    """True iff `name` is in the TIC group-name format the TIC_v1.1.lua
+    script recognises — TIC! (formation leader) or TIC: (member),
+    optionally with a `+` separator. Bookend `#` ends the prefix.
+    """
+    if not name:
+        return False
+    return name.startswith("TIC!") or name.startswith("TIC:")
+
+
+# ---------------------------------------------------------------------------
 # Group-level edit functions
 # ---------------------------------------------------------------------------
 
@@ -1780,6 +1864,13 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
         group_id: The groupId to find.
         new_group_name: New name for the group (None to skip group rename).
         unit_names: Dict of {unitId: newName} for individual unit renames.
+
+    Side effect (v0.9.48): when the new group name is in TIC format
+    (`TIC!` or `TIC:` prefix), every waypoint of the group has its
+    DCS-native ETA_locked + speed_locked cleared. TIC's runtime script
+    drives its own scheduling and complains ("All waypoints have locked
+    speed / locked time") when those flags remain true. The rename is
+    the user's signal that the group is now TIC-managed.
     """
     # Rename individual units first (by unitId -- independent of group position)
     # Process in reverse unitId order to avoid position shifts affecting later renames
@@ -1817,6 +1908,17 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
         abs_end = units_end + name_match.end(1)
         # See _replace_unit_name for the escape rationale — same bug class.
         text = text[:abs_start] + _lua_str_escape(new_group_name) + text[abs_end:]
+
+        # If the user renamed to TIC format, clear DCS-native scheduling
+        # locks on every waypoint of this group. See _clear_tic_scheduling_locks.
+        if _is_tic_format_name(new_group_name):
+            try:
+                text = _clear_tic_scheduling_locks(text, group_id)
+            except ValueError:
+                # Group has no route block (carrier static, infantry with
+                # no waypoints, etc.). Locks-clearing isn't applicable —
+                # silent no-op rather than aborting the rename.
+                pass
 
     return text
 
