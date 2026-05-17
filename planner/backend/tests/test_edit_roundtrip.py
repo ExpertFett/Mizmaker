@@ -710,3 +710,82 @@ class TestTicRenameClearsLocks:
         assert not _is_tic_format_name("ticky")          # case-sensitive on purpose
         assert not _is_tic_format_name("")
         assert not _is_tic_format_name(None)
+
+
+# ---------------------------------------------------------------------------
+# Vetted-asset wins for bundled scripts (v0.9.49 — fixes DCS Terrain Init hang
+# with stale user-supplied Moose_.lua)
+# ---------------------------------------------------------------------------
+
+class TestBundledScriptOverride:
+    """Pre-v0.9.49 the repack preserved a user's pre-existing copy of
+    bundled scripts ("user's own copy wins"). That made DCS hang at
+    Terrain Init when the user's .miz carried a stale Moose_.lua paired
+    with the planner's newer TIC_v1.1.lua — the TIC script called Moose
+    APIs the old Moose didn't have. v0.9.49 flips it: the planner's
+    vetted asset always wins for any referenced bundled script."""
+
+    def _make_miz_with_stale_script(self, mission_text: str, stale_bytes: bytes) -> bytes:
+        """Build a minimal .miz containing the mission + a stale Moose_.lua."""
+        import io as _io, zipfile as _zf
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission_text)
+            z.writestr("l10n/DEFAULT/Moose_.lua", stale_bytes)
+        return buf.getvalue()
+
+    def test_stale_user_moose_gets_replaced_with_vetted(self):
+        """The user's .miz has an older Moose_.lua and a trigger that
+        references it. The output must contain the asset-library bytes,
+        not the user's stale ones."""
+        import io as _io, zipfile as _zf
+        from services.miz_editor import repack_miz, _bundled_script_assets
+
+        # The mission has an escaped-form indexed `a_do_script_file`
+        # reference (the only kind the user's hung mission actually used).
+        mission = (
+            '["trig"] = {\n'
+            '    ["actions"] = {\n'
+            r'        [1] = "a_do_script_file(\"Moose_.lua\")",' "\n"
+            '    },\n'
+            '}\n'
+        )
+        stale_bytes = b"-- THIS IS STALE MOOSE; should be overridden by vetted asset\n"
+        user_miz = self._make_miz_with_stale_script(mission, stale_bytes)
+        # Sanity check the setup
+        with _zf.ZipFile(_io.BytesIO(user_miz)) as zf:
+            assert zf.read("l10n/DEFAULT/Moose_.lua") == stale_bytes
+
+        # Run through repack — no mission edits, no kneeboards, just
+        # exercise the bundled-script override path.
+        out = repack_miz(user_miz, mission)
+
+        assets = _bundled_script_assets()
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            moose = zf.read("l10n/DEFAULT/Moose_.lua")
+        assert moose == assets["Moose_.lua"], \
+            "vetted Moose_.lua should overwrite user's stale copy"
+        assert moose != stale_bytes, \
+            "stale bytes leaked through into the output .miz"
+
+    def test_unreferenced_user_script_passes_through(self):
+        """A user-supplied .lua under l10n/DEFAULT/ that ISN'T one of our
+        bundled assets (e.g. a custom mission script) should be preserved
+        verbatim — the override is gated on `a_do_script_file` references
+        to scripts the planner actually ships."""
+        import io as _io, zipfile as _zf
+        from services.miz_editor import repack_miz
+
+        # Mission has NO a_do_script_file references → nothing to bundle.
+        mission = '["dummy"] = {}\n'
+        user_bytes = b"-- this is the user's own custom_voice.lua, must survive\n"
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission)
+            z.writestr("l10n/DEFAULT/custom_voice.lua", user_bytes)
+        user_miz = buf.getvalue()
+
+        out = repack_miz(user_miz, mission)
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            assert zf.read("l10n/DEFAULT/custom_voice.lua") == user_bytes, \
+                "user's non-bundled .lua got mangled"

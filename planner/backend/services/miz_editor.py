@@ -293,7 +293,6 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
     )
 
     output = io.BytesIO()
-    embedded_paths: set[str] = set()
     map_resource_written = False
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -309,8 +308,18 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     map_resource_written = True
                 else:
                     base = item.filename.rsplit("/", 1)[-1]
-                    if base in auto_embed and item.filename.startswith("l10n/DEFAULT/"):
-                        embedded_paths.add(base)
+                    # v0.9.49 — vetted asset wins for KNOWN bundled scripts.
+                    # The user's .miz may carry a stale copy of Moose_.lua /
+                    # TIC_v1.1.lua / aegis-iads / etc. (e.g. inherited from a
+                    # template mission). DCS hung at Terrain Init when an
+                    # older Moose was paired with a newer TIC that depended
+                    # on its newer APIs. The planner ships a known-working
+                    # combo in assets/scripts/ — for any script we bundle
+                    # AND the mission references, skip the source copy and
+                    # let the auto-embed loop below write the vetted bytes.
+                    if (base in auto_embed
+                        and item.filename.startswith("l10n/DEFAULT/")):
+                        continue
                     zout.writestr(item, zin.read(item.filename))
 
             # If mapResource didn't exist in the original miz, write a new one.
@@ -327,10 +336,12 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                         path = f"KNEEBOARD/{kb['aircraft_type']}/IMAGES/{kb['filename']}"
                     zout.writestr(path, kb["data"])
 
-            # Auto-embed any referenced script files the mission lacks.
+            # Embed every referenced bundled-script file with the vetted
+            # asset-library bytes. v0.9.49 — the source-zip loop above
+            # already skipped any user-supplied copies for these names,
+            # so a single unconditional write per name does the right
+            # thing (no duplicate ZipFile entries, no stale-copy bleed).
             for fname in embed_filenames:
-                if fname in embedded_paths:
-                    continue  # user's own copy wins
                 if fname in script_assets:
                     zout.writestr(f"l10n/DEFAULT/{fname}", script_assets[fname])
     return output.getvalue()
