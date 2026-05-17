@@ -722,99 +722,76 @@ def _lua_flag(flag_id) -> str:
 
 
 def serialize_triggers_to_lua(trigger_data: Dict, indent: str = "\t") -> Tuple[str, str]:
-    """
-    Convert structured trigger JSON back to trig + trigrules Lua blocks.
+    """Convert structured trigger JSON to ``trig`` + ``trigrules`` Lua blocks.
 
-    Returns (trig_lua, trigrules_lua) as strings ready to insert into mission text.
+    v0.9.50 emits the INLINE format DCS's modern me_mission.lua requires:
+
+        ["trigrules"] = {
+            [N] = {
+                ["conditions"] = {},                              -- or inline conds
+                ["actions"] = {
+                    [1] = {["predicate"]="a_do_script_file",      -- INLINE action
+                           ["file"]="Moose_.lua"},
+                },
+                ["comment"] = "...",
+                ["predicate"] = "triggerStart",
+            },
+        },
+
+    The pre-v0.9.50 indexed format
+    (``trigrules[N].actions = { [1] = <int into trig.actions> }``) crashes
+    DCS at mission load with
+    ``./MissionEditor/modules/me_mission.lua:8831: attempt to index local
+    'v' (a number value)`` — its ``fixTriggers`` walks the rule's actions
+    and expects each value to be a dict; an int leaks through.
+
+    The ``trig`` block stays alongside as a stub so older / mixed-format
+    consumers still find the expected top-level keys. Only ``flag`` (per-
+    rule enabled state) is populated; ``actions`` / ``conditions`` /
+    ``func`` are empty since the inline rule bodies own those now.
+
+    Returns ``(trig_lua, trigrules_lua)`` ready to splice into the mission.
     """
     rules = trigger_data.get("rules", [])
 
-    # Build indexed condition/action tables
-    conditions_lua = {}
-    actions_lua = {}
-    flags_lua = {}
-    func_lua = {}
-    trigrules_lua = {}
-
-    cond_idx = 1
-    act_idx = 1
-
+    # ── flag table (per-rule enabled state) ─────────────────────────────
+    flags_lua: Dict[int, bool] = {}
     for rule in rules:
         if not isinstance(rule, dict):
             continue
-        rule_id = rule.get("id")
-        if rule_id is None:
+        rid = rule.get("id")
+        if rid is None:
             continue
+        flags_lua[int(rid)] = bool(rule.get("enabled", True))
 
-        # Map this rule's conditions to global indices. Coerce non-dict
-        # entries to empty so we don't blow up on malformed triggers.
-        rule_cond_indices = {}
-        rule_conditions = rule.get("conditions", [])
-        if not isinstance(rule_conditions, list):
-            rule_conditions = []
-        for i, cond in enumerate(rule_conditions, 1):
-            if not isinstance(cond, dict):
-                continue
-            conditions_lua[cond_idx] = _condition_to_lua(cond)
-            rule_cond_indices[i] = cond_idx
-            cond_idx += 1
-
-        # Map this rule's actions to global indices
-        rule_act_indices = {}
-        rule_actions = rule.get("actions", [])
-        if not isinstance(rule_actions, list):
-            rule_actions = []
-        for i, act in enumerate(rule_actions, 1):
-            if not isinstance(act, dict):
-                continue
-            actions_lua[act_idx] = _action_to_lua(act)
-            rule_act_indices[i] = act_idx
-            act_idx += 1
-
-        # Build func entry (wraps conditions in if/then)
-        cond_checks = " and ".join(
-            f"condition({ci})" for ci in sorted(rule_cond_indices.values())
-        )
-        act_calls = "; ".join(
-            f"action({ai})" for ai in sorted(rule_act_indices.values())
-        )
-        func_lua[rule_id] = f"if {cond_checks or 'true'} then {act_calls}; end"
-
-        # Enabled flag
-        flags_lua[rule_id] = rule.get("enabled", True)
-
-        # Predicate
-        predicate = rule.get("predicate", "triggerOnce")
-        if rule.get("eventType") == "continuous":
-            predicate = "triggerContinuous"
-        elif rule.get("eventType") == "onMissionStart":
-            predicate = "triggerStart"
-        elif rule.get("eventType") == "once":
-            predicate = "triggerOnce"
-
-        trigrules_lua[rule_id] = {
-            "conditions": rule_cond_indices,
-            "actions": rule_act_indices,
-            "comment": rule.get("name", f"Trigger {rule_id}"),
-            "eventlist": "",
-            "predicate": predicate,
-        }
-
-    # Build trig table
     trig_dict = {
-        "actions": conditions_lua and actions_lua or {},
-        "conditions": conditions_lua,
-        "func": func_lua,
+        "actions": {},
+        "conditions": {},
+        "func": {},
         "flag": flags_lua,
         "funcStartup": {},
         "events": {},
         "customStartup": {},
     }
-    # Fix: actions should be actions_lua
-    trig_dict["actions"] = actions_lua
-
     trig_str = f'{indent}["trig"] = {_serialize_lua_value(trig_dict, indent)},'
-    trigrules_str = f'{indent}["trigrules"] = {_serialize_lua_value(trigrules_lua, indent)},'
+
+    # ── trigrules in inline format ──────────────────────────────────────
+    # Reuse _render_inline_rule so the format matches what
+    # append_inline_rules emits exactly (one less place for drift).
+    inner = indent + "\t"
+    trigrules_lines = [f'{indent}["trigrules"] = ', f'{indent}{{']
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        rid = rule.get("id")
+        if rid is None:
+            continue
+        rendered = _render_inline_rule(rule, int(rid), indent=inner)
+        # _render_inline_rule emits a `[N] = { ... }` block without a
+        # trailing comma; add one so consecutive rules separate cleanly.
+        trigrules_lines.append(rendered + ",")
+    trigrules_lines.append(f'{indent}}},')
+    trigrules_str = "\n".join(trigrules_lines)
 
     return trig_str, trigrules_str
 

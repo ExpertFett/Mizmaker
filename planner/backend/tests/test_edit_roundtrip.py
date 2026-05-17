@@ -789,3 +789,69 @@ class TestBundledScriptOverride:
         with _zf.ZipFile(_io.BytesIO(out)) as zf:
             assert zf.read("l10n/DEFAULT/custom_voice.lua") == user_bytes, \
                 "user's non-bundled .lua got mangled"
+
+
+# ---------------------------------------------------------------------------
+# Trigger serializer emits inline format (v0.9.50 — DCS me_mission.lua fix)
+# ---------------------------------------------------------------------------
+
+class TestInlineTriggerSerialization:
+    """Until v0.9.50 `serialize_triggers_to_lua` emitted the legacy indexed
+    format — `trigrules[N].actions = {[1] = <int>}` pointing back into a
+    parallel `trig.actions` table. Modern DCS me_mission.lua's `fixTriggers`
+    walks the rule's actions and indexes each value as a dict, so the
+    integer leak produced `attempt to index local 'v' (a number value)`
+    and DCS hung at Terrain Init.
+
+    The serializer now emits inline format — each action carries its own
+    `{predicate, params}` dict inside the rule. These tests pin that shape."""
+
+    def test_do_script_file_rule_emits_inline_action(self):
+        from services.trigger_editor import serialize_triggers_to_lua
+        td = {
+            "rules": [{
+                "id": 1, "name": "Script: MOOSE Framework",
+                "eventType": "onMissionStart", "enabled": True,
+                "conditions": [],
+                "actions": [{"type": "DO_SCRIPT_FILE", "params": {"file": "Moose_.lua"}}],
+            }],
+        }
+        _, trigrules = serialize_triggers_to_lua(td)
+        # Must contain a structured action with predicate + file fields
+        assert re.search(
+            r'\["predicate"\]\s*=\s*"a_do_script_file"', trigrules,
+        ), "missing inline a_do_script_file predicate"
+        assert re.search(
+            r'\["file"\]\s*=\s*"Moose_\.lua"', trigrules,
+        ), "missing inline file=Moose_.lua param"
+        # Must NOT contain the legacy indexed form (int leading to crash).
+        assert not re.search(
+            r'\["actions"\]\s*=\s*\{\s*\[\d+\]\s*=\s*\d+\s*,', trigrules,
+        ), f"indexed-format actions leaked through:\n{trigrules}"
+
+    def test_trig_block_actions_table_is_empty(self):
+        """In inline format the per-rule action data lives inside trigrules.
+        `trig.actions` should be an empty table — the old role of storing
+        Lua source strings indexed from trigrules is obsolete and the
+        strings tripped the v0.9.47 escaped-quote bundling scanner."""
+        from services.trigger_editor import serialize_triggers_to_lua
+        td = {"rules": [{
+            "id": 1, "name": "x", "eventType": "once", "enabled": True,
+            "conditions": [],
+            "actions": [{"type": "DO_SCRIPT_FILE", "params": {"file": "any.lua"}}],
+        }]}
+        trig_str, _ = serialize_triggers_to_lua(td)
+        assert re.search(r'\["actions"\]\s*=\s*\{\s*\}', trig_str), \
+            f"trig.actions should be empty in inline format; got:\n{trig_str}"
+
+    def test_rule_enabled_state_lands_in_flag_table(self):
+        from services.trigger_editor import serialize_triggers_to_lua
+        td = {"rules": [
+            {"id": 1, "name": "on", "eventType": "once", "enabled": True,
+             "conditions": [], "actions": []},
+            {"id": 2, "name": "off", "eventType": "once", "enabled": False,
+             "conditions": [], "actions": []},
+        ]}
+        trig_str, _ = serialize_triggers_to_lua(td)
+        assert re.search(r'\[1\]\s*=\s*true', trig_str)
+        assert re.search(r'\[2\]\s*=\s*false', trig_str)
