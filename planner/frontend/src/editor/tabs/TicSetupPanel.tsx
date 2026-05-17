@@ -938,10 +938,17 @@ export function TicSetupPanel() {
                                 const wpIndex = wp.waypoint_number;
                                 const groupTasks = taskAssignments.get(sel.groupId);
                                 const fromState = groupTasks?.get(wpIndex);
-                                // Seed from existing .miz value when state has no entry
+                                // Seed from the waypoint NAME, not from DCS-native
+                                // eta_locked — TIC ignores DCS scheduling and parses
+                                // `t+N` out of the name string at runtime
+                                // (TIC_v1.1.lua::extractOffsetTime). Mirror the same
+                                // regex shape here so the dropdown shows what the
+                                // mission designer authored.
+                                const tNameMatch = (wp.waypoint_name || '').match(/\bt\+(\d+)\b/i);
+                                const nameMinutes = tNameMatch ? parseInt(tNameMatch[1], 10) : 0;
                                 const action: WpActionValue = fromState?.action
-                                  ?? (wp.eta_locked ? 'goto_at_time' : 'goto');
-                                const etaSeconds = fromState?.eta_seconds ?? wp.eta_seconds ?? 0;
+                                  ?? (tNameMatch ? 'goto_at_time' : 'goto');
+                                const etaSeconds = fromState?.eta_seconds ?? (nameMinutes * 60);
                                 const actionDef = WP_ACTIONS.find((x) => x.value === action);
                                 const isV1 = actionDef?.v1 ?? false;
                                 const touched = fromState !== undefined;
@@ -967,7 +974,7 @@ export function TicSetupPanel() {
                                     <td style={wpTdStyle}>
                                       <select
                                         value={action}
-                                        onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue, wp.eta_seconds ?? 0)}
+                                        onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue, nameMinutes * 60)}
                                         style={{
                                           background: '#262626', border: '1px solid #3a3a3a',
                                           color: isV1 ? '#e0e0e0' : '#888888',

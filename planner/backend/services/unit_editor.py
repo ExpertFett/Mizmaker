@@ -1583,6 +1583,90 @@ def _set_lua_scalar_field(text: str, block_start: int, block_end: int,
     return text[:insert_at] + insertion + text[insert_at:]
 
 
+# Pattern that matches a TIC `t+N` offset token, case-insensitive, with
+# word boundaries so we don't strip something like `xt+5` (unlikely but
+# safer). Mirrors the Lua pattern `t%+(%d+)` from TIC_v1.1.lua::extractOffsetTime,
+# but with stricter boundaries on the Python side — the planner is the
+# authoritative writer, so we can be a little more conservative than the
+# parser.
+_TIC_OFFSET_RE = re.compile(r'(?i)(?:(?<=^)|(?<=\s))t\+\d+(?=\s|$)')
+
+
+def _set_offset_in_tic_name(name: str, minutes: int | None) -> str:
+    """Insert / replace / remove the TIC `t+N` offset token in a waypoint name.
+
+    `minutes` semantics:
+        None  -> strip any `t+N` token; leave the rest intact.
+        int   -> replace existing `t+N` with `t+<minutes>`, or prepend
+                 the new token if none exists.
+
+    Other TIC tokens in the name (hdg=, speed=, "phase", roe=, flag=, etc.)
+    are preserved unchanged. Whitespace is normalized to single spaces and
+    trimmed; an empty result is allowed (and means "no TIC directives").
+    """
+    name = name or ""
+    if minutes is None:
+        cleaned = _TIC_OFFSET_RE.sub('', name)
+        return re.sub(r'\s+', ' ', cleaned).strip()
+
+    new_token = f't+{int(minutes)}'
+    if _TIC_OFFSET_RE.search(name):
+        replaced = _TIC_OFFSET_RE.sub(new_token, name, count=1)
+        return re.sub(r'\s+', ' ', replaced).strip()
+    rest = re.sub(r'\s+', ' ', name).strip()
+    if rest:
+        return f'{new_token} {rest}'
+    return new_token
+
+
+def _replace_waypoint_name(text: str, group_id: int, wp_index: int, new_name: str) -> str:
+    """Surgically replace the ["name"] field of a specific waypoint.
+
+    Uses the (group-bounded) waypoint locator and the same Lua-escape
+    treatment as _replace_unit_name — embedded quotes / backslashes in
+    user-supplied TIC tokens (rare, but `flag+X` style identifiers
+    could theoretically contain weird chars) won't break the .miz.
+    """
+    points_start, points_end = _find_route_points_bounds(text, group_id)
+    wp_start, wp_end = _find_waypoint_block_bounds(text, points_start, points_end, wp_index)
+    wp_region = text[wp_start:wp_end]
+
+    name_pattern = re.compile(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"')
+    m = name_pattern.search(wp_region)
+    if not m:
+        # Waypoint has no ["name"] field. Insert one before the
+        # block's closing `}`. This is uncommon — DCS-emitted WPs
+        # always carry a name — but we don't want a silent noop.
+        last_brace = wp_region.rfind('}')
+        if last_brace < 0:
+            return text
+        indent_m = re.search(r'\n(\s*)\["[^"]+"\]\s*=', wp_region)
+        indent = indent_m.group(1) if indent_m else '\t\t\t\t\t\t\t\t\t\t\t\t'
+        insertion = f'{indent}["name"] = "{_lua_str_escape(new_name)}",\n'
+        insert_at = wp_start + last_brace
+        return text[:insert_at] + insertion + text[insert_at:]
+
+    abs_start = wp_start + m.start(1)
+    abs_end = wp_start + m.end(1)
+    return text[:abs_start] + _lua_str_escape(new_name) + text[abs_end:]
+
+
+def _read_waypoint_name(text: str, group_id: int, wp_index: int) -> str:
+    """Return the current (UNESCAPED) ["name"] value for a waypoint, or ''.
+
+    Used by _replace_waypoint_tasks to preserve other TIC tokens
+    around the one we're mutating. Empty string for waypoints with
+    no name field (defensive).
+    """
+    points_start, points_end = _find_route_points_bounds(text, group_id)
+    wp_start, wp_end = _find_waypoint_block_bounds(text, points_start, points_end, wp_index)
+    wp_region = text[wp_start:wp_end]
+    m = re.search(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"', wp_region)
+    if not m:
+        return ''
+    return _lua_str_unescape(m.group(1))
+
+
 def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
     """Apply per-waypoint task selections to a group's route.
 
@@ -1593,44 +1677,44 @@ def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
           "eta_seconds": int,    # only used when action == "goto_at_time"
         }
 
+    v1 semantics (corrected from v0.9.42-44, which incorrectly targeted
+    DCS-native ETA/ETA_locked — those fields are not read by the TIC
+    runtime script `TIC_v1.1.lua`):
+
+        TIC parses the waypoint NAME for behavioural tokens at runtime —
+        GLSCO_ROUTE:extractOffsetTime() matches `t%+(%d+)`. So the only
+        thing this handler needs to do is surgically maintain the `t+N`
+        token inside each target waypoint's name field. All other tokens
+        in the name (hdg=, speed=, roe=, "phase", flag=, etc.) are
+        preserved verbatim.
+
     Mutation rules:
-        action == "goto"          -> ["ETA_locked"] = false
-        action == "goto_at_time"  -> ["ETA"] = <eta_seconds>, ["ETA_locked"] = true
+        action == "goto"          -> strip any `t+N` from the name
+        action == "goto_at_time"  -> set `t+<round(eta_seconds/60)>` in
+                                     the name (replace existing or prepend)
 
-    Both fields are written into the waypoint block in place. DCS-emitted
-    waypoints always carry ETA + ETA_locked, so this is normally a value
-    swap rather than an insertion — `_set_lua_scalar_field` handles the
-    rare "field absent" case gracefully.
-
-    Process waypoints in REVERSE index order so earlier-positioned splices
-    don't shift offsets we'd need for later indices.
+    Process waypoints in REVERSE wpIndex order so earlier-positioned
+    splices don't shift offsets we'd need for later indices.
     """
     if not tasks:
         return text
 
-    points_start, points_end = _find_route_points_bounds(text, group_id)
-
-    # Sort descending by wpIndex so each mutation only affects bytes BEFORE
-    # the waypoints we haven't touched yet.
     for spec in sorted(tasks, key=lambda t: int(t.get("wpIndex", 0)), reverse=True):
         wp_idx = int(spec.get("wpIndex"))
         action = str(spec.get("action", "goto"))
-        # Re-locate points bounds each time — earlier mutations may have
-        # shifted the closing brace position (insertions extend the block).
-        ps, pe = _find_route_points_bounds(text, group_id)
-        wp_start, wp_end = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
-
+        if action not in ("goto", "goto_at_time"):
+            # Unknown verb (e.g. v2 placeholder leaking through). Skip;
+            # dispatcher will record noop status.
+            continue
+        current_name = _read_waypoint_name(text, group_id, wp_idx)
         if action == "goto":
-            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA_locked", "false")
-        elif action == "goto_at_time":
-            eta = int(spec.get("eta_seconds", 0))
-            # ETA mutated first to avoid shifting ETA_locked's position
-            wp_start, wp_end = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
-            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA", str(eta))
-            wp_start, wp_end = _find_waypoint_block_bounds(text, *_find_route_points_bounds(text, group_id), wp_idx)
-            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA_locked", "true")
-        # else: unknown action verb — silently skip; the dispatcher's
-        # noop/skipped status will flag it. (v2 will add hold/engage/etc.)
+            new_name = _set_offset_in_tic_name(current_name, None)
+        else:  # "goto_at_time"
+            minutes = max(0, round(int(spec.get("eta_seconds", 0)) / 60))
+            new_name = _set_offset_in_tic_name(current_name, minutes)
+        if new_name == current_name:
+            continue  # idempotent — skip the splice
+        text = _replace_waypoint_name(text, group_id, wp_idx, new_name)
     return text
 
 

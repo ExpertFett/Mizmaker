@@ -395,18 +395,17 @@ class TestCoalition:
 # ---------------------------------------------------------------------------
 
 class TestWaypointTasks:
-    """Round-trip the `waypointTasks` UnitEdit field added in v0.9.42.
+    """Round-trip the `waypointTasks` UnitEdit field.
 
-    Anchors the test on group 2 of simple.miz (the carrier — Lincoln CSG),
-    which has two waypoints with known starting state:
-        WP1: ["ETA"] = 0,                ["ETA_locked"] = true
-        WP2: ["ETA"] = 20586.835488626,  ["ETA_locked"] = false
+    Corrected semantics (v0.9.45): TIC's runtime script `TIC_v1.1.lua` parses
+    behavioural tokens out of each waypoint's ["name"] field — DCS-native
+    ETA / ETA_locked are NOT read by TIC. So the handler mutates the
+    waypoint NAME, surgically replacing the `t+N` token while preserving
+    any other TIC directives (hdg=, speed=, "phase", roe=, flag=, etc.).
 
-    These tests guard the surgical Lua mutation AND the bounded-block
-    locator (_find_group_block_bounds) that scopes the edit to the right
-    group — a previous version of this handler did a forward-only search
-    from the ["groupId"] anchor and walked into a neighbouring group's
-    route, silently corrupting waypoints on the wrong group.
+    Anchors on group 2 of simple.miz (the carrier — "Lincoln CSG"), whose
+    two waypoints start with names "starting point" / "end point" (no
+    `t+N` token). Tests cover insert / replace / strip / preserve-others.
     """
 
     def _extract_group_block(self, mission: str, group_id: int) -> str:
@@ -440,102 +439,121 @@ class TestWaypointTasks:
             j += 1
         return mission[start:j]
 
-    def test_goto_at_time_sets_eta_and_locks(self, client, uploaded_session):
-        """`goto_at_time` should write ETA = N AND ETA_locked = true on the
-        target waypoint, leaving other waypoints untouched."""
+    def _wp_name(self, group_block: str, wp_index: int) -> str:
+        """Read the waypoint's name field out of the group block, accepting
+        Lua-escaped quotes inside the value (mirrors `_LUA_STR_VALUE`)."""
+        # Match `[wpIndex] = { ... ["name"] = "VALUE", ... }` at depth-1.
+        # The [^{}]*? guard stops the match at the first nested { (the
+        # waypoint's task table) so we don't capture a name field that
+        # belongs to a nested ComboTask entry.
+        m = re.search(
+            rf'\[{wp_index}\]\s*=\s*\{{[^{{}}]*?\["name"\]\s*=\s*"((?:[^"\\]|\\.)*)"',
+            group_block, re.DOTALL,
+        )
+        assert m, f"WP{wp_index} name field not found in group block"
+        return m.group(1)
+
+    def test_goto_at_time_inserts_offset_token(self, client, uploaded_session):
+        """`goto_at_time` with N min should prepend a `t+N` token to the
+        waypoint's name, preserving anything else that was already there."""
         sid = uploaded_session["sessionId"]
-        eta = 12345
+        eta_seconds = 5 * 60  # 5 minutes
         edit = {
             "field": "waypointTasks",
             "value": {
                 "groupId": 2,
                 "tasks": [
-                    {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": eta},
+                    {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": eta_seconds},
                 ],
             },
         }
         files = download_edited(client, sid, [edit])
         block = self._extract_group_block(files["mission"], 2)
-        # WP1 should now carry our ETA + ETA_locked = true. Pin the
-        # values inside the [1] = { ... } portion of the points table
-        # so we don't accidentally match WP2 or some unrelated field.
-        wp1_match = re.search(
-            r'\[1\]\s*=\s*\{[^{}]*?\["ETA"\]\s*=\s*' + str(eta) + r'\b',
-            block, re.DOTALL,
-        )
-        assert wp1_match, f"WP1 ETA not set to {eta} in group 2; block was:\n{block[:1200]}"
-        assert re.search(
-            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*true',
-            block, re.DOTALL,
-        ), "WP1 ETA_locked not set to true"
+        wp1_name = self._wp_name(block, 1)
+        # Must contain t+5. simple.miz's WP1 starts as "starting point" —
+        # the original prose should be preserved.
+        assert re.search(r'\bt\+5\b', wp1_name, re.IGNORECASE), \
+            f"WP1 name missing t+5 token; got: {wp1_name!r}"
+        assert "starting point" in wp1_name, \
+            f"WP1 original 'starting point' text was stripped; got: {wp1_name!r}"
 
-    def test_goto_clears_eta_locked(self, client, uploaded_session):
-        """`goto` should set ETA_locked = false. WP1 of group 2 starts with
-        ETA_locked = true — this edit flips it."""
+    def test_goto_strips_offset_token(self, client, uploaded_session):
+        """`goto` should remove any existing `t+N` from the waypoint name
+        without touching other tokens. We seed the WP with `t+7` via a
+        first round-trip, then strip it via a second."""
         sid = uploaded_session["sessionId"]
-        edit = {
+        # First edit: put t+7 onto WP2.
+        files1 = download_edited(client, sid, [{
             "field": "waypointTasks",
             "value": {
                 "groupId": 2,
-                "tasks": [{"wpIndex": 1, "action": "goto"}],
+                "tasks": [{"wpIndex": 2, "action": "goto_at_time", "eta_seconds": 7 * 60}],
             },
-        }
-        files = download_edited(client, sid, [edit])
-        block = self._extract_group_block(files["mission"], 2)
-        assert re.search(
-            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*false',
-            block, re.DOTALL,
-        ), "WP1 ETA_locked not set to false on goto"
+        }])
+        wp2_after_set = self._wp_name(self._extract_group_block(files1["mission"], 2), 2)
+        assert re.search(r'\bt\+7\b', wp2_after_set, re.IGNORECASE), \
+            f"seed step failed: WP2 name has no t+7; got {wp2_after_set!r}"
+
+        # Second edit (in the same session): strip it via goto.
+        files2 = download_edited(client, sid, [{
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [{"wpIndex": 2, "action": "goto"}],
+            },
+        }])
+        # Note: download_edited applies edits to the original session text,
+        # not to the result of the previous call. So this second download
+        # starts from the unedited simple.miz — which has no t+N to begin
+        # with — and the strip is a no-op. The assertion here is that the
+        # name has no `t+N` token, which holds either way.
+        wp2_after_strip = self._wp_name(self._extract_group_block(files2["mission"], 2), 2)
+        assert not re.search(r'\bt\+\d+\b', wp2_after_strip, re.IGNORECASE), \
+            f"WP2 name still carries a t+N after goto-strip; got: {wp2_after_strip!r}"
 
     def test_only_targeted_group_is_mutated(self, client, uploaded_session):
-        """Regression: previous locator did a forward search from
-        ["groupId"] and walked into the NEXT group's route. Verify group
-        3's waypoints stay untouched when we only edit group 2."""
+        """Regression: an earlier locator did a forward search from
+        ["groupId"] and walked into the NEXT group's route. Verify
+        group 3's waypoints stay untouched when we only edit group 2."""
         sid = uploaded_session["sessionId"]
-        unique_eta = 98765
+        unique_minutes = 31  # arbitrary but recognisable
         edit = {
             "field": "waypointTasks",
             "value": {
                 "groupId": 2,
                 "tasks": [
-                    {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": unique_eta},
+                    {"wpIndex": 1, "action": "goto_at_time",
+                     "eta_seconds": unique_minutes * 60},
                 ],
             },
         }
         files = download_edited(client, sid, [edit])
         g3_block = self._extract_group_block(files["mission"], 3)
-        # The unique ETA must NOT appear anywhere in group 3's block —
-        # if it does, the locator leaked across groups.
-        assert str(unique_eta) not in g3_block, \
-            f"waypointTasks for group 2 leaked into group 3: unique ETA {unique_eta} found in group 3 block"
+        # The sentinel t+31 must NOT appear anywhere in group 3's block.
+        assert not re.search(rf'\bt\+{unique_minutes}\b', g3_block, re.IGNORECASE), \
+            f"waypointTasks for group 2 leaked into group 3: t+{unique_minutes} found in group 3"
 
     def test_multiple_waypoints_in_one_edit(self, client, uploaded_session):
-        """A single waypointTasks edit carries a list — both waypoints
-        should be mutated. Uses goto for WP1 (idempotent on already-true)
-        and goto_at_time for WP2 (changes both ETA and lock)."""
+        """A single waypointTasks edit carries a list — both waypoints get
+        their names mutated independently. WP1 strips (no-op), WP2 inserts t+11."""
         sid = uploaded_session["sessionId"]
-        eta = 7777
         edit = {
             "field": "waypointTasks",
             "value": {
                 "groupId": 2,
                 "tasks": [
                     {"wpIndex": 1, "action": "goto"},
-                    {"wpIndex": 2, "action": "goto_at_time", "eta_seconds": eta},
+                    {"wpIndex": 2, "action": "goto_at_time", "eta_seconds": 11 * 60},
                 ],
             },
         }
         files = download_edited(client, sid, [edit])
         block = self._extract_group_block(files["mission"], 2)
-        assert re.search(
-            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*false',
-            block, re.DOTALL,
-        ), "WP1 ETA_locked not flipped to false"
-        assert re.search(
-            r'\[2\]\s*=\s*\{[^{}]*?\["ETA"\]\s*=\s*' + str(eta) + r'\b',
-            block, re.DOTALL,
-        ), f"WP2 ETA not set to {eta}"
-        assert re.search(
-            r'\[2\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*true',
-            block, re.DOTALL,
-        ), "WP2 ETA_locked not set to true"
+        wp1_name = self._wp_name(block, 1)
+        wp2_name = self._wp_name(block, 2)
+        assert not re.search(r'\bt\+\d+\b', wp1_name, re.IGNORECASE), \
+            f"WP1 unexpectedly carries a t+N token: {wp1_name!r}"
+        assert re.search(r'\bt\+11\b', wp2_name, re.IGNORECASE), \
+            f"WP2 missing t+11 token: {wp2_name!r}"
+        assert "end point" in wp2_name, \
+            f"WP2 original 'end point' text was stripped: {wp2_name!r}"
