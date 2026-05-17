@@ -330,15 +330,84 @@ function buildRealWorldUnitName(
 }
 
 /* ------------------------------------------------------------------ */
+/* Per-waypoint task editing (v1: goto / goto_at_time only)            */
+/* ------------------------------------------------------------------ */
+
+/** Verbs the per-waypoint dropdown exposes. v1 wires only the first two to
+ *  the backend handler; the rest are visible-but-disabled placeholders so
+ *  the vocab is discoverable while v2 is built. */
+const WP_ACTIONS = [
+  { value: 'goto',         label: 'Go to',          v1: true  },
+  { value: 'goto_at_time', label: 'Go to at time',  v1: true  },
+  { value: 'hold',         label: 'Hold (timed)',   v1: false },
+  { value: 'engage_call',  label: 'Engage on call', v1: false },
+  { value: 'follow',       label: 'Follow',         v1: false },
+  { value: 'embark',       label: 'Embark',         v1: false },
+  { value: 'disembark',    label: 'Disembark',      v1: false },
+  { value: 'fire_at_pt',   label: 'Fire at point',  v1: false },
+] as const;
+
+type WpActionValue = (typeof WP_ACTIONS)[number]['value'];
+
+interface WpTaskAssignment {
+  action: WpActionValue;
+  eta_seconds: number;
+}
+
+type GroupStatus = 'grey' | 'amber' | 'green';
+
+function deriveStatus(groupId: number,
+                      appliedGroups: Set<number>,
+                      dirtyGroups: Set<number>): GroupStatus {
+  if (dirtyGroups.has(groupId)) return 'amber';
+  if (appliedGroups.has(groupId)) return 'green';
+  return 'grey';
+}
+
+const STATUS_COLOR: Record<GroupStatus, string> = {
+  grey:  '#6a6a6a',
+  amber: '#d29922',
+  green: '#3fb950',
+};
+
+const STATUS_LABEL: Record<GroupStatus, string> = {
+  grey:  'not applied',
+  amber: 'changes pending',
+  green: 'applied',
+};
+
+function secondsToHHMM(secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function hhmmToSeconds(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10) || 0);
+  return h * 3600 + m * 60;
+}
+
+/* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
 export function TicSetupPanel() {
   const allGroupsRenamer = useMissionStore((s) => s.allGroupsRenamer);
+  const missionGroups = useMissionStore((s) => s.groups);  // for per-group waypoints
   const addEdit = useEditStore((s) => s.addEdit);
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [applied, setApplied] = useState(false);
+
+  // v0.9.42 — TIC + waypoint task integration (v1: goto / goto_at_time)
+  // Per-WP task assignments, keyed by groupId then wpIndex (1-based DCS index).
+  const [taskAssignments, setTaskAssignments] = useState<Map<number, Map<number, WpTaskAssignment>>>(() => new Map());
+  // Groups whose rename has been Applied at least once. Drives green dot.
+  const [appliedGroups, setAppliedGroups] = useState<Set<number>>(() => new Set());
+  // Groups with WP changes since the last Apply for that group. Drives amber dot.
+  const [dirtyGroups, setDirtyGroups] = useState<Set<number>>(() => new Set());
+  // Which group's detail pane shows in the side-panel layout.
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
 
   // Filter to vehicle groups only
   const vehicleGroups = useMemo(() => {
@@ -412,6 +481,19 @@ export function TicSetupPanel() {
     }
   }, [vehicleGroups, generateAssignments]);
 
+  // Keep selectedGroupId in sync with the visible assignment list. If the
+  // current selection is filtered out (or assignments regenerate), fall
+  // back to the first row.
+  useEffect(() => {
+    if (assignments.length === 0) {
+      if (selectedGroupId !== null) setSelectedGroupId(null);
+      return;
+    }
+    if (selectedGroupId === null || !assignments.some((a) => a.groupId === selectedGroupId)) {
+      setSelectedGroupId(assignments[0].groupId);
+    }
+  }, [assignments, selectedGroupId]);
+
   // Toggle leader
   const toggleLeader = useCallback((groupId: number) => {
     setAssignments((prev) =>
@@ -460,7 +542,52 @@ export function TicSetupPanel() {
     );
   }, []);
 
-  // Apply all renames
+  // Set a per-waypoint action choice. Marks the group "dirty" so the
+  // status dot turns amber until the next Apply pass.
+  const setWpAction = useCallback((groupId: number, wpIndex: number, action: WpActionValue) => {
+    setTaskAssignments((prev) => {
+      const next = new Map(prev);
+      const groupMap = new Map(next.get(groupId) || []);
+      const existing = groupMap.get(wpIndex);
+      groupMap.set(wpIndex, {
+        action,
+        eta_seconds: existing?.eta_seconds ?? 0,
+      });
+      next.set(groupId, groupMap);
+      return next;
+    });
+    setDirtyGroups((prev) => {
+      if (prev.has(groupId)) return prev;
+      const next = new Set(prev);
+      next.add(groupId);
+      return next;
+    });
+  }, []);
+
+  // Set the ETA (seconds since mission start) for a waypoint. Only meaningful
+  // when its action is goto_at_time, but we accept it anytime so toggling
+  // back and forth doesn't lose the user's time entry.
+  const setWpEta = useCallback((groupId: number, wpIndex: number, seconds: number) => {
+    setTaskAssignments((prev) => {
+      const next = new Map(prev);
+      const groupMap = new Map(next.get(groupId) || []);
+      const existing = groupMap.get(wpIndex);
+      groupMap.set(wpIndex, {
+        action: existing?.action ?? 'goto',
+        eta_seconds: seconds,
+      });
+      next.set(groupId, groupMap);
+      return next;
+    });
+    setDirtyGroups((prev) => {
+      if (prev.has(groupId)) return prev;
+      const next = new Set(prev);
+      next.add(groupId);
+      return next;
+    });
+  }, []);
+
+  // Apply all renames + waypoint tasks
   const applyAll = useCallback(() => {
     for (const a of assignments) {
       // groupRename handles both group name + all unit names in one edit
@@ -478,9 +605,40 @@ export function TicSetupPanel() {
         addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
         addEdit({ unitId: u.unitId, field: 'heading', value: Math.random() * Math.PI * 2 } as any);
       }
+      // v0.9.42 — dispatch waypoint task changes for this group, if any.
+      // Only ship v1-supported verbs to the backend; placeholder verbs
+      // (hold/engage/etc.) are dropped here until v2 handlers exist.
+      const groupTasks = taskAssignments.get(a.groupId);
+      if (groupTasks && groupTasks.size > 0) {
+        const tasks = Array.from(groupTasks.entries())
+          .filter(([, t]) => {
+            const def = WP_ACTIONS.find((x) => x.value === t.action);
+            return def?.v1 === true;
+          })
+          .map(([wpIndex, t]) => ({
+            wpIndex,
+            action: t.action,
+            eta_seconds: t.eta_seconds,
+          }));
+        if (tasks.length > 0) {
+          addEdit({
+            groupId: a.groupId,
+            field: 'waypointTasks',
+            value: { groupId: a.groupId, tasks },
+          } as any);
+        }
+      }
     }
+    // Mark every group in the current assignment list as applied; clear
+    // dirty since their pending changes were just flushed.
+    setAppliedGroups((prev) => {
+      const next = new Set(prev);
+      for (const a of assignments) next.add(a.groupId);
+      return next;
+    });
+    setDirtyGroups(new Set());
     setApplied(true);
-  }, [assignments, addEdit]);
+  }, [assignments, addEdit, taskAssignments]);
 
   // Summary stats — must be before any early return to satisfy Rules of Hooks
   const categoryStats = useMemo(() => {
@@ -536,18 +694,21 @@ export function TicSetupPanel() {
           <button onClick={() => generateAssignments(true)} style={btnStyle}>
             Regenerate
           </button>
+          {/* Top Apply mirrors the bottom one. With the per-group model
+              users can Apply multiple times — once per round of WP edits
+              — so we don't lock the button after the first click. */}
           <button
             onClick={applyAll}
-            disabled={applied || assignments.length === 0}
+            disabled={assignments.length === 0}
             style={{
               ...btnStyle,
-              background: applied ? '#1a2a1a' : '#1a3a1a',
-              border: `1px solid ${applied ? '#3a5a3a' : '#3fb950'}`,
-              color: applied ? '#3a5a3a' : '#3fb950',
+              background: '#1a3a1a',
+              border: '1px solid #3fb950',
+              color: '#3fb950',
               fontWeight: 600,
             }}
           >
-            {applied ? '✓ Applied' : 'Apply'}
+            Apply
           </button>
         </div>
       </div>
@@ -589,148 +750,319 @@ export function TicSetupPanel() {
             <code style={{ color: '#4a8fd4' }}>+</code> = keep units grouped
           </div>
 
-          {/* Assignment cards */}
-          {assignments.map((a) => (
-            <div
-              key={a.groupId}
-              style={{
-                marginBottom: 8,
-                border: `1px solid ${a.isLeader ? '#3fb950' : '#3a3a3a'}`,
-                borderRadius: 4,
-                background: '#222222',
-              }}
-            >
-              <div style={{
-                padding: '10px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                flexWrap: 'wrap',
-                borderLeft: `3px solid ${CATEGORY_COLORS[a.ticCategory]}`,
-              }}>
-                {/* Coalition badge */}
-                <span style={{
-                  background: a.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-                  color: '#1a1a1a', fontSize: 11, fontWeight: 700,
-                  padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
-                }}>
-                  {a.coalition}
-                </span>
+          {/* === Two-column: group list (left) + detail (right) ===
+              v0.9.42 side-panel layout. List stays compact even with 30+
+              groups; detail pane has room for the route table + per-WP
+              parameter editors (more important once v2 adds hold /
+              engage / fire-at-pt verbs with their own param fields). */}
+          {(() => {
+            const sel = assignments.find((a) => a.groupId === selectedGroupId) || null;
+            const selWaypoints = sel
+              ? missionGroups.find((g) => g.groupId === sel.groupId)?.waypoints ?? []
+              : [];
 
-                {/* Category badge */}
-                <span style={{
-                  color: CATEGORY_COLORS[a.ticCategory],
-                  fontSize: 11, fontWeight: 600,
-                  border: `1px solid ${CATEGORY_COLORS[a.ticCategory]}`,
-                  padding: '1px 6px', borderRadius: 3,
-                }}>
-                  {CATEGORY_LABELS[a.ticCategory]}
-                </span>
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 12 }}>
 
-                {/* Original name → new name */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
-                  <span style={{ color: '#aaaaaa', fontSize: 13, textDecoration: 'line-through' }}>
-                    {a.originalName}
-                  </span>
-                  <span style={{ color: '#aaaaaa' }}>&rarr;</span>
-                  <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>
-                    {a.newGroupName}
-                  </span>
+                {/* LEFT: compact group list */}
+                <div style={listColumnStyle}>
+                  <div style={listHeaderStyle}>
+                    {assignments.length} GROUPS &middot; {coalitionFilter === 'all' ? 'BOTH SIDES' : coalitionFilter.toUpperCase() + ' ONLY'}
+                  </div>
+                  {assignments.map((a) => {
+                    const status = deriveStatus(a.groupId, appliedGroups, dirtyGroups);
+                    const wpCount = missionGroups.find((g) => g.groupId === a.groupId)?.waypoints?.length ?? 0;
+                    const isSelected = a.groupId === selectedGroupId;
+                    return (
+                      <div
+                        key={a.groupId}
+                        onClick={() => setSelectedGroupId(a.groupId)}
+                        style={{
+                          ...listRowStyle,
+                          background: isSelected ? '#2a2a2a' : 'transparent',
+                          borderLeft: isSelected ? '3px solid #4a8fd4' : '3px solid transparent',
+                        }}
+                        title={`status: ${STATUS_LABEL[status]}`}
+                      >
+                        <span style={{
+                          width: 10, height: 10, borderRadius: '50%',
+                          background: STATUS_COLOR[status], flexShrink: 0,
+                        }} />
+                        <span style={{
+                          background: a.coalition === 'blue' ? '#4a8fd4' : '#d95050',
+                          color: '#1a1a1a', fontSize: 10, fontWeight: 700,
+                          padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase',
+                        }}>
+                          {a.coalition}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontFamily: "'B612 Mono', monospace", fontSize: 12.5,
+                            color: '#e0e0e0', whiteSpace: 'nowrap',
+                            overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {a.newGroupName}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#aaaaaa' }}>
+                            {wpCount} WP{wpCount !== 1 ? 's' : ''} &middot; {CATEGORY_LABELS[a.ticCategory]} &middot; {a.isLeader ? 'leader' : 'member'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Controls */}
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <button
-                    onClick={() => toggleLeader(a.groupId)}
-                    style={{
-                      ...smallBtnStyle,
-                      color: a.isLeader ? '#3fb950' : '#aaaaaa',
-                      border: `1px solid ${a.isLeader ? '#3fb950' : '#3a3a3a'}`,
-                    }}
-                    title="Toggle formation leader (TIC! vs TIC:)"
-                  >
-                    {a.isLeader ? 'Leader' : 'Member'}
-                  </button>
-                  <button
-                    onClick={() => toggleKeepTogether(a.groupId)}
-                    style={{
-                      ...smallBtnStyle,
-                      color: a.keepTogether ? '#4a8fd4' : '#aaaaaa',
-                      border: `1px solid ${a.keepTogether ? '#4a8fd4' : '#3a3a3a'}`,
-                    }}
-                    title="Keep units grouped (+) or let TIC split them"
-                  >
-                    {a.keepTogether ? 'Grouped +' : 'Split'}
-                  </button>
+                {/* RIGHT: detail pane for the selected group */}
+                <div style={detailColumnStyle}>
+                  {!sel ? (
+                    <div style={{ padding: 24, color: '#aaaaaa', fontSize: 13, textAlign: 'center' }}>
+                      Select a group on the left to see its waypoints.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Detail header */}
+                      <div style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #3a3a3a',
+                        borderLeft: `3px solid ${CATEGORY_COLORS[sel.ticCategory]}`,
+                        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      }}>
+                        <span style={{
+                          background: sel.coalition === 'blue' ? '#4a8fd4' : '#d95050',
+                          color: '#1a1a1a', fontSize: 11, fontWeight: 700,
+                          padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
+                        }}>{sel.coalition}</span>
+                        <span style={{
+                          color: CATEGORY_COLORS[sel.ticCategory],
+                          fontSize: 11, fontWeight: 600,
+                          border: `1px solid ${CATEGORY_COLORS[sel.ticCategory]}`,
+                          padding: '1px 6px', borderRadius: 3,
+                        }}>{CATEGORY_LABELS[sel.ticCategory]}</span>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 200 }}>
+                          <span style={{ color: '#aaaaaa', fontSize: 12, textDecoration: 'line-through' }}>
+                            {sel.originalName}
+                          </span>
+                          <span style={{ color: '#aaaaaa' }}>&rarr;</span>
+                          <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>
+                            {sel.newGroupName}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => toggleLeader(sel.groupId)}
+                          style={{
+                            ...smallBtnStyle,
+                            color: sel.isLeader ? '#3fb950' : '#aaaaaa',
+                            border: `1px solid ${sel.isLeader ? '#3fb950' : '#3a3a3a'}`,
+                          }}
+                          title="Toggle formation leader (TIC! vs TIC:)"
+                        >
+                          {sel.isLeader ? 'Leader' : 'Member'}
+                        </button>
+                        <button
+                          onClick={() => toggleKeepTogether(sel.groupId)}
+                          style={{
+                            ...smallBtnStyle,
+                            color: sel.keepTogether ? '#4a8fd4' : '#aaaaaa',
+                            border: `1px solid ${sel.keepTogether ? '#4a8fd4' : '#3a3a3a'}`,
+                          }}
+                          title="Keep units grouped (+) or let TIC split them"
+                        >
+                          {sel.keepTogether ? 'Grouped +' : 'Split'}
+                        </button>
+                      </div>
+
+                      {/* Formation name + unit chips */}
+                      <div style={{
+                        padding: '8px 16px',
+                        borderBottom: '1px solid #262626',
+                        display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+                        fontSize: 12, color: '#aaaaaa',
+                      }}>
+                        <label style={{ fontWeight: 600 }}>Formation:</label>
+                        <input
+                          value={sel.formationName}
+                          onChange={(e) => updateFormationName(sel.groupId, e.target.value)}
+                          style={{
+                            background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+                            color: '#e0e0e0', fontSize: 13, padding: '3px 8px', width: 220, outline: 'none',
+                            fontFamily: "'B612 Mono', monospace",
+                          }}
+                        />
+                        <span style={{
+                          fontSize: 11, color: '#d29922', background: '#1a1a10',
+                          padding: '2px 8px', borderRadius: 3, border: '1px solid #3a3a1a', fontWeight: 600,
+                        }}>
+                          {sel.companyDesignator} Co
+                        </span>
+                        <span>{sel.unitCount} unit{sel.unitCount !== 1 ? 's' : ''}:</span>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {sel.units.map((u) => (
+                            <span key={u.unitId} style={{
+                              fontSize: 11, color: '#cccccc', background: '#262626',
+                              padding: '2px 6px', borderRadius: 3, border: '1px solid #3a3a3a',
+                              fontFamily: "'B612 Mono', monospace",
+                            }}>
+                              {u.newName}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Route — per-waypoint task table */}
+                      <div style={{ padding: '12px 16px' }}>
+                        <h3 style={{
+                          margin: '0 0 10px',
+                          fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
+                          color: '#aaaaaa', fontWeight: 600,
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}>
+                          <span>Route &mdash; {selWaypoints.length} waypoint{selWaypoints.length !== 1 ? 's' : ''}</span>
+                          {dirtyGroups.has(sel.groupId) && (
+                            <span style={{
+                              color: '#d29922', fontSize: 11, fontWeight: 400,
+                              textTransform: 'none', letterSpacing: 0,
+                            }}>
+                              changes pending — click Apply
+                            </span>
+                          )}
+                        </h3>
+                        {selWaypoints.length === 0 ? (
+                          <div style={{ color: '#aaaaaa', fontSize: 13, padding: '12px 0' }}>
+                            This group has no waypoints in the mission. Add waypoints in DCS ME first.
+                          </div>
+                        ) : (
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={wpThStyle}>WP</th>
+                                <th style={wpThStyle}>Position</th>
+                                <th style={wpThStyle}>Task</th>
+                                <th style={wpThStyle}>Parameters</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selWaypoints.map((wp) => {
+                                const wpIndex = wp.waypoint_number;
+                                const groupTasks = taskAssignments.get(sel.groupId);
+                                const fromState = groupTasks?.get(wpIndex);
+                                // Seed from existing .miz value when state has no entry
+                                const action: WpActionValue = fromState?.action
+                                  ?? (wp.eta_locked ? 'goto_at_time' : 'goto');
+                                const etaSeconds = fromState?.eta_seconds ?? wp.eta_seconds ?? 0;
+                                const actionDef = WP_ACTIONS.find((x) => x.value === action);
+                                const isV1 = actionDef?.v1 ?? false;
+                                const touched = fromState !== undefined;
+                                return (
+                                  <tr key={wpIndex} style={{
+                                    borderBottom: '1px solid #262626',
+                                  }}>
+                                    <td style={{
+                                      ...wpTdStyle,
+                                      boxShadow: touched ? 'inset 3px 0 0 #d29922' : 'none',
+                                      paddingLeft: touched ? 6 : 0,
+                                      fontFamily: "'B612 Mono', monospace",
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      WP{wpIndex}
+                                    </td>
+                                    <td style={{ ...wpTdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#aaaaaa', whiteSpace: 'nowrap' }}>
+                                      {wp.lat != null && wp.lon != null
+                                        ? <>N {wp.lat.toFixed(3)}<br />E {wp.lon.toFixed(3)}</>
+                                        : <>x {wp.x.toFixed(0)}<br />y {wp.y.toFixed(0)}</>
+                                      }
+                                    </td>
+                                    <td style={wpTdStyle}>
+                                      <select
+                                        value={action}
+                                        onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue)}
+                                        style={{
+                                          background: '#262626', border: '1px solid #3a3a3a',
+                                          color: isV1 ? '#e0e0e0' : '#888888',
+                                          fontFamily: "'B612 Mono', monospace", fontSize: 12.5,
+                                          padding: '4px 6px', borderRadius: 3, outline: 'none',
+                                          minWidth: 150,
+                                        }}
+                                      >
+                                        {WP_ACTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value} disabled={!opt.v1}>
+                                            {opt.label}{!opt.v1 ? ' (v2)' : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td style={wpTdStyle}>
+                                      {action === 'goto_at_time' ? (
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                          <span style={paramLblStyle}>ETA</span>
+                                          <input
+                                            type="time"
+                                            value={secondsToHHMM(etaSeconds)}
+                                            onChange={(e) => setWpEta(sel.groupId, wpIndex, hhmmToSeconds(e.target.value))}
+                                            style={{
+                                              background: '#262626', border: '1px solid #3a3a3a',
+                                              color: '#e0e0e0', fontFamily: "'B612 Mono', monospace",
+                                              fontSize: 12.5, padding: '4px 6px', borderRadius: 3, outline: 'none',
+                                              width: 100,
+                                            }}
+                                          />
+                                          <span style={paramLblStyle}>after mission start</span>
+                                        </div>
+                                      ) : action === 'goto' ? (
+                                        <span style={{ ...paramLblStyle, color: '#666' }}>&mdash; no params &mdash;</span>
+                                      ) : (
+                                        <span style={{ ...paramLblStyle, color: '#666' }}>
+                                          (v2: {actionDef?.label} parameters)
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
+            );
+          })()}
 
-              {/* Formation name editor */}
-              <div style={{
-                padding: '6px 14px 10px',
-                borderTop: '1px solid #262626',
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}>
-                <label style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600 }}>Formation:</label>
-                <input
-                  value={a.formationName}
-                  onChange={(e) => updateFormationName(a.groupId, e.target.value)}
-                  style={{
-                    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
-                    color: '#e0e0e0', fontSize: 13, padding: '3px 8px', width: 200, outline: 'none',
-                  }}
-                />
-                <span style={{
-                  fontSize: 11, color: '#d29922', background: '#1a1a10',
-                  padding: '1px 6px', borderRadius: 3, border: '1px solid #3a3a1a',
-                }}>
-                  {a.companyDesignator} Co
-                </span>
-                <span style={{ fontSize: 12, color: '#aaaaaa' }}>
-                  {a.unitCount} unit{a.unitCount !== 1 ? 's' : ''}:
-                </span>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {a.units.map((u) => (
-                    <span key={u.unitId} style={{
-                      fontSize: 11, color: '#cccccc', background: '#262626',
-                      padding: '2px 6px', borderRadius: 3, border: '1px solid #3a3a3a',
-                    }}>
-                      {u.newName}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Apply button */}
+          {/* Apply bar at bottom */}
           <div style={{
-            marginTop: 20, padding: '14px',
+            marginTop: 16, padding: '12px 14px',
             background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <div style={{ fontSize: 13, color: '#aaaaaa' }}>
-              {applied
-                ? 'Renames queued! Download your .miz to save changes.'
-                : `Ready to rename ${assignments.length} groups to TIC format.`}
+              {(() => {
+                const total = assignments.length;
+                const appliedCount = assignments.filter((a) => appliedGroups.has(a.groupId) && !dirtyGroups.has(a.groupId)).length;
+                const dirtyCount = dirtyGroups.size;
+                if (appliedCount === total && dirtyCount === 0) {
+                  return `All ${total} groups applied — download your .miz to save.`;
+                }
+                if (dirtyCount > 0) {
+                  return `${appliedCount} of ${total} applied · ${dirtyCount} with pending waypoint changes`;
+                }
+                return `Ready to apply ${total} group${total !== 1 ? 's' : ''}.`;
+              })()}
             </div>
             <button
               onClick={applyAll}
-              disabled={applied || assignments.length === 0}
+              disabled={assignments.length === 0}
               style={{
                 ...btnStyle,
-                background: applied ? '#1a2a1a' : '#1a3a1a',
-                border: `1px solid ${applied ? '#3a5a3a' : '#3fb950'}`,
-                color: applied ? '#3a5a3a' : '#3fb950',
+                background: '#1a3a1a',
+                border: '1px solid #3fb950',
+                color: '#3fb950',
                 fontSize: 14,
                 padding: '8px 20px',
                 fontWeight: 600,
               }}
             >
-              {applied ? 'Applied' : 'Apply All TIC Names'}
+              Apply All
             </button>
           </div>
         </>
@@ -793,4 +1125,67 @@ const selectStyle: React.CSSProperties = {
   padding: '6px 8px',
   outline: 'none',
   fontFamily: 'inherit',
+};
+
+// === v0.9.42 side-panel layout styles ===
+
+const listColumnStyle: React.CSSProperties = {
+  background: '#222222',
+  border: '1px solid #3a3a3a',
+  borderRadius: 4,
+  overflow: 'hidden',
+  alignSelf: 'flex-start',
+  maxHeight: 600,
+  overflowY: 'auto',
+};
+
+const listHeaderStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  borderBottom: '1px solid #3a3a3a',
+  fontSize: 11,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  color: '#aaaaaa',
+  background: '#1d1d1d',
+  fontWeight: 600,
+};
+
+const listRowStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderBottom: '1px solid #262626',
+  cursor: 'pointer',
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+  transition: 'background 0.1s',
+};
+
+const detailColumnStyle: React.CSSProperties = {
+  background: '#222222',
+  border: '1px solid #3a3a3a',
+  borderRadius: 4,
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 360,
+};
+
+const wpThStyle: React.CSSProperties = {
+  textAlign: 'left',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  color: '#aaaaaa',
+  fontWeight: 600,
+  padding: '6px 8px 6px 0',
+  borderBottom: '1px solid #3a3a3a',
+};
+
+const wpTdStyle: React.CSSProperties = {
+  padding: '8px 8px 8px 0',
+  verticalAlign: 'middle',
+};
+
+const paramLblStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: '#aaaaaa',
 };

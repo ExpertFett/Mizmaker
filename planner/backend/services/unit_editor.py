@@ -1411,6 +1411,190 @@ def _replace_radio_presets_for_group(text: str, group_id: int, radio_num: int,
     return text
 
 
+def _find_route_points_bounds(text: str, group_id: int) -> tuple[int, int]:
+    """Return (start, end_exclusive) for the ["points"] = { ... } block of a group.
+
+    DCS group layout (simplified):
+        [N] = {
+            ...
+            ["route"] = {
+                ["points"] = {
+                    [1] = { ... waypoint fields ... },
+                    [2] = { ... },
+                    ...
+                },
+            },
+            ["units"] = { ... },
+            ...
+        },
+
+    We anchor on the group's ["groupId"] line (via _find_group_block_start),
+    then walk forward looking for `["route"]` then `["points"]` — both should
+    appear within ~2KB of the group start in typical missions. Brace-match
+    past the opening `{` to find the closing brace of the points table.
+    Raises ValueError if either anchor is missing.
+    """
+    group_pos = _find_group_block_start(text, group_id)
+    # Bound the search to the next ~50KB to handle very large groups with
+    # complex routes (CSG-3 patrol racetracks etc.).
+    search_end = min(len(text), group_pos + 50_000)
+    region = text[group_pos:search_end]
+
+    route_m = re.search(r'\["route"\]\s*=\s*\n?\s*\{', region)
+    if not route_m:
+        raise ValueError(f"Route block not found for group {group_id}")
+
+    points_m = re.search(r'\["points"\]\s*=\s*\n?\s*\{', region[route_m.end():])
+    if not points_m:
+        raise ValueError(f"Points block not found for group {group_id}")
+
+    # Brace-match from the opening `{` of points
+    abs_brace_open = group_pos + route_m.end() + points_m.end() - 1
+    depth = 1
+    i = abs_brace_open + 1
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        i += 1
+    return abs_brace_open, i  # i is just past the closing `}`
+
+
+def _find_waypoint_block_bounds(text: str, points_start: int, points_end: int,
+                                wp_index: int) -> tuple[int, int]:
+    """Return (start, end_exclusive) for `[wp_index] = { ... }` inside a points block.
+
+    points_start/end define the enclosing ["points"] = {...} bounds as returned
+    by _find_route_points_bounds. wp_index is the 1-based DCS waypoint number.
+    Brace-matches the WP block so nested ["task"] sub-tables don't confuse us.
+    """
+    region = text[points_start:points_end]
+    # Anchor on `[N] = {` at depth-1 within the points block. We can't just
+    # regex for the literal `[1] =` because nested task blocks contain their
+    # own `[1] = {...}` indices for ComboTask sub-tasks. So: scan from
+    # points_start tracking depth, and pick the first `[wp_index] = {` we
+    # see at depth 1 (i.e. immediately inside the points table).
+    depth = 0
+    i = 0
+    target_anchor = re.compile(rf'\[{wp_index}\]\s*=\s*\n?\s*\{{')
+    while i < len(region):
+        ch = region[i]
+        if ch == '{':
+            depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            depth -= 1
+            i += 1
+            continue
+        # Only consider matches when we're at depth 1 (immediately inside
+        # the points table — depth 0 is before any { is seen).
+        if depth == 1:
+            m = target_anchor.match(region, i)
+            if m:
+                # Found the `[N] = {` opener at depth 1. Brace-match its body.
+                wp_open = points_start + m.end() - 1  # absolute pos of `{`
+                bdepth = 1
+                j = wp_open + 1
+                while j < len(text) and bdepth > 0:
+                    cj = text[j]
+                    if cj == '{':
+                        bdepth += 1
+                    elif cj == '}':
+                        bdepth -= 1
+                    j += 1
+                # Block starts at the `[` of `[N] = ...` for clarity in
+                # callers; return (anchor_start, end_after_closing_brace).
+                return points_start + m.start(), j
+        i += 1
+    raise ValueError(f"Waypoint [{wp_index}] not found in points block")
+
+
+def _set_lua_scalar_field(text: str, block_start: int, block_end: int,
+                          field_name: str, lua_value: str) -> str:
+    """Set `["field_name"] = value` inside the given [block_start, block_end) range.
+
+    Used for ETA / ETA_locked mutations on a waypoint. If the field already
+    exists, its value is replaced; if it doesn't, the field is inserted just
+    before the block's closing `}`. Whitespace/indentation around the
+    inserted field matches the surrounding waypoint fields.
+    """
+    region = text[block_start:block_end]
+    # Mutate existing value
+    pat = re.compile(rf'(\["{re.escape(field_name)}"\]\s*=\s*)([^,\n]+)')
+    m = pat.search(region)
+    if m:
+        abs_start = block_start + m.start(2)
+        abs_end = block_start + m.end(2)
+        return text[:abs_start] + lua_value + text[abs_end:]
+
+    # Insert just before the closing `}` of the block. Find the LAST `}` in
+    # the block (its closing brace) and prepend our new field with matching
+    # indent. We sniff indent from the first existing `["x"]` line.
+    indent_m = re.search(r'\n(\s*)\["[^"]+"\]\s*=', region)
+    indent = indent_m.group(1) if indent_m else '\t\t\t\t'
+    # Find the closing brace position relative to the block
+    last_brace = region.rfind('}')
+    if last_brace < 0:
+        return text  # unreachable in well-formed Lua
+    insert_at = block_start + last_brace
+    insertion = f'{indent}["{field_name}"] = {lua_value},\n'
+    return text[:insert_at] + insertion + text[insert_at:]
+
+
+def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
+    """Apply per-waypoint task selections to a group's route.
+
+    `tasks` is a list of:
+        {
+          "wpIndex":     int,    # 1-based DCS waypoint number
+          "action":      str,    # "goto" | "goto_at_time"  (v1 vocab)
+          "eta_seconds": int,    # only used when action == "goto_at_time"
+        }
+
+    Mutation rules:
+        action == "goto"          -> ["ETA_locked"] = false
+        action == "goto_at_time"  -> ["ETA"] = <eta_seconds>, ["ETA_locked"] = true
+
+    Both fields are written into the waypoint block in place. DCS-emitted
+    waypoints always carry ETA + ETA_locked, so this is normally a value
+    swap rather than an insertion — `_set_lua_scalar_field` handles the
+    rare "field absent" case gracefully.
+
+    Process waypoints in REVERSE index order so earlier-positioned splices
+    don't shift offsets we'd need for later indices.
+    """
+    if not tasks:
+        return text
+
+    points_start, points_end = _find_route_points_bounds(text, group_id)
+
+    # Sort descending by wpIndex so each mutation only affects bytes BEFORE
+    # the waypoints we haven't touched yet.
+    for spec in sorted(tasks, key=lambda t: int(t.get("wpIndex", 0)), reverse=True):
+        wp_idx = int(spec.get("wpIndex"))
+        action = str(spec.get("action", "goto"))
+        # Re-locate points bounds each time — earlier mutations may have
+        # shifted the closing brace position (insertions extend the block).
+        ps, pe = _find_route_points_bounds(text, group_id)
+        wp_start, wp_end = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
+
+        if action == "goto":
+            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA_locked", "false")
+        elif action == "goto_at_time":
+            eta = int(spec.get("eta_seconds", 0))
+            # ETA mutated first to avoid shifting ETA_locked's position
+            wp_start, wp_end = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
+            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA", str(eta))
+            wp_start, wp_end = _find_waypoint_block_bounds(text, *_find_route_points_bounds(text, group_id), wp_idx)
+            text = _set_lua_scalar_field(text, wp_start, wp_end, "ETA_locked", "true")
+        # else: unknown action verb — silently skip; the dispatcher's
+        # noop/skipped status will flag it. (v2 will add hold/engage/etc.)
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Group-level edit functions
 # ---------------------------------------------------------------------------
@@ -2820,6 +3004,15 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                     "groupModulation": "modulation",
                 }[field]
                 text = _replace_group_field(text, edit["groupId"], lua_field, value)
+            elif field == "waypointTasks":
+                # v1 vocab: "goto" | "goto_at_time". Drives ETA + ETA_locked
+                # on each named waypoint of a group's route. Bundled with
+                # groupRename in the TIC tab's Apply so both rename + WP
+                # task changes land atomically on download. See
+                # _replace_waypoint_tasks for the Lua mutation rules.
+                text = _replace_waypoint_tasks(
+                    text, value["groupId"], value.get("tasks", []),
+                )
             # Unit-level edits
             elif field == "voiceCallsignLabel":
                 text = _replace_prop_field(text, edit.get("unitId"), "VoiceCallsignLabel", value)
