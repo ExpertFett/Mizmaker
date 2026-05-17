@@ -14,7 +14,14 @@ the backend-side guarantee that the data arrives in the expected shape.
 """
 
 import pytest
-from planner.backend.services.mission_debugger import (
+# Import path matches every other test in this folder — CI runs pytest with
+# cwd = `planner/backend/`, so `services.X` is on rootdir, but
+# `planner.backend.services.X` isn't (would need the repo root on sys.path).
+# pytest 9 tightened the importer default and stopped tolerating the old
+# form, leaving collection blocked on this one file. See run #24 (2026-05-04)
+# for the first red — pip cache expired around that date and CI started
+# pulling pytest 9.x via the unpinned `pytest>=8.0` in requirements-dev.txt.
+from services.mission_debugger import (
     _check_tankers,
     _check_awacs,
     _check_frequency_conflicts,
