@@ -388,3 +388,154 @@ class TestCoalition:
         red_block = coal_block[red_m.end():j]
         assert re.search(rf'\["name"\]\s*=\s*"{re.escape(target)}"', red_block), \
             f"country {target} did not move to red coalition"
+
+
+# ---------------------------------------------------------------------------
+# Waypoint task selection (v0.9.42 — TIC tab integration)
+# ---------------------------------------------------------------------------
+
+class TestWaypointTasks:
+    """Round-trip the `waypointTasks` UnitEdit field added in v0.9.42.
+
+    Anchors the test on group 2 of simple.miz (the carrier — Lincoln CSG),
+    which has two waypoints with known starting state:
+        WP1: ["ETA"] = 0,                ["ETA_locked"] = true
+        WP2: ["ETA"] = 20586.835488626,  ["ETA_locked"] = false
+
+    These tests guard the surgical Lua mutation AND the bounded-block
+    locator (_find_group_block_bounds) that scopes the edit to the right
+    group — a previous version of this handler did a forward-only search
+    from the ["groupId"] anchor and walked into a neighbouring group's
+    route, silently corrupting waypoints on the wrong group.
+    """
+
+    def _extract_group_block(self, mission: str, group_id: int) -> str:
+        """Helper — returns text between `[N] = {` and its matching `}` for
+        the group whose ["groupId"] = group_id. Mirrors the production
+        _find_group_block_bounds logic so the test fails loudly if the
+        production version misbehaves."""
+        m = re.search(rf'\["groupId"\]\s*=\s*{group_id}\s*,', mission)
+        assert m, f"groupId {group_id} not found in mission"
+        # Walk back to enclosing `{`
+        depth = 0
+        i = m.start() - 1
+        while i >= 0:
+            ch = mission[i]
+            if ch == '}':
+                depth += 1
+            elif ch == '{':
+                if depth == 0:
+                    break
+                depth -= 1
+            i -= 1
+        start = i
+        # Forward brace-match to closing `}`
+        j = start + 1
+        bdepth = 1
+        while j < len(mission) and bdepth > 0:
+            if mission[j] == '{':
+                bdepth += 1
+            elif mission[j] == '}':
+                bdepth -= 1
+            j += 1
+        return mission[start:j]
+
+    def test_goto_at_time_sets_eta_and_locks(self, client, uploaded_session):
+        """`goto_at_time` should write ETA = N AND ETA_locked = true on the
+        target waypoint, leaving other waypoints untouched."""
+        sid = uploaded_session["sessionId"]
+        eta = 12345
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [
+                    {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": eta},
+                ],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        block = self._extract_group_block(files["mission"], 2)
+        # WP1 should now carry our ETA + ETA_locked = true. Pin the
+        # values inside the [1] = { ... } portion of the points table
+        # so we don't accidentally match WP2 or some unrelated field.
+        wp1_match = re.search(
+            r'\[1\]\s*=\s*\{[^{}]*?\["ETA"\]\s*=\s*' + str(eta) + r'\b',
+            block, re.DOTALL,
+        )
+        assert wp1_match, f"WP1 ETA not set to {eta} in group 2; block was:\n{block[:1200]}"
+        assert re.search(
+            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*true',
+            block, re.DOTALL,
+        ), "WP1 ETA_locked not set to true"
+
+    def test_goto_clears_eta_locked(self, client, uploaded_session):
+        """`goto` should set ETA_locked = false. WP1 of group 2 starts with
+        ETA_locked = true — this edit flips it."""
+        sid = uploaded_session["sessionId"]
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [{"wpIndex": 1, "action": "goto"}],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        block = self._extract_group_block(files["mission"], 2)
+        assert re.search(
+            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*false',
+            block, re.DOTALL,
+        ), "WP1 ETA_locked not set to false on goto"
+
+    def test_only_targeted_group_is_mutated(self, client, uploaded_session):
+        """Regression: previous locator did a forward search from
+        ["groupId"] and walked into the NEXT group's route. Verify group
+        3's waypoints stay untouched when we only edit group 2."""
+        sid = uploaded_session["sessionId"]
+        unique_eta = 98765
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [
+                    {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": unique_eta},
+                ],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        g3_block = self._extract_group_block(files["mission"], 3)
+        # The unique ETA must NOT appear anywhere in group 3's block —
+        # if it does, the locator leaked across groups.
+        assert str(unique_eta) not in g3_block, \
+            f"waypointTasks for group 2 leaked into group 3: unique ETA {unique_eta} found in group 3 block"
+
+    def test_multiple_waypoints_in_one_edit(self, client, uploaded_session):
+        """A single waypointTasks edit carries a list — both waypoints
+        should be mutated. Uses goto for WP1 (idempotent on already-true)
+        and goto_at_time for WP2 (changes both ETA and lock)."""
+        sid = uploaded_session["sessionId"]
+        eta = 7777
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [
+                    {"wpIndex": 1, "action": "goto"},
+                    {"wpIndex": 2, "action": "goto_at_time", "eta_seconds": eta},
+                ],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        block = self._extract_group_block(files["mission"], 2)
+        assert re.search(
+            r'\[1\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*false',
+            block, re.DOTALL,
+        ), "WP1 ETA_locked not flipped to false"
+        assert re.search(
+            r'\[2\]\s*=\s*\{[^{}]*?\["ETA"\]\s*=\s*' + str(eta) + r'\b',
+            block, re.DOTALL,
+        ), f"WP2 ETA not set to {eta}"
+        assert re.search(
+            r'\[2\]\s*=\s*\{[^{}]*?\["ETA_locked"\]\s*=\s*true',
+            block, re.DOTALL,
+        ), "WP2 ETA_locked not set to true"

@@ -72,10 +72,15 @@ jobs:
         run: npm ci
 
       - name: TypeScript check
-        # Same command we run locally before every commit. Build's tsc
-        # step already runs this, but doing it explicitly keeps the CI
-        # log short when only types break.
-        run: npx tsc --noEmit -p tsconfig.json
+        # Match Railway's build (`tsc -b && vite build`) exactly. Plain
+        # `tsc --noEmit -p tsconfig.json` only resolves the root config
+        # which has `files: []` and project references — it does NOT
+        # compile the referenced configs, so noUnusedLocals violations
+        # in tsconfig.app.json slipped through CI and only blew up on
+        # Railway. Using `-b` makes CI honour the referenced projects'
+        # compilerOptions like Railway does. noEmit is already true in
+        # tsconfig.app.json so this stays type-check-only.
+        run: npx tsc -b
 
       - name: Vitest
         # Frontend unit tests (currently editStore actions only — see

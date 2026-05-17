@@ -1411,45 +1411,84 @@ def _replace_radio_presets_for_group(text: str, group_id: int, radio_num: int,
     return text
 
 
+def _find_group_block_bounds(text: str, group_id: int) -> tuple[int, int]:
+    """Return (open_brace_pos, close_brace_pos_exclusive) for a group's `[N] = {...}`.
+
+    DCS emits group fields in a fixed-ish order where `["groupId"]` sits
+    in the MIDDLE of the block (after `["route"]`, before `["units"]`):
+
+        [N] = {                     <-- block_start (this `{`)
+            ["communication"] = ...,
+            ["route"] = { ... },    <-- BEFORE groupId in file order
+            ["groupId"] = 2,        <-- our anchor
+            ["units"] = { ... },    <-- AFTER groupId
+            ...
+        },                          <-- block_end_exclusive (past this `}`)
+
+    So a forward-only search from the groupId anchor misses ["route"] and
+    silently walks into the NEXT group's route — exactly the kind of
+    cross-group corruption CLAUDE.md flags as the ±N-char-window footgun.
+
+    Algorithm: find the groupId, walk backward tracking brace depth to
+    locate the enclosing `{`, then brace-match forward to find the
+    matching `}`. Returns absolute byte offsets in the original text.
+    """
+    group_pos = _find_group_block_start(text, group_id)
+
+    # Walk backward from groupId looking for our enclosing `{` (depth-0
+    # opener). Every `}` we pass on the way is some inner block closing —
+    # we increment a counter and decrement on each `{` to skip past them.
+    depth = 0
+    i = group_pos - 1
+    while i >= 0:
+        ch = text[i]
+        if ch == '}':
+            depth += 1
+        elif ch == '{':
+            if depth == 0:
+                break  # this is the group's opening brace
+            depth -= 1
+        i -= 1
+    if i < 0:
+        raise ValueError(f"Group {group_id} opening brace not found")
+    block_start = i
+
+    # Forward brace-match from block_start to find the closing `}`.
+    j = block_start + 1
+    bdepth = 1
+    while j < len(text) and bdepth > 0:
+        cj = text[j]
+        if cj == '{':
+            bdepth += 1
+        elif cj == '}':
+            bdepth -= 1
+        j += 1
+    return block_start, j  # j is just past the closing `}`
+
+
 def _find_route_points_bounds(text: str, group_id: int) -> tuple[int, int]:
     """Return (start, end_exclusive) for the ["points"] = { ... } block of a group.
 
-    DCS group layout (simplified):
-        [N] = {
-            ...
-            ["route"] = {
-                ["points"] = {
-                    [1] = { ... waypoint fields ... },
-                    [2] = { ... },
-                    ...
-                },
-            },
-            ["units"] = { ... },
-            ...
-        },
+    Anchors on the group's BRACE-BOUNDED block (see _find_group_block_bounds)
+    rather than searching forward from ["groupId"] — the route block lives
+    BEFORE the groupId line in DCS file order, so a forward search would
+    walk into a neighbouring group's route and silently corrupt it.
 
-    We anchor on the group's ["groupId"] line (via _find_group_block_start),
-    then walk forward looking for `["route"]` then `["points"]` — both should
-    appear within ~2KB of the group start in typical missions. Brace-match
-    past the opening `{` to find the closing brace of the points table.
-    Raises ValueError if either anchor is missing.
+    Within the group block we scan for `["route"] = {` then `["points"] = {`
+    inside the route, and brace-match the points table's closing `}`.
     """
-    group_pos = _find_group_block_start(text, group_id)
-    # Bound the search to the next ~50KB to handle very large groups with
-    # complex routes (CSG-3 patrol racetracks etc.).
-    search_end = min(len(text), group_pos + 50_000)
-    region = text[group_pos:search_end]
+    block_start, block_end = _find_group_block_bounds(text, group_id)
+    region = text[block_start:block_end]
 
     route_m = re.search(r'\["route"\]\s*=\s*\n?\s*\{', region)
     if not route_m:
-        raise ValueError(f"Route block not found for group {group_id}")
+        raise ValueError(f"Route block not found in group {group_id}")
 
     points_m = re.search(r'\["points"\]\s*=\s*\n?\s*\{', region[route_m.end():])
     if not points_m:
-        raise ValueError(f"Points block not found for group {group_id}")
+        raise ValueError(f"Points block not found in group {group_id}'s route")
 
-    # Brace-match from the opening `{` of points
-    abs_brace_open = group_pos + route_m.end() + points_m.end() - 1
+    abs_brace_open = block_start + route_m.end() + points_m.end() - 1
     depth = 1
     i = abs_brace_open + 1
     while i < len(text) and depth > 0:
