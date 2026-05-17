@@ -376,17 +376,6 @@ const STATUS_LABEL: Record<GroupStatus, string> = {
   green: 'applied',
 };
 
-function secondsToHHMM(secs: number): string {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-}
-
-function hhmmToSeconds(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10) || 0);
-  return h * 3600 + m * 60;
-}
-
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -542,14 +531,21 @@ export function TicSetupPanel() {
 
   // Set a per-waypoint action choice. Marks the group "dirty" so the
   // status dot turns amber until the next Apply pass.
-  const setWpAction = useCallback((groupId: number, wpIndex: number, action: WpActionValue) => {
+  //
+  // `defaultEtaSeconds` is the waypoint's existing eta_seconds from the
+  // .miz — we seed the state's eta_seconds with it (snapped to whole
+  // minutes for the T+ UI) so picking "Go to at time" without touching
+  // the minutes input doesn't silently overwrite the waypoint's ETA to 0.
+  const setWpAction = useCallback((groupId: number, wpIndex: number, action: WpActionValue,
+                                   defaultEtaSeconds: number = 0) => {
     setTaskAssignments((prev) => {
       const next = new Map(prev);
       const groupMap = new Map(next.get(groupId) || []);
       const existing = groupMap.get(wpIndex);
+      const seedSeconds = existing?.eta_seconds ?? Math.round(defaultEtaSeconds / 60) * 60;
       groupMap.set(wpIndex, {
         action,
-        eta_seconds: existing?.eta_seconds ?? 0,
+        eta_seconds: seedSeconds,
       });
       next.set(groupId, groupMap);
       return next;
@@ -971,7 +967,7 @@ export function TicSetupPanel() {
                                     <td style={wpTdStyle}>
                                       <select
                                         value={action}
-                                        onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue)}
+                                        onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue, wp.eta_seconds ?? 0)}
                                         style={{
                                           background: '#262626', border: '1px solid #3a3a3a',
                                           color: isV1 ? '#e0e0e0' : '#888888',
@@ -990,19 +986,25 @@ export function TicSetupPanel() {
                                     <td style={wpTdStyle}>
                                       {action === 'goto_at_time' ? (
                                         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                          <span style={paramLblStyle}>ETA</span>
+                                          <span style={paramLblStyle}>T+</span>
                                           <input
-                                            type="time"
-                                            value={secondsToHHMM(etaSeconds)}
-                                            onChange={(e) => setWpEta(sel.groupId, wpIndex, hhmmToSeconds(e.target.value))}
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={Math.round(etaSeconds / 60)}
+                                            onChange={(e) => {
+                                              // Empty input → 0. parseInt tolerates "5.7" as 5.
+                                              const mins = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+                                              setWpEta(sel.groupId, wpIndex, mins * 60);
+                                            }}
                                             style={{
                                               background: '#262626', border: '1px solid #3a3a3a',
                                               color: '#e0e0e0', fontFamily: "'B612 Mono', monospace",
                                               fontSize: 12.5, padding: '4px 6px', borderRadius: 3, outline: 'none',
-                                              width: 100,
+                                              width: 80,
                                             }}
                                           />
-                                          <span style={paramLblStyle}>after mission start</span>
+                                          <span style={paramLblStyle}>min after mission start</span>
                                         </div>
                                       ) : action === 'goto' ? (
                                         <span style={{ ...paramLblStyle, color: '#666' }}>&mdash; no params &mdash;</span>
