@@ -439,19 +439,29 @@ class TestWaypointTasks:
             j += 1
         return mission[start:j]
 
-    def _wp_name(self, group_block: str, wp_index: int) -> str:
-        """Read the waypoint's name field out of the group block, accepting
-        Lua-escaped quotes inside the value (mirrors `_LUA_STR_VALUE`)."""
-        # Match `[wpIndex] = { ... ["name"] = "VALUE", ... }` at depth-1.
-        # The [^{}]*? guard stops the match at the first nested { (the
-        # waypoint's task table) so we don't capture a name field that
-        # belongs to a nested ComboTask entry.
-        m = re.search(
-            rf'\[{wp_index}\]\s*=\s*\{{[^{{}}]*?\["name"\]\s*=\s*"((?:[^"\\]|\\.)*)"',
-            group_block, re.DOTALL,
+    def _wp_name(self, mission: str, group_id: int, wp_index: int) -> str:
+        """Read the waypoint's name field, scoped to the actual route waypoint
+        (NOT a nested ComboTask sub-entry that happens to share the index).
+
+        Reuses the production block locators so the test stays in lock-step
+        with the surgical edit's view of the world. simple.miz's carrier
+        WP1 has nested `[1]` (TACAN) and `[2]` (ICLS) sub-tasks named
+        "Lincoln Tacan" / "lincoln icls" — a regex-only helper without
+        depth tracking would extract those names instead of WP2's
+        "end point", silently masking real handler bugs.
+        """
+        from services.unit_editor import (  # local import keeps the module-
+            _find_route_points_bounds,     # level imports list short for the
+            _find_waypoint_block_bounds,   # other ~30 tests in this file that
+            _LUA_STR_VALUE,                # don't need these helpers.
+            _lua_str_unescape,
         )
-        assert m, f"WP{wp_index} name field not found in group block"
-        return m.group(1)
+        points_start, points_end = _find_route_points_bounds(mission, group_id)
+        wp_start, wp_end = _find_waypoint_block_bounds(mission, points_start, points_end, wp_index)
+        wp_region = mission[wp_start:wp_end]
+        m = re.search(r'\["name"\]\s*=\s*"' + _LUA_STR_VALUE + r'"', wp_region)
+        assert m, f"WP{wp_index} name field not found in group {group_id}"
+        return _lua_str_unescape(m.group(1))
 
     def test_goto_at_time_inserts_offset_token(self, client, uploaded_session):
         """`goto_at_time` with N min should prepend a `t+N` token to the
@@ -468,8 +478,7 @@ class TestWaypointTasks:
             },
         }
         files = download_edited(client, sid, [edit])
-        block = self._extract_group_block(files["mission"], 2)
-        wp1_name = self._wp_name(block, 1)
+        wp1_name = self._wp_name(files["mission"], 2, 1)
         # Must contain t+5. simple.miz's WP1 starts as "starting point" —
         # the original prose should be preserved.
         assert re.search(r'\bt\+5\b', wp1_name, re.IGNORECASE), \
@@ -490,7 +499,7 @@ class TestWaypointTasks:
                 "tasks": [{"wpIndex": 2, "action": "goto_at_time", "eta_seconds": 7 * 60}],
             },
         }])
-        wp2_after_set = self._wp_name(self._extract_group_block(files1["mission"], 2), 2)
+        wp2_after_set = self._wp_name(files1["mission"], 2, 2)
         assert re.search(r'\bt\+7\b', wp2_after_set, re.IGNORECASE), \
             f"seed step failed: WP2 name has no t+7; got {wp2_after_set!r}"
 
@@ -507,7 +516,7 @@ class TestWaypointTasks:
         # starts from the unedited simple.miz — which has no t+N to begin
         # with — and the strip is a no-op. The assertion here is that the
         # name has no `t+N` token, which holds either way.
-        wp2_after_strip = self._wp_name(self._extract_group_block(files2["mission"], 2), 2)
+        wp2_after_strip = self._wp_name(files2["mission"], 2, 2)
         assert not re.search(r'\bt\+\d+\b', wp2_after_strip, re.IGNORECASE), \
             f"WP2 name still carries a t+N after goto-strip; got: {wp2_after_strip!r}"
 
@@ -548,9 +557,8 @@ class TestWaypointTasks:
             },
         }
         files = download_edited(client, sid, [edit])
-        block = self._extract_group_block(files["mission"], 2)
-        wp1_name = self._wp_name(block, 1)
-        wp2_name = self._wp_name(block, 2)
+        wp1_name = self._wp_name(files["mission"], 2, 1)
+        wp2_name = self._wp_name(files["mission"], 2, 2)
         assert not re.search(r'\bt\+\d+\b', wp1_name, re.IGNORECASE), \
             f"WP1 unexpectedly carries a t+N token: {wp1_name!r}"
         assert re.search(r'\bt\+11\b', wp2_name, re.IGNORECASE), \
