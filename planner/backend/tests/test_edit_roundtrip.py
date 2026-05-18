@@ -798,6 +798,49 @@ class TestBundledScriptOverride:
         assert moose != stale_bytes, \
             "stale bytes leaked through into the output .miz"
 
+    def test_mapresource_insert_handles_inline_empty_block(self):
+        """Pre-v0.9.53 the ResKey-append regex required a leading newline
+        before the closing `}`, so missions with `mapResource = {}`
+        (inline-empty — a common shape for missions with no resources)
+        fell through to a dumb append that put new ResKey entries AFTER
+        the closing brace, producing invalid Lua. DCS then silently
+        failed to resolve a_do_script_file at runtime — triggers showed
+        in the ME but the .lua files never loaded. Brace-matched insert
+        fixes both inline and multi-line shapes."""
+        import io as _io, zipfile as _zf
+        from services.trigger_editor import serialize_triggers_to_lua
+        from services.miz_editor import repack_miz
+
+        # Build inline-format triggers + minimal .miz with an inline-empty
+        # mapResource — the exact shape that broke runtime resolution.
+        td = {"rules": [{
+            "id": 1, "name": "Moose", "eventType": "onMissionStart",
+            "enabled": True, "conditions": [],
+            "actions": [{"type": "DO_SCRIPT_FILE", "params": {"file": "Moose_.lua"}}],
+        }]}
+        trig_str, trigrules_str = serialize_triggers_to_lua(td)
+        mission = "mission = {\n" + trig_str + "\n" + trigrules_str + "\n}\n"
+
+        src = _io.BytesIO()
+        with _zf.ZipFile(src, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission)
+            z.writestr("l10n/DEFAULT/mapResource", "mapResource = {} -- end of mapResource\n")
+
+        out = repack_miz(src.getvalue(), mission)
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            mr = zf.read("l10n/DEFAULT/mapResource").decode("utf-8")
+
+        # The new ResKey entry must land INSIDE the mapResource table,
+        # not after it. The cheap structural check: count `{`s and `}`s
+        # — they must match (one of each) — AND the entry must appear
+        # before the closing brace.
+        assert mr.count("{") == 1, f"unexpected `{{` count in {mr!r}"
+        assert mr.count("}") == 1, f"unexpected `}}` count in {mr!r}"
+        assert "Moose_.lua" in mr, "Moose_.lua mapping missing"
+        assert mr.index("Moose_.lua") < mr.index("}"), \
+            "ResKey entry landed AFTER the closing brace (the v0.9.53 bug)"
+
+
     def test_unreferenced_user_script_passes_through(self):
         """A user-supplied .lua under l10n/DEFAULT/ that ISN'T one of our
         bundled assets (e.g. a custom mission script) should be preserved

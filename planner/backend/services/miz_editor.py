@@ -481,16 +481,50 @@ def _link_script_files_to_reskeys(
     if not new_entries:
         return mission_text, map_resource_text, embed_set
 
-    # Find the trailing `}` of the mapResource table and inject before it.
-    close_match = re.search(r'\n\}\s*(--[^\n]*)?\s*$', map_resource_text)
-    if close_match:
-        insert_pos = close_match.start() + 1  # after the leading newline
-        new_text = (
-            map_resource_text[:insert_pos]
-            + "\n".join(new_entries) + "\n"
-            + map_resource_text[insert_pos:]
-        )
-    else:
+    # Find the closing `}` of the mapResource table via brace-matching so
+    # we handle both shapes equivalently:
+    #
+    #   mapResource = {}                        -- inline empty (pre-v0.9.53
+    #                                              the trailing-newline regex
+    #                                              missed this and the dumb
+    #                                              fallback appended entries
+    #                                              AFTER the closing brace,
+    #                                              producing invalid Lua and
+    #                                              silently breaking script
+    #                                              resolution at runtime).
+    #   mapResource =
+    #   {
+    #       ["ResKey_Action_5"] = "X.lua",
+    #   } -- end of mapResource
+    #
+    # Both forms get the same treatment: insert the new entries right
+    # before the brace-matched closing `}`.
+    open_m = re.search(r'mapResource\s*=\s*\{', map_resource_text)
+    new_text = None
+    if open_m:
+        depth = 1
+        i = open_m.end()
+        while i < len(map_resource_text) and depth > 0:
+            ch = map_resource_text[i]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+            i += 1
+        if depth == 0:
+            close_pos = i - 1  # position of the matched closing `}`
+            insertion = "\n" + "\n".join(new_entries) + "\n"
+            new_text = (
+                map_resource_text[:close_pos]
+                + insertion
+                + map_resource_text[close_pos:]
+            )
+    if new_text is None:
+        # No mapResource block parseable — synthesize a fresh one. This
+        # also covers the path where the original .miz lacked the file
+        # entirely; the writer below treats `map_resource_text == ""`
+        # via the early-return at line 467 above so we only get here on
+        # truly weird inputs.
         new_text = map_resource_text.rstrip() + "\n" + "\n".join(new_entries) + "\n"
 
     return mission_text, new_text, embed_set
