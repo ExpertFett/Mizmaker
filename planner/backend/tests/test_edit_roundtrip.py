@@ -639,12 +639,22 @@ class TestTicRenameClearsLocks:
     with locked time" when those DCS-native flags remain true."""
 
     def test_tic_rename_bookends_eta_locks(self, client, uploaded_session):
-        """After a TIC rename: first AND last WP have ETA_locked=true
-        (DCS ME's lateActivation + route-end requirements), every middle
-        WP has ETA_locked=false. All WPs have speed_locked=false (TIC
-        owns speed). Was clear-all-locks in v0.9.48; tightened to
-        bookended-locks in v0.9.51 to satisfy DCS's me_route.lua
-        validator."""
+        """After a TIC rename, the per-WP lock combination must satisfy
+        all THREE DCS ME validators simultaneously (see the long
+        docstring in _clear_tic_scheduling_locks for why):
+
+            WP1        → ETA_locked=true,  speed_locked=true
+            WP2        → ETA_locked=false, speed_locked=false
+            WP3..n-1   → ETA_locked=false, speed_locked=true
+            WPlast     → ETA_locked=true,  speed_locked=true
+
+        For 2-WP routes WPlast == WP2 → rules for "second WP" win
+        (ETA=true, speed=false). For 1-WP routes only WP1 exists.
+
+        v0.9.48 cleared everything; v0.9.51 bookended ETA; v0.9.52
+        landed on this 4-corner combination after a user click in DCS
+        ME tripped updateTimeAndSpeedFor_:1710.
+        """
         sid = uploaded_session["sessionId"]
         edit = {
             "field": "groupRename",
@@ -662,20 +672,36 @@ class TestTicRenameClearsLocks:
         mission = files["mission"]
         ps, pe = _find_route_points_bounds(mission, 2)
         indices = sorted(_enumerate_waypoint_indices(mission, 2))
-        assert len(indices) >= 2, "fixture should have >=2 WPs for this test"
-        first_wp, last_wp = indices[0], indices[-1]
+        assert indices, "fixture should have at least one WP"
+        first_wp = indices[0]
+        last_wp  = indices[-1]
+        second_wp = indices[1] if len(indices) >= 2 else None
+
         for idx in indices:
             ws, we = _find_waypoint_block_bounds(mission, ps, pe, idx)
             region = mission[ws:we]
             eta_m = re.search(r'\["ETA_locked"\]\s*=\s*(\w+)', region)
             spd_m = re.search(r'\["speed_locked"\]\s*=\s*(\w+)', region)
+
             expected_eta = "true" if idx in (first_wp, last_wp) else "false"
+            # WP1 always speed-locked; WP2 speed-unlocked (the single
+            # WP that gives the route walker its `length > 0` win);
+            # other WPs speed-locked.
+            if idx == first_wp:
+                expected_spd = "true"
+            elif idx == second_wp:
+                expected_spd = "false"
+            else:
+                expected_spd = "true"
+
             assert eta_m and eta_m.group(1) == expected_eta, (
                 f"WP{idx} ETA_locked={eta_m.group(1) if eta_m else 'absent'}; "
-                f"expected {expected_eta} (bookend={idx in (first_wp, last_wp)})"
+                f"expected {expected_eta}"
             )
-            assert spd_m and spd_m.group(1) == "false", \
-                f"WP{idx} speed_locked not cleared; saw {spd_m.group(1) if spd_m else 'absent'}"
+            assert spd_m and spd_m.group(1) == expected_spd, (
+                f"WP{idx} speed_locked={spd_m.group(1) if spd_m else 'absent'}; "
+                f"expected {expected_spd}"
+            )
 
     def test_non_tic_rename_leaves_locks_alone(self, client, uploaded_session):
         """Renaming to a NON-TIC name shouldn't touch the locks — the

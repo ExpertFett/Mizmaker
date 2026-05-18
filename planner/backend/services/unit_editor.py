@@ -1761,51 +1761,72 @@ def _enumerate_waypoint_indices(text: str, group_id: int) -> list[int]:
 
 
 def _clear_tic_scheduling_locks(text: str, group_id: int) -> str:
-    """Bookend the route's time locks for TIC-managed groups.
+    """Set the per-waypoint lock combination that satisfies BOTH DCS ME's
+    route validator (me_route.lua) AND TIC's runtime expectations.
 
-    DCS ME's me_route.lua validator (and the runtime's `fixTriggers`)
-    enforces a specific combination when a group is late-activated:
+    DCS's validator runs three different checks at three different times,
+    and the only lock combination they agree on is non-obvious:
 
-      • verifyRouteSeg_ requires WP1.ETA_locked=true if lateActivation
-        is set — otherwise it errors with "Late activation is in effect,
-        but first waypoint has no locked time!"
-      • the route must end on an ETA_locked WP too, otherwise the
-        walk-the-route loop trips "Route has no waypoints with locked
-        time" or the mixed-case "<wp> has unlocked speed" error.
-      • but if EVERY WP between the locked-time bookends has speed_locked
-        = true, DCS emits "All waypoints (N-M) have locked speed and
-        surrounded by waypoints with locked time".
+      1. verifyRouteSeg_:1439  — late activation requires WP1.ETA_locked.
+      2. verifyRouteSeg_:1444  — if two ETA_locked WPs surround a stretch
+                                  where EVERY between-WP has speed_locked,
+                                  errors "all WPs have locked speed".
+      3. updateTimeAndSpeedFor_:1685/1710 — when the user CLICKS a unit,
+                                  computes time-and-speed; if WP1 has
+                                  ETA_locked but speed_locked=false, the
+                                  branch-3 path tries to compute ETA via
+                                  speed and bails when speed isn't locked.
 
-    TIC meanwhile uses the waypoint `name` for scheduling (`t+N`) and
-    its own speed profile per unit type, so it wants the DCS-native
-    locks OFF. The compromise that satisfies both:
+    The first two are load-time validation; the third fires the moment
+    you select the unit in DCS ME (which is the symptom Fett hit when
+    the previous all-speeds-unlocked scheme broke unit selection).
 
-      WP1     → ETA_locked = true, speed_locked = false
-      middle  → ETA_locked = false, speed_locked = false
-      WPlast  → ETA_locked = true, speed_locked = false
+    Scheme that passes all three:
 
-    Verified against me_route.lua:1411–1450: with both bookends locked
-    and at least one middle WP speed-unlocked, the validation's
-    `getWptWithFlags(..., speed_locked=false, ...)` check finds a match
-    and the error doesn't fire. For 1-2 WP routes (first==last), both
-    bookend rules apply to the same WPs — degenerate but correct.
+        WP1        → ETA_locked = true,  speed_locked = true
+        WP2        → ETA_locked = false, speed_locked = false  ← THE one
+                       middle WP with unlocked speed; gives
+                       verifyRouteSeg_:1444 its `length > 0` win.
+        WP3..n-1   → ETA_locked = false, speed_locked = true
+        WPlast     → ETA_locked = true,  speed_locked = true
+                       (for 2-WP routes WPlast == WP2 here, the rules
+                       for "second WP" win → ETA=true, speed=false.)
 
-    Invoked automatically by _rename_group_and_units whenever a group is
-    renamed to a TIC format. Walks WPs in REVERSE index order so each
-    splice's byte-length change doesn't shift offsets we still need.
+    TIC runtime doesn't read DCS-native ETA_locked / speed_locked. It
+    drives scheduling from the waypoint NAME (`t+N`) and speed from its
+    per-unit-type profile via `group:RouteGroundTo(coord, speed)`. So
+    setting these locks for the validator's sake is invisible at TIC
+    runtime.
+
+    Walks WPs in REVERSE index order so byte-length changes from earlier
+    splices don't shift positions we still need.
     """
     indices = sorted(_enumerate_waypoint_indices(text, group_id))
     if not indices:
         return text
-    first_wp, last_wp = indices[0], indices[-1]
+    first_wp = indices[0]
+    last_wp = indices[-1]
+    # The "second" waypoint — wp_idx of the second entry. For 2-WP
+    # routes this is the same as last_wp. For 1-WP routes there's no
+    # second; the loop below just hits WP1 with bookend rules.
+    second_wp = indices[1] if len(indices) >= 2 else None
     for wp_idx in sorted(indices, reverse=True):
-        eta_locked_val = "true" if wp_idx in (first_wp, last_wp) else "false"
-        # Re-find bounds each iteration — _set_lua_scalar_field can
-        # change the byte length of the file (when it inserts a missing
-        # field). Both calls are idempotent on already-matching values.
+        is_bookend = (wp_idx == first_wp or wp_idx == last_wp)
+        is_second  = (wp_idx == second_wp)
+        eta_locked_val   = "true"  if is_bookend else "false"
+        # WP1: always locked-speed (branch 3 of updateTimeAndSpeedFor_
+        # demands it). The second WP: unlocked speed so the route walk
+        # has a between-bookends WP with `length > 0`. Everything else
+        # locked speed.
+        if wp_idx == first_wp:
+            speed_locked_val = "true"
+        elif is_second:
+            speed_locked_val = "false"
+        else:
+            speed_locked_val = "true"
         ps, pe = _find_route_points_bounds(text, group_id)
         ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
-        text = _set_lua_scalar_field(text, ws, we, "speed_locked", "false")
+        text = _set_lua_scalar_field(text, ws, we, "speed_locked", speed_locked_val)
         ps, pe = _find_route_points_bounds(text, group_id)
         ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
         text = _set_lua_scalar_field(text, ws, we, "ETA_locked", eta_locked_val)
