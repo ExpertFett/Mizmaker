@@ -638,10 +638,14 @@ class TestTicRenameClearsLocks:
     "All waypoints (N-M) have locked speed and surrounded by waypoints
     with locked time" when those DCS-native flags remain true."""
 
-    def test_tic_rename_clears_locks_on_every_waypoint(self, client, uploaded_session):
+    def test_tic_rename_bookends_eta_locks(self, client, uploaded_session):
+        """After a TIC rename: first AND last WP have ETA_locked=true
+        (DCS ME's lateActivation + route-end requirements), every middle
+        WP has ETA_locked=false. All WPs have speed_locked=false (TIC
+        owns speed). Was clear-all-locks in v0.9.48; tightened to
+        bookended-locks in v0.9.51 to satisfy DCS's me_route.lua
+        validator."""
         sid = uploaded_session["sessionId"]
-        # simple.miz's group 2 (carrier) starts with ETA_locked=true on
-        # WP1 and speed_locked=true on multiple WPs — a perfect target.
         edit = {
             "field": "groupRename",
             "value": {
@@ -651,25 +655,25 @@ class TestTicRenameClearsLocks:
             },
         }
         files = download_edited(client, sid, [edit])
-        # After the rename, every waypoint in group 2's route must have
-        # both flags false. We use the production locator (same trap as
-        # TestWaypointTasks — nested ComboTask `[N]` would fool a
-        # depth-blind regex).
         from services.unit_editor import (
             _find_route_points_bounds, _find_waypoint_block_bounds,
             _enumerate_waypoint_indices,
         )
         mission = files["mission"]
         ps, pe = _find_route_points_bounds(mission, 2)
-        indices = _enumerate_waypoint_indices(mission, 2)
-        assert indices, "no waypoints found — fixture changed?"
+        indices = sorted(_enumerate_waypoint_indices(mission, 2))
+        assert len(indices) >= 2, "fixture should have >=2 WPs for this test"
+        first_wp, last_wp = indices[0], indices[-1]
         for idx in indices:
             ws, we = _find_waypoint_block_bounds(mission, ps, pe, idx)
             region = mission[ws:we]
             eta_m = re.search(r'\["ETA_locked"\]\s*=\s*(\w+)', region)
             spd_m = re.search(r'\["speed_locked"\]\s*=\s*(\w+)', region)
-            assert eta_m and eta_m.group(1) == "false", \
-                f"WP{idx} ETA_locked not cleared; saw {eta_m.group(1) if eta_m else 'absent'}"
+            expected_eta = "true" if idx in (first_wp, last_wp) else "false"
+            assert eta_m and eta_m.group(1) == expected_eta, (
+                f"WP{idx} ETA_locked={eta_m.group(1) if eta_m else 'absent'}; "
+                f"expected {expected_eta} (bookend={idx in (first_wp, last_wp)})"
+            )
             assert spd_m and spd_m.group(1) == "false", \
                 f"WP{idx} speed_locked not cleared; saw {spd_m.group(1) if spd_m else 'absent'}"
 

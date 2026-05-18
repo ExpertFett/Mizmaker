@@ -1761,35 +1761,54 @@ def _enumerate_waypoint_indices(text: str, group_id: int) -> list[int]:
 
 
 def _clear_tic_scheduling_locks(text: str, group_id: int) -> str:
-    """Set ["ETA_locked"] = false and ["speed_locked"] = false on every
-    waypoint of the given group.
+    """Bookend the route's time locks for TIC-managed groups.
 
-    The TIC runtime (TIC_v1.1.lua) drives its own scheduling and speed
-    profiles — when DCS's native ETA_locked / speed_locked stay true on a
-    TIC-managed group's waypoints, DCS tries to enforce its own schedule
-    in parallel and TIC emits warnings of the form "All waypoints (N-M)
-    have locked speed and surrounded by waypoints with locked time".
+    DCS ME's me_route.lua validator (and the runtime's `fixTriggers`)
+    enforces a specific combination when a group is late-activated:
+
+      • verifyRouteSeg_ requires WP1.ETA_locked=true if lateActivation
+        is set — otherwise it errors with "Late activation is in effect,
+        but first waypoint has no locked time!"
+      • the route must end on an ETA_locked WP too, otherwise the
+        walk-the-route loop trips "Route has no waypoints with locked
+        time" or the mixed-case "<wp> has unlocked speed" error.
+      • but if EVERY WP between the locked-time bookends has speed_locked
+        = true, DCS emits "All waypoints (N-M) have locked speed and
+        surrounded by waypoints with locked time".
+
+    TIC meanwhile uses the waypoint `name` for scheduling (`t+N`) and
+    its own speed profile per unit type, so it wants the DCS-native
+    locks OFF. The compromise that satisfies both:
+
+      WP1     → ETA_locked = true, speed_locked = false
+      middle  → ETA_locked = false, speed_locked = false
+      WPlast  → ETA_locked = true, speed_locked = false
+
+    Verified against me_route.lua:1411–1450: with both bookends locked
+    and at least one middle WP speed-unlocked, the validation's
+    `getWptWithFlags(..., speed_locked=false, ...)` check finds a match
+    and the error doesn't fire. For 1-2 WP routes (first==last), both
+    bookend rules apply to the same WPs — degenerate but correct.
 
     Invoked automatically by _rename_group_and_units whenever a group is
-    renamed to a TIC format (prefix `TIC!` or `TIC:`). Walk WPs in
-    REVERSE index order so earlier splices don't shift offsets used for
-    later indices.
+    renamed to a TIC format. Walks WPs in REVERSE index order so each
+    splice's byte-length change doesn't shift offsets we still need.
     """
-    indices = _enumerate_waypoint_indices(text, group_id)
+    indices = sorted(_enumerate_waypoint_indices(text, group_id))
+    if not indices:
+        return text
+    first_wp, last_wp = indices[0], indices[-1]
     for wp_idx in sorted(indices, reverse=True):
-        # Re-find bounds each iteration — _set_lua_scalar_field can change
-        # the byte length of the file (when it inserts a missing field).
+        eta_locked_val = "true" if wp_idx in (first_wp, last_wp) else "false"
+        # Re-find bounds each iteration — _set_lua_scalar_field can
+        # change the byte length of the file (when it inserts a missing
+        # field). Both calls are idempotent on already-matching values.
         ps, pe = _find_route_points_bounds(text, group_id)
         ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
-        # Clear speed_locked first (later in field order → earlier byte
-        # mutation if anything inserts), then ETA_locked. Both calls are
-        # idempotent on already-false values; _set_lua_scalar_field
-        # mutates in place when the field exists and only inserts when
-        # it's truly absent (rare on DCS-emitted WPs).
         text = _set_lua_scalar_field(text, ws, we, "speed_locked", "false")
         ps, pe = _find_route_points_bounds(text, group_id)
         ws, we = _find_waypoint_block_bounds(text, ps, pe, wp_idx)
-        text = _set_lua_scalar_field(text, ws, we, "ETA_locked", "false")
+        text = _set_lua_scalar_field(text, ws, we, "ETA_locked", eta_locked_val)
     return text
 
 
