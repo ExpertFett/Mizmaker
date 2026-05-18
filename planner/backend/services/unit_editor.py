@@ -1833,6 +1833,47 @@ def _clear_tic_scheduling_locks(text: str, group_id: int) -> str:
     return text
 
 
+def _set_group_manual_heading(text: str, group_id: int, enabled: bool) -> str:
+    """Set ["manualHeading"] = true/false on the group's block.
+
+    Maps to the DCS ME "INITIAL HEADING" checkbox (right of the
+    compass-wheel widget — see me_vehicle.lua:88 `manualHeading = _('INITIAL\\nHEADING')`).
+    When true, DCS uses the unit's HEADING field verbatim as the initial
+    spawn heading; when false (default), DCS recomputes the heading from
+    the route direction (the WP1 → WP2 vector for vehicles).
+
+    For TIC-renamed groups we set this true because the planner writes a
+    random per-unit heading during the TIC rename pass and we want it
+    to actually stick — TIC controls movement at runtime anyway, so the
+    route-derived heading isn't useful.
+
+    Inserts the field after the ["groupId"] line if absent; mutates the
+    existing value if present (idempotent).
+    """
+    group_pos = _find_group_block_start(text, group_id)
+    lua_val = "true" if enabled else "false"
+
+    # Search a generous window after groupId — manualHeading sits among
+    # other group-level booleans (lateActivation, hidden, etc.) shortly
+    # after the groupId field in DCS-emitted Lua.
+    search_end = min(len(text), group_pos + 5000)
+    region = text[group_pos:search_end]
+
+    m = re.search(r'(\["manualHeading"\]\s*=\s*)(true|false)', region)
+    if m:
+        abs_start = group_pos + m.start(2)
+        abs_end = group_pos + m.end(2)
+        return text[:abs_start] + lua_val + text[abs_end:]
+
+    # Field absent — insert directly after the ["groupId"] = N, line.
+    gid_pattern = re.compile(rf'\["groupId"\]\s*=\s*{group_id}\s*,')
+    gm = gid_pattern.search(text, group_pos)
+    if not gm:
+        return text  # defensive — locator should have given us a real anchor
+    insert_pos = gm.end()
+    return text[:insert_pos] + f'\n\t\t\t\t["manualHeading"] = {lua_val},' + text[insert_pos:]
+
+
 def _is_tic_format_name(name: str | None) -> bool:
     """True iff `name` is in the TIC group-name format the TIC_v1.1.lua
     script recognises — TIC! (formation leader) or TIC: (member),
@@ -1949,8 +1990,13 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
         # See _replace_unit_name for the escape rationale — same bug class.
         text = text[:abs_start] + _lua_str_escape(new_group_name) + text[abs_end:]
 
-        # If the user renamed to TIC format, clear DCS-native scheduling
-        # locks on every waypoint of this group. See _clear_tic_scheduling_locks.
+        # If the user renamed to TIC format, also:
+        #   (a) bookend the WP scheduling locks (DCS ME validator),
+        #   (b) set INITIAL HEADING (["manualHeading"] = true) on the
+        #       group so the random per-unit heading the TIC tab wrote
+        #       actually sticks at spawn time. Without manualHeading,
+        #       DCS recomputes the spawn heading from the WP1→WP2
+        #       vector, which overrides our random.
         if _is_tic_format_name(new_group_name):
             try:
                 text = _clear_tic_scheduling_locks(text, group_id)
@@ -1959,6 +2005,7 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
                 # no waypoints, etc.). Locks-clearing isn't applicable —
                 # silent no-op rather than aborting the rename.
                 pass
+            text = _set_group_manual_heading(text, group_id, True)
 
     return text
 

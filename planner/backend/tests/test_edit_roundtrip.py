@@ -729,6 +729,33 @@ class TestTicRenameClearsLocks:
         assert m and m.group(1) == "true", \
             f"non-TIC rename should leave WP1 ETA_locked=true; saw {m.group(1) if m else 'absent'}"
 
+    def test_tic_rename_sets_manual_heading(self, client, uploaded_session):
+        """TIC rename also sets ["manualHeading"] = true on the group —
+        the DCS ME "INITIAL HEADING" checkbox. Without it DCS recomputes
+        the spawn heading from the WP1→WP2 vector, overriding the random
+        heading the TIC tab writes per-unit."""
+        sid = uploaded_session["sessionId"]
+        files = download_edited(client, sid, [{
+            "field": "groupRename",
+            "value": {"groupId": 2, "newGroupName": "TIC!HD#", "unitNames": {}},
+        }])
+        mission = files["mission"]
+        m = re.search(r'\["manualHeading"\]\s*=\s*(\w+)', mission)
+        assert m and m.group(1) == "true", \
+            f"manualHeading should be true after TIC rename; got {m.group(0) if m else '<absent>'}"
+
+    def test_non_tic_rename_does_not_set_manual_heading(self, client, uploaded_session):
+        """Non-TIC renames keep manualHeading absent (or whatever it
+        was). Gated on the TIC prefix so non-TIC missions stay unchanged."""
+        sid = uploaded_session["sessionId"]
+        files = download_edited(client, sid, [{
+            "field": "groupRename",
+            "value": {"groupId": 2, "newGroupName": "Regular Name", "unitNames": {}},
+        }])
+        mission = files["mission"]
+        assert not re.search(r'\["manualHeading"\]', mission), \
+            "manualHeading was inserted on a non-TIC rename"
+
     def test_is_tic_format_name_predicate(self):
         """Spot-check the prefix predicate so future TIC name format
         changes get caught here before they regress the auto-clear."""
