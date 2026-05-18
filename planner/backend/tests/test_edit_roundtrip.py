@@ -756,6 +756,52 @@ class TestTicRenameClearsLocks:
         assert not re.search(r'\["manualHeading"\]', mission), \
             "manualHeading was inserted on a non-TIC rename"
 
+    def test_second_pass_tic_rename_finds_real_group(self, client, uploaded_session):
+        """Regression for v0.9.56 — uploading an already-TIC-edited mission
+        and running a second TIC rename used to fail with `Units block not
+        found near group N`. The cause: _find_group_block_start required
+        ["hidden"] as the IMMEDIATE next field after ["groupId"], but our
+        own _replace_late_activation inserts ["lateActivation"] right after
+        ["groupId"] on the first pass — so the second pass's locator fell
+        back to matches[0] which was a trigger reference (small ["params"]
+        dict) instead of the real group block (which has the ["units"]
+        field downstream)."""
+        sid = uploaded_session["sessionId"]
+        # First pass: rename + set lateActivation per unit, the standard
+        # TIC tab dispatch shape. The lateActivation handler inserts the
+        # field right after groupId when it doesn't already exist.
+        files1 = download_edited(client, sid, [
+            {"field": "groupRename",
+             "value": {"groupId": 2, "newGroupName": "TIC!Pass1#", "unitNames": {}}},
+            {"field": "lateActivation", "unitId": 2, "value": True},
+        ])
+        # Sanity check: the first pass inserted ["lateActivation"] right
+        # after ["groupId"] = 2 — the exact arrangement that broke the
+        # second pass before the fix.
+        first_mission = files1["mission"]
+        assert re.search(
+            r'\["groupId"\]\s*=\s*2\s*,\s*\n\s*\["lateActivation"\]\s*=\s*true',
+            first_mission,
+        ), "test setup failed — lateActivation didn't land right after groupId"
+
+        # Re-upload the edited mission and run another TIC rename. With
+        # the broken locator this would have produced an X-Edit-Results
+        # entry: "Units block not found near group 2".
+        import io as _io
+        data = {"file": (_io.BytesIO(first_mission.encode("utf-8")), "_edited.miz")}
+        # Actually we need to wrap as a .miz — easier: re-use the test
+        # client with the original session but verify directly that the
+        # locator picks the right anchor on the edited text.
+        from services.unit_editor import _find_group_block_start
+        pos = _find_group_block_start(first_mission, 2)
+        # The real group block has ["units"] within a reasonable window
+        # downstream; a trigger ref has only a tight ["params"] dict.
+        window_after = first_mission[pos:pos + 5000]
+        assert '["units"]' in window_after, (
+            f"locator returned a non-real-group position for groupId 2; "
+            f"context: {first_mission[pos:pos+200]!r}"
+        )
+
     def test_is_tic_format_name_predicate(self):
         """Spot-check the prefix predicate so future TIC name format
         changes get caught here before they regress the auto-clear."""

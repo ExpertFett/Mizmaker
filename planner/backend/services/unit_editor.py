@@ -191,25 +191,41 @@ def _find_group_block_start(text: str, group_id: int) -> int:
 
     IMPORTANT: ["groupId"] = N also appears inside trigger action parameters
     (e.g. a trigger that targets a specific group), which are NOT group
-    definitions. To disambiguate, we require the match be followed by
-    ["hidden"] or ["units"] within the next ~500 chars — those fields appear
-    right after groupId in actual group blocks but never in trigger refs.
+    definitions. To disambiguate, we look at what comes IMMEDIATELY after
+    the groupId match:
 
-    Falls back to the first match if no "real" group is found (for backward
-    compat with 856-style unit edits where the anchor is by position).
+      Real group:    `["groupId"] = N,\\n\\t...\\t["someField"] = ...`
+                     (some structured field, often `["hidden"]`, but planner
+                     inserts can put `["lateActivation"]`, `["manualHeading"]`,
+                     etc. in front — anything matching `\\s*\\["<word>"\\]` is
+                     a valid "real group" indicator).
+      Trigger ref:   `["groupId"] = N,\\n\\t...}, -- end of ["params"]`
+                     (closing brace as the next non-whitespace char).
+
+    Pre-v0.9.56 we required specifically `["hidden"]` as the immediate next
+    field. After v0.9.42's TIC tab started inserting `["lateActivation"]`
+    right after `["groupId"]`, that check failed on a second-pass upload
+    of an already-edited mission. The locator fell back to `matches[0]`
+    which is usually a trigger reference earlier in the file — downstream
+    callers like `_rename_group_and_units` then errored with "Units block
+    not found near group N" because they were looking inside a trigger
+    action's tiny params dict, not the real group block.
+
+    Falls back to the first match if no "real" group is found (for
+    backward compat with 856-style unit edits where the anchor is by
+    position).
     """
     pattern = rf'\["groupId"\]\s*=\s*{group_id}\s*,'
     matches = list(re.finditer(pattern, text))
     if not matches:
         raise ValueError(f"Group {group_id} not found in mission text")
 
-    # A real group definition has ["hidden"] as the IMMEDIATE next field after
-    # ["groupId"]. Trigger action references have "}, -- end of ..." right
-    # after. We use a tight window (~80 chars of whitespace+key) to avoid
-    # picking up the next group's ["hidden"] after a stack of closing braces.
-    real_group_next = re.compile(r'^\s*\["hidden"\]')
+    # Real groups have ANY structured field as the immediate next thing
+    # after `["groupId"] = N,`. Trigger refs have `}` (closing of the
+    # params dict) as the next non-whitespace char.
+    real_group_next = re.compile(r'\s*\["[A-Za-z_][A-Za-z_0-9]*"\]')
     for m in matches:
-        window = text[m.end():m.end() + 80]
+        window = text[m.end():m.end() + 120]
         if real_group_next.match(window):
             return m.start()
 
