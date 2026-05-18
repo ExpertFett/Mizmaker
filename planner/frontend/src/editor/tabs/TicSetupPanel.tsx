@@ -935,16 +935,25 @@ export function TicSetupPanel() {
                             </thead>
                             <tbody>
                               {selWaypoints.map((wp) => {
-                                // `wp.waypoint_number` is 0-indexed from the
-                                // parser (it follows the F/A-18 steerpoint
-                                // convention — see miz_parser.py:737). DCS
-                                // Lua tables and the TIC editor are 1-indexed
-                                // though, so convert at the boundary: the
-                                // user sees WP1/WP2/WP3 (matches DCS ME),
-                                // the backend receives 1-indexed wpIndex
-                                // (matches its `_find_waypoint_block_bounds`
-                                // lookup which scans for `[N] = {`).
+                                // Two different indexing schemes are at play:
+                                //
+                                //   wpIndex (1-based)  — DCS Lua table position
+                                //                        in route.points[N].
+                                //                        This is what the backend's
+                                //                        _find_waypoint_block_bounds
+                                //                        scans for. Used in dispatch.
+                                //   wpLabel (0-based)  — TIC's mental model
+                                //                        (and the mission designer's):
+                                //                        WP0 = initial / spawn position,
+                                //                        WP1 = first move waypoint,
+                                //                        WP2 = second move, ...
+                                //                        Used in the UI label only.
+                                //
+                                // Parser stores `waypoint_number` 0-indexed already
+                                // (miz_parser.py:737 — for F/A-18 steerpoint parity);
+                                // we use that directly as the user-facing label.
                                 const wpIndex = wp.waypoint_number + 1;
+                                const wpLabel = wp.waypoint_number;
                                 const groupTasks = taskAssignments.get(sel.groupId);
                                 const fromState = groupTasks?.get(wpIndex);
                                 // Seed from the waypoint NAME, not from DCS-native
@@ -972,7 +981,7 @@ export function TicSetupPanel() {
                                       fontFamily: "'B612 Mono', monospace",
                                       whiteSpace: 'nowrap',
                                     }}>
-                                      WP{wpIndex}
+                                      WP{wpLabel}
                                     </td>
                                     <td style={{ ...wpTdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#aaaaaa', whiteSpace: 'nowrap' }}>
                                       {wp.lat != null && wp.lon != null
