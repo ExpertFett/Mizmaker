@@ -49,8 +49,16 @@ export interface CommandersIntentInput {
   date: string;
   time_zulu: string;
   /** The scenario paragraph the user already sees / edits — combined
-   *  mission description + blue/red task from the .miz dictionary. */
+   *  mission description + blue/red task from the .miz dictionary.
+   *  Often sparse or empty; mission_story is the primary narrative
+   *  source when the user fills that in. */
   scenario: string;
+  /** Free-form mission backstory the user types into the brief editor.
+   *  This is the PRIMARY narrative the AI builds the intent from —
+   *  the .miz scenario is often empty or generic, but the maker
+   *  always has the story in their head. Empty string = use scenario
+   *  alone. */
+  missionStory?: string;
   threats: CIThreat[];
   flights: CIFlight[];
   /** Optional free-form steer from the user (e.g. "emphasise SEAD
@@ -90,14 +98,27 @@ export function buildCommandersIntentUserMessage(input: CommandersIntentInput): 
   }
   lines.push('');
 
+  // Mission story — the user's own narrative is the primary context.
+  // When provided it gets top billing: the model treats it as the
+  // canonical source. The auto-extracted scenario is a fallback.
+  const story = (input.missionStory || '').trim();
+  if (story) {
+    lines.push('Mission story (authored by the mission maker — this is the canonical context):');
+    lines.push(story);
+    lines.push('');
+  }
+
   // Scenario blurb — strip any DictKey_ leakage (already done server-side,
-  // but be defensive in case the user pasted in something odd).
+  // but be defensive in case the user pasted in something odd). When the
+  // mission story is filled in, the scenario is secondary supplementary
+  // context; when story is empty, the scenario is all we've got.
   const scenario = (input.scenario || '').trim();
-  if (scenario && !scenario.startsWith('No scenario description')) {
-    lines.push('Scenario:');
+  const hasUsefulScenario = scenario && !scenario.startsWith('No scenario description');
+  if (hasUsefulScenario) {
+    lines.push(story ? 'Scenario (from .miz, supplementary):' : 'Scenario:');
     lines.push(scenario);
     lines.push('');
-  } else {
+  } else if (!story) {
     lines.push('Scenario: (not provided — infer from flights + threats)');
     lines.push('');
   }

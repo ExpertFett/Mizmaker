@@ -125,4 +125,54 @@ describe('buildCommandersIntentUserMessage', () => {
     expect(msg).toMatch(/Write the Commander'?s Intent now/);
     expect(msg).toContain('Purpose / Method / End State');
   });
+
+  describe('mission story (user-authored narrative)', () => {
+    it('renders the story as the canonical context when provided', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        missionStory: 'A Russian motor-rifle brigade crossed the line overnight; ' +
+          'FOB Sentinel is pinned and our package opens the morning push.',
+      }));
+      expect(msg).toMatch(/Mission story.*canonical context/);
+      expect(msg).toContain('A Russian motor-rifle brigade');
+      expect(msg).toContain('FOB Sentinel');
+    });
+
+    it('marks the .miz scenario as supplementary when story is present', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        missionStory: 'My handwritten story.',
+        scenario: 'Some auto-extracted .miz scenario.',
+      }));
+      // Both should appear, but the .miz scenario gets a secondary label.
+      expect(msg).toContain('My handwritten story.');
+      expect(msg).toContain('Scenario (from .miz, supplementary):');
+      expect(msg).toContain('Some auto-extracted .miz scenario.');
+    });
+
+    it('uses scenario alone (no supplementary label) when story is empty', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        missionStory: '',
+        scenario: 'Some .miz scenario.',
+      }));
+      expect(msg).toContain('Scenario:');
+      expect(msg).not.toContain('supplementary');
+    });
+
+    it('omits both sections and asks for inference when story AND scenario are empty', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        missionStory: '',
+        scenario: '',
+      }));
+      expect(msg).toContain('Scenario: (not provided');
+      expect(msg).not.toContain('Mission story');
+    });
+
+    it('treats whitespace-only story as empty', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        missionStory: '   \n\t  ',
+        scenario: 'Some scenario.',
+      }));
+      expect(msg).not.toContain('Mission story');
+      expect(msg).not.toContain('supplementary');
+    });
+  });
 });

@@ -93,6 +93,14 @@ export function BriefGenTab() {
    *  AI button. Empty by default; rendered in a small input above
    *  the textarea on the Commander's Intent card. */
   const [aiSteer, setAiSteer] = useState('');
+  /** The mission maker's own narrative of the story — feeds the AI
+   *  as the PRIMARY context for commander's intent (and future AI
+   *  features). Lives in its own card above the AI button so the
+   *  user understands "type story here → AI uses it". Not part of the
+   *  WingBrief object — this is AI context, not brief content. The
+   *  scenario card below remains the slide-displayed prose. Cleared
+   *  on Rebuild from mission. */
+  const [missionStory, setMissionStory] = useState('');
 
   // Inline preview pane state. Slides come from the server as base64 PNGs
   // rendered via LibreOffice → pypdfium2. Empty until user clicks Preview.
@@ -272,6 +280,7 @@ export function BriefGenTab() {
         date: brief.date,
         time_zulu: brief.time_zulu,
         scenario: brief.scenario,
+        missionStory,
         threats: brief.threats,
         flights: brief.flights,
         userSteer: aiSteer,
@@ -526,6 +535,49 @@ export function BriefGenTab() {
           <Card title="Scenario">
             <textarea style={textareaStyle} rows={8} value={brief.scenario}
                       onChange={(e) => set('scenario', e.target.value)} />
+          </Card>
+
+          {/* Mission Story — the maker's own narrative of what's going
+              on. Not rendered onto a slide; feeds the AI commander's
+              intent (and future AI features) as the canonical context.
+              .miz dictionaries are usually sparse, so this is where
+              the actual story lives. */}
+          <Card
+            title="Mission Story"
+            right={
+              missionStory ? (
+                <button
+                  onClick={() => set('scenario', missionStory)}
+                  style={btnSmall}
+                  title="Copy this prose into the Scenario card above so it also renders on the brief slides"
+                >
+                  Copy to Scenario
+                </button>
+              ) : undefined
+            }
+          >
+            <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 6, lineHeight: 1.5 }}>
+              Write a paragraph or two about what's happening in this
+              mission — the situation, what the enemy is doing, what's
+              at stake, what success looks like. <strong style={{ color: '#cccccc' }}>This text is
+              not rendered on the brief slides</strong> — it's the
+              context the AI uses to write a tailored Commander's Intent
+              below. The more you write here, the better the AI output.
+            </div>
+            <textarea
+              style={textareaStyle}
+              rows={8}
+              value={missionStory}
+              onChange={(e) => setMissionStory(e.target.value)}
+              placeholder={
+                'Example: A Russian motor-rifle brigade has pushed across the ' +
+                'cease-fire line into the Kobuleti valley overnight. Friendly ' +
+                'ground forces are pinned at FOB Sentinel. Our package is the ' +
+                'first sortie of the morning push — we need to crack the SA-11 ' +
+                'belt north of Kobuleti so the strike package behind us can hit ' +
+                'the brigade command post before they consolidate.'
+              }
+            />
           </Card>
 
           <Card
