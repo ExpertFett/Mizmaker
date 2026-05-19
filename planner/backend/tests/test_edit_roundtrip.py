@@ -713,7 +713,7 @@ class TestScriptAutoBundle:
             '    ["ResKey_Action_1"] = "Moose_.lua",\n'
             '}\n'
         )
-        stale_bytes = b"-- STALE MOOSE — should be overridden\n"
+        stale_bytes = b"-- STALE MOOSE - should be overridden\n"
         buf = _io.BytesIO()
         with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
             z.writestr("mission", mission)
