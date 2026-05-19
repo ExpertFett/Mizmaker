@@ -1609,6 +1609,48 @@ def _set_lua_scalar_field(text: str, block_start: int, block_end: int,
 _TIC_OFFSET_RE = re.compile(r'\bt\+\d+\b', re.IGNORECASE)
 
 
+def _set_named_token_in_tic_name(name: str, prefix: str, sep: str,
+                                 value: str | int | None) -> str:
+    """Insert / replace / remove a TIC token of the form `<prefix><sep><value>`
+    inside a waypoint name. Used for the v2 token vocab (speed=N, roe=X,
+    hdg=N, flag=X, flag+X).
+
+    All TIC tokens parsed by TIC_v1.1.lua match one of three patterns:
+      KEY+VALUE   t+N, flag+X       (use `+` as separator)
+      KEY=VALUE   speed=N, roe=X,
+                  hdg=N, flag=X     (use `=` as separator)
+      BARE WORD   mount, dismount   (no separator — not handled here)
+
+    `value=None` or `value=""` -> strip the matching token from the name.
+    Any other value sets / replaces it. Other TIC tokens (including the
+    other prefix/sep combinations) are preserved untouched.
+
+    The value-character class matches `\\w` + `.` so decimals like
+    `scale=0.5` round-trip cleanly. Tokens are appended at the end of the
+    name on insert (after any existing content). `t+N` historically
+    prepended for readability — see _set_offset_in_tic_name's special
+    case below.
+    """
+    name = name or ""
+    sep_esc = re.escape(sep)
+    # Token shape: prefix + sep + value. Value chars: word + dot for decimals.
+    pat = re.compile(
+        rf'\b{re.escape(prefix)}{sep_esc}[\w.]+\b',
+        re.IGNORECASE,
+    )
+    if value is None or value == "":
+        cleaned = pat.sub('', name)
+        return re.sub(r'\s+', ' ', cleaned).strip()
+    new_token = f'{prefix}{sep}{value}'
+    if pat.search(name):
+        replaced = pat.sub(new_token, name, count=1)
+        return re.sub(r'\s+', ' ', replaced).strip()
+    rest = re.sub(r'\s+', ' ', name).strip()
+    if rest:
+        return f'{rest} {new_token}'
+    return new_token
+
+
 def _set_offset_in_tic_name(name: str, minutes: int | None) -> str:
     """Insert / replace / remove the TIC `t+N` offset token in a waypoint name.
 
@@ -1620,6 +1662,12 @@ def _set_offset_in_tic_name(name: str, minutes: int | None) -> str:
     Other TIC tokens in the name (hdg=, speed=, "phase", roe=, flag=, etc.)
     are preserved unchanged. Whitespace is normalized to single spaces and
     trimmed; an empty result is allowed (and means "no TIC directives").
+
+    The generic _set_named_token_in_tic_name handles the common path, but
+    t+N specifically PREPENDS for readability (it's the primary timing
+    token mission designers scan-for visually). The append-on-insert
+    behaviour the generic helper uses is fine for secondary tokens like
+    speed=N / roe=X.
     """
     name = name or ""
     if minutes is None:
@@ -1685,30 +1733,42 @@ def _read_waypoint_name(text: str, group_id: int, wp_index: int) -> str:
 
 
 def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
-    """Apply per-waypoint task selections to a group's route.
+    """Apply per-waypoint TIC token edits to a group's route.
 
-    `tasks` is a list of:
+    Each entry in `tasks` is a dict describing one waypoint's intended state:
+
         {
           "wpIndex":     int,    # 1-based DCS waypoint number
-          "action":      str,    # "goto" | "goto_at_time"  (v1 vocab)
-          "eta_seconds": int,    # only used when action == "goto_at_time"
+          "action":      str,    # "goto" | "goto_at_time"  (controls t+N)
+          "eta_seconds": int,    # used when action == "goto_at_time"
+
+          # ── v2 secondary tokens (all optional) ───────────────────────
+          # Each behaves the same way: omit / null → leave the token
+          # alone in the existing name; empty string → strip the token;
+          # any other value → set or replace the token.
+          "speed":     int,      # speed=N  (km/h)
+          "roe":       str,      # roe=simulate / roe=kill / roe=hold
+          "hdg":       int,      # hdg=N    (degrees)
+          "flag_wait": str|int,  # flag=X   (TIC waits for this flag)
+          "flag_set":  str|int,  # flag+X   (TIC sets this flag on arrival)
         }
 
-    v1 semantics (corrected from v0.9.42-44, which incorrectly targeted
-    DCS-native ETA/ETA_locked — those fields are not read by the TIC
-    runtime script `TIC_v1.1.lua`):
+    TIC parses the waypoint NAME for behavioural tokens at runtime
+    (TIC_v1.1.lua::extract*). So this handler surgically maintains those
+    tokens inside each target waypoint's name field. The tokens parsed
+    by the script and supported here:
 
-        TIC parses the waypoint NAME for behavioural tokens at runtime —
-        GLSCO_ROUTE:extractOffsetTime() matches `t%+(%d+)`. So the only
-        thing this handler needs to do is surgically maintain the `t+N`
-        token inside each target waypoint's name field. All other tokens
-        in the name (hdg=, speed=, roe=, "phase", flag=, etc.) are
-        preserved verbatim.
+        t+N             — offset time in minutes after previous WP
+        speed=N         — set unit speed in km/h
+        roe=<verb>      — rules of engagement (simulate/kill/hold)
+        hdg=N           — heading degrees
+        flag=X          — wait for flag X to be true before proceeding
+        flag+X          — set flag X true on arrival
 
-    Mutation rules:
-        action == "goto"          -> strip any `t+N` from the name
-        action == "goto_at_time"  -> set `t+<round(eta_seconds/60)>` in
-                                     the name (replace existing or prepend)
+    All other tokens in the name (scale=, "phase", direct=, strength=,
+    mount/dismount, etc.) are preserved untouched, even ones the planner
+    doesn't yet expose in v2 — mission designers can hand-edit those in
+    the waypoint name and the planner won't clobber them.
 
     Process waypoints in REVERSE wpIndex order so earlier-positioned
     splices don't shift offsets we'd need for later indices.
@@ -1716,19 +1776,45 @@ def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
     if not tasks:
         return text
 
+    # (token_kwarg, prefix, separator) — drives the v2 secondary token loop.
+    # Order matters cosmetically (later tokens append to the right of
+    # earlier ones in the rendered name); functionally the order is
+    # irrelevant since TIC's parser sweeps the whole string.
+    SECONDARY_TOKENS = (
+        ("speed",      "speed", "="),
+        ("roe",        "roe",   "="),
+        ("hdg",        "hdg",   "="),
+        ("flag_wait",  "flag",  "="),
+        ("flag_set",   "flag",  "+"),
+    )
+
     for spec in sorted(tasks, key=lambda t: int(t.get("wpIndex", 0)), reverse=True):
         wp_idx = int(spec.get("wpIndex"))
         action = str(spec.get("action", "goto"))
-        if action not in ("goto", "goto_at_time"):
-            # Unknown verb (e.g. v2 placeholder leaking through). Skip;
-            # dispatcher will record noop status.
-            continue
         current_name = _read_waypoint_name(text, group_id, wp_idx)
+        new_name = current_name
+
+        # ── Primary action: drives the `t+N` token ───────────────────
         if action == "goto":
-            new_name = _set_offset_in_tic_name(current_name, None)
-        else:  # "goto_at_time"
+            new_name = _set_offset_in_tic_name(new_name, None)
+        elif action == "goto_at_time":
             minutes = max(0, round(int(spec.get("eta_seconds", 0)) / 60))
-            new_name = _set_offset_in_tic_name(current_name, minutes)
+            new_name = _set_offset_in_tic_name(new_name, minutes)
+        # else: unknown verb — leave t+N alone but still process secondary
+        # tokens (forward-compat with future primary verbs we haven't
+        # mapped yet).
+
+        # ── v2 secondary tokens — only touch ones present in the spec ──
+        # `None` (or omitted entirely) means "leave that token alone in
+        # the name". Empty string means "remove the token". Any other
+        # value sets/replaces it.
+        for kwarg, prefix, sep in SECONDARY_TOKENS:
+            if kwarg not in spec:
+                continue
+            new_name = _set_named_token_in_tic_name(
+                new_name, prefix, sep, spec[kwarg],
+            )
+
         if new_name == current_name:
             continue  # idempotent — skip the splice
         text = _replace_waypoint_name(text, group_id, wp_idx, new_name)

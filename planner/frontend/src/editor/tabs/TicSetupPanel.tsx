@@ -333,25 +333,43 @@ function buildRealWorldUnitName(
 /* Per-waypoint task editing (v1: goto / goto_at_time only)            */
 /* ------------------------------------------------------------------ */
 
-/** Verbs the per-waypoint dropdown exposes. v1 wires only the first two to
- *  the backend handler; the rest are visible-but-disabled placeholders so
- *  the vocab is discoverable while v2 is built. */
+/** Primary action verbs the per-waypoint dropdown exposes. These drive the
+ *  `t+N` token in the waypoint name:
+ *    goto          → strip any `t+N`
+ *    goto_at_time  → set `t+<minutes>`
+ *
+ *  v1 placeholders (Hold / Engage on call / etc.) were removed in v0.9.57 —
+ *  they were DCS-native concepts that don't map to TIC's name-token model.
+ *  Secondary TIC tokens (speed=, roe=, hdg=, flag=, flag+) get their own
+ *  inputs alongside the dropdown, not their own primary action.
+ */
 const WP_ACTIONS = [
-  { value: 'goto',         label: 'Go to',          v1: true  },
-  { value: 'goto_at_time', label: 'Go to at time',  v1: true  },
-  { value: 'hold',         label: 'Hold (timed)',   v1: false },
-  { value: 'engage_call',  label: 'Engage on call', v1: false },
-  { value: 'follow',       label: 'Follow',         v1: false },
-  { value: 'embark',       label: 'Embark',         v1: false },
-  { value: 'disembark',    label: 'Disembark',      v1: false },
-  { value: 'fire_at_pt',   label: 'Fire at point',  v1: false },
+  { value: 'goto',         label: 'Go to',          v1: true },
+  { value: 'goto_at_time', label: 'Go to at time',  v1: true },
 ] as const;
 
 type WpActionValue = (typeof WP_ACTIONS)[number]['value'];
 
+/** ROE values TIC parses (TIC_v1.1.lua::extractROE). Lowercase per the
+ *  script's `string.lower(str)` step before matching. */
+const ROE_OPTIONS = ['', 'simulate', 'kill', 'hold'] as const;
+type RoeValue = (typeof ROE_OPTIONS)[number];
+
 interface WpTaskAssignment {
   action: WpActionValue;
   eta_seconds: number;
+
+  // v2 secondary tokens — all optional. Backend semantics:
+  //   undefined  → leave the token alone in the waypoint name
+  //   empty/null → strip the token
+  //   value      → set/replace the token
+  // We model "undefined" as `null` here so the JSON dispatch carries
+  // unambiguous intent for "I touched this field and want it cleared".
+  speed?: number | null;       // speed=N    (km/h)
+  roe?: RoeValue | null;       // roe=simulate / kill / hold
+  hdg?: number | null;         // hdg=N      (degrees)
+  flag_wait?: string | null;   // flag=X     (TIC waits for this flag)
+  flag_set?: string | null;    // flag+X     (TIC sets this flag on arrival)
 }
 
 type GroupStatus = 'grey' | 'amber' | 'green';
@@ -581,6 +599,33 @@ export function TicSetupPanel() {
     });
   }, []);
 
+  // v2 secondary-token setter. Generic for `speed`, `roe`, `hdg`,
+  // `flag_wait`, `flag_set`. Passes the value through to the assignment
+  // patch unchanged (backend treats undefined-in-spec as "leave token
+  // alone", "" / null as "strip", any value as "set/replace").
+  type SecondaryTokenField = 'speed' | 'roe' | 'hdg' | 'flag_wait' | 'flag_set';
+  const setWpToken = useCallback(<F extends SecondaryTokenField>(
+    groupId: number, wpIndex: number, field: F, value: WpTaskAssignment[F],
+  ) => {
+    setTaskAssignments((prev) => {
+      const next = new Map(prev);
+      const groupMap = new Map(next.get(groupId) || []);
+      const existing = groupMap.get(wpIndex) ?? {
+        action: 'goto' as WpActionValue,
+        eta_seconds: 0,
+      };
+      groupMap.set(wpIndex, { ...existing, [field]: value });
+      next.set(groupId, groupMap);
+      return next;
+    });
+    setDirtyGroups((prev) => {
+      if (prev.has(groupId)) return prev;
+      const next = new Set(prev);
+      next.add(groupId);
+      return next;
+    });
+  }, []);
+
   // Apply all renames + waypoint tasks
   const applyAll = useCallback(() => {
     for (const a of assignments) {
@@ -599,21 +644,29 @@ export function TicSetupPanel() {
         addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
         addEdit({ unitId: u.unitId, field: 'heading', value: Math.random() * Math.PI * 2 } as any);
       }
-      // v0.9.42 — dispatch waypoint task changes for this group, if any.
-      // Only ship v1-supported verbs to the backend; placeholder verbs
-      // (hold/engage/etc.) are dropped here until v2 handlers exist.
+      // v0.9.42 — primary `t+N` token via action + eta_seconds.
+      // v0.9.57 — secondary TIC tokens (speed=, roe=, hdg=, flag=, flag+)
+      //          per-WP, all optional. Only fields PRESENT in the
+      //          assignment get shipped; absent fields tell the backend
+      //          to leave that token in the waypoint name alone.
       const groupTasks = taskAssignments.get(a.groupId);
       if (groupTasks && groupTasks.size > 0) {
-        const tasks = Array.from(groupTasks.entries())
-          .filter(([, t]) => {
-            const def = WP_ACTIONS.find((x) => x.value === t.action);
-            return def?.v1 === true;
-          })
-          .map(([wpIndex, t]) => ({
+        const tasks = Array.from(groupTasks.entries()).map(([wpIndex, t]) => {
+          const task: Record<string, unknown> = {
             wpIndex,
             action: t.action,
             eta_seconds: t.eta_seconds,
-          }));
+          };
+          // Include each secondary token only if the field was touched.
+          // `undefined` = leave alone; null / "" = strip; anything else
+          // = set. The backend handler honours those semantics 1:1.
+          if (t.speed     !== undefined) task.speed     = t.speed;
+          if (t.roe       !== undefined) task.roe       = t.roe;
+          if (t.hdg       !== undefined) task.hdg       = t.hdg;
+          if (t.flag_wait !== undefined) task.flag_wait = t.flag_wait;
+          if (t.flag_set  !== undefined) task.flag_set  = t.flag_set;
+          return task;
+        });
         if (tasks.length > 0) {
           addEdit({
             groupId: a.groupId,
@@ -962,13 +1015,43 @@ export function TicSetupPanel() {
                                 // (TIC_v1.1.lua::extractOffsetTime). Mirror the same
                                 // regex shape here so the dropdown shows what the
                                 // mission designer authored.
-                                const tNameMatch = (wp.waypoint_name || '').match(/\bt\+(\d+)\b/i);
+                                // Parse v1 + v2 TIC tokens out of the existing
+                                // waypoint name so the inputs render the actual
+                                // current state. Each regex mirrors the Lua
+                                // pattern in TIC_v1.1.lua::extract* on the
+                                // runtime side — same word boundaries, same
+                                // case-insensitivity.
+                                const wpn = wp.waypoint_name || '';
+                                const tNameMatch     = wpn.match(/\bt\+(\d+)\b/i);
+                                const speedMatch     = wpn.match(/\bspeed=(\d+)\b/i);
+                                const roeMatch       = wpn.match(/\broe=(simulate|kill|hold)\b/i);
+                                const hdgMatch       = wpn.match(/\bhdg=(\d+)\b/i);
+                                const flagWaitMatch  = wpn.match(/\bflag=(\w+)\b/i);
+                                const flagSetMatch   = wpn.match(/\bflag\+(\w+)\b/i);
                                 const nameMinutes = tNameMatch ? parseInt(tNameMatch[1], 10) : 0;
                                 const action: WpActionValue = fromState?.action
                                   ?? (tNameMatch ? 'goto_at_time' : 'goto');
                                 const etaSeconds = fromState?.eta_seconds ?? (nameMinutes * 60);
-                                const actionDef = WP_ACTIONS.find((x) => x.value === action);
-                                const isV1 = actionDef?.v1 ?? false;
+                                // Effective value for each v2 token: state if
+                                // touched, otherwise the parsed name value (or
+                                // empty when absent).
+                                const eff = {
+                                  speed: fromState?.speed     !== undefined
+                                       ? (fromState.speed ?? '')
+                                       : (speedMatch ? speedMatch[1] : ''),
+                                  roe: (fromState?.roe         !== undefined
+                                       ? (fromState.roe ?? '')
+                                       : (roeMatch ? roeMatch[1].toLowerCase() : '')) as string,
+                                  hdg: fromState?.hdg         !== undefined
+                                       ? (fromState.hdg ?? '')
+                                       : (hdgMatch ? hdgMatch[1] : ''),
+                                  flag_wait: fromState?.flag_wait !== undefined
+                                       ? (fromState.flag_wait ?? '')
+                                       : (flagWaitMatch ? flagWaitMatch[1] : ''),
+                                  flag_set: fromState?.flag_set   !== undefined
+                                       ? (fromState.flag_set ?? '')
+                                       : (flagSetMatch ? flagSetMatch[1] : ''),
+                                };
                                 const touched = fromState !== undefined;
                                 return (
                                   <tr key={wpIndex} style={{
@@ -993,51 +1076,117 @@ export function TicSetupPanel() {
                                       <select
                                         value={action}
                                         onChange={(e) => setWpAction(sel.groupId, wpIndex, e.target.value as WpActionValue, nameMinutes * 60)}
-                                        style={{
-                                          background: '#262626', border: '1px solid #3a3a3a',
-                                          color: isV1 ? '#e0e0e0' : '#888888',
-                                          fontFamily: "'B612 Mono', monospace", fontSize: 12.5,
-                                          padding: '4px 6px', borderRadius: 3, outline: 'none',
-                                          minWidth: 150,
-                                        }}
+                                        style={tokenInputStyle(150)}
                                       >
                                         {WP_ACTIONS.map((opt) => (
-                                          <option key={opt.value} value={opt.value} disabled={!opt.v1}>
-                                            {opt.label}{!opt.v1 ? ' (v2)' : ''}
-                                          </option>
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
                                         ))}
                                       </select>
                                     </td>
                                     <td style={wpTdStyle}>
-                                      {action === 'goto_at_time' ? (
-                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                          <span style={paramLblStyle}>T+</span>
+                                      {/* Parameters cell: primary param (ETA
+                                          for goto_at_time) on the first row,
+                                          then v2 secondary TIC tokens
+                                          (speed=, roe=, hdg=, flag=, flag+)
+                                          below. All v2 inputs are optional
+                                          — empty means "no token for this WP";
+                                          backend leaves the name untouched on
+                                          that token unless the user types
+                                          something or explicitly clears. */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {action === 'goto_at_time' ? (
+                                          <div style={tokenRowStyle}>
+                                            <span style={paramLblStyle}>T+</span>
+                                            <input
+                                              type="number" min={0} step={1}
+                                              value={Math.round(etaSeconds / 60)}
+                                              onChange={(e) => {
+                                                const mins = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+                                                setWpEta(sel.groupId, wpIndex, mins * 60);
+                                              }}
+                                              style={tokenInputStyle(80)}
+                                            />
+                                            <span style={paramLblStyle}>min after previous WP</span>
+                                          </div>
+                                        ) : (
+                                          <div style={{ ...paramLblStyle, color: '#666' }}>
+                                            &mdash; no time constraint &mdash;
+                                          </div>
+                                        )}
+                                        <div style={tokenRowStyle}>
+                                          <span style={paramLblStyle}>speed</span>
                                           <input
-                                            type="number"
-                                            min={0}
-                                            step={1}
-                                            value={Math.round(etaSeconds / 60)}
+                                            type="number" min={0} step={1}
+                                            placeholder=""
+                                            value={eff.speed === '' ? '' : String(eff.speed)}
                                             onChange={(e) => {
-                                              // Empty input → 0. parseInt tolerates "5.7" as 5.
-                                              const mins = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
-                                              setWpEta(sel.groupId, wpIndex, mins * 60);
+                                              const v = e.target.value;
+                                              setWpToken(sel.groupId, wpIndex, 'speed',
+                                                v === '' ? null : Math.max(0, parseInt(v, 10) || 0));
                                             }}
-                                            style={{
-                                              background: '#262626', border: '1px solid #3a3a3a',
-                                              color: '#e0e0e0', fontFamily: "'B612 Mono', monospace",
-                                              fontSize: 12.5, padding: '4px 6px', borderRadius: 3, outline: 'none',
-                                              width: 80,
-                                            }}
+                                            style={tokenInputStyle(64)}
+                                            title="speed=N — unit speed in km/h"
                                           />
-                                          <span style={paramLblStyle}>min after mission start</span>
+                                          <span style={paramLblStyle}>km/h</span>
+
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>roe</span>
+                                          <select
+                                            value={eff.roe}
+                                            onChange={(e) => {
+                                              const v = e.target.value as RoeValue;
+                                              setWpToken(sel.groupId, wpIndex, 'roe', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(96)}
+                                            title="roe=simulate / kill / hold"
+                                          >
+                                            <option value="">—</option>
+                                            <option value="simulate">simulate</option>
+                                            <option value="kill">kill</option>
+                                            <option value="hold">hold</option>
+                                          </select>
+
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>hdg</span>
+                                          <input
+                                            type="number" min={0} max={359} step={1}
+                                            placeholder=""
+                                            value={eff.hdg === '' ? '' : String(eff.hdg)}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setWpToken(sel.groupId, wpIndex, 'hdg',
+                                                v === '' ? null : Math.max(0, Math.min(359, parseInt(v, 10) || 0)));
+                                            }}
+                                            style={tokenInputStyle(64)}
+                                            title="hdg=N — heading degrees (0–359)"
+                                          />
+                                          <span style={paramLblStyle}>°</span>
                                         </div>
-                                      ) : action === 'goto' ? (
-                                        <span style={{ ...paramLblStyle, color: '#666' }}>&mdash; no params &mdash;</span>
-                                      ) : (
-                                        <span style={{ ...paramLblStyle, color: '#666' }}>
-                                          (v2: {actionDef?.label} parameters)
-                                        </span>
-                                      )}
+                                        <div style={tokenRowStyle}>
+                                          <span style={paramLblStyle}>wait flag</span>
+                                          <input
+                                            type="text"
+                                            placeholder=""
+                                            value={String(eff.flag_wait ?? '')}
+                                            onChange={(e) => {
+                                              const v = e.target.value.trim();
+                                              setWpToken(sel.groupId, wpIndex, 'flag_wait', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(96)}
+                                            title="flag=X — TIC waits for flag X to be true before proceeding"
+                                          />
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>set flag</span>
+                                          <input
+                                            type="text"
+                                            placeholder=""
+                                            value={String(eff.flag_set ?? '')}
+                                            onChange={(e) => {
+                                              const v = e.target.value.trim();
+                                              setWpToken(sel.groupId, wpIndex, 'flag_set', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(96)}
+                                            title="flag+X — TIC sets flag X true on arrival"
+                                          />
+                                        </div>
+                                      </div>
                                     </td>
                                   </tr>
                                 );
@@ -1212,4 +1361,29 @@ const wpTdStyle: React.CSSProperties = {
 const paramLblStyle: React.CSSProperties = {
   fontSize: 11,
   color: '#aaaaaa',
+};
+
+// v0.9.57 — compact inline inputs for the per-WP TIC-token row.
+// `width` lets each input size to its content (speed/hdg are short
+// numbers; flag identifiers are slightly wider).
+function tokenInputStyle(width: number): React.CSSProperties {
+  return {
+    background: '#262626',
+    border: '1px solid #3a3a3a',
+    color: '#e0e0e0',
+    fontFamily: "'B612 Mono', monospace",
+    fontSize: 12.5,
+    padding: '4px 6px',
+    borderRadius: 3,
+    outline: 'none',
+    width,
+    boxSizing: 'border-box',
+  };
+}
+
+const tokenRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  alignItems: 'center',
+  flexWrap: 'wrap',
 };

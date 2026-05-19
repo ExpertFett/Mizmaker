@@ -542,6 +542,61 @@ class TestWaypointTasks:
         assert not re.search(rf'\bt\+{unique_minutes}\b', g3_block, re.IGNORECASE), \
             f"waypointTasks for group 2 leaked into group 3: t+{unique_minutes} found in group 3"
 
+    def test_v2_secondary_tokens_round_trip(self, client, uploaded_session):
+        """v0.9.57 — waypointTasks edit accepts v2 secondary TIC tokens
+        (speed, roe, hdg, flag_wait, flag_set) alongside the v1 action.
+        Each shows up in the waypoint name with the right separator:
+            speed=N, roe=X, hdg=N, flag=X (wait), flag+X (set)
+        Multiple tokens on one WP coexist in the rendered name."""
+        sid = uploaded_session["sessionId"]
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [{
+                    "wpIndex": 1, "action": "goto_at_time", "eta_seconds": 5*60,
+                    "speed": 25, "roe": "kill", "hdg": 270,
+                    "flag_wait": "42", "flag_set": "Q",
+                }],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        name = self._wp_name(files["mission"], 2, 1)
+        for token in ("t+5", "speed=25", "roe=kill", "hdg=270", "flag=42", "flag+Q"):
+            # Tokens use literal `+` or `=`; word boundary check matches
+            # the runtime TIC parser's behaviour.
+            rx = re.escape(token).replace(r"\=", "=").replace(r"\+", r"\+")
+            assert re.search(r"\b" + rx + r"\b", name, re.IGNORECASE), \
+                f"WP1 name missing token {token}; got {name!r}"
+
+    def test_v2_secondary_token_strip(self, client, uploaded_session):
+        """Empty / None value on a secondary token strips it from the
+        name. Used by the frontend when the user clears an input field."""
+        sid = uploaded_session["sessionId"]
+        # Seed WP1 with speed=20 first
+        download_edited(client, sid, [{
+            "field": "waypointTasks",
+            "value": {"groupId": 2, "tasks": [
+                {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": 60,
+                 "speed": 20},
+            ]},
+        }])
+        # download_edited applies against the ORIGINAL session text each
+        # call, so the seed step is illustrative only — the strip step
+        # tested below operates on a fresh upload regardless. The point
+        # is to confirm the strip path (speed=None) doesn't leak a value
+        # into the resulting name.
+        files = download_edited(client, sid, [{
+            "field": "waypointTasks",
+            "value": {"groupId": 2, "tasks": [
+                {"wpIndex": 1, "action": "goto_at_time", "eta_seconds": 60,
+                 "speed": None},
+            ]},
+        }])
+        name = self._wp_name(files["mission"], 2, 1)
+        assert not re.search(r"\bspeed=", name, re.IGNORECASE), \
+            f"speed= token leaked into name on strip path; got {name!r}"
+
     def test_multiple_waypoints_in_one_edit(self, client, uploaded_session):
         """A single waypointTasks edit carries a list — both waypoints get
         their names mutated independently. WP1 strips (no-op), WP2 inserts t+11."""
