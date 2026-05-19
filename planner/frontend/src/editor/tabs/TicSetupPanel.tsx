@@ -801,17 +801,83 @@ export function TicSetupPanel() {
             </div>
           </div>
 
-          {/* TIC naming reference */}
-          <div style={{
-            marginBottom: 16, padding: '8px 14px',
+          {/* "How to use" — collapsible reference. Default collapsed so it
+              doesn't crowd the panel; click the header to expand. Holds
+              the workflow steps + a full token reference table covering
+              everything TIC_v1.1.lua::extract* parses. */}
+          <details style={{
+            marginBottom: 16,
             background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-            fontSize: 12, color: '#aaaaaa',
+            fontSize: 12, color: '#cccccc',
           }}>
-            <strong style={{ color: '#cccccc' }}>TIC Format:</strong>{' '}
-            <code style={{ color: '#d29922' }}>TIC:FormationName#</code> = member,{' '}
-            <code style={{ color: '#3fb950' }}>TIC!FormationName#</code> = leader,{' '}
-            <code style={{ color: '#4a8fd4' }}>+</code> = keep units grouped
-          </div>
+            <summary style={{
+              padding: '8px 14px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              fontWeight: 600,
+              color: '#d29922',
+            }}>
+              How to use — TIC token reference
+            </summary>
+            <div style={{ padding: '4px 14px 12px', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: 10 }}>
+                <strong style={{ color: '#e0e0e0' }}>Workflow:</strong>{' '}
+                Click <em>Regenerate</em> to auto-assign formations →
+                tweak per-group <em>Leader/Member</em> + <em>Grouped/Split</em> →
+                set per-WP tokens on the right →
+                <em>Apply</em> → download. The planner writes a TIC-format group
+                name, sets late activation + INITIAL HEADING per unit, and
+                bookends the WP scheduling locks DCS ME requires.
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <strong style={{ color: '#e0e0e0' }}>Group name format:</strong>{' '}
+                <code style={{ color: '#3fb950' }}>TIC!Formation#</code> = leader,{' '}
+                <code style={{ color: '#d29922' }}>TIC:Formation#</code> = member,{' '}
+                <code style={{ color: '#4a8fd4' }}>+</code> after formation = keep units grouped
+                (don&apos;t let TIC split them).
+              </div>
+              <div>
+                <strong style={{ color: '#e0e0e0' }}>Per-waypoint tokens</strong> —
+                each one goes into the WP name. Empty input = no token, fill it
+                in = TIC reads it at runtime. Tokens stack: a single WP can
+                carry every token below at once.
+              </div>
+              <table style={{
+                width: '100%', borderCollapse: 'collapse', marginTop: 6,
+                fontFamily: "'B612 Mono', monospace", fontSize: 11.5,
+              }}>
+                <thead>
+                  <tr>
+                    <th style={helpThStyle}>Token</th>
+                    <th style={helpThStyle}>What it does</th>
+                    <th style={helpThStyle}>Typical value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td style={helpTdMonoStyle}>t+N</td>           <td style={helpTdStyle}>Wait N minutes after previous WP before moving</td>                                         <td style={helpTdStyle}>5</td></tr>
+                  <tr><td style={helpTdMonoStyle}>speed=N</td>       <td style={helpTdStyle}>Unit speed in <strong>km/h</strong> (not mph). Tank patrol: 40-60; flank: 60+</td>          <td style={helpTdStyle}>40</td></tr>
+                  <tr><td style={helpTdMonoStyle}>roe=X</td>         <td style={helpTdStyle}>Rules of engagement: simulate (show effects, don&apos;t actually kill), kill (live fire), hold (don&apos;t shoot)</td> <td style={helpTdStyle}>simulate</td></tr>
+                  <tr><td style={helpTdMonoStyle}>hdg=N</td>         <td style={helpTdStyle}>Heading degrees (0-359) the unit faces at this WP</td>                                      <td style={helpTdStyle}>270</td></tr>
+                  <tr><td style={helpTdMonoStyle}>flag=X</td>        <td style={helpTdStyle}>WAIT for DCS flag X to be true before proceeding (gate)</td>                                  <td style={helpTdStyle}>42</td></tr>
+                  <tr><td style={helpTdMonoStyle}>flag+X</td>        <td style={helpTdStyle}>SET DCS flag X to true on arrival at this WP (trigger)</td>                                  <td style={helpTdStyle}>42</td></tr>
+                  <tr><td style={helpTdMonoStyle}>scale=N.M</td>     <td style={helpTdStyle}>Formation scale factor (0.5 = tight, 1.0 = default, 2.0 = spread out)</td>                  <td style={helpTdStyle}>1.0</td></tr>
+                  <tr><td style={helpTdMonoStyle}>direct=y</td>      <td style={helpTdStyle}>Skip past all earlier WPs straight to this one. Pair with strength= for retreat logic.</td> <td style={helpTdStyle}>y</td></tr>
+                  <tr><td style={helpTdMonoStyle}>strength=N.M</td>  <td style={helpTdStyle}>Combat-effectiveness threshold (0.0-1.0). When formation drops below, moves to this WP.</td> <td style={helpTdStyle}>0.3</td></tr>
+                  <tr><td style={helpTdMonoStyle}>&quot;phase&quot;</td><td style={helpTdStyle}>Quoted phase name. TIC groups all WPs with the same phase together for triggering.</td>  <td style={helpTdStyle}>&quot;alpha&quot;</td></tr>
+                  <tr><td style={helpTdMonoStyle}>mount</td>         <td style={helpTdStyle}>Infantry mounts onto its IFV carrier at this WP</td>                                          <td style={helpTdStyle}>(bare word)</td></tr>
+                  <tr><td style={helpTdMonoStyle}>dismount</td>      <td style={helpTdStyle}>Infantry dismounts from its IFV carrier at this WP</td>                                       <td style={helpTdStyle}>(bare word)</td></tr>
+                </tbody>
+              </table>
+              <div style={{ marginTop: 10, fontSize: 11, color: '#888' }}>
+                The planner writes these tokens into each waypoint&apos;s name field.
+                TIC_v1.1.lua parses them at runtime (see <code>extractOffsetTime</code>,
+                <code> extractSpeed</code>, etc. inside the bundled script).
+                Other tokens you hand-edit into the name (e.g. <code>roads=y</code>,
+                <code>shift=y</code>) are preserved verbatim — the planner never
+                touches tokens it doesn&apos;t recognise.
+              </div>
+            </div>
+          </details>
 
           {/* === Two-column: group list (left) + detail (right) ===
               v0.9.42 side-panel layout. List stays compact even with 30+
@@ -1498,4 +1564,32 @@ const tokenRowStyle: React.CSSProperties = {
   gap: 6,
   alignItems: 'center',
   flexWrap: 'wrap',
+};
+
+// v0.9.60 — help table styles for the "How to use" collapsible
+const helpThStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '4px 8px',
+  borderBottom: '1px solid #3a3a3a',
+  color: '#888',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  fontWeight: 600,
+  fontFamily: '-apple-system, "Segoe UI", system-ui, sans-serif',
+};
+
+const helpTdStyle: React.CSSProperties = {
+  padding: '3px 8px',
+  borderBottom: '1px solid #2a2a2a',
+  verticalAlign: 'top',
+  color: '#cccccc',
+  fontFamily: '-apple-system, "Segoe UI", system-ui, sans-serif',
+};
+
+const helpTdMonoStyle: React.CSSProperties = {
+  ...helpTdStyle,
+  color: '#d29922',
+  fontFamily: "'B612 Mono', monospace",
+  whiteSpace: 'nowrap',
 };

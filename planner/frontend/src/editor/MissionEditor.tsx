@@ -246,8 +246,23 @@ export function MissionEditor() {
           )}
         </div>
 
-        {/* Tab buttons + section dividers */}
-        <div style={{ display: 'flex', flexDirection: 'column', paddingTop: 4, borderBottom: '1px solid #3a3a3a', overflow: isCollapsed ? 'hidden' : undefined }}>
+        {/* Tab buttons + section dividers.
+            v0.9.60 — tab list can scroll when the sidebar gets too tall
+            for the viewport. flex-shrink kicks in (min-height:0 unlocks
+            it from the content's intrinsic min size), and overflow-y:auto
+            puts a scrollbar inside this region so the Auto-Setup + Export
+            buttons at the bottom of the sidebar stay reachable. Collapsed
+            mode (icons only) still uses overflow:hidden to keep the
+            horizontal ellipsis behaviour the old code relied on. */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          paddingTop: 4,
+          borderBottom: '1px solid #3a3a3a',
+          minHeight: 0,
+          overflowX: 'hidden',
+          overflowY: isCollapsed ? 'hidden' : 'auto',
+        }}>
           {SIDEBAR.map((item, idx) => {
             if (item.kind === 'section') {
               if (isCollapsed) {
