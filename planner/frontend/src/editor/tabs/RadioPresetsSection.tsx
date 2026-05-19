@@ -396,7 +396,7 @@ export function RadioPresetsSection() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          fontSize: 12, color: '#ffa500', fontWeight: 600,
+          fontSize: 12, color: '#fbb941', fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>
           Radio Presets — Per Flight

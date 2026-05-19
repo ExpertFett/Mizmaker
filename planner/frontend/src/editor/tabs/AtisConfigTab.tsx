@@ -495,7 +495,7 @@ export function AtisConfigTab() {
                   {entry.displayName || entry.airbaseName}
                 </strong>
                 {entry.initials && entry.initials !== entry.airbaseName.slice(0, entry.initials.length).toUpperCase() && (
-                  <span style={{ fontSize: 11, color: '#ffa500',
+                  <span style={{ fontSize: 11, color: '#fbb941',
                                  fontFamily: "'B612 Mono', monospace",
                                  letterSpacing: 0.5 }}>{entry.initials}</span>
                 )}

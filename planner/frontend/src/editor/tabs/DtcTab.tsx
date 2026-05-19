@@ -971,7 +971,7 @@ function CmdsSubTab({ data, onUpdate }: {
                   color: '#e0e0e0', fontWeight: 600 }}>{sumFlare}</td>
                 <td style={tdStyle} />
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
-                  color: '#ffa500', fontWeight: 700 }}>{sumChaff + sumFlare}</td>
+                  color: '#fbb941', fontWeight: 700 }}>{sumChaff + sumFlare}</td>
               </>
             );
           })()}

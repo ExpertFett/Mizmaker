@@ -399,8 +399,8 @@ export function BriefGenTab() {
               disabled={previewLoading}
               style={{
                 ...btnSecondary,
-                borderColor: previewOpen ? '#ffa500' : '#4a4a4a',
-                color: previewOpen ? '#ffa500' : '#cccccc',
+                borderColor: previewOpen ? '#fbb941' : '#4a4a4a',
+                color: previewOpen ? '#fbb941' : '#cccccc',
               }}
               title="Render the brief as PNGs and show inline (~5s)"
             >
@@ -421,7 +421,7 @@ export function BriefGenTab() {
                 padding: '6px 10px', background: '#262626',
                 borderBottom: '1px solid #3a3a3a',
               }}>
-                <div style={{ fontSize: 11, color: '#ffa500', fontWeight: 600,
+                <div style={{ fontSize: 11, color: '#fbb941', fontWeight: 600,
                               letterSpacing: 1, textTransform: 'uppercase' }}>
                   Preview
                 </div>
@@ -590,8 +590,8 @@ export function BriefGenTab() {
                   style={{
                     ...btnSmall,
                     background: aiKey ? '#2a2418' : '#2a2a2a',
-                    borderColor: aiKey ? '#ffa500' : '#4a4a4a',
-                    color: aiKey ? '#ffa500' : '#cccccc',
+                    borderColor: aiKey ? '#fbb941' : '#4a4a4a',
+                    color: aiKey ? '#fbb941' : '#cccccc',
                     opacity: aiBusy ? 0.6 : 1,
                   }}
                   title={
@@ -661,7 +661,7 @@ export function BriefGenTab() {
             />
             {aiNote && (
               <div style={{
-                marginTop: 6, fontSize: 11, color: '#ffa500',
+                marginTop: 6, fontSize: 11, color: '#fbb941',
                 fontFamily: "'B612 Mono', monospace",
               }}>
                 {aiNote}
@@ -1133,7 +1133,7 @@ function Card({ title, children, right }:
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         background: '#262626',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#ffa500',
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#fbb941',
                       letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
         {right}
       </div>
@@ -1269,7 +1269,7 @@ const cellInput: React.CSSProperties = {
   color: '#e0e0e0', padding: '4px 6px', fontSize: 12, fontFamily: 'inherit',
 };
 const btnPrimary: React.CSSProperties = {
-  background: '#2a2a2a', border: '1px solid #ffa500', color: '#ffa500',
+  background: '#2a2a2a', border: '1px solid #fbb941', color: '#fbb941',
   padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   fontFamily: 'inherit',
 };
