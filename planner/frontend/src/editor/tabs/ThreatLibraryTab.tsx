@@ -53,7 +53,7 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   short:     { label: 'Short',      color: '#d29922' },
   shorad:    { label: 'SHORAD',     color: '#3fb950' },
   manpad:    { label: 'MANPAD',     color: '#3fb950' },
-  aaa:       { label: 'AAA',        color: '#1a1f25' },
+  aaa:       { label: 'AAA',        color: '#cccccc' },
 };
 
 /* ------------------------------------------------------------------ */
@@ -321,15 +321,15 @@ export function ThreatLibraryTab() {
 
   return (
     <div style={{ maxWidth: 800 }}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
         Threat Library
       </h2>
-      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#3a4248' }}>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#aaaaaa' }}>
         SAM/AAA systems detected in the mission and route exposure analysis.
       </p>
 
       {threats.length === 0 ? (
-        <div style={{ color: '#3a4248', fontSize: 14, padding: '24px 0', textAlign: 'center' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 14, padding: '24px 0', textAlign: 'center' }}>
           No SAM/AAA threats detected in this mission.
         </div>
       ) : (
@@ -339,7 +339,7 @@ export function ThreatLibraryTab() {
             display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap',
           }}>
             <StatBadge label="Red Threats" value={redCount} color="#f85149" />
-            <StatBadge label="Blue SAMs" value={blueCount} color="#d49a30" />
+            <StatBadge label="Blue SAMs" value={blueCount} color="#4a8fd4" />
             <StatBadge label="System Types" value={threatGroups.length} color="#d29922" />
             <StatBadge label="Players Exposed" value={`${exposedPlayers}/${totalPlayers}`} color={exposedPlayers > 0 ? '#f85149' : '#3fb950'} />
           </div>
@@ -359,8 +359,8 @@ export function ThreatLibraryTab() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
-                background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
-                color: '#1a1f25', fontSize: 12, padding: '4px 10px', width: 240,
+                background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+                color: '#e0e0e0', fontSize: 12, padding: '4px 10px', width: 240,
                 fontFamily: 'inherit',
               }}
             />
@@ -368,8 +368,8 @@ export function ThreatLibraryTab() {
               value={coalFilter}
               onChange={(e) => setCoalFilter(e.target.value as CoalFilter)}
               style={{
-                background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
-                color: '#1a1f25', fontSize: 12, padding: '4px 8px',
+                background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+                color: '#e0e0e0', fontSize: 12, padding: '4px 8px',
               }}
             >
               <option value="all">All Coalitions</option>
@@ -382,12 +382,12 @@ export function ThreatLibraryTab() {
           {viewTab === 'threats' && (
             <div>
               {threatGroups.map((tg) => {
-                const catInfo = CATEGORY_LABELS[tg.category] || { label: tg.category, color: '#1a1f25' };
+                const catInfo = CATEGORY_LABELS[tg.category] || { label: tg.category, color: '#cccccc' };
                 const isExpanded = expandedSystems.has(tg.nato);
                 return (
                   <div key={tg.nato} style={{
-                    marginBottom: 6, background: '#6e7c83', borderRadius: 6,
-                    border: '1px solid #8c9ba2', overflow: 'hidden',
+                    marginBottom: 6, background: '#0a1218', borderRadius: 6,
+                    border: '1px solid #222222', overflow: 'hidden',
                   }}>
                     {/* System header */}
                     <div
@@ -397,7 +397,7 @@ export function ThreatLibraryTab() {
                         padding: '10px 14px', cursor: 'pointer',
                       }}
                     >
-                      <span style={{ color: '#3a4248', fontSize: 12, width: 14 }}>
+                      <span style={{ color: '#aaaaaa', fontSize: 12, width: 14 }}>
                         {isExpanded ? '▼' : '▶'}
                       </span>
                       <span style={{
@@ -408,18 +408,18 @@ export function ThreatLibraryTab() {
                         {catInfo.label}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: '#1a1f25', fontSize: 13, fontWeight: 600 }}>
+                        <div style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>
                           {tg.nato}
                         </div>
-                        <div style={{ color: '#3a4248', fontSize: 11 }}>
+                        <div style={{ color: '#aaaaaa', fontSize: 11 }}>
                           {tg.system} — {tg.guidance}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ color: '#1a1f25', fontSize: 13, fontFamily: "'B612 Mono', monospace" }}>
+                        <div style={{ color: '#e0e0e0', fontSize: 13, fontFamily: "'B612 Mono', monospace" }}>
                           {tg.rangeKm} km
                         </div>
-                        <div style={{ color: '#3a4248', fontSize: 11 }}>
+                        <div style={{ color: '#aaaaaa', fontSize: 11 }}>
                           {tg.altMaxFt > 0 ? `${(tg.altMaxFt / 1000).toFixed(0)}k ft` : ''}
                         </div>
                       </div>
@@ -433,11 +433,11 @@ export function ThreatLibraryTab() {
 
                     {/* Expanded — individual units */}
                     {isExpanded && (
-                      <div style={{ borderTop: '1px solid #8c9ba2', padding: '6px 14px 10px' }}>
+                      <div style={{ borderTop: '1px solid #222222', padding: '6px 14px 10px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '2px 16px', fontSize: 12 }}>
-                          <div style={{ color: '#3a4248', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Unit</div>
-                          <div style={{ color: '#3a4248', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Coalition</div>
-                          <div style={{ color: '#3a4248', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Range</div>
+                          <div style={{ color: '#aaaaaa', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Unit</div>
+                          <div style={{ color: '#aaaaaa', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Coalition</div>
+                          <div style={{ color: '#aaaaaa', fontWeight: 600, fontSize: 11, paddingBottom: 4 }}>Range</div>
                           {tg.threats.map((t, i) => (
                             <ThreatUnitRow key={i} threat={t} />
                           ))}
@@ -454,21 +454,21 @@ export function ThreatLibraryTab() {
           {viewTab === 'exposure' && (
             <div>
               {exposureResults.length === 0 ? (
-                <div style={{ color: '#3a4248', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
+                <div style={{ color: '#aaaaaa', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
                   No air groups with waypoints found for analysis.
                 </div>
               ) : (
                 exposureResults.map((result) => {
                   const isExpanded = expandedFlights.has(result.groupId);
                   const catInfo = result.maxThreatCategory
-                    ? (CATEGORY_LABELS[result.maxThreatCategory] || { label: '', color: '#1a1f25' })
+                    ? (CATEGORY_LABELS[result.maxThreatCategory] || { label: '', color: '#cccccc' })
                     : null;
                   const safe = result.legs.length === 0;
 
                   return (
                     <div key={result.groupId} style={{
-                      marginBottom: 6, background: '#6e7c83', borderRadius: 6,
-                      border: `1px solid ${safe ? '#8c9ba2' : '#f8514930'}`, overflow: 'hidden',
+                      marginBottom: 6, background: '#0a1218', borderRadius: 6,
+                      border: `1px solid ${safe ? '#222222' : '#f8514930'}`, overflow: 'hidden',
                     }}>
                       <div
                         onClick={() => toggleFlight(result.groupId)}
@@ -477,21 +477,21 @@ export function ThreatLibraryTab() {
                           padding: '10px 14px', cursor: 'pointer',
                         }}
                       >
-                        <span style={{ color: '#3a4248', fontSize: 12, width: 14 }}>
+                        <span style={{ color: '#aaaaaa', fontSize: 12, width: 14 }}>
                           {result.legs.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
                         </span>
                         {result.isPlayer && (
                           <span style={{
-                            background: '#d49a3020', color: '#d49a30', fontSize: 10,
+                            background: '#4a8fd420', color: '#4a8fd4', fontSize: 10,
                             fontWeight: 700, padding: '2px 6px', borderRadius: 3,
-                            border: '1px solid #d49a3040',
+                            border: '1px solid #4a8fd440',
                           }}>
                             PLAYER
                           </span>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
-                            color: '#1a1f25', fontSize: 13, fontWeight: 500,
+                            color: '#e0e0e0', fontSize: 13, fontWeight: 500,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                           }}>
                             {result.groupName}
@@ -523,10 +523,10 @@ export function ThreatLibraryTab() {
 
                       {/* Expanded — leg details */}
                       {isExpanded && result.legs.length > 0 && (
-                        <div style={{ borderTop: '1px solid #8c9ba2', padding: '8px 14px 10px' }}>
+                        <div style={{ borderTop: '1px solid #222222', padding: '8px 14px 10px' }}>
                           {result.legs.map((leg, li) => (
                             <div key={li} style={{ marginBottom: li < result.legs.length - 1 ? 10 : 0 }}>
-                              <div style={{ color: '#3a4248', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
+                              <div style={{ color: '#aaaaaa', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
                                 WP{leg.fromWp} → WP{leg.toWp}
                                 <span style={{ fontWeight: 400, marginLeft: 6 }}>
                                   ({leg.fromName} → {leg.toName})
@@ -536,7 +536,7 @@ export function ThreatLibraryTab() {
                                 const inside = lt.marginM < 0;
                                 const distNm = Math.abs(lt.closestApproachM * M_TO_NM).toFixed(1);
                                 const marginNm = Math.abs(lt.marginM * M_TO_NM).toFixed(1);
-                                const ltCat = CATEGORY_LABELS[lt.category] || { label: lt.category, color: '#1a1f25' };
+                                const ltCat = CATEGORY_LABELS[lt.category] || { label: lt.category, color: '#cccccc' };
                                 return (
                                   <div key={ti} style={{
                                     display: 'flex', alignItems: 'center', gap: 8,
@@ -553,10 +553,10 @@ export function ThreatLibraryTab() {
                                     <span style={{ color: ltCat.color, fontSize: 10, fontWeight: 600 }}>
                                       {ltCat.label}
                                     </span>
-                                    <span style={{ color: '#1a1f25', flex: 1 }}>
+                                    <span style={{ color: '#e0e0e0', flex: 1 }}>
                                       {lt.nato}
                                     </span>
-                                    <span style={{ color: '#3a4248', fontFamily: "'B612 Mono', monospace", fontSize: 11 }}>
+                                    <span style={{ color: '#aaaaaa', fontFamily: "'B612 Mono', monospace", fontSize: 11 }}>
                                       {distNm} nm
                                     </span>
                                     <span style={{
@@ -595,7 +595,7 @@ function StatBadge({ label, value, color }: { label: string; value: string | num
       padding: '8px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 80,
     }}>
       <div style={{ color, fontSize: 18, fontWeight: 700, fontFamily: "'B612 Mono', monospace" }}>{value}</div>
-      <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600, marginTop: 2 }}>{label}</div>
+      <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600, marginTop: 2 }}>{label}</div>
     </div>
   );
 }
@@ -606,8 +606,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       style={{
         background: active ? 'rgba(74, 143, 212, 0.12)' : 'transparent',
-        border: `1px solid ${active ? '#d49a30' : '#4a5258'}`,
-        borderRadius: 4, color: active ? '#d49a30' : '#3a4248',
+        border: `1px solid ${active ? '#4a8fd4' : '#3a3a3a'}`,
+        borderRadius: 4, color: active ? '#4a8fd4' : '#aaaaaa',
         cursor: 'pointer', fontSize: 13, fontWeight: active ? 600 : 400,
         padding: '6px 14px', fontFamily: 'inherit',
       }}
@@ -618,16 +618,16 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 function ThreatUnitRow({ threat }: { threat: ThreatRing }) {
-  const coalColor = threat.coalition === 'red' ? '#f85149' : threat.coalition === 'blue' ? '#d49a30' : '#1a1f25';
+  const coalColor = threat.coalition === 'red' ? '#f85149' : threat.coalition === 'blue' ? '#4a8fd4' : '#cccccc';
   return (
     <>
-      <div style={{ color: '#1a1f25', padding: '2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ color: '#e0e0e0', padding: '2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {threat.name}
       </div>
       <div style={{ color: coalColor, fontWeight: 600, textTransform: 'uppercase', fontSize: 11, padding: '2px 0' }}>
         {threat.coalition}
       </div>
-      <div style={{ color: '#3a4248', fontFamily: "'B612 Mono', monospace", padding: '2px 0', textAlign: 'right' }}>
+      <div style={{ color: '#aaaaaa', fontFamily: "'B612 Mono', monospace", padding: '2px 0', textAlign: 'right' }}>
         {(threat.range / 1000).toFixed(0)} km / {(threat.range * M_TO_NM).toFixed(1)} nm
       </div>
     </>

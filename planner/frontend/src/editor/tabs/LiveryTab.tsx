@@ -160,7 +160,7 @@ export function LiveryTab() {
 
   if (liveryData.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No livery data available for this mission.
       </div>
     );
@@ -170,10 +170,10 @@ export function LiveryTab() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Livery Editor
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Set paint schemes per group or per individual unit. Click a type card to expand unit-level controls.
         </p>
       </div>
@@ -190,18 +190,18 @@ export function LiveryTab() {
         />
 
         {/* Coalition pills */}
-        <div style={{ display: 'flex', gap: 2, background: '#8c9ba2', borderRadius: 4, border: '1px solid #4a5258', padding: 2 }}>
+        <div style={{ display: 'flex', gap: 2, background: '#222222', borderRadius: 4, border: '1px solid #3a3a3a', padding: 2 }}>
           {(['all', 'blue', 'red'] as CoalitionFilter[]).map((c) => (
             <button
               key={c}
               onClick={() => setCoalitionFilter(c)}
               style={{
-                background: coalitionFilter === c ? (c === 'blue' ? '#6e7c83' : c === 'red' ? '#3a1a1a' : '#4a5258') : 'transparent',
+                background: coalitionFilter === c ? (c === 'blue' ? '#262626' : c === 'red' ? '#3a1a1a' : '#3a3a3a') : 'transparent',
                 border: 'none',
                 borderRadius: 3,
                 color: coalitionFilter === c
-                  ? (c === 'blue' ? '#d49a30' : c === 'red' ? '#d95050' : '#1a1f25')
-                  : '#3a4248',
+                  ? (c === 'blue' ? '#4a8fd4' : c === 'red' ? '#d95050' : '#e0e0e0')
+                  : '#aaaaaa',
                 cursor: 'pointer',
                 fontSize: 12,
                 fontWeight: coalitionFilter === c ? 600 : 400,
@@ -229,7 +229,7 @@ export function LiveryTab() {
         )}
 
         {/* Stats */}
-        <div style={{ marginLeft: 'auto', fontSize: 13, color: '#3a4248' }}>
+        <div style={{ marginLeft: 'auto', fontSize: 13, color: '#aaaaaa' }}>
           {filtered.length} type{filtered.length !== 1 ? 's' : ''}, {totalUnits} unit{totalUnits !== 1 ? 's' : ''}
           {changedCount > 0 && (
             <span style={{ color: '#3fb950', marginLeft: 8 }}>
@@ -243,16 +243,16 @@ export function LiveryTab() {
       {aircraftTypes.length > 1 && (
         <div style={{
           display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap',
-          background: '#6e7c83', borderRadius: 8, border: '1px solid #8c9ba2',
+          background: '#0a1218', borderRadius: 8, border: '1px solid #222222',
           padding: '8px 10px', alignItems: 'center',
         }}>
           <button
             onClick={() => setTypeFilter('all')}
             style={{
               background: typeFilter === 'all' ? 'rgba(74, 143, 212, 0.15)' : 'transparent',
-              border: `1px solid ${typeFilter === 'all' ? 'rgba(74, 143, 212, 0.4)' : '#4a5258'}`,
+              border: `1px solid ${typeFilter === 'all' ? 'rgba(74, 143, 212, 0.4)' : '#3a3a3a'}`,
               borderRadius: 14,
-              color: typeFilter === 'all' ? '#d49a30' : '#3a4248',
+              color: typeFilter === 'all' ? '#4a8fd4' : '#aaaaaa',
               cursor: 'pointer', fontSize: 12, fontWeight: 600,
               padding: '5px 14px', whiteSpace: 'nowrap',
               transition: 'all 0.15s',
@@ -260,7 +260,7 @@ export function LiveryTab() {
           >
             All Types
           </button>
-          <span style={{ width: 1, height: 20, background: '#4a5258', margin: '0 2px' }} />
+          <span style={{ width: 1, height: 20, background: '#3a3a3a', margin: '0 2px' }} />
           {aircraftTypes
             .filter((t) => {
               if (categoryFilter === 'all') return true;
@@ -269,7 +269,7 @@ export function LiveryTab() {
             .map((t) => {
               const entry = liveryData.find((e) => e.type === t);
               const cat = entry?.category || '';
-              const catColor = cat === 'plane' ? '#d49a30' : cat === 'helicopter' ? '#60c080' : cat === 'vehicle' ? '#d29922' : cat === 'ship' ? '#b07ed8' : '#1a1f25';
+              const catColor = cat === 'plane' ? '#4a8fd4' : cat === 'helicopter' ? '#60c080' : cat === 'vehicle' ? '#d29922' : cat === 'ship' ? '#b07ed8' : '#cccccc';
               const count = liveryData.filter((e) => e.type === t).reduce((s, e) => s + e.units.length, 0);
               const active = typeFilter === t;
               return (
@@ -278,9 +278,9 @@ export function LiveryTab() {
                   onClick={() => setTypeFilter(active ? 'all' : t)}
                   style={{
                     background: active ? `${catColor}18` : 'transparent',
-                    border: `1px solid ${active ? `${catColor}50` : '#4a5258'}`,
+                    border: `1px solid ${active ? `${catColor}50` : '#3a3a3a'}`,
                     borderRadius: 14,
-                    color: active ? catColor : '#3a4248',
+                    color: active ? catColor : '#aaaaaa',
                     cursor: 'pointer', fontSize: 12,
                     fontWeight: active ? 600 : 400,
                     padding: '5px 12px', whiteSpace: 'nowrap',
@@ -291,10 +291,10 @@ export function LiveryTab() {
                   {t}
                   <span style={{
                     fontSize: 10, fontWeight: 600,
-                    background: active ? `${catColor}25` : '#6e7c83',
+                    background: active ? `${catColor}25` : '#262626',
                     color: active ? catColor : '#555555',
                     padding: '1px 6px', borderRadius: 8,
-                    border: `1px solid ${active ? `${catColor}30` : '#4a5258'}`,
+                    border: `1px solid ${active ? `${catColor}30` : '#3a3a3a'}`,
                   }}>{count}</span>
                 </button>
               );
@@ -342,7 +342,7 @@ function TypeCard({
   const [availableLiveries, setAvailableLiveries] = useState<AvailLivery[]>([]);
   const [bulkLivery, setBulkLivery] = useState('');
 
-  const coalitionColor = entry.coalition === 'blue' ? '#d49a30'
+  const coalitionColor = entry.coalition === 'blue' ? '#4a8fd4'
     : entry.coalition === 'red' ? '#d95050' : '#8a8a5a';
 
   // Fetch liveries for this type
@@ -384,9 +384,9 @@ function TypeCard({
   return (
     <div style={{
       marginBottom: 10,
-      border: `1px solid ${changedInType > 0 ? '#2a3a2a' : '#4a5258'}`,
+      border: `1px solid ${changedInType > 0 ? '#2a3a2a' : '#3a3a3a'}`,
       borderRadius: 6,
-      background: '#8c9ba2',
+      background: '#222222',
       overflow: 'hidden',
     }}>
       {/* Header — always visible */}
@@ -399,18 +399,18 @@ function TypeCard({
           gap: 12,
           cursor: 'pointer',
           borderLeft: `3px solid ${coalitionColor}`,
-          background: isExpanded ? '#7a8a92' : 'transparent',
+          background: isExpanded ? '#1a1a1a' : 'transparent',
         }}
       >
         {/* Expand arrow */}
-        <span style={{ color: '#3a4248', fontSize: 12, userSelect: 'none', width: 12 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 12, userSelect: 'none', width: 12 }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
 
         {/* Coalition badge */}
         <span style={{
           background: coalitionColor,
-          color: '#7a8a92', fontSize: 10, fontWeight: 700,
+          color: '#1a1a1a', fontSize: 10, fontWeight: 700,
           padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase',
           letterSpacing: 0.5,
         }}>
@@ -418,12 +418,12 @@ function TypeCard({
         </span>
 
         {/* Type name */}
-        <span style={{ color: '#1a1f25', fontWeight: 600, fontSize: 15, flex: '0 0 auto' }}>
+        <span style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 15, flex: '0 0 auto' }}>
           {entry.type}
         </span>
 
         {/* Unit count */}
-        <span style={{ color: '#3a4248', fontSize: 13 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
           {entry.units.length} unit{entry.units.length !== 1 ? 's' : ''} in {unitGroups.size} group{unitGroups.size !== 1 ? 's' : ''}
         </span>
 
@@ -431,15 +431,15 @@ function TypeCard({
         <div style={{ display: 'flex', gap: 4, flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap', overflow: 'hidden' }}>
           {liverySummary.slice(0, 3).map(({ id, count }) => (
             <span key={id} style={{
-              fontSize: 11, color: '#1a1f25', background: '#6e7c83',
-              padding: '2px 8px', borderRadius: 10, border: '1px solid #4a5258',
+              fontSize: 11, color: '#cccccc', background: '#262626',
+              padding: '2px 8px', borderRadius: 10, border: '1px solid #3a3a3a',
               whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {formatLiveryName(id)}{count > 1 ? ` (${count})` : ''}
             </span>
           ))}
           {liverySummary.length > 3 && (
-            <span style={{ fontSize: 11, color: '#3a4248' }}>+{liverySummary.length - 3} more</span>
+            <span style={{ fontSize: 11, color: '#aaaaaa' }}>+{liverySummary.length - 3} more</span>
           )}
         </div>
 
@@ -456,17 +456,17 @@ function TypeCard({
 
       {/* Expanded content */}
       {isExpanded && (
-        <div style={{ borderTop: '1px solid #4a5258' }}>
+        <div style={{ borderTop: '1px solid #3a3a3a' }}>
           {/* Bulk apply bar */}
           <div style={{
             padding: '10px 16px',
-            background: '#7a8a92',
+            background: '#1a1a1a',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            borderBottom: '1px solid #4a5258',
+            borderBottom: '1px solid #3a3a3a',
           }}>
-            <span style={{ fontSize: 12, color: '#3a4248', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <span style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Set All {entry.type}
             </span>
             <select
@@ -542,7 +542,7 @@ function GroupRow({
   const changedCount = units.filter((u) => isChanged(u.unitId)).length;
 
   return (
-    <div style={{ borderBottom: '1px solid #6e7c83' }}>
+    <div style={{ borderBottom: '1px solid #262626' }}>
       {/* Group-level row */}
       <div style={{
         padding: '8px 16px 8px 32px',
@@ -555,7 +555,7 @@ function GroupRow({
           onClick={() => setShowUnits(!showUnits)}
           style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
-            color: '#3a4248', fontSize: 11, padding: '2px 4px',
+            color: '#aaaaaa', fontSize: 11, padding: '2px 4px',
           }}
           title="Per-unit livery control"
         >
@@ -563,12 +563,12 @@ function GroupRow({
         </button>
 
         {/* Group name */}
-        <span style={{ color: '#1a1f25', fontSize: 14, fontWeight: 500, minWidth: 140 }}>
+        <span style={{ color: '#cccccc', fontSize: 14, fontWeight: 500, minWidth: 140 }}>
           {groupName}
         </span>
 
         {/* Unit count */}
-        <span style={{ color: '#4a5258', fontSize: 12 }}>
+        <span style={{ color: '#4a4a4a', fontSize: 12 }}>
           {units.length} unit{units.length !== 1 ? 's' : ''}
         </span>
 
@@ -615,9 +615,9 @@ function GroupRow({
               <div key={u.unitId} style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '4px 0',
-                borderBottom: '1px solid #7a8a92',
+                borderBottom: '1px solid #1a1a1a',
               }}>
-                <span style={{ color: '#3a4248', fontSize: 13, minWidth: 130 }}>
+                <span style={{ color: '#aaaaaa', fontSize: 13, minWidth: 130 }}>
                   {u.name}
                 </span>
                 <select
@@ -656,10 +656,10 @@ function GroupRow({
 /* ------------------------------------------------------------------ */
 
 const filterInputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 14,
   padding: '8px 12px',
   width: 280,
@@ -668,10 +668,10 @@ const filterInputStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '5px 8px',
   outline: 'none',
@@ -679,10 +679,10 @@ const selectStyle: React.CSSProperties = {
 };
 
 const actionBtnStyle: React.CSSProperties = {
-  background: '#4a5258',
-  border: '1px solid #4a5258',
+  background: '#3a3a3a',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 14px',
@@ -692,10 +692,10 @@ const actionBtnStyle: React.CSSProperties = {
 };
 
 const filterSelectStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '6px 10px',
   outline: 'none',

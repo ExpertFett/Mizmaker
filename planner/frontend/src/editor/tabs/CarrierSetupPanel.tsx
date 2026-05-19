@@ -710,7 +710,7 @@ export function CarrierSetupPanel() {
 
   if (carrierGroups.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 14, padding: 16 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 16 }}>
         No carrier groups (CVN, LHA, LHD) found in this mission.
       </div>
     );
@@ -723,7 +723,7 @@ export function CarrierSetupPanel() {
         <div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
-            fontSize: 15, fontWeight: 600, color: '#d49a30', marginBottom: 4,
+            fontSize: 15, fontWeight: 600, color: '#4a8fd4', marginBottom: 4,
           }}>
             Carrier Control Setup
             {activeSop && (
@@ -740,7 +740,7 @@ export function CarrierSetupPanel() {
               >SOP</span>
             )}
           </div>
-          <div style={{ fontSize: 13, color: '#3a4248' }}>
+          <div style={{ fontSize: 13, color: '#aaaaaa' }}>
             Configure carriers and generate a MOOSE carrier control script with F10 menus.
           </div>
         </div>
@@ -762,7 +762,7 @@ export function CarrierSetupPanel() {
 
       {/* Config cards */}
       {configs.length === 0 && (
-        <div style={{ color: '#3a4248', fontSize: 13, padding: '10px 0' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 13, padding: '10px 0' }}>
           Click "Detect Carriers" to scan the mission for carrier groups.
         </div>
       )}
@@ -770,25 +770,25 @@ export function CarrierSetupPanel() {
       {configs.map((c) => (
         <div key={c.groupId} style={{
           marginBottom: 10, padding: '12px 14px',
-          background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2',
+          background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
         }}>
           {/* Carrier header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{
-              background: '#d49a30', color: '#7a8a92', fontSize: 11, fontWeight: 700,
+              background: '#4a8fd4', color: '#1a1a1a', fontSize: 11, fontWeight: 700,
               padding: '2px 8px', borderRadius: 3,
             }}>
               {c.label}
             </span>
-            <span style={{ color: '#3a4248', fontSize: 12 }}>{c.unitType}</span>
+            <span style={{ color: '#aaaaaa', fontSize: 12 }}>{c.unitType}</span>
           </div>
 
           {/* Group name (read-only — use Renamer tab to change) */}
           <div style={{ marginBottom: 8 }}>
             <div style={fieldLabel}>Group Name</div>
-            <div style={{ fontSize: 13, color: '#1a1f25', padding: '5px 0' }}>
+            <div style={{ fontSize: 13, color: '#e0e0e0', padding: '5px 0' }}>
               {c.groupName}
-              <span style={{ color: '#3a4248', fontSize: 11, marginLeft: 8 }}>
+              <span style={{ color: '#aaaaaa', fontSize: 11, marginLeft: 8 }}>
                 (use Renamer tab to edit)
               </span>
             </div>
@@ -810,7 +810,7 @@ export function CarrierSetupPanel() {
             ) : (
               <div>
                 <div style={fieldLabel}>ICLS</div>
-                <div style={{ fontSize: 12, color: '#3a4248', padding: '5px 0' }}>N/A ({c.label})</div>
+                <div style={{ fontSize: 12, color: '#aaaaaa', padding: '5px 0' }}>N/A ({c.label})</div>
               </div>
             )}
             {c.hasIcls && (
@@ -819,8 +819,8 @@ export function CarrierSetupPanel() {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '5px 0' }}>
                   <input type="checkbox" checked={c.aclsEnabled}
                     onChange={(e) => updateConfig(c.groupId, 'aclsEnabled', e.target.checked ? 1 : 0)}
-                    style={{ accentColor: '#d49a30' }} />
-                  <span style={{ fontSize: 13, color: c.aclsEnabled ? '#1a1f25' : '#3a4248' }}>
+                    style={{ accentColor: '#4a8fd4' }} />
+                  <span style={{ fontSize: 13, color: c.aclsEnabled ? '#e0e0e0' : '#aaaaaa' }}>
                     {c.aclsEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </label>
@@ -843,7 +843,7 @@ export function CarrierSetupPanel() {
       {generated && (
         <div style={{
           marginTop: 12, padding: '12px 14px',
-          background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2',
+          background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#3fb950' }}>
@@ -853,7 +853,7 @@ export function CarrierSetupPanel() {
               <button onClick={() => setScriptPreview(!scriptPreview)} style={smallBtnStyle}>
                 {scriptPreview ? 'Hide Preview' : 'Show Preview'}
               </button>
-              <button onClick={handleCopy} style={{ ...smallBtnStyle, color: copied ? '#3fb950' : '#d49a30' }}>
+              <button onClick={handleCopy} style={{ ...smallBtnStyle, color: copied ? '#3fb950' : '#4a8fd4' }}>
                 {copied ? 'Copied!' : 'Copy to Clipboard'}
               </button>
               <button
@@ -874,8 +874,8 @@ export function CarrierSetupPanel() {
           </div>
           {scriptPreview && (
             <pre style={{
-              background: '#5a6870', border: '1px solid #4a5258', borderRadius: 4,
-              padding: '10px 12px', fontSize: 11, color: '#1a1f25',
+              background: '#060d14', border: '1px solid #3a3a3a', borderRadius: 4,
+              padding: '10px 12px', fontSize: 11, color: '#cccccc',
               fontFamily: "'B612 Mono', 'Consolas', monospace", maxHeight: 400, overflow: 'auto',
               whiteSpace: 'pre-wrap', lineHeight: 1.5,
             }}>
@@ -931,14 +931,14 @@ function NumField({ label, value, onChange, min, max }: {
 /* ------------------------------------------------------------------ */
 
 const fieldLabel: React.CSSProperties = {
-  fontSize: 11, color: '#3a4248', marginBottom: 3, fontWeight: 600,
+  fontSize: 11, color: '#aaaaaa', marginBottom: 3, fontWeight: 600,
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '5px 8px',
   outline: 'none',
@@ -948,10 +948,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  background: '#4a5258',
-  border: '1px solid #4a5258',
+  background: '#3a3a3a',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 12px',
@@ -972,9 +972,9 @@ const generateBtnStyle: React.CSSProperties = {
 
 const smallBtnStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #4a5258',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 11,
   padding: '3px 10px',

@@ -57,7 +57,7 @@ export function generateDrawings(groups: MissionGroup[]): PlannerDrawing[] {
           id: `auto-cap-${group.groupId}`,
           type: 'racetrack',
           name: `${group.groupName} (CAP)`,
-          color: '#d49a30',
+          color: '#4a8fd4',
           visible: true,
           coords: rt.coords,
           widthNm: rt.widthNm,
@@ -73,7 +73,7 @@ export function generateDrawings(groups: MissionGroup[]): PlannerDrawing[] {
           id: `auto-corridor-${group.groupId}`,
           type: 'corridor',
           name: `${group.groupName}`,
-          color: group.coalition === 'blue' ? '#d49a30' : '#d95050',
+          color: group.coalition === 'blue' ? '#4a8fd4' : '#d95050',
           visible: false,  // hidden by default — opt-in, avoids clutter
           coords: corridor.coords,
           widthNm: 3,

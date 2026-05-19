@@ -13,25 +13,25 @@ import { isLaserPylon } from '../../utils/laserDetection';
 
 /** Weapon category → color for summary pills */
 const CAT_COLORS: Record<string, string> = {
-  'Air-to-Air':   '#d49a30',
+  'Air-to-Air':   '#4a8fd4',
   'Air-to-Ground': '#d29922',
   'Anti-Ship':    '#d95050',
   'Bomb':         '#d29922',
   'Missile':      '#d95050',
   'Rocket':       '#c090d0',
   'Fuel Tank':    '#3fb950',
-  'ECM':          '#1a1f25',
-  'Targeting':    '#1a1f25',
-  'Gun Pod':      '#3a4248',
-  'Other':        '#3a4248',
+  'ECM':          '#cccccc',
+  'Targeting':    '#cccccc',
+  'Gun Pod':      '#aaaaaa',
+  'Other':        '#aaaaaa',
 };
 
 function getCatColor(cat: string): string {
-  if (!cat) return '#3a4248';
+  if (!cat) return '#aaaaaa';
   for (const [key, color] of Object.entries(CAT_COLORS)) {
     if (cat.toLowerCase().includes(key.toLowerCase())) return color;
   }
-  return '#3a4248';
+  return '#aaaaaa';
 }
 
 /** Build a compact weapons summary for a unit */
@@ -337,7 +337,7 @@ export function LoadoutTab() {
 
   if (clientUnits.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No client (player) units found in this mission.
       </div>
     );
@@ -349,10 +349,10 @@ export function LoadoutTab() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Loadout Editor
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Click a group to expand, then click a unit to edit individual pylons.
           Copy a loadout and paste it to other same-type units.
         </p>
@@ -363,7 +363,7 @@ export function LoadoutTab() {
         display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap',
       }}>
         {/* Type filter pills */}
-        <div style={{ display: 'flex', gap: 2, background: '#8c9ba2', borderRadius: 4, border: '1px solid #4a5258', padding: 2, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 2, background: '#222222', borderRadius: 4, border: '1px solid #3a3a3a', padding: 2, flexWrap: 'wrap' }}>
           <FilterPill
             label="All"
             active={typeFilter === 'all'}
@@ -383,15 +383,15 @@ export function LoadoutTab() {
         {copiedUnit && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto',
-            background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4, padding: '4px 10px',
+            background: '#262626', border: '1px solid #4a4a4a', borderRadius: 4, padding: '4px 10px',
           }}>
-            <span style={{ fontSize: 12, color: '#d49a30' }}>
+            <span style={{ fontSize: 12, color: '#4a8fd4' }}>
               Copied: {copiedUnit.name}
             </span>
             <button
               onClick={() => setCopiedUnitId(null)}
               style={{
-                background: 'transparent', border: 'none', color: '#3a4248',
+                background: 'transparent', border: 'none', color: '#aaaaaa',
                 cursor: 'pointer', fontSize: 13, padding: '0 4px',
               }}
             >
@@ -401,7 +401,7 @@ export function LoadoutTab() {
         )}
 
         {/* Stats */}
-        <span style={{ fontSize: 13, color: '#3a4248', marginLeft: copiedUnit ? 0 : 'auto' }}>
+        <span style={{ fontSize: 13, color: '#aaaaaa', marginLeft: copiedUnit ? 0 : 'auto' }}>
           {Array.from(grouped.values()).reduce((s, g) => s + g.units.length, 0)} units in {grouped.size} groups
         </span>
       </div>
@@ -443,10 +443,10 @@ function FilterPill({ label, active, onClick }: { label: string; active: boolean
     <button
       onClick={onClick}
       style={{
-        background: active ? '#4a5258' : 'transparent',
+        background: active ? '#3a3a3a' : 'transparent',
         border: 'none',
         borderRadius: 3,
-        color: active ? '#1a1f25' : '#3a4248',
+        color: active ? '#e0e0e0' : '#aaaaaa',
         cursor: 'pointer',
         fontSize: 12,
         fontWeight: active ? 600 : 400,
@@ -490,7 +490,7 @@ function GroupCard({
   onToggleGroup, onToggleUnit, onPylonChange,
   onCopyUnit, onPasteToUnit, onPasteToGroup, onApplyPreset, onClearPreset,
 }: GroupCardProps) {
-  const coalitionColor = coalition === 'blue' ? '#d49a30' : '#d95050';
+  const coalitionColor = coalition === 'blue' ? '#4a8fd4' : '#d95050';
   const copiedUnit = copiedUnitId ? units.find((u) => u.unitId === copiedUnitId) : null;
   // Only show "Paste to Group" if the copied unit is the same aircraft type as this group
   const allUnits = useMissionStore((s) => s.clientUnits);
@@ -500,9 +500,9 @@ function GroupCard({
   return (
     <div style={{
       marginBottom: 8,
-      border: '1px solid #4a5258',
+      border: '1px solid #3a3a3a',
       borderRadius: 6,
-      background: '#8c9ba2',
+      background: '#222222',
       overflow: 'hidden',
     }}>
       {/* Group header */}
@@ -515,23 +515,23 @@ function GroupCard({
           gap: 10,
           cursor: 'pointer',
           borderLeft: `3px solid ${coalitionColor}`,
-          background: isExpanded ? '#7a8a92' : 'transparent',
+          background: isExpanded ? '#1a1a1a' : 'transparent',
         }}
       >
-        <span style={{ color: '#3a4248', fontSize: 12, userSelect: 'none', width: 12 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 12, userSelect: 'none', width: 12 }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
 
         <span style={{
           background: coalitionColor,
-          color: '#7a8a92', fontSize: 10, fontWeight: 700,
+          color: '#1a1a1a', fontSize: 10, fontWeight: 700,
           padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase',
           letterSpacing: 0.5,
         }}>
           {coalition}
         </span>
 
-        <span style={{ color: '#1a1f25', fontWeight: 600, fontSize: 15 }}>
+        <span style={{ color: '#e0e0e0', fontWeight: 600, fontSize: 15 }}>
           {groupName}
         </span>
 
@@ -558,11 +558,11 @@ function GroupCard({
           </span>
         )}
 
-        <span style={{ color: '#3a4248', fontSize: 13 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
           {type}
         </span>
 
-        <span style={{ color: '#4a5258', fontSize: 12 }}>
+        <span style={{ color: '#4a4a4a', fontSize: 12 }}>
           {units.length} unit{units.length !== 1 ? 's' : ''}
         </span>
 
@@ -570,7 +570,7 @@ function GroupCard({
         <div style={{ display: 'flex', gap: 3, flex: 1, justifyContent: 'flex-end', overflow: 'hidden', flexWrap: 'wrap' }}>
           {buildLoadoutSummary(units[0].pylons).slice(0, 5).map(({ label, count, color }) => (
             <span key={label} style={{
-              fontSize: 10, color, background: '#6e7c83',
+              fontSize: 10, color, background: '#262626',
               padding: '1px 6px', borderRadius: 10, border: `1px solid ${color}22`,
               whiteSpace: 'nowrap',
             }}>
@@ -596,7 +596,7 @@ function GroupCard({
 
       {/* Expanded unit list */}
       {isExpanded && (
-        <div style={{ borderTop: '1px solid #4a5258' }}>
+        <div style={{ borderTop: '1px solid #3a3a3a' }}>
           {units.map((unit) => (
             <UnitRow
               key={unit.unitId}
@@ -658,7 +658,7 @@ function UnitRow({
   }, [unit.unitId, unit.pylons, addEdit]);
 
   return (
-    <div style={{ borderBottom: '1px solid #6e7c83' }}>
+    <div style={{ borderBottom: '1px solid #262626' }}>
       {/* Unit header row */}
       <div
         onClick={onToggle}
@@ -668,15 +668,15 @@ function UnitRow({
           alignItems: 'center',
           gap: 8,
           cursor: 'pointer',
-          background: isExpanded ? '#7a8a92' : 'transparent',
+          background: isExpanded ? '#1a1a1a' : 'transparent',
         }}
       >
-        <span style={{ color: '#3a4248', fontSize: 11, userSelect: 'none', width: 12 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 11, userSelect: 'none', width: 12 }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
 
         {/* Unit name */}
-        <span style={{ color: '#1a1f25', fontWeight: 500, fontSize: 14, minWidth: 120 }}>
+        <span style={{ color: '#cccccc', fontWeight: 500, fontSize: 14, minWidth: 120 }}>
           {unit.name}
         </span>
 
@@ -693,7 +693,7 @@ function UnitRow({
         </div>
 
         {/* Stations loaded indicator */}
-        <span style={{ fontSize: 11, color: '#3a4248', marginLeft: 4 }}>
+        <span style={{ fontSize: 11, color: '#aaaaaa', marginLeft: 4 }}>
           {loadedStations}/{totalStations} stn
         </span>
 
@@ -701,7 +701,7 @@ function UnitRow({
         <div style={{ display: 'flex', gap: 3, flex: 1, justifyContent: 'flex-end', overflow: 'hidden', flexWrap: 'wrap' }}>
           {summary.slice(0, 6).map(({ label, count, color }) => (
             <span key={label} style={{
-              fontSize: 10, color, background: '#6e7c83',
+              fontSize: 10, color, background: '#262626',
               padding: '1px 6px', borderRadius: 10, border: `1px solid ${color}22`,
               whiteSpace: 'nowrap',
             }}>
@@ -717,8 +717,8 @@ function UnitRow({
             style={{
               ...smallActionBtn,
               background: isCopied ? 'rgba(63, 185, 80, 0.15)' : 'rgba(74, 143, 212, 0.1)',
-              color: isCopied ? '#3fb950' : '#d49a30',
-              borderColor: isCopied ? '#3fb950' : '#4a5258',
+              color: isCopied ? '#3fb950' : '#4a8fd4',
+              borderColor: isCopied ? '#3fb950' : '#4a4a4a',
             }}
             title="Copy this loadout"
           >
@@ -778,7 +778,7 @@ function UnitRow({
                   }}>
                     {/* Station number */}
                     <span style={{
-                      color: isEmpty ? '#4a5258' : '#3a4248',
+                      color: isEmpty ? '#3a3a3a' : '#aaaaaa',
                       fontSize: 12, fontFamily: "'B612 Mono', monospace", minWidth: 30, textAlign: 'right',
                     }}>
                       {stationNum}
@@ -787,7 +787,7 @@ function UnitRow({
                     {/* Category color dot */}
                     <span style={{
                       width: 6, height: 6, borderRadius: '50%',
-                      background: isEmpty ? '#4a5258' : getCatColor(pylon.category),
+                      background: isEmpty ? '#3a3a3a' : getCatColor(pylon.category),
                       flexShrink: 0,
                     }} />
 
@@ -803,7 +803,7 @@ function UnitRow({
                         ...pylonSelectStyle,
                         flex: 1,
                         ...(changed ? { borderColor: '#3fb950' } : {}),
-                        ...(isEmpty ? { color: '#4a5258' } : {}),
+                        ...(isEmpty ? { color: '#4a4a4a' } : {}),
                       }}
                     >
                       <option value="">(empty)</option>
@@ -822,7 +822,7 @@ function UnitRow({
                         onClick={() => setExpandedPylon(isExpPylon ? null : pylon.number)}
                         style={{
                           background: 'transparent', border: 'none',
-                          color: isExpPylon ? '#d49a30' : '#4a5258',
+                          color: isExpPylon ? '#4a8fd4' : '#4a4a4a',
                           cursor: 'pointer', fontSize: 12, padding: '2px 4px',
                         }}
                         title="Weapon settings"
@@ -859,17 +859,17 @@ function UnitRow({
 function Badge({ label, value }: { label: string; value: string }) {
   return (
     <span style={{
-      background: '#6e7c83',
-      border: '1px solid #4a5258',
+      background: '#262626',
+      border: '1px solid #3a3a3a',
       borderRadius: 3,
       padding: '2px 6px',
       fontSize: 11,
-      color: '#1a1f25',
+      color: '#cccccc',
       fontFamily: "'B612 Mono', monospace",
       whiteSpace: 'nowrap',
     }}>
-      <span style={{ color: '#3a4248', marginRight: 3 }}>{label}</span>
-      <span style={{ color: '#1a1f25', fontWeight: 500 }}>{value}</span>
+      <span style={{ color: '#aaaaaa', marginRight: 3 }}>{label}</span>
+      <span style={{ color: '#e0e0e0', fontWeight: 500 }}>{value}</span>
     </span>
   );
 }
@@ -879,10 +879,10 @@ function Badge({ label, value }: { label: string; value: string }) {
 /* ------------------------------------------------------------------ */
 
 const pylonSelectStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontFamily: "'B612 Mono', monospace",
   fontSize: 12,
   padding: '3px 6px',
@@ -891,7 +891,7 @@ const pylonSelectStyle: React.CSSProperties = {
 
 const smallActionBtn: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #4a5258',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
   cursor: 'pointer',
   fontSize: 11,
@@ -901,9 +901,9 @@ const smallActionBtn: React.CSSProperties = {
 
 const pasteBtnStyle: React.CSSProperties = {
   background: 'rgba(74, 143, 212, 0.1)',
-  border: '1px solid #4a5258',
+  border: '1px solid #4a4a4a',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 12,
   padding: '3px 10px',
@@ -1001,7 +1001,7 @@ function PresetPicker({
       {flash && (
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 4,
-          background: '#6e7c83', border: '1px solid rgba(63, 185, 80, 0.3)',
+          background: '#262626', border: '1px solid rgba(63, 185, 80, 0.3)',
           borderRadius: 4, padding: '4px 8px', fontSize: 11, color: '#3fb950',
           whiteSpace: 'nowrap', zIndex: 200, pointerEvents: 'none',
         }}>
@@ -1016,8 +1016,8 @@ function PresetPicker({
             position: 'fixed',
             top: menuPos.top,
             left: menuPos.left,
-            background: '#8c9ba2',
-            border: '1px solid #4a5258',
+            background: '#222222',
+            border: '1px solid #4a4a4a',
             borderRadius: 6,
             padding: 4,
             zIndex: 9999,
@@ -1034,16 +1034,16 @@ function PresetPicker({
                 background: 'transparent',
                 border: 'none',
                 borderLeft: `3px solid ${preset.color}`,
-                color: '#1a1f25', cursor: 'pointer',
+                color: '#e0e0e0', cursor: 'pointer',
                 fontSize: 12, padding: '6px 10px',
                 fontFamily: 'inherit', borderRadius: 3,
                 marginBottom: 2,
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#6e7c83'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#262626'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
             >
               <div style={{ color: preset.color, fontWeight: 700, fontSize: 12 }}>{preset.label}</div>
-              <div style={{ color: '#3a4248', fontSize: 11, marginTop: 1 }}>{preset.description}</div>
+              <div style={{ color: '#aaaaaa', fontSize: 11, marginTop: 1 }}>{preset.description}</div>
             </button>
           ))}
         </div>,

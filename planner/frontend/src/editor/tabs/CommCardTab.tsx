@@ -54,7 +54,7 @@ function roleSortPriority(role: string): number {
 const ROLE_COLORS: Record<string, string> = {
   TANKER: '#d29922',
   AWACS: '#a371f7',
-  PLAYER: '#d49a30',
+  PLAYER: '#4a8fd4',
   CAP: '#58a6ff',
   CAS: '#3fb950',
   SEAD: '#f78166',
@@ -62,7 +62,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 function roleColor(role: string): string {
-  return ROLE_COLORS[role] || '#3a4248';
+  return ROLE_COLORS[role] || '#aaaaaa';
 }
 
 function freqKey(freq: number, mod: number): string {
@@ -337,7 +337,7 @@ export function CommCardTab() {
 
   if (allRows.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 14, padding: 16 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 16 }}>
         No air groups with radio frequencies found in this mission.
       </div>
     );
@@ -355,10 +355,10 @@ export function CommCardTab() {
           are filtered out (they're handled by RadioPresetsSection below). */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+          <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Tanker / AWACS / AI Frequencies
           </h2>
-          <p style={{ margin: 0, fontSize: 13, color: '#3a4248' }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#aaaaaa' }}>
             Single-freq groups (tankers, AWACS, AI flights). For player flights, use the preset cards above.
           </p>
         </div>
@@ -383,7 +383,7 @@ export function CommCardTab() {
           </button>
           {overrides.size > 0 && (
             <>
-              <button onClick={handleReset} style={{ ...btnStyle, color: '#3a4248', borderColor: '#4a5258' }}>
+              <button onClick={handleReset} style={{ ...btnStyle, color: '#aaaaaa', borderColor: '#3a3a3a' }}>
                 Reset
               </button>
               <button onClick={handleApply} style={applyBtnStyle}>
@@ -415,7 +415,7 @@ export function CommCardTab() {
                 }}>
                   {d.freq.toFixed(3)} {d.mod === 0 ? 'AM' : 'FM'}
                 </span>
-                <span style={{ color: '#3a4248', fontSize: 11 }}>
+                <span style={{ color: '#aaaaaa', fontSize: 11 }}>
                   {d.members.length} groups:
                 </span>
                 <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -428,15 +428,15 @@ export function CommCardTab() {
                       }}>
                         {m.roleLabel}
                       </span>
-                      <span style={{ color: '#1a1f25' }}>{m.groupName}</span>
+                      <span style={{ color: '#e0e0e0' }}>{m.groupName}</span>
                       <span style={{
                         fontSize: 9, fontWeight: 600,
-                        color: m.coalition === 'blue' ? '#d49a30' : m.coalition === 'red' ? '#d95050' : '#3a4248',
+                        color: m.coalition === 'blue' ? '#4a8fd4' : m.coalition === 'red' ? '#d95050' : '#aaaaaa',
                       }}>
                         ({m.coalition.toUpperCase()})
                       </span>
                       {idx < d.members.length - 1 && (
-                        <span style={{ color: '#4a5258', marginLeft: 4 }}>|</span>
+                        <span style={{ color: '#4a4a4a', marginLeft: 4 }}>|</span>
                       )}
                     </span>
                   ))}
@@ -452,8 +452,8 @@ export function CommCardTab() {
         <div style={{
           padding: '8px 14px', marginBottom: 12, borderRadius: 4,
           background: result.includes('Applied') ? 'rgba(63, 185, 80, 0.1)' : 'rgba(74, 143, 212, 0.1)',
-          border: `1px solid ${result.includes('Applied') ? '#3fb950' : '#d49a30'}`,
-          color: result.includes('Applied') ? '#3fb950' : '#d49a30',
+          border: `1px solid ${result.includes('Applied') ? '#3fb950' : '#4a8fd4'}`,
+          color: result.includes('Applied') ? '#3fb950' : '#4a8fd4',
           fontSize: 13,
         }}>
           {result}
@@ -471,7 +471,7 @@ export function CommCardTab() {
       {/* Player flights */}
       {playerRows.length > 0 && (
         <>
-          <SectionHeader label="PLAYER FLIGHTS" count={playerRows.length} color="#d49a30" />
+          <SectionHeader label="PLAYER FLIGHTS" count={playerRows.length} color="#4a8fd4" />
           <FreqTable rows={playerRows} getEffective={getEffective} isConflict={isConflict} updateFreq={updateFreq} updateMod={updateMod} overrides={overrides} />
         </>
       )}
@@ -479,7 +479,7 @@ export function CommCardTab() {
       {/* AI flights */}
       {aiRows.length > 0 && (
         <>
-          <SectionHeader label="AI FLIGHTS" count={aiRows.length} color="#3a4248" />
+          <SectionHeader label="AI FLIGHTS" count={aiRows.length} color="#aaaaaa" />
           <FreqTable rows={aiRows} getEffective={getEffective} isConflict={isConflict} updateFreq={updateFreq} updateMod={updateMod} overrides={overrides} />
         </>
       )}
@@ -488,7 +488,7 @@ export function CommCardTab() {
           20-channel preset table (own primary, AWACS, tankers, sister
           flights, GUARD). Copy/paste between cards mirrors a setup once
           the lead flight is configured. */}
-      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #4a5258' }}>
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #3a3a3a' }}>
         <RadioPresetsSection />
       </div>
     </div>
@@ -507,7 +507,7 @@ function SectionHeader({ label, count, color }: { label: string; count: number; 
       display: 'flex', gap: 8, alignItems: 'center',
     }}>
       {label}
-      <span style={{ fontSize: 10, color: '#3a4248', fontWeight: 400 }}>({count})</span>
+      <span style={{ fontSize: 10, color: '#aaaaaa', fontWeight: 400 }}>({count})</span>
     </div>
   );
 }
@@ -548,7 +548,7 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
                   : i % 2 === 0 ? 'transparent' : 'rgba(74, 143, 212, 0.03)',
               borderLeft: conflict ? '3px solid #d95050' : freqChanged ? '3px solid #d29922' : '3px solid transparent',
             }}>
-              <td style={{ ...cellStyle, textAlign: 'center', color: '#3a4248', width: 30 }}>{i + 1}</td>
+              <td style={{ ...cellStyle, textAlign: 'center', color: '#aaaaaa', width: 30 }}>{i + 1}</td>
               <td style={{ ...cellStyle, fontWeight: 600 }}>{row.groupName}</td>
               <td style={{ ...cellStyle, textAlign: 'center' }}>
                 <span style={{
@@ -561,7 +561,7 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
               </td>
               <td style={{
                 ...cellStyle, textAlign: 'center', fontSize: 10, fontWeight: 600,
-                color: row.coalition === 'blue' ? '#d49a30' : row.coalition === 'red' ? '#d95050' : '#3a4248',
+                color: row.coalition === 'blue' ? '#4a8fd4' : row.coalition === 'red' ? '#d95050' : '#aaaaaa',
               }}>
                 {row.coalition.toUpperCase()}
               </td>
@@ -569,7 +569,7 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                   {freqChanged && (
                     <span style={{
-                      fontSize: 11, color: '#3a4248', fontFamily: "'B612 Mono', monospace",
+                      fontSize: 11, color: '#aaaaaa', fontFamily: "'B612 Mono', monospace",
                       textDecoration: 'line-through', opacity: 0.7,
                     }}>
                       {row.frequency.toFixed(3)}
@@ -586,8 +586,8 @@ function FreqTable({ rows, getEffective, isConflict, updateFreq, updateMod, over
                     style={{
                       ...inputStyle,
                       width: freqChanged ? 90 : 100,
-                      borderColor: conflict ? '#d95050' : freqChanged ? '#d29922' : '#4a5258',
-                      color: freqChanged ? '#d29922' : '#1a1f25',
+                      borderColor: conflict ? '#d95050' : freqChanged ? '#d29922' : '#3a3a3a',
+                      color: freqChanged ? '#d29922' : '#e0e0e0',
                     }}
                   />
                 </div>
@@ -633,25 +633,25 @@ const thStyle: React.CSSProperties = {
   padding: '6px 8px',
   fontSize: 10,
   fontWeight: 600,
-  color: '#3a4248',
+  color: '#aaaaaa',
   textTransform: 'uppercase',
   letterSpacing: 0.5,
   textAlign: 'center',
-  borderBottom: '2px solid #4a5258',
+  borderBottom: '2px solid #3a3a3a',
 };
 
 const cellStyle: React.CSSProperties = {
   padding: '6px 8px',
   fontSize: 13,
-  color: '#1a1f25',
-  borderBottom: '1px solid #8c9ba2',
+  color: '#e0e0e0',
+  borderBottom: '1px solid #222222',
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 13,
   fontFamily: "'B612 Mono', monospace",
   padding: '4px 6px',
@@ -660,10 +660,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  background: '#4a5258',
-  border: '1px solid #d49a30',
+  background: '#4a4a4a',
+  border: '1px solid #4a8fd4',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 12px',
@@ -674,7 +674,7 @@ const applyBtnStyle: React.CSSProperties = {
   background: '#d29922',
   border: '1px solid #d29922',
   borderRadius: 4,
-  color: '#7a8a92',
+  color: '#1a1a1a',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 14px',
@@ -683,10 +683,10 @@ const applyBtnStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 13,
   padding: '6px 8px',
   outline: 'none',

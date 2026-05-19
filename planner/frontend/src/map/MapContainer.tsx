@@ -426,9 +426,9 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       function updateCoordDisplay() {
         if (!coordRef.current) return;
         coordRef.current.innerHTML =
-          `<span style="color:#1a1f25">${llStr}</span>` +
+          `<span style="color:#e0e0e0">${llStr}</span>` +
           `<br/><span style="color:#d29922">${mgrsStr}</span>` +
-          (dcsStr ? `<br/><span style="color:#3a4248">${dcsStr}</span>` : '') +
+          (dcsStr ? `<br/><span style="color:#aaaaaa">${dcsStr}</span>` : '') +
           (lastElevStr ? `<br/><span style="color:#3fb950">Elev: ${lastElevStr}</span>` : '');
       }
       updateCoordDisplay();
@@ -444,19 +444,19 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
         const wp = hit.get('waypoint');
 
         if (unit) {
-          const coalColor = unit.coalition === 'blue' ? '#d49a30' : unit.coalition === 'red' ? '#d95050' : '#1a1f25';
+          const coalColor = unit.coalition === 'blue' ? '#4a8fd4' : unit.coalition === 'red' ? '#d95050' : '#cccccc';
           const header = `<b style="color:${coalColor}">${unit.name}</b>`;
-          const meta = `<span style="color:#3a4248">${unit.coalition} &middot; ${unit.country}${unit.task ? ' &middot; ' + unit.task : ''}</span>`;
+          const meta = `<span style="color:#aaaaaa">${unit.coalition} &middot; ${unit.country}${unit.task ? ' &middot; ' + unit.task : ''}</span>`;
 
           let roster = '';
           if (unit.unitList && unit.unitList.length > 0) {
             const lines = unit.unitList.map((u: any) => {
               const skill = u.skill === 'Client' || u.skill === 'Player'
                 ? '<span style="color:#3fb950">Player</span>'
-                : `<span style="color:#3a4248">${u.skill || ''}</span>`;
-              return `<div style="padding:1px 0">${u.name} <span style="color:#3a4248">${u.type}</span> ${skill}</div>`;
+                : `<span style="color:#aaaaaa">${u.skill || ''}</span>`;
+              return `<div style="padding:1px 0">${u.name} <span style="color:#aaaaaa">${u.type}</span> ${skill}</div>`;
             });
-            roster = `<div style="margin-top:4px;border-top:1px solid #4a5258;padding-top:4px;max-height:200px;overflow:auto">${lines.join('')}</div>`;
+            roster = `<div style="margin-top:4px;border-top:1px solid #3a3a3a;padding-top:4px;max-height:200px;overflow:auto">${lines.join('')}</div>`;
           }
 
           tooltip.innerHTML = header + '<br/>' + meta + roster;
@@ -835,11 +835,11 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
           display: 'none',
           position: 'absolute',
           background: 'rgba(10, 20, 35, 0.95)',
-          border: '1px solid #4a5258',
+          border: '1px solid #4a4a4a',
           borderRadius: 5,
           padding: '8px 12px',
           fontSize: 12,
-          color: '#1a1f25',
+          color: '#e0e0e0',
           pointerEvents: 'none',
           zIndex: 150,
           maxWidth: 380,
@@ -864,16 +864,16 @@ function DmpiPickBanner() {
   return (
     <div style={{
       position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-      background: 'rgba(74, 143, 212, 0.15)', border: '1px solid #d49a30', borderRadius: 6,
-      padding: '8px 20px', color: '#d49a30', fontSize: 13, fontWeight: 500, zIndex: 200,
+      background: 'rgba(74, 143, 212, 0.15)', border: '1px solid #4a8fd4', borderRadius: 6,
+      padding: '8px 20px', color: '#4a8fd4', fontSize: 13, fontWeight: 500, zIndex: 200,
       display: 'flex', alignItems: 'center', gap: 14,
     }}>
       <span>📍 Click anywhere to set coordinates for <strong>{dmpi?.name ?? '—'}</strong></span>
       <button
         onClick={cancel}
         style={{
-          background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
-          color: '#3a4248', cursor: 'pointer', fontSize: 12, padding: '3px 10px',
+          background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+          color: '#aaaaaa', cursor: 'pointer', fontSize: 12, padding: '3px 10px',
           fontFamily: 'inherit',
         }}
       >
@@ -945,13 +945,13 @@ function UnitContextMenu({ x, y, groupId, onClose }: UnitContextMenuProps) {
         top: clampedY,
         width: menuWidth,
         background: 'rgba(10, 20, 35, 0.97)',
-        border: '1px solid #4a5258',
+        border: '1px solid #4a4a4a',
         borderRadius: 6,
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
         zIndex: 5000,
         fontFamily: 'system-ui, sans-serif',
         fontSize: 13,
-        color: '#1a1f25',
+        color: '#e0e0e0',
         overflow: 'hidden',
       }}
     >
@@ -962,13 +962,13 @@ function UnitContextMenu({ x, y, groupId, onClose }: UnitContextMenuProps) {
         style={{
           padding: '6px 10px',
           background: 'rgba(20, 40, 70, 0.4)',
-          borderBottom: '1px solid #4a5258',
+          borderBottom: '1px solid #3a3a3a',
           fontSize: 12,
           fontWeight: 600,
         }}
       >
-        <div style={{ color: '#1a1f25' }}>{group.groupName}</div>
-        <div style={{ fontSize: 10, color: '#5a6268', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <div style={{ color: '#cccccc' }}>{group.groupName}</div>
+        <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           {group.coalition} · {group.category}
         </div>
       </div>

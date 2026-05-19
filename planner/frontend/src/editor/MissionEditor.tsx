@@ -162,12 +162,12 @@ export function MissionEditor() {
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: '#7a8a92',
+      background: '#1a1a1a',
       display: 'flex',
       // Inherit from body (B612). Set explicitly so any portal-mounted
       // children that escape the body cascade still get the right stack.
       fontFamily: "'B612', 'IBM Plex Sans', 'Inter', system-ui, sans-serif",
-      color: '#1a1f25',
+      color: '#e0e0e0',
       overflow: 'hidden',
     }}>
       {/* Left sidebar */}
@@ -176,8 +176,8 @@ export function MissionEditor() {
         minWidth: sidebarWidth,
         display: 'flex',
         flexDirection: 'column',
-        background: '#8c9ba2',
-        borderRight: '1px solid #4a5258',
+        background: '#222222',
+        borderRight: '1px solid #3a3a3a',
         flexShrink: 0,
         overflow: 'hidden',
         transition: 'width 0.15s, min-width 0.15s',
@@ -185,7 +185,7 @@ export function MissionEditor() {
         {/* Header */}
         <div style={{
           padding: isCollapsed ? '10px 6px' : '12px 14px',
-          borderBottom: '1px solid #4a5258',
+          borderBottom: '1px solid #3a3a3a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: isCollapsed ? 'center' : 'space-between',
@@ -193,8 +193,8 @@ export function MissionEditor() {
         }}>
           {!isCollapsed && (
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1f25', whiteSpace: 'nowrap' }}>{theater}</div>
-              {isMap && <div style={{ fontSize: 12, color: '#3a4248', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
+              {isMap && <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
               {activeSop && (
                 <div
                   title={`Active SOP: ${activeSop.name}`}
@@ -234,7 +234,7 @@ export function MissionEditor() {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#3a4248',
+                color: '#aaaaaa',
                 cursor: 'pointer',
                 fontSize: 14,
                 padding: '2px 4px',
@@ -258,7 +258,7 @@ export function MissionEditor() {
           display: 'flex',
           flexDirection: 'column',
           paddingTop: 4,
-          borderBottom: '1px solid #4a5258',
+          borderBottom: '1px solid #3a3a3a',
           minHeight: 0,
           overflowX: 'hidden',
           overflowY: isCollapsed ? 'hidden' : 'auto',
@@ -269,7 +269,7 @@ export function MissionEditor() {
                 // Collapsed sidebar: render a thin divider line instead of the label
                 return (
                   <div key={`sec-${idx}`} style={{
-                    height: 1, background: '#4a5258', margin: '6px 8px',
+                    height: 1, background: '#3a3a3a', margin: '6px 8px',
                   }} />
                 );
               }
@@ -279,7 +279,7 @@ export function MissionEditor() {
                   style={{
                     fontSize: 9,
                     fontWeight: 700,
-                    color: '#5a6268',
+                    color: '#5a6878',
                     letterSpacing: 1.5,
                     padding: '10px 14px 4px',
                     textTransform: 'uppercase',
@@ -310,8 +310,8 @@ export function MissionEditor() {
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
                   border: 'none',
-                  borderLeft: isActive ? '3px solid #d49a30' : '3px solid transparent',
-                  color: isActive ? '#1a1f25' : '#3a4248',
+                  borderLeft: isActive ? '3px solid #4a8fd4' : '3px solid transparent',
+                  color: isActive ? '#e0e0e0' : '#aaaaaa',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',

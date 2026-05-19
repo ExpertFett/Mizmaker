@@ -46,15 +46,15 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
         // doesn't dismiss it (only the backdrop does).
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#7a8a92',
-          border: '1px solid #4a5258',
+          background: '#1a1a1a',
+          border: '1px solid #3a3a3a',
           borderRadius: 8,
           width: 720,
           maxHeight: '85vh',
           overflowY: 'auto',
           padding: 24,
           boxShadow: '0 8px 40px rgba(0, 0, 0, 0.6)',
-          color: '#1a1f25',
+          color: '#e0e0e0',
         }}
       >
         {/* Header */}
@@ -78,7 +78,7 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
               {report.sopName}
             </h2>
           </div>
-          <div style={{ color: '#5a6268', fontSize: 13 }}>
+          <div style={{ color: '#888', fontSize: 13 }}>
             {report.totalEdits} edit{report.totalEdits !== 1 ? 's' : ''} queued
             {' · '}
             {report.totalItems} mission item{report.totalItems !== 1 ? 's' : ''} touched
@@ -96,8 +96,8 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
                 style={{
                   padding: '10px 14px',
                   marginBottom: 6,
-                  borderLeft: `3px solid ${ran ? '#3fb950' : skipped ? '#4a5258' : '#d29922'}`,
-                  background: '#6e7c83',
+                  borderLeft: `3px solid ${ran ? '#3fb950' : skipped ? '#3a3a3a' : '#d29922'}`,
+                  background: '#0a1218',
                   borderRadius: 4,
                 }}
               >
@@ -106,18 +106,18 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
                     style={{
                       width: 18, height: 18, lineHeight: '18px', textAlign: 'center',
                       borderRadius: 9, fontSize: 11, fontWeight: 700,
-                      background: ran ? '#1a3a1a' : '#6e7c83',
-                      color: ran ? '#3fb950' : skipped ? '#5a6268' : '#3a4248',
+                      background: ran ? '#1a3a1a' : '#262626',
+                      color: ran ? '#3fb950' : skipped ? '#666' : '#aaa',
                       flexShrink: 0,
                     }}
                   >
                     {ran ? '✓' : skipped ? '·' : ''}
                   </span>
-                  <span style={{ fontWeight: 600, color: '#1a1f25' }}>{a.category}</span>
-                  <span style={{ color: '#5a6268', fontSize: 13 }}>— {a.description}</span>
+                  <span style={{ fontWeight: 600, color: '#e0e0e0' }}>{a.category}</span>
+                  <span style={{ color: '#888', fontSize: 13 }}>— {a.description}</span>
                 </div>
                 {a.skippedReason && (
-                  <div style={{ color: '#5a6268', fontSize: 11, marginTop: 4, marginLeft: 28 }}>
+                  <div style={{ color: '#666', fontSize: 11, marginTop: 4, marginLeft: 28 }}>
                     {a.skippedReason}
                   </div>
                 )}
@@ -128,7 +128,7 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
                       padding: 0,
                       listStyle: 'none',
                       fontSize: 11,
-                      color: '#5a6268',
+                      color: '#888',
                     }}
                   >
                     {a.details.slice(0, 6).map((d, i) => (
@@ -151,7 +151,7 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
           <div
             style={{
               padding: '12px 14px',
-              background: '#6e7c83',
+              background: '#0a1218',
               border: '1px solid #2a2a1a',
               borderLeft: '3px solid #d29922',
               borderRadius: 4,
@@ -162,7 +162,7 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
               <span style={{ fontSize: 14, fontWeight: 600, color: '#d29922' }}>
                 ⚠ {report.discrepancies.length} item{report.discrepancies.length !== 1 ? 's' : ''} still need attention
               </span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#3a4248' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#aaa' }}>
                 {counts.red > 0 && (
                   <span style={{ color: '#d95050', marginRight: 8 }}>{counts.red} issue{counts.red !== 1 ? 's' : ''}</span>
                 )}
@@ -170,31 +170,31 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
                   <span style={{ color: '#d29922', marginRight: 8 }}>{counts.yellow} warning{counts.yellow !== 1 ? 's' : ''}</span>
                 )}
                 {counts.gray > 0 && (
-                  <span style={{ color: '#5a6268' }}>{counts.gray} info</span>
+                  <span style={{ color: '#888' }}>{counts.gray} info</span>
                 )}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: '#5a6268', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
               These are things the auto-pass couldn't address — usually because the
               SOP doesn't carry the data, the mission has details that need a
               human decision, or a fuzzy match wasn't safe to auto-apply.
             </div>
-            <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 12, color: '#1a1f25' }}>
+            <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 12, color: '#cccccc' }}>
               {report.discrepancies.slice(0, 8).map((d, i) => (
                 <li key={i} style={{ padding: '2px 0' }}>
                   <span style={{
                     display: 'inline-block', width: 36, fontSize: 9, fontWeight: 700,
                     color: d.severity === 'red' ? '#d95050'
-                         : d.severity === 'yellow' ? '#d29922' : '#5a6268',
+                         : d.severity === 'yellow' ? '#d29922' : '#888',
                   }}>
                     [{d.severity.toUpperCase()}]
                   </span>
-                  <span style={{ color: '#1a1f25' }}>{d.category}</span>
-                  <span style={{ color: '#5a6268' }}> — {d.field}</span>
+                  <span style={{ color: '#cccccc' }}>{d.category}</span>
+                  <span style={{ color: '#888' }}> — {d.field}</span>
                 </li>
               ))}
               {report.discrepancies.length > 8 && (
-                <li style={{ padding: '2px 0', color: '#5a6268', fontStyle: 'italic' }}>
+                <li style={{ padding: '2px 0', color: '#666', fontStyle: 'italic' }}>
                   …and {report.discrepancies.length - 8} more (open SOP Check)
                 </li>
               )}
@@ -204,7 +204,7 @@ export function AutoSetupModal({ report, onClose, onOpenSopCheck }: Props) {
           <div
             style={{
               padding: '12px 14px',
-              background: '#6e7c83',
+              background: '#0a1218',
               border: '1px solid #1a3a1a',
               borderLeft: '3px solid #3fb950',
               borderRadius: 4,

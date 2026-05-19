@@ -2,7 +2,7 @@
  * Shared text input primitive.
  *
  * Consolidates the dark `inputStyle` object that ~30 tab files
- * reinvent (background #6e7c83, border #4a5258, color #1a1f25, etc.).
+ * reinvent (background #262626, border #3a3a3a, color #cccccc, etc.).
  * Same migration strategy as Button.tsx — incremental adoption,
  * existing inline-styled inputs continue working unchanged.
  *
@@ -43,10 +43,10 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
   function TextInput({ size = 'md', invalid, style, ...rest }, ref) {
     const s = SIZE[size];
     const merged: CSSProperties = {
-      background: '#6e7c83',
-      border: `1px solid ${invalid ? '#d95050' : '#4a5258'}`,
+      background: '#262626',
+      border: `1px solid ${invalid ? '#d95050' : '#3a3a3a'}`,
       borderRadius: 3,
-      color: '#1a1f25',
+      color: '#cccccc',
       fontSize: s.fontSize,
       fontFamily: 'inherit',
       padding: s.padding,

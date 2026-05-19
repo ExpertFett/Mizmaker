@@ -46,10 +46,10 @@ export function RangePlanTab() {
     <div style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Range Plan
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
             Training range information — names, frequencies, restrictions, hot/cold times.
           </p>
         </div>
@@ -60,8 +60,8 @@ export function RangePlanTab() {
         <div style={{
           padding: '40px 20px', textAlign: 'center',
           background: 'rgba(74, 143, 212, 0.04)',
-          border: '1px solid #4a5258', borderRadius: 6,
-          color: '#3a4248', fontSize: 13,
+          border: '1px solid #4a4a4a', borderRadius: 6,
+          color: '#aaaaaa', fontSize: 13,
         }}>
           No ranges defined. Click "+ Add Range" to add training range information.
         </div>
@@ -69,14 +69,14 @@ export function RangePlanTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {ranges.map((r, i) => (
             <div key={r.id} style={{
-              background: '#8c9ba2', border: '1px solid #4a5258',
+              background: '#222222', border: '1px solid #3a3a3a',
               borderRadius: 6, padding: 14,
               borderLeft: '3px solid #d29922',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <span style={{ color: '#d29922', fontWeight: 700, fontSize: 14 }}>#{i + 1}</span>
                 <input value={r.name} onChange={(e) => updateRange(r.id, { name: e.target.value })}
-                  style={{ ...inputStyle, flex: 1, fontSize: 15, fontWeight: 600, color: '#1a1f25' }}
+                  style={{ ...inputStyle, flex: 1, fontSize: 15, fontWeight: 600, color: '#e0e0e0' }}
                   placeholder="Range Name" />
                 <button onClick={() => removeRange(r.id)} style={xBtn}>×</button>
               </div>
@@ -130,21 +130,21 @@ export function RangePlanTab() {
 }
 
 const inputStyle: React.CSSProperties = {
-  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
-  color: '#1a1f25', fontSize: 13, padding: '5px 8px', fontFamily: 'inherit',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
+  color: '#cccccc', fontSize: 13, padding: '5px 8px', fontFamily: 'inherit',
   boxSizing: 'border-box',
 };
 const lblStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, color: '#3a4248',
+  display: 'block', fontSize: 10, color: '#aaaaaa',
   fontWeight: 600, marginBottom: 3, textTransform: 'uppercase',
   letterSpacing: 0.5,
 };
 const addBtn: React.CSSProperties = {
-  background: '#4a5258', border: '1px solid #d49a30', borderRadius: 4,
-  color: '#d49a30', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+  background: '#4a4a4a', border: '1px solid #4a8fd4', borderRadius: 4,
+  color: '#4a8fd4', cursor: 'pointer', fontSize: 13, fontWeight: 600,
   padding: '6px 14px', fontFamily: 'inherit',
 };
 const xBtn: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#3a4248',
+  background: 'transparent', border: 'none', color: '#aaaaaa',
   cursor: 'pointer', fontSize: 18, padding: '0 4px',
 };

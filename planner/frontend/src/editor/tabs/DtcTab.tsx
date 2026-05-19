@@ -509,7 +509,7 @@ export function DtcTab() {
 
   if (dtcFlights.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No F/A-18C flights found in this mission for DTC generation.
       </div>
     );
@@ -520,7 +520,7 @@ export function DtcTab() {
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             F/A-18C DTC Builder
           </h2>
           {activeSop && (
@@ -541,14 +541,14 @@ export function DtcTab() {
             </span>
           )}
         </div>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Load, edit, and export Data Transfer Cartridge files for Hornet flights.
         </p>
       </div>
 
       {/* Flight selector + Load */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <label style={{ color: '#1a1f25', fontSize: 14 }}>Flight:</label>
+        <label style={{ color: '#cccccc', fontSize: 14 }}>Flight:</label>
         <select
           value={selectedFlight}
           onChange={(e) => { setSelectedFlight(e.target.value); setDtcData(null); }}
@@ -580,7 +580,7 @@ export function DtcTab() {
               setClipboardMsg(`Copied DTC from ${selectedFlight}`);
               setTimeout(() => setClipboardMsg(null), 3000);
             }}
-            style={{ ...btnStyle, background: '#6e7c83', borderColor: '#d49a30', color: '#d49a30' }}
+            style={{ ...btnStyle, background: '#262626', borderColor: '#4a8fd4', color: '#4a8fd4' }}
             title="Copy this flight's full DTC (COMM, CMDS, waypoints, NAV) to the clipboard"
           >
             📋 Copy DTC
@@ -597,7 +597,7 @@ export function DtcTab() {
               setClipboardMsg(`Pasted DTC from ${dtcClipboard.sourceFlight} → ${selectedFlight}`);
               setTimeout(() => setClipboardMsg(null), 3000);
             }}
-            style={{ ...btnStyle, background: '#6e7c83', borderColor: '#3fb950', color: '#3fb950' }}
+            style={{ ...btnStyle, background: '#262626', borderColor: '#3fb950', color: '#3fb950' }}
             title={`Paste the DTC copied from "${dtcClipboard.sourceFlight}"`}
           >
             📥 Paste DTC
@@ -620,7 +620,7 @@ export function DtcTab() {
             color: '#3fb950',
             fontSize: 12,
             padding: '6px 12px',
-            background: '#6e7c83',
+            background: '#0a1218',
             borderRadius: 6,
             border: '1px solid #1a3a1a',
             marginBottom: 12,
@@ -631,7 +631,7 @@ export function DtcTab() {
       )}
 
       {!dtcData && !loading && (
-        <div style={{ color: '#3a4248', fontSize: 14, padding: 20 }}>
+        <div style={{ color: '#aaaaaa', fontSize: 14, padding: 20 }}>
           Select a flight and click "Load DTC" to begin editing.
         </div>
       )}
@@ -639,7 +639,7 @@ export function DtcTab() {
       {dtcData && (
         <>
           {/* Sub-tab navigation */}
-          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid #4a5258', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid #3a3a3a', flexWrap: 'wrap' }}>
             {([
               { key: 'comm', label: 'COMM' },
               { key: 'cmds', label: 'CMDS' },
@@ -653,10 +653,10 @@ export function DtcTab() {
                 key={t.key}
                 onClick={() => setSubTab(t.key)}
                 style={{
-                  background: subTab === t.key ? '#6e7c83' : 'transparent',
+                  background: subTab === t.key ? '#262626' : 'transparent',
                   border: 'none',
-                  borderBottom: subTab === t.key ? '2px solid #d49a30' : '2px solid transparent',
-                  color: subTab === t.key ? '#1a1f25' : '#3a4248',
+                  borderBottom: subTab === t.key ? '2px solid #4a8fd4' : '2px solid transparent',
+                  color: subTab === t.key ? '#e0e0e0' : '#aaaaaa',
                   cursor: 'pointer',
                   fontSize: 14,
                   fontFamily: 'inherit',
@@ -720,7 +720,7 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
             gap: 10,
             padding: '8px 12px',
             marginBottom: 12,
-            background: '#6e7c83',
+            background: '#0a1218',
             border: '1px solid #1a3a1a',
             borderRadius: 6,
           }}
@@ -739,8 +739,8 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
           >
             SOP
           </span>
-          <span style={{ color: '#1a1f25', fontSize: 12, flex: 1 }}>
-            Apply <strong style={{ color: '#1a1f25' }}>{activeSop.name}</strong> — COMM1 = squadron flights + tanker, COMM2 = mission services. GUARD anchored on Ch 20 of both.
+          <span style={{ color: '#cccccc', fontSize: 12, flex: 1 }}>
+            Apply <strong style={{ color: '#e0e0e0' }}>{activeSop.name}</strong> — COMM1 = squadron flights + tanker, COMM2 = mission services. GUARD anchored on Ch 20 of both.
           </span>
           <button
             onClick={() => onApplySop('both')}
@@ -760,10 +760,10 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
           <button
             onClick={() => onApplySop('COMM1')}
             style={{
-              background: '#6e7c83',
-              border: '1px solid #4a5258',
+              background: '#262626',
+              border: '1px solid #3a3a3a',
               borderRadius: 4,
-              color: '#3a4248',
+              color: '#aaaaaa',
               cursor: 'pointer',
               fontSize: 11,
               padding: '5px 10px',
@@ -774,10 +774,10 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
           <button
             onClick={() => onApplySop('COMM2')}
             style={{
-              background: '#6e7c83',
-              border: '1px solid #4a5258',
+              background: '#262626',
+              border: '1px solid #3a3a3a',
               borderRadius: 4,
-              color: '#3a4248',
+              color: '#aaaaaa',
               cursor: 'pointer',
               fontSize: 11,
               padding: '5px 10px',
@@ -792,10 +792,10 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
       <div style={{ display: 'flex', gap: 24 }}>
         {(['COMM1', 'COMM2'] as const).map((radio) => (
           <div key={radio} style={{ flex: 1 }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600, color: '#1a1f25' }}>{radio}</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1f25' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 600, color: '#cccccc' }}>{radio}</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
               <thead>
-                <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+                <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
                   <th style={thStyle}>Ch</th>
                   <th style={thStyle}>Name</th>
                   <th style={thStyle}>Freq (MHz)</th>
@@ -806,8 +806,8 @@ function CommSubTab({ data, onUpdate, activeSop, onApplySop }: {
                 {COMM_CHANNELS.map((chKey) => {
                   const ch = data[radio]?.[chKey] ?? { frequency: '', modulation: 'AM', name: '' };
                   return (
-                    <tr key={chKey} style={{ borderBottom: '1px solid #6e7c83' }}>
-                      <td style={{ ...tdStyle, color: '#3a4248', fontFamily: "'B612 Mono', monospace", width: 40 }}>
+                    <tr key={chKey} style={{ borderBottom: '1px solid #262626' }}>
+                      <td style={{ ...tdStyle, color: '#aaaaaa', fontFamily: "'B612 Mono', monospace", width: 40 }}>
                         {channelLabel(chKey)}
                       </td>
                       <td style={tdStyle}>
@@ -880,16 +880,16 @@ function CmdsSubTab({ data, onUpdate }: {
     <>
     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
       <button onClick={handleAutoFill} style={{
-        background: '#4a5258', border: '1px solid #2a5a8a', borderRadius: 4,
+        background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
         color: '#6ab4f0', padding: '5px 14px', fontSize: 12, cursor: 'pointer',
         fontWeight: 600,
       }}>
         Auto Fill
       </button>
     </div>
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1f25', maxWidth: 760 }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0', maxWidth: 760 }}>
       <thead>
-        <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+        <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
           <th style={thStyle}>Program</th>
           <th style={thStyle}>Chaff Qty</th>
           <th style={thStyle}>Chaff Interval</th>
@@ -906,8 +906,8 @@ function CmdsSubTab({ data, onUpdate }: {
           const p = data[prog] ?? { chaffQty: 0, chaffInterval: 0, flareQty: 0, flareInterval: 0 };
           const rowTotal = (p.chaffQty || 0) + (p.flareQty || 0);
           return (
-            <tr key={prog} style={{ borderBottom: '1px solid #6e7c83' }}>
-              <td style={{ ...tdStyle, color: '#1a1f25', fontWeight: 600 }}>{programLabel(prog)}</td>
+            <tr key={prog} style={{ borderBottom: '1px solid #262626' }}>
+              <td style={{ ...tdStyle, color: '#cccccc', fontWeight: 600 }}>{programLabel(prog)}</td>
               <td style={tdStyle}>
                 <input
                   type="number"
@@ -943,7 +943,7 @@ function CmdsSubTab({ data, onUpdate }: {
                 />
               </td>
               <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
-                color: rowTotal === 0 ? '#5a6268' : '#1a1f25', fontWeight: 600 }}>
+                color: rowTotal === 0 ? '#666' : '#e0e0e0', fontWeight: 600 }}>
                 {rowTotal}
               </td>
             </tr>
@@ -952,8 +952,8 @@ function CmdsSubTab({ data, onUpdate }: {
         {/* Column totals row — sum across every program. Useful for
             "if I burn through every program once, here's the ammo
             cost" quick math. Right-aligned faded for visual weight. */}
-        <tr style={{ borderTop: '2px solid #4a5258', background: '#6e7c83' }}>
-          <td style={{ ...tdStyle, color: '#5a6268', fontWeight: 600,
+        <tr style={{ borderTop: '2px solid #3a3a3a', background: '#0a1218' }}>
+          <td style={{ ...tdStyle, color: '#888', fontWeight: 600,
             textTransform: 'uppercase', fontSize: 11, letterSpacing: 0.5 }}>
             Total
           </td>
@@ -965,13 +965,13 @@ function CmdsSubTab({ data, onUpdate }: {
             return (
               <>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
-                  color: '#1a1f25', fontWeight: 600 }}>{sumChaff}</td>
+                  color: '#e0e0e0', fontWeight: 600 }}>{sumChaff}</td>
                 <td style={tdStyle} />
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
-                  color: '#1a1f25', fontWeight: 600 }}>{sumFlare}</td>
+                  color: '#e0e0e0', fontWeight: 600 }}>{sumFlare}</td>
                 <td style={tdStyle} />
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace",
-                  color: '#d49a30', fontWeight: 700 }}>{sumChaff + sumFlare}</td>
+                  color: '#fbb941', fontWeight: 700 }}>{sumChaff + sumFlare}</td>
               </>
             );
           })()}
@@ -992,7 +992,7 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
   setSteerNotes: React.Dispatch<React.SetStateAction<Record<number, string>>>;
 }) {
   if (data.length === 0) {
-    return <div style={{ color: '#3a4248', fontSize: 14 }}>No waypoints in DTC data.</div>;
+    return <div style={{ color: '#aaaaaa', fontSize: 14 }}>No waypoints in DTC data.</div>;
   }
 
   // Compute leg distances (simplified great circle approx)
@@ -1019,13 +1019,13 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-        <span style={{ color: '#3a4248', fontSize: 12 }}>
-          {data.length} waypoints · Total: <strong style={{ color: '#1a1f25' }}>{totalDist.toFixed(1)} nm</strong>
+        <span style={{ color: '#aaaaaa', fontSize: 12 }}>
+          {data.length} waypoints · Total: <strong style={{ color: '#e0e0e0' }}>{totalDist.toFixed(1)} nm</strong>
         </span>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1f25' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
         <thead>
-          <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+          <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
             <th style={{ ...thStyle, width: 36 }}>#</th>
             <th style={thStyle}>Name</th>
             <th style={thStyle}>Lat</th>
@@ -1039,13 +1039,13 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
           {data.map((wp, i) => {
             const wpNum = wp.number ?? i + 1;
             return (
-              <tr key={wpNum} style={{ borderBottom: '1px solid #6e7c83' }}>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3a4248' }}>{wpNum}</td>
+              <tr key={wpNum} style={{ borderBottom: '1px solid #262626' }}>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{wpNum}</td>
                 <td style={tdStyle}>{wp.name || '-'}</td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 12 }}>{wp.lat}</td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 12 }}>{wp.lon}</td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{wp.alt}</td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: distances[i] > 0 ? '#d29922' : '#4a5258', fontSize: 12 }}>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: distances[i] > 0 ? '#d29922' : '#3a3a3a', fontSize: 12 }}>
                   {distances[i] > 0 ? distances[i].toFixed(1) : '—'}
                 </td>
                 <td style={tdStyle}>
@@ -1053,7 +1053,7 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
                     value={steerNotes[wpNum] ?? ''}
                     onChange={(e) => setSteerNotes((prev) => ({ ...prev, [wpNum]: e.target.value }))}
                     placeholder="IP, push, fence in..."
-                    style={{ ...monoInputStyle, width: '100%', fontSize: 11, fontFamily: 'inherit', color: '#1a1f25' }}
+                    style={{ ...monoInputStyle, width: '100%', fontSize: 11, fontFamily: 'inherit', color: '#cccccc' }}
                   />
                 </td>
               </tr>
@@ -1205,16 +1205,16 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
     {/* Mission Nav Reference */}
     {navRefs.length > 0 && (
       <div style={{
-        flex: '1 1 300px', maxWidth: 420, background: '#7a8a92',
-        border: '1px solid #4a5258', borderRadius: 6, padding: 12,
+        flex: '1 1 300px', maxWidth: 420, background: '#1a1a1a',
+        border: '1px solid #3a3a3a', borderRadius: 6, padding: 12,
         maxHeight: 400, overflowY: 'auto', alignSelf: 'flex-start',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#3a4248', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
           Mission Nav Data
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258' }}>
+            <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a' }}>
               <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Unit</th>
               <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>Freq</th>
               <th style={{ textAlign: 'left', padding: '4px 6px', fontWeight: 600 }}>TACAN</th>
@@ -1224,13 +1224,13 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
           <tbody>
             {navRefs.map((r) => (
               <tr key={r.name} style={{
-                borderBottom: '1px solid #6e7c83',
+                borderBottom: '1px solid #262626',
                 background: r.isSelected ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
               }}>
-                <td style={{ padding: '4px 6px', color: r.isSelected ? '#6ab4f0' : '#1a1f25', fontWeight: r.isSelected ? 600 : 400 }}>
+                <td style={{ padding: '4px 6px', color: r.isSelected ? '#6ab4f0' : '#cccccc', fontWeight: r.isSelected ? 600 : 400 }}>
                   {r.name}
                 </td>
-                <td style={{ padding: '4px 6px', color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>{r.freq || '-'}</td>
+                <td style={{ padding: '4px 6px', color: '#e0e0e0', fontFamily: "'B612 Mono', monospace" }}>{r.freq || '-'}</td>
                 <td style={{ padding: '4px 6px', color: '#d29922', fontFamily: "'B612 Mono', monospace" }}>{r.tacan || '-'}</td>
                 <td style={{ padding: '4px 6px', color: '#3fb950', fontFamily: "'B612 Mono', monospace" }}>{r.icls || '-'}</td>
               </tr>
@@ -1309,25 +1309,25 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
       {/* Settings row */}
       <div style={{
         display: 'flex', gap: 16, marginBottom: 14, padding: '10px 12px',
-        background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2',
+        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
         flexWrap: 'wrap', alignItems: 'center',
       }}>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Start Fuel (lbs)
           <input type="number" value={startFuel} onChange={(e) => setStartFuel(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 80 }} />
         </label>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Bingo (lbs)
           <input type="number" value={bingo} onChange={(e) => setBingo(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 70 }} />
         </label>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           GS (kts)
           <input type="number" value={groundSpeed} onChange={(e) => setGroundSpeed(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 60 }} />
         </label>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Burn (lbs/hr)
           <input type="number" value={burnRate} onChange={(e) => setBurnRate(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 70 }} />
@@ -1336,9 +1336,9 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
           {BURN_PRESETS.map((p) => (
             <button key={p.label} onClick={() => setBurnRate(p.rate)}
               style={{
-                background: burnRate === p.rate ? '#4a5258' : '#6e7c83',
-                border: `1px solid ${burnRate === p.rate ? '#2a5a8a' : '#4a5258'}`,
-                borderRadius: 3, color: burnRate === p.rate ? '#6ab4f0' : '#3a4248',
+                background: burnRate === p.rate ? '#4a4a4a' : '#262626',
+                border: `1px solid ${burnRate === p.rate ? '#2a5a8a' : '#3a3a3a'}`,
+                borderRadius: 3, color: burnRate === p.rate ? '#6ab4f0' : '#aaaaaa',
                 fontSize: 10, padding: '3px 7px', cursor: 'pointer', fontWeight: 600,
               }}>
               {p.label}
@@ -1350,7 +1350,7 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
       {/* Summary bar */}
       <div style={{
         display: 'flex', gap: 20, marginBottom: 14, padding: '8px 12px',
-        background: '#6e7c83', borderRadius: 4, border: '1px solid #4a5258',
+        background: '#262626', borderRadius: 4, border: '1px solid #3a3a3a',
       }}>
         <FuelStat label="Total Dist" value={`${totalDist.toFixed(1)} nm`} />
         <FuelStat label="Total Time" value={`${totalTime.toFixed(0)} min`} />
@@ -1361,11 +1361,11 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
 
       {/* Fuel plan table */}
       {waypoints.length === 0 ? (
-        <div style={{ color: '#3a4248', fontSize: 14 }}>No waypoints — load DTC with waypoints first.</div>
+        <div style={{ color: '#aaaaaa', fontSize: 14 }}>No waypoints — load DTC with waypoints first.</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1f25', maxWidth: 800 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0', maxWidth: 800 }}>
           <thead>
-            <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+            <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
               <th style={{ ...thStyle, width: 36 }}>#</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Leg (nm)</th>
@@ -1379,8 +1379,8 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
               const belowBingo = leg.fuelRemaining < bingo;
               const nearBingo = leg.fuelRemaining < bingo * 1.3;
               return (
-                <tr key={leg.wpNum} style={{ borderBottom: '1px solid #6e7c83' }}>
-                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3a4248' }}>{leg.wpNum}</td>
+                <tr key={leg.wpNum} style={{ borderBottom: '1px solid #262626' }}>
+                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{leg.wpNum}</td>
                   <td style={tdStyle}>{leg.name}</td>
                   <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{leg.legNm > 0 ? leg.legNm.toFixed(1) : '—'}</td>
                   <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{leg.legMin > 0 ? leg.legMin.toFixed(1) : '—'}</td>
@@ -1401,10 +1401,10 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
 
       {/* Visual fuel gauge */}
       <div style={{ marginTop: 16 }}>
-        <div style={{ color: '#3a4248', fontSize: 12, marginBottom: 6 }}>Fuel Gauge</div>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 6 }}>Fuel Gauge</div>
         <div style={{
-          height: 24, background: '#6e7c83', borderRadius: 4,
-          border: '1px solid #4a5258', position: 'relative', overflow: 'hidden',
+          height: 24, background: '#0a1218', borderRadius: 4,
+          border: '1px solid #3a3a3a', position: 'relative', overflow: 'hidden',
         }}>
           {/* Bingo line */}
           <div style={{
@@ -1435,23 +1435,23 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
       {/* Tanker reference */}
       {tankers.length > 0 && (
         <div style={{
-          marginTop: 16, padding: 12, background: '#7a8a92',
-          border: '1px solid #4a5258', borderRadius: 6,
+          marginTop: 16, padding: 12, background: '#1a1a1a',
+          border: '1px solid #3a3a3a', borderRadius: 6,
         }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#3a4248', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#aaaaaa', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
             Tankers in Mission
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {tankers.map((t) => (
               <div key={t.name} style={{
-                padding: '8px 12px', background: '#6e7c83', borderRadius: 4,
-                border: '1px solid #4a5258', fontSize: 12,
+                padding: '8px 12px', background: '#262626', borderRadius: 4,
+                border: '1px solid #3a3a3a', fontSize: 12,
               }}>
-                <div style={{ color: '#1a1f25', fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
+                <div style={{ color: '#e0e0e0', fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
                 <div style={{ display: 'flex', gap: 12 }}>
-                  {t.freq && <span style={{ color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>{t.freq}</span>}
+                  {t.freq && <span style={{ color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>{t.freq}</span>}
                   {t.tacan && <span style={{ color: '#d29922', fontFamily: "'B612 Mono', monospace" }}>TCN {t.tacan}</span>}
-                  {!t.freq && !t.tacan && <span style={{ color: '#4a5258' }}>No freq/TACAN set</span>}
+                  {!t.freq && !t.tacan && <span style={{ color: '#4a4a4a' }}>No freq/TACAN set</span>}
                 </div>
               </div>
             ))}
@@ -1465,8 +1465,8 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
 function FuelStat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div>
-      <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' as const }}>{label}</div>
-      <div style={{ color: color || '#1a1f25', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{value}</div>
+      <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600, textTransform: 'uppercase' as const }}>{label}</div>
+      <div style={{ color: color || '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{value}</div>
     </div>
   );
 }
@@ -1496,9 +1496,9 @@ function ToolsSubTab({ waypoints, dtcData, setDtcData, selectedFlight }: {
             key={t.key}
             onClick={() => setToolSection(t.key)}
             style={{
-              background: toolSection === t.key ? '#4a525820' : 'transparent',
-              border: `1px solid ${toolSection === t.key ? '#d49a30' : '#4a5258'}`,
-              borderRadius: 14, color: toolSection === t.key ? '#d49a30' : '#3a4248',
+              background: toolSection === t.key ? '#4a4a4a20' : 'transparent',
+              border: `1px solid ${toolSection === t.key ? '#4a8fd4' : '#3a3a3a'}`,
+              borderRadius: 14, color: toolSection === t.key ? '#4a8fd4' : '#aaaaaa',
               cursor: 'pointer', fontSize: 12, padding: '5px 14px',
               fontWeight: toolSection === t.key ? 600 : 400,
             }}
@@ -1540,19 +1540,19 @@ function BullseyeRef({ waypoints }: { waypoints: NavPoint[] }) {
 
   return (
     <div>
-      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>
+      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
         Bullseye Reference
       </h4>
-      <p style={{ color: '#3a4248', fontSize: 12, margin: '0 0 12px' }}>
+      <p style={{ color: '#aaaaaa', fontSize: 12, margin: '0 0 12px' }}>
         Enter bullseye coordinates to see bearing/range from each waypoint.
       </p>
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           BE Lat
           <input value={beLat} onChange={(e) => setBeLat(e.target.value)} placeholder="N41°15'30&quot;"
             style={{ ...monoInputStyle, width: 130 }} />
         </label>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           BE Lon
           <input value={beLon} onChange={(e) => setBeLon(e.target.value)} placeholder="E044°30'00&quot;"
             style={{ ...monoInputStyle, width: 130 }} />
@@ -1560,9 +1560,9 @@ function BullseyeRef({ waypoints }: { waypoints: NavPoint[] }) {
       </div>
 
       {results.length > 0 && beLatNum !== null && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1f25', maxWidth: 500 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0', maxWidth: 500 }}>
           <thead>
-            <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+            <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
               <th style={{ ...thStyle, width: 36 }}>#</th>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Bearing</th>
@@ -1572,8 +1572,8 @@ function BullseyeRef({ waypoints }: { waypoints: NavPoint[] }) {
           </thead>
           <tbody>
             {results.map((r) => (
-              <tr key={r.wpNum} style={{ borderBottom: '1px solid #6e7c83' }}>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3a4248' }}>{r.wpNum}</td>
+              <tr key={r.wpNum} style={{ borderBottom: '1px solid #262626' }}>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{r.wpNum}</td>
                 <td style={tdStyle}>{r.name || '-'}</td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{r.valid ? `${r.bearing.toFixed(0)}°` : '—'}</td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{r.valid ? r.range.toFixed(1) : '—'}</td>
@@ -1666,10 +1666,10 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
 
   return (
     <div>
-      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>
+      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
         Speed / Time Calculator
       </h4>
-      <p style={{ color: '#3a4248', fontSize: 12, margin: '0 0 12px' }}>
+      <p style={{ color: '#aaaaaa', fontSize: 12, margin: '0 0 12px' }}>
         Compute required ground speed or arrival time for a waypoint.
       </p>
 
@@ -1677,9 +1677,9 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
       <div style={{ display: 'flex', gap: 3, marginBottom: 14 }}>
         {(['zulu_tot', 'zulu_speed', 'minutes'] as const).map((m) => (
           <button key={m} onClick={() => setMode(m)} style={{
-            background: mode === m ? '#4a5258' : '#6e7c83',
-            border: `1px solid ${mode === m ? '#2a5a8a' : '#4a5258'}`,
-            borderRadius: 3, color: mode === m ? '#6ab4f0' : '#3a4248',
+            background: mode === m ? '#4a4a4a' : '#262626',
+            border: `1px solid ${mode === m ? '#2a5a8a' : '#3a3a3a'}`,
+            borderRadius: 3, color: mode === m ? '#6ab4f0' : '#aaaaaa',
             fontSize: 11, padding: '4px 10px', cursor: 'pointer', fontWeight: 600,
           }}>
             {modeLabel[m]}
@@ -1688,7 +1688,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Target WP
           <select value={targetWp} onChange={(e) => setTargetWp(Number(e.target.value))}
             style={{ ...selectStyle, fontSize: 13, padding: '3px 6px' }}>
@@ -1701,7 +1701,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
         </label>
 
         {mode === 'minutes' && (
-          <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             Enroute (min)
             <input type="number" value={tosMinutes} onChange={(e) => setTosMinutes(Number(e.target.value))}
               min={1} max={300} style={{ ...monoInputStyle, width: 60 }} />
@@ -1709,7 +1709,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
         )}
 
         {(mode === 'zulu_tot' || mode === 'zulu_speed') && (
-          <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             Depart (Zulu)
             <input value={departZulu} onChange={(e) => setDepartZulu(e.target.value)}
               placeholder="08:00" style={{ ...monoInputStyle, width: 70 }} />
@@ -1717,7 +1717,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
         )}
 
         {mode === 'zulu_tot' && (
-          <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             TOT (Zulu)
             <input value={totZulu} onChange={(e) => setTotZulu(e.target.value)}
               placeholder="08:45" style={{ ...monoInputStyle, width: 70 }} />
@@ -1725,7 +1725,7 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
         )}
 
         {mode === 'zulu_speed' && (
-          <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             GS (kts)
             <input type="number" value={inputSpeed} onChange={(e) => setInputSpeed(Number(e.target.value))}
               min={50} max={1200} style={{ ...monoInputStyle, width: 70 }} />
@@ -1734,41 +1734,41 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
       </div>
 
       {totalNm > 0 && (
-        <div style={{ color: '#3a4248', fontSize: 12, marginBottom: 8 }}>
-          Distance to target: <span style={{ color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>{totalNm.toFixed(1)} nm</span>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 8 }}>
+          Distance to target: <span style={{ color: '#e0e0e0', fontFamily: "'B612 Mono', monospace" }}>{totalNm.toFixed(1)} nm</span>
         </div>
       )}
 
       {result && (
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12,
-          padding: '12px', background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2',
+          padding: '12px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
         }}>
           <div>
-            <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>DISTANCE</div>
-            <div style={{ color: '#1a1f25', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{totalNm.toFixed(1)} nm</div>
+            <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>DISTANCE</div>
+            <div style={{ color: '#e0e0e0', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{totalNm.toFixed(1)} nm</div>
           </div>
           <div>
-            <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'GS' : 'REQ GS'}</div>
-            <div style={{ color: '#d49a30', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.gs.toFixed(0)} kts</div>
+            <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'GS' : 'REQ GS'}</div>
+            <div style={{ color: '#4a8fd4', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.gs.toFixed(0)} kts</div>
           </div>
           <div>
-            <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>~MACH</div>
+            <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>~MACH</div>
             <div style={{ color: '#d29922', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.mach.toFixed(2)}</div>
           </div>
           <div>
-            <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>ENROUTE</div>
-            <div style={{ color: '#1a1f25', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.enrouteMin.toFixed(0)} min</div>
+            <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>ENROUTE</div>
+            <div style={{ color: '#e0e0e0', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.enrouteMin.toFixed(0)} min</div>
           </div>
           {result.departureZulu && (
             <div>
-              <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>DEPART</div>
+              <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>DEPART</div>
               <div style={{ color: '#3fb950', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.departureZulu}</div>
             </div>
           )}
           {result.arrivalZulu && (
             <div>
-              <div style={{ color: '#3a4248', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'ETA' : 'TOT'}</div>
+              <div style={{ color: '#aaaaaa', fontSize: 10, fontWeight: 600 }}>{mode === 'zulu_speed' ? 'ETA' : 'TOT'}</div>
               <div style={{ color: '#3fb950', fontSize: 16, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>{result.arrivalZulu}</div>
             </div>
           )}
@@ -1823,22 +1823,22 @@ function CopyToWingman({ dtcData, setDtcData, selectedFlight: _selectedFlight }:
 
   return (
     <div>
-      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>
+      <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
         Copy DTC to Wingman
       </h4>
-      <p style={{ color: '#3a4248', fontSize: 12, margin: '0 0 12px' }}>
+      <p style={{ color: '#aaaaaa', fontSize: 12, margin: '0 0 12px' }}>
         Offset COMM1 frequencies for wingman DTC. Waypoints and CMDS are copied as-is.
       </p>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>
-        <label style={{ color: '#3a4248', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <label style={{ color: '#aaaaaa', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
           Freq Offset (MHz)
           <input type="number" value={freqOffset} step={0.025} min={-5} max={5}
             onChange={(e) => setFreqOffset(Number(e.target.value))}
             style={{ ...monoInputStyle, width: 80 }} />
         </label>
         <button onClick={applyWingmanOffset} style={{
-          ...btnStyle, background: '#4a5258', color: '#d49a30',
+          ...btnStyle, background: '#4a4a4a', color: '#4a8fd4',
         }}>
           Apply Offset to COMM1
         </button>
@@ -1847,10 +1847,10 @@ function CopyToWingman({ dtcData, setDtcData, selectedFlight: _selectedFlight }:
 
       {wingmanPreview.length > 0 && (
         <div style={{ maxWidth: 500 }}>
-          <div style={{ color: '#3a4248', fontSize: 11, marginBottom: 6 }}>Preview (COMM1 offset +{freqOffset} MHz):</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#1a1f25' }}>
+          <div style={{ color: '#aaaaaa', fontSize: 11, marginBottom: 6 }}>Preview (COMM1 offset +{freqOffset} MHz):</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#e0e0e0' }}>
             <thead>
-              <tr style={{ color: '#3a4248', borderBottom: '1px solid #4a5258', background: '#7a8a92' }}>
+              <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
                 <th style={{ ...thStyle, fontSize: 11 }}>Ch</th>
                 <th style={{ ...thStyle, fontSize: 11 }}>Name</th>
                 <th style={{ ...thStyle, fontSize: 11 }}>Original</th>
@@ -1859,8 +1859,8 @@ function CopyToWingman({ dtcData, setDtcData, selectedFlight: _selectedFlight }:
             </thead>
             <tbody>
               {wingmanPreview.map((p) => (
-                <tr key={p.ch} style={{ borderBottom: '1px solid #6e7c83' }}>
-                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3a4248' }}>{p.ch}</td>
+                <tr key={p.ch} style={{ borderBottom: '1px solid #262626' }}>
+                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{p.ch}</td>
                   <td style={tdStyle}>{p.name}</td>
                   <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{p.origFreq}</td>
                   <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#d29922' }}>{p.newFreq}</td>
@@ -1937,10 +1937,10 @@ const tdStyle: React.CSSProperties = {
 };
 
 const monoInputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontFamily: "'B612 Mono', monospace",
   fontSize: 14,
   padding: '4px 6px',
@@ -1948,20 +1948,20 @@ const monoInputStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontSize: 14,
   padding: '4px 8px',
   fontFamily: 'inherit',
 };
 
 const btnStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #4a4a4a',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 14,
   padding: '6px 14px',
@@ -1969,14 +1969,14 @@ const btnStyle: React.CSSProperties = {
 };
 
 const fieldsetStyle: React.CSSProperties = {
-  border: '1px solid #4a5258',
+  border: '1px solid #3a3a3a',
   borderRadius: 4,
   padding: '12px 16px',
   margin: 0,
 };
 
 const legendStyle: React.CSSProperties = {
-  color: '#1a1f25',
+  color: '#cccccc',
   fontSize: 14,
   fontWeight: 600,
   padding: '0 6px',
@@ -1986,7 +1986,7 @@ const fieldLabelStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  color: '#1a1f25',
+  color: '#cccccc',
   fontSize: 13,
 };
 
@@ -2029,13 +2029,13 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {templateMsg && <div style={{ color: '#3fb950', fontSize: 12, padding: '6px 12px', background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2' }}>✓ {templateMsg}</div>}
+      {templateMsg && <div style={{ color: '#3fb950', fontSize: 12, padding: '6px 12px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222' }}>✓ {templateMsg}</div>}
 
       {/* Active SOP — synthesized COMM pack. Same wiring as the COMM tab's
           inline button, mirrored here so pilots can find it next to the
           other preset packs. */}
       {activeSop && (
-        <div style={{ padding: '12px 14px', background: '#6e7c83', borderRadius: 6, border: '1px solid #1a3a1a' }}>
+        <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #1a3a1a' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span
               style={{
@@ -2051,17 +2051,17 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
             >
               SOP
             </span>
-            <div style={{ fontSize: 12, color: '#3a4248', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+            <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
               Active SOP — {activeSop.name}
             </div>
           </div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 6,
+            background: '#262626', border: '1px solid #4a4a4a', borderRadius: 6,
             padding: '8px 12px',
           }}>
-            <span style={{ flex: 1, color: '#1a1f25', fontSize: 13, fontWeight: 600 }}>{activeSop.name}</span>
-            <span style={{ color: '#3a4248', fontSize: 11, flex: 2 }}>
+            <span style={{ flex: 1, color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>{activeSop.name}</span>
+            <span style={{ color: '#aaaaaa', fontSize: 11, flex: 2 }}>
               COMM1: {activeSop.flights?.length ?? 0} flight callsigns + tanker · COMM2: {activeSop.comms?.length ?? 0} comms + {activeSop.supportAssets?.length ?? 0} support
             </span>
             <button
@@ -2077,7 +2077,7 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
             <button
               onClick={() => onApplySop('COMM1')}
               style={{
-                background: '#4a5258', border: '1px solid #2a5a8a', borderRadius: 4,
+                background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
                 color: '#6ab4f0', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
               }}
             >
@@ -2086,8 +2086,8 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
             <button
               onClick={() => onApplySop('COMM2')}
               style={{
-                background: '#4a5258', border: '1px solid #4a5258', borderRadius: 4,
-                color: '#1a1f25', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+                background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
+                color: '#cccccc', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
               }}
             >
               → COMM2
@@ -2097,8 +2097,8 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
       )}
 
       {/* DTC Templates */}
-      <div style={{ padding: '12px 14px', background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2' }}>
-        <div style={{ fontSize: 12, color: '#3a4248', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222' }}>
+        <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
           DTC Templates
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2108,36 +2108,36 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
               onClick={() => applyTemplate(tpl)}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 6,
-                color: '#1a1f25', cursor: 'pointer', fontSize: 13, padding: '8px 12px',
+                background: '#262626', border: '1px solid #4a4a4a', borderRadius: 6,
+                color: '#e0e0e0', cursor: 'pointer', fontSize: 13, padding: '8px 12px',
                 textAlign: 'left',
               }}
             >
               <span style={{ fontWeight: 600 }}>{tpl.name}</span>
-              <span style={{ color: '#3a4248', fontSize: 11 }}>{tpl.description}</span>
+              <span style={{ color: '#aaaaaa', fontSize: 11 }}>{tpl.description}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* COMM Frequency Preset Packs */}
-      <div style={{ padding: '12px 14px', background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2' }}>
-        <div style={{ fontSize: 12, color: '#3a4248', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+      <div style={{ padding: '12px 14px', background: '#0a1218', borderRadius: 6, border: '1px solid #222222' }}>
+        <div style={{ fontSize: 12, color: '#aaaaaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
           COMM Frequency Packs
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {FREQ_PRESET_PACKS.map((pack) => (
             <div key={pack.name} style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 6,
+              background: '#262626', border: '1px solid #4a4a4a', borderRadius: 6,
               padding: '8px 12px',
             }}>
-              <span style={{ flex: 1, color: '#1a1f25', fontSize: 13, fontWeight: 600 }}>{pack.name}</span>
-              <span style={{ color: '#3a4248', fontSize: 11, flex: 2 }}>{pack.description}</span>
+              <span style={{ flex: 1, color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>{pack.name}</span>
+              <span style={{ color: '#aaaaaa', fontSize: 11, flex: 2 }}>{pack.description}</span>
               <button
                 onClick={() => applyPresetPack(pack, 'COMM1')}
                 style={{
-                  background: '#4a5258', border: '1px solid #2a5a8a', borderRadius: 4,
+                  background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
                   color: '#6ab4f0', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
                 }}
               >
@@ -2146,8 +2146,8 @@ function PresetsSubTab({ setDtcData, templateMsg, setTemplateMsg, activeSop, onA
               <button
                 onClick={() => applyPresetPack(pack, 'COMM2')}
                 style={{
-                  background: '#4a5258', border: '1px solid #4a5258', borderRadius: 4,
-                  color: '#1a1f25', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
+                  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
+                  color: '#cccccc', cursor: 'pointer', fontSize: 11, padding: '3px 10px',
                 }}
               >
                 → COMM2

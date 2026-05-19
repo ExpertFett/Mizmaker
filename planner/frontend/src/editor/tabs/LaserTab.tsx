@@ -151,7 +151,7 @@ export function LaserTab() {
 
   if (laserUnits.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
         No units with laser-guided weapons or laser codes found in this mission.
       </div>
     );
@@ -161,17 +161,17 @@ export function LaserTab() {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Laser Code Editor
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
             Edit laser codes for units with laser-guided weapons. Changing the lead unit auto-increments wingmen codes.
           </p>
         </div>
 
         {/* Auto Assign controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <label style={{ fontSize: 12, color: '#3a4248' }}>Start:</label>
+          <label style={{ fontSize: 12, color: '#aaaaaa' }}>Start:</label>
           <input
             type="number"
             min={1111}
@@ -198,10 +198,10 @@ export function LaserTab() {
               ? `Assigns sequential laser codes (digits 1-7) across all groups, leads first. Using SOP "${activeSop.name}" base ${activeSop.laserCodeBase}.`
               : 'Assigns sequential laser codes (digits 1-7) across all groups, leads first'}
             style={{
-              background: '#4a5258',
-              border: '1px solid #d49a30',
+              background: '#4a4a4a',
+              border: '1px solid #4a8fd4',
               borderRadius: 4,
-              color: '#d49a30',
+              color: '#4a8fd4',
               cursor: 'pointer',
               fontSize: 13,
               fontWeight: 600,
@@ -229,7 +229,7 @@ export function LaserTab() {
       )}
 
       {Array.from(grouped.entries()).map(([groupName, { coalition, isClient, units }]) => {
-        const coalitionColor = coalition === 'blue' ? '#d49a30' : '#d95050';
+        const coalitionColor = coalition === 'blue' ? '#4a8fd4' : '#d95050';
         return (
           <div key={groupName} style={{ marginBottom: 20 }}>
             {/* Group header */}
@@ -237,12 +237,12 @@ export function LaserTab() {
               padding: '8px 10px',
               fontSize: 13,
               fontWeight: 600,
-              borderBottom: '1px solid #4a5258',
+              borderBottom: '1px solid #3a3a3a',
               borderLeft: `3px solid ${coalitionColor}`,
-              background: '#8c9ba2',
+              background: '#222222',
             }}>
               <span style={{ color: coalitionColor, marginRight: 8 }}>{coalition.toUpperCase()}</span>
-              <span style={{ color: '#1a1f25' }}>{groupName}</span>
+              <span style={{ color: '#cccccc' }}>{groupName}</span>
               <span style={{
                 marginLeft: 8,
                 fontSize: 11,
@@ -254,17 +254,17 @@ export function LaserTab() {
               }}>
                 {isClient ? 'CLIENT' : 'AI'}
               </span>
-              <span style={{ color: '#3a4248', marginLeft: 8, fontWeight: 400 }}>
+              <span style={{ color: '#aaaaaa', marginLeft: 8, fontWeight: 400 }}>
                 ({units.length} unit{units.length !== 1 ? 's' : ''})
               </span>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#1a1f25' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#e0e0e0' }}>
               <thead>
                 <tr style={{
-                  color: '#3a4248',
-                  borderBottom: '1px solid #4a5258',
-                  background: '#7a8a92',
+                  color: '#aaaaaa',
+                  borderBottom: '1px solid #3a3a3a',
+                  background: '#1a1a1a',
                 }}>
                   <th style={thStyle}>Unit</th>
                   <th style={thStyle}>Laser Weapons</th>
@@ -278,22 +278,22 @@ export function LaserTab() {
                   const isLead = idx === 0;
 
                   return (
-                    <tr key={unit.unitId} style={{ borderBottom: '1px solid #6e7c83' }}>
+                    <tr key={unit.unitId} style={{ borderBottom: '1px solid #262626' }}>
                       <td style={tdStyle}>
-                        <span style={{ color: '#1a1f25' }}>{unit.name}</span>
+                        <span style={{ color: '#cccccc' }}>{unit.name}</span>
                         {isLead && (
                           <span style={{
                             marginLeft: 6,
                             fontSize: 11,
-                            color: '#d49a30',
-                            border: '1px solid #4a5258',
+                            color: '#4a8fd4',
+                            border: '1px solid #4a4a4a',
                             borderRadius: 3,
                             padding: '0 4px',
                           }}>
                             LEAD
                           </span>
                         )}
-                        <div style={{ color: '#3a4248', fontSize: 12 }}>{unit.type}</div>
+                        <div style={{ color: '#aaaaaa', fontSize: 12 }}>{unit.type}</div>
                       </td>
                       <td style={tdStyle}>
                         {weapons.length > 0 ? (
@@ -303,7 +303,7 @@ export function LaserTab() {
                             ))}
                           </div>
                         ) : (
-                          <span style={{ color: '#4a5258', fontSize: 12 }}>None loaded</span>
+                          <span style={{ color: '#4a4a4a', fontSize: 12 }}>None loaded</span>
                         )}
                       </td>
                       <td style={tdStyle}>
@@ -355,10 +355,10 @@ const tdStyle: React.CSSProperties = {
 };
 
 const monoInputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   fontFamily: "'B612 Mono', monospace",
   fontSize: 14,
   padding: '4px 6px',
@@ -379,11 +379,11 @@ const sopChipStyle: React.CSSProperties = {
 };
 
 const weaponTagStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
   padding: '1px 6px',
   fontSize: 12,
-  color: '#1a1f25',
+  color: '#cccccc',
   fontFamily: "'B612 Mono', monospace",
 };

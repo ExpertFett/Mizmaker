@@ -209,7 +209,7 @@ export function EditsTab() {
       out.push({
         label: 'Mission options',
         detail: `${missionOptionsCount} option${missionOptionsCount !== 1 ? 's' : ''} customized — forcedOptions block written`,
-        accent: '#d49a30',
+        accent: '#4a8fd4',
       });
     }
     if (validGoals.length > 0) {
@@ -250,10 +250,10 @@ export function EditsTab() {
 
   return (
     <div style={{ maxWidth: 1100, padding: '0 4px' }}>
-      <h2 style={{ color: '#1a1f25', fontSize: 18, margin: '0 0 8px', fontWeight: 600 }}>
+      <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 8px', fontWeight: 600 }}>
         Pending Edits
       </h2>
-      <p style={{ color: '#5a6268', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
+      <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
         Read-only preview of every edit currently queued for the next download.
         Edits accumulate as you click around in the other tabs and ship in one
         batch when you press Download. Use this view to confirm what's about
@@ -267,20 +267,20 @@ export function EditsTab() {
           gap: 16,
           marginBottom: 16,
           padding: '10px 14px',
-          background: '#6e7c83',
-          border: '1px solid #8c9ba2',
+          background: '#0a1218',
+          border: '1px solid #222',
           borderRadius: 6,
           fontSize: 13,
           alignItems: 'center',
         }}
       >
-        <span style={{ color: '#1a1f25', fontWeight: 600 }}>
+        <span style={{ color: '#e0e0e0', fontWeight: 600 }}>
           {rows.length} queued
         </span>
         {(['Mission', 'Group', 'Unit', 'Waypoint'] as const).map((cat) => (
           totalsByCategory[cat] ? (
-            <span key={cat} style={{ color: '#3a4248' }}>
-              {cat}: <strong style={{ color: '#1a1f25' }}>{totalsByCategory[cat]}</strong>
+            <span key={cat} style={{ color: '#aaa' }}>
+              {cat}: <strong style={{ color: '#e0e0e0' }}>{totalsByCategory[cat]}</strong>
             </span>
           ) : null
         ))}
@@ -311,7 +311,7 @@ export function EditsTab() {
           style={{
             marginBottom: 16,
             padding: '10px 14px',
-            background: '#6e7c83',
+            background: '#0a1218',
             border: '1px solid #1a2a3a',
             borderRadius: 6,
           }}
@@ -319,7 +319,7 @@ export function EditsTab() {
           <div
             style={{
               fontSize: 11,
-              color: '#5a6268',
+              color: '#888',
               textTransform: 'uppercase',
               letterSpacing: 1,
               fontWeight: 600,
@@ -349,10 +349,10 @@ export function EditsTab() {
                   alignSelf: 'center',
                 }}
               />
-              <span style={{ color: '#1a1f25', fontWeight: 600, minWidth: 200 }}>
+              <span style={{ color: '#e0e0e0', fontWeight: 600, minWidth: 200 }}>
                 {row.label}
               </span>
-              <span style={{ color: '#3a4248' }}>{row.detail}</span>
+              <span style={{ color: '#aaa' }}>{row.detail}</span>
             </div>
           ))}
         </div>
@@ -369,7 +369,7 @@ export function EditsTab() {
             padding: 28,
             textAlign: 'center',
             color: '#3fb950',
-            background: '#6e7c83',
+            background: '#0a1218',
             border: '1px dashed #1a3a1a',
             borderRadius: 6,
             fontSize: 14,
@@ -383,7 +383,7 @@ export function EditsTab() {
           style={{
             padding: 16,
             textAlign: 'center',
-            color: '#5a6268',
+            color: '#888',
             fontSize: 12,
             fontStyle: 'italic',
           }}
@@ -397,14 +397,14 @@ export function EditsTab() {
             width: '100%',
             borderCollapse: 'collapse',
             fontSize: 13,
-            color: '#1a1f25',
-            background: '#7a8a92',
-            border: '1px solid #4a5258',
+            color: '#e0e0e0',
+            background: '#1a1a1a',
+            border: '1px solid #3a3a3a',
             borderRadius: 4,
           }}
         >
           <thead>
-            <tr style={{ background: '#8c9ba2', color: '#3a4248' }}>
+            <tr style={{ background: '#222', color: '#aaaaaa' }}>
               <th style={{ ...thStyle, width: 40 }}>#</th>
               <th style={{ ...thStyle, width: 90 }}>Category</th>
               <th style={thStyle}>Field</th>
@@ -415,15 +415,15 @@ export function EditsTab() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.index} style={{ borderTop: '1px solid #aab4ba' }}>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#5a6268' }}>
+              <tr key={r.index} style={{ borderTop: '1px solid #2a2a2a' }}>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#666' }}>
                   {r.index + 1}
                 </td>
                 <td style={tdStyle}>
                   <span style={categoryChip(r.category)}>{r.category}</span>
                 </td>
-                <td style={{ ...tdStyle, fontWeight: 600, color: '#1a1f25' }}>{r.fieldLabel}</td>
-                <td style={{ ...tdStyle, color: '#1a1f25' }}>{r.target}</td>
+                <td style={{ ...tdStyle, fontWeight: 600, color: '#cccccc' }}>{r.fieldLabel}</td>
+                <td style={{ ...tdStyle, color: '#cccccc' }}>{r.target}</td>
                 <td
                   style={{
                     ...tdStyle,
@@ -477,7 +477,7 @@ function categoryChip(cat: string): React.CSSProperties {
     Unit: { bg: '#1a3a1a', border: '#2a5a2a', fg: '#3fb950' },
     Waypoint: { bg: '#3a1a3a', border: '#5a2a5a', fg: '#a371f7' },
   };
-  const c = palette[cat] ?? { bg: '#8c9ba2', border: '#4a5258', fg: '#3a4248' };
+  const c = palette[cat] ?? { bg: '#222', border: '#3a3a3a', fg: '#aaa' };
   return {
     display: 'inline-block',
     padding: '2px 8px',

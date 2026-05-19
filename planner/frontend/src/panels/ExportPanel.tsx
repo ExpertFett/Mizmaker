@@ -308,7 +308,7 @@ export function ExportPanel() {
   };
 
   return (
-    <div style={{ padding: '10px 12px', borderTop: '1px solid #4a5258' }}>
+    <div style={{ padding: '10px 12px', borderTop: '1px solid #3a3a3a' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
           {isDirty ? 'Download .miz *' : 'Download .miz'}
@@ -328,9 +328,9 @@ export function ExportPanel() {
 
 const btnStyle: React.CSSProperties = {
   background: '#333333',
-  border: '1px solid #4a5258',
+  border: '1px solid #4a4a4a',
   borderRadius: 4,
-  color: '#1a1f25',
+  color: '#e0e0e0',
   padding: '7px 10px',
   cursor: 'pointer',
   fontSize: 13,

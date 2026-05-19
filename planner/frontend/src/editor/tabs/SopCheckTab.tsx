@@ -27,7 +27,7 @@ function severityChip(sev: Severity): React.CSSProperties {
   const palette: Record<Severity, { bg: string; border: string; fg: string }> = {
     red: { bg: '#3a1a1a', border: '#5a2a2a', fg: '#d95050' },
     yellow: { bg: '#3a2e1a', border: '#5a4a2a', fg: '#d29922' },
-    gray: { bg: '#7a8a92', border: '#4a5258', fg: '#5a6268' },
+    gray: { bg: '#1a1a1a', border: '#3a3a3a', fg: '#888' },
   };
   const c = palette[sev];
   return {
@@ -84,8 +84,8 @@ export function SopCheckTab() {
 
   if (!activeSop) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 14, padding: 24, maxWidth: 600 }}>
-        <h2 style={{ color: '#1a1f25', fontSize: 18, margin: '0 0 12px', fontWeight: 600 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 24, maxWidth: 600 }}>
+        <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 12px', fontWeight: 600 }}>
           SOP Check
         </h2>
         <p>
@@ -99,7 +99,7 @@ export function SopCheckTab() {
 
   if (groups.length === 0) {
     return (
-      <div style={{ color: '#3a4248', fontSize: 14, padding: 24 }}>
+      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 24 }}>
         Load a mission to compare against SOP "{activeSop.name}".
       </div>
     );
@@ -107,7 +107,7 @@ export function SopCheckTab() {
 
   return (
     <div style={{ maxWidth: 1100, padding: '0 4px' }}>
-      <h2 style={{ color: '#1a1f25', fontSize: 18, margin: '0 0 10px', fontWeight: 600 }}>
+      <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 10px', fontWeight: 600 }}>
         SOP Check
       </h2>
 
@@ -146,7 +146,7 @@ export function SopCheckTab() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              color: '#1a1f25',
+              color: '#e0e0e0',
               fontSize: 16,
               fontWeight: 600,
               whiteSpace: 'nowrap',
@@ -157,7 +157,7 @@ export function SopCheckTab() {
             {activeSop.name}
           </div>
           {activeSop.squadron && (
-            <div style={{ color: '#5a6268', fontSize: 12, marginTop: 1 }}>
+            <div style={{ color: '#888', fontSize: 12, marginTop: 1 }}>
               {activeSop.squadron}
             </div>
           )}
@@ -167,7 +167,7 @@ export function SopCheckTab() {
         </div>
       </div>
 
-      <p style={{ color: '#5a6268', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
+      <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
         Read-only report. Compares the loaded mission against the active SOP and
         flags differences. Apply-on-click is coming in the next release; for now
         the matching tabs (Radio, Datalink, Carriers, DTC, Renamer) carry the
@@ -181,16 +181,16 @@ export function SopCheckTab() {
           gap: 10,
           marginBottom: 16,
           padding: '8px 12px',
-          background: '#6e7c83',
-          border: '1px solid #8c9ba2',
+          background: '#0a1218',
+          border: '1px solid #222',
           borderRadius: 6,
           fontSize: 12,
         }}
       >
         <SummaryChip label="Issues" count={counts.red} color="#d95050" />
         <SummaryChip label="Warnings" count={counts.yellow} color="#d29922" />
-        <SummaryChip label="Info" count={counts.gray} color="#5a6268" />
-        <span style={{ marginLeft: 'auto', color: '#5a6268' }}>
+        <SummaryChip label="Info" count={counts.gray} color="#888" />
+        <span style={{ marginLeft: 'auto', color: '#888' }}>
           {rows.length === 0 ? 'No discrepancies — mission matches SOP.' :
             `${rows.length} row${rows.length !== 1 ? 's' : ''}`}
         </span>
@@ -203,7 +203,7 @@ export function SopCheckTab() {
             padding: 24,
             textAlign: 'center',
             color: '#3fb950',
-            background: '#6e7c83',
+            background: '#0a1218',
             border: '1px solid #1a3a1a',
             borderRadius: 6,
           }}
@@ -230,14 +230,14 @@ export function SopCheckTab() {
                 width: '100%',
                 borderCollapse: 'collapse',
                 fontSize: 13,
-                color: '#1a1f25',
-                background: '#7a8a92',
-                border: '1px solid #4a5258',
+                color: '#e0e0e0',
+                background: '#1a1a1a',
+                border: '1px solid #3a3a3a',
                 borderRadius: 4,
               }}
             >
               <thead>
-                <tr style={{ background: '#8c9ba2', color: '#3a4248' }}>
+                <tr style={{ background: '#222', color: '#aaaaaa' }}>
                   <th style={thStyle}>Field</th>
                   <th style={thStyle}>Mission has</th>
                   <th style={thStyle}>SOP says</th>
@@ -246,14 +246,14 @@ export function SopCheckTab() {
               </thead>
               <tbody>
                 {catRows.map((r, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #aab4ba' }}>
+                  <tr key={i} style={{ borderTop: '1px solid #2a2a2a' }}>
                     <td style={tdStyle}>
-                      <div style={{ color: '#1a1f25', fontWeight: 600 }}>{r.field}</div>
+                      <div style={{ color: '#cccccc', fontWeight: 600 }}>{r.field}</div>
                       {r.reason && (
-                        <div style={{ color: '#5a6268', fontSize: 11, marginTop: 2 }}>{r.reason}</div>
+                        <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>{r.reason}</div>
                       )}
                     </td>
-                    <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#1a1f25' }}>
+                    <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#e0e0e0' }}>
                       {r.missionValue}
                     </td>
                     <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3fb950' }}>
@@ -275,7 +275,7 @@ export function SopCheckTab() {
 
 function SummaryChip({ label, count, color }: { label: string; count: number; color: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#3a4248' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#aaaaaa' }}>
       <span style={{ color, fontWeight: 700, fontSize: 14 }}>{count}</span>
       {label}
     </span>

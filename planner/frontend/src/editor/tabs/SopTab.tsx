@@ -338,10 +338,10 @@ export function SopTab() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
           Squadron SOP
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
           Upload or compose a Standard Operating Procedures document. When an SOP is active, auto-assign buttons (callsigns, comms, TACAN, laser codes) will use its values instead of generic defaults.
         </p>
       </div>
@@ -353,45 +353,45 @@ export function SopTab() {
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '10px 14px', marginBottom: 14, borderRadius: 6,
         background: active ? 'rgba(63, 185, 80, 0.08)' : 'rgba(90, 122, 138, 0.05)',
-        border: `1px solid ${active ? 'rgba(63, 185, 80, 0.35)' : '#4a5258'}`,
+        border: `1px solid ${active ? 'rgba(63, 185, 80, 0.35)' : '#3a3a3a'}`,
       }}>
         <span style={{
           fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
-          color: active ? '#3fb950' : '#3a4248',
-          border: `1px solid ${active ? 'rgba(63, 185, 80, 0.5)' : '#4a5258'}`,
+          color: active ? '#3fb950' : '#aaaaaa',
+          border: `1px solid ${active ? 'rgba(63, 185, 80, 0.5)' : '#3a3a3a'}`,
           borderRadius: 3, padding: '2px 8px',
         }}>
           {active ? 'ACTIVE' : 'NO ACTIVE SOP'}
         </span>
         {active ? (
           <>
-            <span style={{ color: '#1a1f25', fontSize: 14, fontWeight: 500, flex: 1 }}>
+            <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 500, flex: 1 }}>
               {active.name}
             </span>
             <button onClick={() => setActive(null)} style={btnGhost}>Deactivate</button>
           </>
         ) : sops.length === 0 ? (
-          <span style={{ color: '#1a1f25', fontSize: 14, fontWeight: 500, flex: 1 }}>
+          <span style={{ color: '#cccccc', fontSize: 14, fontWeight: 500, flex: 1 }}>
             Auto-assigns will use generic DCS defaults. Pick a starter SOP below to get going.
           </span>
         ) : (
           <>
-            <span style={{ color: '#1a1f25', fontSize: 13, flex: 1 }}>
+            <span style={{ color: '#cccccc', fontSize: 13, flex: 1 }}>
               Auto-assigns will use generic DCS defaults until you activate an SOP.
             </span>
             <select
               defaultValue=""
               onChange={(e) => { if (e.target.value) setActive(e.target.value); }}
               style={{
-                background: '#6e7c83', border: '1px solid #d49a30',
-                borderRadius: 4, color: '#d49a30', cursor: 'pointer',
+                background: '#262626', border: '1px solid #4a8fd4',
+                borderRadius: 4, color: '#4a8fd4', cursor: 'pointer',
                 fontSize: 12, fontWeight: 600, padding: '6px 10px',
                 fontFamily: 'inherit',
               }}
             >
               <option value="" disabled>Activate SOP…</option>
               {sops.map((s) => (
-                <option key={s.id} value={s.id} style={{ color: '#1a1f25', background: '#7a8a92' }}>
+                <option key={s.id} value={s.id} style={{ color: '#e0e0e0', background: '#1a1a1a' }}>
                   {s.name}
                 </option>
               ))}
@@ -496,7 +496,7 @@ export function SopTab() {
               ☐ Blank Skeleton
             </button>
           </div>
-          <div style={{ fontSize: 11, color: '#3a4248', marginTop: 6 }}>
+          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
             Each starter ships with realistic callsigns / freqs / TACANs for the era. Tweak to match your scenario.
           </div>
         </div>
@@ -507,7 +507,7 @@ export function SopTab() {
           padding: '8px 12px', marginBottom: 14, borderRadius: 4,
           background: importError ? 'rgba(217, 80, 80, 0.08)' : 'rgba(74, 143, 212, 0.08)',
           border: `1px solid ${importError ? 'rgba(217, 80, 80, 0.35)' : 'rgba(74, 143, 212, 0.35)'}`,
-          color: importError ? '#d95050' : '#d49a30',
+          color: importError ? '#d95050' : '#4a8fd4',
           fontSize: 13,
         }}>
           {importError || importInfo}
@@ -528,14 +528,14 @@ export function SopTab() {
             the viewport. */}
         <div style={{
           flexShrink: 0, width: 240,
-          background: '#8c9ba2', border: '1px solid #4a5258', borderRadius: 6,
+          background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
           padding: 8, position: 'sticky', top: 0,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1f25', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#cccccc', letterSpacing: 0.5, padding: '4px 6px 8px' }}>
             LIBRARY ({sops.length})
           </div>
           {sops.length === 0 && (
-            <div style={{ fontSize: 12, color: '#3a4248', padding: '12px 8px', fontStyle: 'italic' }}>
+            <div style={{ fontSize: 12, color: '#aaaaaa', padding: '12px 8px', fontStyle: 'italic' }}>
               No SOPs yet. Upload a JSON/image or load the sample.
             </div>
           )}
@@ -549,14 +549,14 @@ export function SopTab() {
                 style={{
                   padding: '8px 10px', borderRadius: 4, marginBottom: 2,
                   cursor: 'pointer',
-                  background: isSelected ? '#6e7c83' : 'transparent',
+                  background: isSelected ? '#262626' : 'transparent',
                   borderLeft: `3px solid ${isActive ? '#3fb950' : 'transparent'}`,
                 }}
               >
-                <div style={{ color: '#1a1f25', fontSize: 13, fontWeight: 600 }}>
+                <div style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 600 }}>
                   {sop.name}
                 </div>
-                <div style={{ color: '#3a4248', fontSize: 11, marginTop: 2 }}>
+                <div style={{ color: '#aaaaaa', fontSize: 11, marginTop: 2 }}>
                   {sop.flights.length} flights · {sop.comms.length} comms · {sop.tacans.length} tacans
                   {isActive && <span style={{ color: '#3fb950', marginLeft: 6 }}>● active</span>}
                 </div>
@@ -568,12 +568,12 @@ export function SopTab() {
         {/* Detail panel */}
         <div style={{
           flex: 1, minWidth: 0,
-          background: '#8c9ba2', border: '1px solid #4a5258', borderRadius: 6,
+          background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
           padding: 14,
         }}>
           {!selected ? (
             <div style={{
-              color: '#3a4248', fontSize: 13, textAlign: 'center', padding: '40px 20px',
+              color: '#aaaaaa', fontSize: 13, textAlign: 'center', padding: '40px 20px',
             }}>
               Select an SOP from the library — or drop a file here to import.
             </div>
@@ -649,14 +649,14 @@ function SopDetail({
               if (e.key === 'Escape') { setEditName(null); }
             }}
             style={{
-              flex: 1, background: '#6e7c83', border: '1px solid #4a5258',
-              borderRadius: 3, color: '#1a1f25', fontSize: 17, fontWeight: 600,
+              flex: 1, background: '#262626', border: '1px solid #4a4a4a',
+              borderRadius: 3, color: '#e0e0e0', fontSize: 17, fontWeight: 600,
               padding: '4px 8px', fontFamily: 'inherit',
             }}
           />
         ) : (
           <span
-            style={{ flex: 1, color: '#1a1f25', fontSize: 17, fontWeight: 600, cursor: 'text' }}
+            style={{ flex: 1, color: '#e0e0e0', fontSize: 17, fontWeight: 600, cursor: 'text' }}
             onClick={() => setEditName(sop.name)}
             title="Click to rename"
           >
@@ -707,12 +707,12 @@ function SopDetail({
       </div>
 
       {sop.squadron && (
-        <div style={{ color: '#3a4248', fontSize: 12, marginBottom: 8 }}>
-          Squadron: <span style={{ color: '#1a1f25' }}>{sop.squadron}</span>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 8 }}>
+          Squadron: <span style={{ color: '#cccccc' }}>{sop.squadron}</span>
         </div>
       )}
       {sop.notes && (
-        <div style={{ color: '#3a4248', fontSize: 12, marginBottom: 14, whiteSpace: 'pre-wrap' }}>
+        <div style={{ color: '#aaaaaa', fontSize: 12, marginBottom: 14, whiteSpace: 'pre-wrap' }}>
           {sop.notes}
         </div>
       )}
@@ -746,9 +746,9 @@ function SopDetail({
                 <img
                   src={`data:${sop.attachment.mimeType};base64,${sop.attachment.dataBase64}`}
                   alt={sop.attachment.name}
-                  style={{ maxWidth: '100%', border: '1px solid #4a5258', borderRadius: 4, display: 'block' }}
+                  style={{ maxWidth: '100%', border: '1px solid #3a3a3a', borderRadius: 4, display: 'block' }}
                 />
-                <div style={{ fontSize: 11, color: '#3a4248', marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
                   Read values off this image and type into the form on the left. The Quick-Add box above each section accepts whitespace-separated tokens for fast entry.
                 </div>
               </Section>
@@ -777,7 +777,7 @@ function SopDetail({
         </div>
       )}
 
-      <div style={{ color: '#4a5258', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
+      <div style={{ color: '#4a4a4a', fontSize: 11, marginTop: 16, fontStyle: 'italic' }}>
         Tip: after filling in tankers &amp; flights, set the SOP active and the auto-assigns on other tabs will use these values.
       </div>
     </div>
@@ -791,7 +791,7 @@ function SopDetail({
 
 function SopStatsStrip({ sop }: { sop: SOP }) {
   const stats: Array<{ label: string; value: number; color: string; tip?: string }> = [
-    { label: 'FLIGHTS',     value: sop.flights.length,                color: '#d49a30',
+    { label: 'FLIGHTS',     value: sop.flights.length,                color: '#4a8fd4',
       tip: 'Player flight callsigns + default freqs' },
     { label: 'TANKERS',     value: (sop.tankers || []).length,        color: '#d29922',
       tip: 'Refueling assets — drives Comms + TACAN auto-assign' },
@@ -816,22 +816,22 @@ function SopStatsStrip({ sop }: { sop: SOP }) {
           key={s.label}
           title={s.tip}
           style={{
-            background: '#7a8a92',
-            border: `1px solid ${s.value > 0 ? `${s.color}55` : '#4a5258'}`,
-            borderLeft: `3px solid ${s.value > 0 ? s.color : '#4a5258'}`,
+            background: '#1a1a1a',
+            border: `1px solid ${s.value > 0 ? `${s.color}55` : '#3a3a3a'}`,
+            borderLeft: `3px solid ${s.value > 0 ? s.color : '#3a3a3a'}`,
             borderRadius: 4,
             padding: '8px 12px',
           }}
         >
           <div style={{
             fontSize: 10, fontWeight: 700, letterSpacing: 1,
-            color: s.value > 0 ? s.color : '#5a6268',
+            color: s.value > 0 ? s.color : '#5a6878',
           }}>
             {s.label}
           </div>
           <div style={{
             fontSize: 22, fontWeight: 700,
-            color: s.value > 0 ? '#1a1f25' : '#5a6268',
+            color: s.value > 0 ? '#e0e0e0' : '#5a6878',
             fontFamily: "'B612 Mono', monospace",
             marginTop: 2,
           }}>
@@ -898,7 +898,7 @@ function FlightsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
               </td>
               <td style={tdStyle}>
                 <input value={f.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#1a1f25', fontWeight: 600 }} />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} />
               </td>
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={f.defaultFreq ?? ''}
@@ -959,7 +959,7 @@ function TankersEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<
             <tr key={i}>
               <td style={tdStyle}>
                 <input value={t.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#1a1f25', fontWeight: 600 }} placeholder="Texaco" />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} placeholder="Texaco" />
               </td>
               <td style={tdStyle}>
                 <input type="number" step="0.025" value={t.frequency ?? ''}
@@ -1031,7 +1031,7 @@ function SupportAssetsEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Pa
             <tr key={i}>
               <td style={tdStyle}>
                 <input value={a.callsign} onChange={(e) => update(i, { callsign: e.target.value })}
-                  style={{ ...inputStyle, width: '95%', color: '#1a1f25', fontWeight: 600 }} placeholder="Magic" />
+                  style={{ ...inputStyle, width: '95%', color: '#e0e0e0', fontWeight: 600 }} placeholder="Magic" />
               </td>
               <td style={tdStyle}>
                 <input value={a.role ?? ''} onChange={(e) => update(i, { role: e.target.value || undefined })}
@@ -1187,13 +1187,13 @@ function TacansEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<S
 function LaserBaseEditor({ sop, onUpdate }: { sop: SOP; onUpdate: (patch: Partial<SOP>) => void }) {
   return (
     <Section title="LASER CODES">
-      <div style={{ color: '#1a1f25', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ color: '#e0e0e0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
         Base code:
         <input type="number" min={1111} max={7777} value={sop.laserCodeBase ?? ''}
           placeholder="1511 (default)"
           onChange={(e) => onUpdate({ laserCodeBase: parseInt0(e.target.value) })}
           style={{ ...inputStyle, width: 90, fontFamily: "'B612 Mono', monospace", color: '#d29922', fontWeight: 600 }} />
-        <span style={{ color: '#3a4248', fontSize: 11 }}>
+        <span style={{ color: '#aaaaaa', fontSize: 11 }}>
           Each digit must be 1-7. Auto-assign on the Laser tab starts from this code.
         </span>
       </div>
@@ -1236,7 +1236,7 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
 
   return (
     <Section title={`ATTACHMENTS (${totalImages} images · ${aircraftCount} airframe${aircraftCount !== 1 ? 's' : ''})`}>
-      <div style={{ fontSize: 11, color: '#3a4248', marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 10 }}>
         Imported reference charts. Auto-extraction from images (vision AI) is a planned follow-up — in the meantime, click any image to zoom.
       </div>
 
@@ -1246,23 +1246,23 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
         const label = isSopWide ? 'SOP-wide' : gk;
         const isExpanded = expandedGroups.has(gk);
         return (
-          <div key={gk} style={{ marginBottom: 10, border: '1px solid #4a5258', borderRadius: 4 }}>
+          <div key={gk} style={{ marginBottom: 10, border: '1px solid #3a3a3a', borderRadius: 4 }}>
             <div
               onClick={() => toggleGroup(gk)}
               style={{
                 padding: '6px 10px', cursor: 'pointer',
-                background: isExpanded ? '#7a8a92' : 'transparent',
+                background: isExpanded ? '#1a1a1a' : 'transparent',
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              <span style={{ color: '#3a4248', fontSize: 11, width: 12 }}>
+              <span style={{ color: '#aaaaaa', fontSize: 11, width: 12 }}>
                 {isExpanded ? '\u25BC' : '\u25B6'}
               </span>
               <span style={{
-                color: isSopWide ? '#d29922' : '#1a1f25',
+                color: isSopWide ? '#d29922' : '#e0e0e0',
                 fontWeight: 600, fontSize: 13,
               }}>{label}</span>
-              <span style={{ color: '#3a4248', fontSize: 11 }}>
+              <span style={{ color: '#aaaaaa', fontSize: 11 }}>
                 {list.length} image{list.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -1279,8 +1279,8 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
                     title={a.name}
                     style={{
                       cursor: 'zoom-in',
-                      background: '#7a8a92',
-                      border: '1px solid #4a5258',
+                      background: '#1a1a1a',
+                      border: '1px solid #3a3a3a',
                       borderRadius: 3,
                       overflow: 'hidden',
                       display: 'flex', flexDirection: 'column',
@@ -1292,7 +1292,7 @@ function AttachmentGallery({ attachments }: { attachments: import('../../sop/typ
                       style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }}
                     />
                     <div style={{
-                      fontSize: 10, color: '#1a1f25', padding: '3px 6px',
+                      fontSize: 10, color: '#cccccc', padding: '3px 6px',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {a.category || a.name}
@@ -1340,7 +1340,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div style={{ marginBottom: 16 }}>
       <div style={{
         fontSize: 11, fontWeight: 700, color: '#d29922', letterSpacing: 0.5,
-        textTransform: 'uppercase', marginBottom: 6, borderBottom: '1px solid #4a5258',
+        textTransform: 'uppercase', marginBottom: 6, borderBottom: '1px solid #3a3a3a',
         paddingBottom: 4,
       }}>
         {title}
@@ -1402,10 +1402,10 @@ function QuickAddRow({
         placeholder={placeholder}
         style={{
           flex: 1,
-          background: '#7a8a92',
-          border: '1px solid #4a5258',
+          background: '#1a1a1a',
+          border: '1px solid #3a3a3a',
           borderRadius: 3,
-          color: '#1a1f25',
+          color: '#cccccc',
           fontSize: 12,
           padding: '4px 8px',
           fontFamily: "'B612 Mono', monospace",
@@ -1424,7 +1424,7 @@ function QuickAddRow({
           fontFamily: 'inherit', flexShrink: 0,
         }}
       >+ Add</button>
-      <span style={{ fontSize: 10, color: '#5a6268', flexShrink: 0 }} title={hint}>
+      <span style={{ fontSize: 10, color: '#5a6878', flexShrink: 0 }} title={hint}>
         ⓘ
       </span>
     </div>
@@ -1444,17 +1444,17 @@ const tableStyle: React.CSSProperties = {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left', padding: '4px 8px',
-  color: '#3a4248', fontSize: 11, fontWeight: 600,
-  borderBottom: '1px solid #4a5258', textTransform: 'uppercase', letterSpacing: 0.5,
+  color: '#aaaaaa', fontSize: 11, fontWeight: 600,
+  borderBottom: '1px solid #3a3a3a', textTransform: 'uppercase', letterSpacing: 0.5,
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '4px 8px', color: '#1a1f25', borderBottom: '1px solid #6e7c83',
+  padding: '4px 8px', color: '#cccccc', borderBottom: '1px solid #262626',
 };
 
 const btnPrimary: React.CSSProperties = {
-  background: '#4a5258', border: '1px solid #d49a30',
-  borderRadius: 4, color: '#d49a30', cursor: 'pointer',
+  background: '#4a4a4a', border: '1px solid #4a8fd4',
+  borderRadius: 4, color: '#4a8fd4', cursor: 'pointer',
   fontSize: 12, fontWeight: 600, padding: '6px 14px', fontFamily: 'inherit',
 };
 
@@ -1465,8 +1465,8 @@ const btnSecondary: React.CSSProperties = {
 };
 
 const btnGhost: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #4a5258',
-  borderRadius: 4, color: '#1a1f25', cursor: 'pointer',
+  background: 'transparent', border: '1px solid #3a3a3a',
+  borderRadius: 4, color: '#cccccc', cursor: 'pointer',
   fontSize: 12, padding: '6px 12px', fontFamily: 'inherit',
 };
 
@@ -1514,10 +1514,10 @@ const btnAiDisabled: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#6e7c83',
-  border: '1px solid #4a5258',
+  background: '#262626',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#cccccc',
   fontSize: 12,
   padding: '3px 6px',
   fontFamily: 'inherit',
@@ -1527,7 +1527,7 @@ const inputStyle: React.CSSProperties = {
 const xBtn: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#3a4248',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 16,
   padding: '0 4px',
@@ -1537,9 +1537,9 @@ const xBtn: React.CSSProperties = {
 const addRowBtn: React.CSSProperties = {
   marginTop: 6,
   background: 'transparent',
-  border: '1px dashed #4a5258',
+  border: '1px dashed #3a3a3a',
   borderRadius: 3,
-  color: '#3a4248',
+  color: '#aaaaaa',
   cursor: 'pointer',
   fontSize: 11,
   padding: '4px 10px',

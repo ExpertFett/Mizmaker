@@ -35,8 +35,8 @@ const BASE_MAPS = [
 ];
 
 const VIEW_MODES: { id: ViewMode; label: string; color: string }[] = [
-  { id: 'all', label: 'All', color: '#1a1f25' },
-  { id: 'blue', label: 'Blue', color: '#d49a30' },
+  { id: 'all', label: 'All', color: '#e0e0e0' },
+  { id: 'blue', label: 'Blue', color: '#4a8fd4' },
   { id: 'red', label: 'Red', color: '#d95050' },
   { id: 'players', label: 'Players', color: '#3fb950' },
 ];
@@ -79,15 +79,15 @@ export function LayerSwitcher() {
           zIndex: 10000,
           cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 4,
-          border: '1px solid #4a5258',
+          border: '1px solid #4a4a4a',
           borderRight: 'none',
         }}
         title="Show layers"
       >
-        <span style={{ color: '#d49a30', fontSize: 12, fontWeight: 700 }}>◀</span>
+        <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
         <span style={{
           writingMode: 'vertical-lr',
-          color: '#3a4248', fontSize: 10, fontWeight: 600,
+          color: '#aaaaaa', fontSize: 10, fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>LAYERS</span>
       </div>
@@ -108,7 +108,7 @@ export function LayerSwitcher() {
         gap: 0,
         zIndex: 1000,
         fontSize: 14,
-        color: '#1a1f25',
+        color: '#ccc',
         minWidth: 150,
         overflow: 'hidden',
       }}
@@ -123,13 +123,13 @@ export function LayerSwitcher() {
           ...handleProps.style,
           flex: 1,
           padding: '4px 14px 2px',
-          fontSize: 9, color: '#4a5258', textAlign: 'center', letterSpacing: 2,
+          fontSize: 9, color: '#4a4a4a', textAlign: 'center', letterSpacing: 2,
           userSelect: 'none',
         }}>⠿</div>
         <button
           onClick={() => setCollapsed(true)}
           style={{
-            background: 'none', border: 'none', color: '#4a5258',
+            background: 'none', border: 'none', color: '#4a4a4a',
             cursor: 'pointer', fontSize: 11, padding: '3px 8px',
             lineHeight: 1,
           }}
@@ -138,7 +138,7 @@ export function LayerSwitcher() {
       </div>
           <div style={{ padding: '8px 14px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {/* View mode */}
-            <div style={{ borderBottom: '1px solid #4a5258', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>View</div>
               <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                 {VIEW_MODES.map((vm) => (
@@ -147,10 +147,10 @@ export function LayerSwitcher() {
                     onClick={() => setViewMode(vm.id)}
                     style={{
                       flex: 1, padding: '4px 5px', fontSize: 12,
-                      background: viewMode === vm.id ? 'rgba(255,255,255,0.08)' : '#6e7c83',
-                      border: `1px solid ${viewMode === vm.id ? vm.color : '#4a5258'}`,
+                      background: viewMode === vm.id ? 'rgba(255,255,255,0.08)' : '#262626',
+                      border: `1px solid ${viewMode === vm.id ? vm.color : '#3a3a3a'}`,
                       borderRadius: 3,
-                      color: viewMode === vm.id ? vm.color : '#3a4248',
+                      color: viewMode === vm.id ? vm.color : '#aaaaaa',
                       cursor: 'pointer', fontWeight: viewMode === vm.id ? 600 : 400,
                     }}
                   >
@@ -161,7 +161,7 @@ export function LayerSwitcher() {
             </div>
 
             {/* Base map */}
-            <div style={{ borderBottom: '1px solid #4a5258', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>Base Map</div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {BASE_MAPS.map((bm) => (
@@ -170,10 +170,10 @@ export function LayerSwitcher() {
                     onClick={() => setBaseMap(bm.id)}
                     style={{
                       flex: 1, padding: '4px 6px', fontSize: 12,
-                      background: (layers.baseMap || 'dark') === bm.id ? '#4a5258' : '#6e7c83',
-                      border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#d49a30' : '#4a5258'}`,
+                      background: (layers.baseMap || 'dark') === bm.id ? '#4a4a4a' : '#262626',
+                      border: `1px solid ${(layers.baseMap || 'dark') === bm.id ? '#4a8fd4' : '#3a3a3a'}`,
                       borderRadius: 3,
-                      color: (layers.baseMap || 'dark') === bm.id ? '#1a1f25' : '#3a4248',
+                      color: (layers.baseMap || 'dark') === bm.id ? '#e0e0e0' : '#aaaaaa',
                       cursor: 'pointer',
                     }}
                   >
@@ -185,7 +185,7 @@ export function LayerSwitcher() {
 
             {/* Map Language (only relevant for Street map) */}
             {(layers.baseMap || 'dark') === 'osm' && (
-              <div style={{ borderBottom: '1px solid #4a5258', paddingBottom: 6 }}>
+              <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
                 <div style={sectionLabel}>Labels</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {[
@@ -197,10 +197,10 @@ export function LayerSwitcher() {
                       onClick={() => setMapLang(l.id)}
                       style={{
                         flex: 1, padding: '4px 6px', fontSize: 12,
-                        background: (layers.mapLang || 'en') === l.id ? '#4a5258' : '#6e7c83',
-                        border: `1px solid ${(layers.mapLang || 'en') === l.id ? '#d49a30' : '#4a5258'}`,
+                        background: (layers.mapLang || 'en') === l.id ? '#4a4a4a' : '#262626',
+                        border: `1px solid ${(layers.mapLang || 'en') === l.id ? '#4a8fd4' : '#3a3a3a'}`,
                         borderRadius: 3,
-                        color: (layers.mapLang || 'en') === l.id ? '#1a1f25' : '#3a4248',
+                        color: (layers.mapLang || 'en') === l.id ? '#e0e0e0' : '#aaaaaa',
                         cursor: 'pointer',
                       }}
                     >
@@ -212,11 +212,11 @@ export function LayerSwitcher() {
             )}
 
             {/* Layers */}
-            <div style={{ borderBottom: '1px solid #4a5258', paddingBottom: 6 }}>
+            <div style={{ borderBottom: '1px solid #3a3a3a', paddingBottom: 6 }}>
               <div style={sectionLabel}>Layers</div>
               {OVERLAY_LAYERS.map((l) => (
                 <label key={l.id} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 13 }}>
-                  <input type="checkbox" checked={layers[l.id] ?? true} onChange={() => toggleLayer(l.id)} style={{ accentColor: '#d49a30' }} />
+                  <input type="checkbox" checked={layers[l.id] ?? true} onChange={() => toggleLayer(l.id)} style={{ accentColor: '#4a8fd4' }} />
                   {l.label}
                 </label>
               ))}
@@ -233,10 +233,10 @@ export function LayerSwitcher() {
                   marginTop: 4,
                   width: '100%',
                   padding: '4px 8px',
-                  background: '#6e7c83',
-                  border: '1px solid #4a5258',
+                  background: '#262626',
+                  border: '1px solid #3a3a3a',
                   borderRadius: 3,
-                  color: '#1a1f25',
+                  color: '#cccccc',
                   fontSize: 12,
                   fontFamily: 'inherit',
                   textAlign: 'left',
@@ -249,11 +249,11 @@ export function LayerSwitcher() {
               >
                 <span>
                   Unit Types{' '}
-                  <span style={{ color: '#5a6268', fontSize: 11 }}>
+                  <span style={{ color: '#888', fontSize: 11 }}>
                     ({visibleCategoryCount}/{UNIT_CATEGORIES.length})
                   </span>
                 </span>
-                <span style={{ color: '#5a6268', fontSize: 10 }}>{categoryOpen ? '▴' : '▾'}</span>
+                <span style={{ color: '#888', fontSize: 10 }}>{categoryOpen ? '▴' : '▾'}</span>
               </button>
 
               {categoryOpen && (
@@ -261,8 +261,8 @@ export function LayerSwitcher() {
                   style={{
                     marginTop: 4,
                     padding: '6px 8px',
-                    background: '#7a8a92',
-                    border: '1px solid #4a5258',
+                    background: '#1a1a1a',
+                    border: '1px solid #3a3a3a',
                     borderRadius: 3,
                   }}
                 >
@@ -301,7 +301,7 @@ export function LayerSwitcher() {
                         type="checkbox"
                         checked={unitCategoryFilter[c.id]}
                         onChange={() => toggleUnitCategory(c.id)}
-                        style={{ accentColor: '#d49a30' }}
+                        style={{ accentColor: '#4a8fd4' }}
                       />
                       {c.label}
                     </label>
@@ -318,10 +318,10 @@ export function LayerSwitcher() {
                   onClick={() => setMeasureMode(!measureMode)}
                   style={{
                     padding: '6px 10px', fontSize: 13,
-                    background: measureMode ? '#3a3a1a' : '#6e7c83',
-                    border: `1px solid ${measureMode ? '#d29922' : '#4a5258'}`,
+                    background: measureMode ? '#3a3a1a' : '#262626',
+                    border: `1px solid ${measureMode ? '#d29922' : '#3a3a3a'}`,
                     borderRadius: 4, textAlign: 'left',
-                    color: measureMode ? '#d29922' : '#1a1f25', cursor: 'pointer',
+                    color: measureMode ? '#d29922' : '#e0e0e0', cursor: 'pointer',
                   }}
                 >
                   {measureMode ? '\u{1F4CF} Measuring... (Esc)' : '\u{1F4CF} Measure'}
@@ -329,10 +329,10 @@ export function LayerSwitcher() {
 
                 <label style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                  background: adminMode ? 'rgba(210, 153, 34, 0.1)' : '#6e7c83',
-                  border: `1px solid ${adminMode ? '#d29922' : '#4a5258'}`,
+                  background: adminMode ? 'rgba(210, 153, 34, 0.1)' : '#262626',
+                  border: `1px solid ${adminMode ? '#d29922' : '#3a3a3a'}`,
                   borderRadius: 4, cursor: 'pointer', fontSize: 13,
-                  color: adminMode ? '#d29922' : '#1a1f25',
+                  color: adminMode ? '#d29922' : '#e0e0e0',
                 }}>
                   <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)}
                     style={{ accentColor: '#d29922' }} />
@@ -347,13 +347,13 @@ export function LayerSwitcher() {
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontSize: 11, color: '#3a4248', marginBottom: 4,
+  fontSize: 11, color: '#aaaaaa', marginBottom: 4,
   textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600,
 };
 
 const categoryBulkBtn: React.CSSProperties = {
   flex: 1, padding: '2px 4px', fontSize: 11,
-  background: '#6e7c83', border: '1px solid #4a5258',
-  borderRadius: 3, color: '#3a4248', cursor: 'pointer',
+  background: '#262626', border: '1px solid #3a3a3a',
+  borderRadius: 3, color: '#aaaaaa', cursor: 'pointer',
   fontFamily: 'inherit',
 };

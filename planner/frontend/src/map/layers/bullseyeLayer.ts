@@ -26,13 +26,13 @@ import type { MissionOverviewData } from '../../types/mission';
 // Side colours mirror the rest of the map's coalition palette so a
 // blue bullseye doesn't look out of place next to blue waypoints.
 const SIDE_COLOR: Record<string, string> = {
-  blue: '#d49a30',
+  blue: '#4a8fd4',
   red:  '#d95050',
 };
 
 function bullseyeStyleFn(feature: FeatureLike): Style[] {
   const side = (feature.get('side') as string) || 'blue';
-  const color = SIDE_COLOR[side] || '#3a4248';
+  const color = SIDE_COLOR[side] || '#aaaaaa';
 
   // Two-ring target with a centre dot — classic bullseye glyph.
   // Outer ring is hollow, inner ring is hollow, centre is filled.

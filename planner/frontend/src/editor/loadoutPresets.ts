@@ -132,7 +132,7 @@ export const LOADOUT_PRESETS: LoadoutPreset[] = [
     id: 'cap',
     label: 'CAP',
     description: 'Combat Air Patrol — air-to-air only',
-    color: '#d49a30',
+    color: '#4a8fd4',
     weapons: [AIM_120C, AIM_120, AIM_54, AIM_9X, AIM_9, AIM_7],
   },
   {
@@ -147,7 +147,7 @@ export const LOADOUT_PRESETS: LoadoutPreset[] = [
     id: 'clean',
     label: 'CLEAN',
     description: 'Empty every pylon',
-    color: '#3a4248',
+    color: '#aaaaaa',
     weapons: [],
     wipeAll: true,
   },

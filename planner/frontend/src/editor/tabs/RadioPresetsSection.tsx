@@ -379,8 +379,8 @@ export function RadioPresetsSection() {
     return (
       <div style={{
         padding: '16px 20px', marginBottom: 16,
-        background: '#8c9ba2', border: '1px solid #4a5258',
-        color: '#3a4248', fontSize: 13, fontStyle: 'italic',
+        background: '#222222', border: '1px solid #3a3a3a',
+        color: '#aaaaaa', fontSize: 13, fontStyle: 'italic',
       }}>
         No player flights in this mission — radio preset cards will appear
         here when player flights are added.
@@ -396,7 +396,7 @@ export function RadioPresetsSection() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          fontSize: 12, color: '#d49a30', fontWeight: 600,
+          fontSize: 12, color: '#fbb941', fontWeight: 600,
           letterSpacing: 1, textTransform: 'uppercase',
         }}>
           Radio Presets — Per Flight
@@ -416,7 +416,7 @@ export function RadioPresetsSection() {
             </span>
           )}
         </div>
-        <span style={{ fontSize: 11, color: '#5a6268' }}>
+        <span style={{ fontSize: 11, color: '#888888' }}>
           Edits write to every radio of every unit in the flight on download
           {presetClipboard && copiedFromName && clipboardSummary && (
             <span style={{ marginLeft: 12, color: '#d29922' }}>
@@ -437,18 +437,18 @@ export function RadioPresetsSection() {
           const radioNums = Array.from(flightMap.keys()).sort((a, b) => a - b);
           return (
             <div key={flight.groupId} style={{
-              background: '#7a8a92', border: '1px solid #4a5258',
+              background: '#1a1a1a', border: '1px solid #3a3a3a',
             }}>
               <div style={{
-                padding: '8px 12px', borderBottom: '1px solid #4a5258',
-                background: '#6e7c83',
+                padding: '8px 12px', borderBottom: '1px solid #3a3a3a',
+                background: '#262626',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>
                     {callsign}
                   </span>
-                  <span style={{ fontSize: 12, color: '#3a4248', marginLeft: 8 }}>
+                  <span style={{ fontSize: 12, color: '#aaaaaa', marginLeft: 8 }}>
                     {flight.units.length}× {aircraft}
                   </span>
                   {radioNums.length > 1 && (
@@ -465,8 +465,8 @@ export function RadioPresetsSection() {
                   <button
                     onClick={() => copyFlight(flight)}
                     style={{
-                      background: 'transparent', border: '1px solid #4a5258',
-                      color: '#d49a30', padding: '3px 10px', fontSize: 11,
+                      background: 'transparent', border: '1px solid #4a4a4a',
+                      color: '#4a8fd4', padding: '3px 10px', fontSize: 11,
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}
                     title="Copy this flight's full preset table (all radios) to the clipboard so it can be pasted into other flights"
@@ -475,7 +475,7 @@ export function RadioPresetsSection() {
                     onClick={() => pasteFlight(flight)}
                     disabled={!presetClipboard}
                     style={{
-                      background: 'transparent', border: '1px solid #4a5258',
+                      background: 'transparent', border: '1px solid #4a4a4a',
                       color: presetClipboard ? '#3fb950' : '#555',
                       padding: '3px 10px', fontSize: 11,
                       cursor: presetClipboard ? 'pointer' : 'not-allowed',
@@ -489,8 +489,8 @@ export function RadioPresetsSection() {
                   <button
                     onClick={() => resetFlight(flight)}
                     style={{
-                      background: 'transparent', border: '1px solid #4a5258',
-                      color: '#1a1f25', padding: '3px 10px', fontSize: 11,
+                      background: 'transparent', border: '1px solid #4a4a4a',
+                      color: '#cccccc', padding: '3px 10px', fontSize: 11,
                       cursor: 'pointer', fontFamily: 'inherit',
                     }}
                     title="Re-read preset values from the .miz, dropping any unsaved edits"
@@ -501,24 +501,24 @@ export function RadioPresetsSection() {
                 const presets = flightMap.get(radioNum) || [];
                 return (
                   <div key={radioNum} style={{
-                    borderTop: idx === 0 ? 'none' : '1px solid #4a5258',
+                    borderTop: idx === 0 ? 'none' : '1px solid #3a3a3a',
                   }}>
                     <div style={{
                       padding: '6px 12px',
                       background: '#202833',
-                      borderBottom: '1px solid #4a5258',
+                      borderBottom: '1px solid #3a3a3a',
                       fontSize: 11, fontWeight: 700, color: '#6ab4f0',
                       letterSpacing: 1, textTransform: 'uppercase',
                       display: 'flex', alignItems: 'center', gap: 8,
                     }}>
                       <span>{radioLabel(aircraft, radioNum)}</span>
-                      <span style={{ color: '#5a6268', fontSize: 10, fontWeight: 400 }}>
+                      <span style={{ color: '#666', fontSize: 10, fontWeight: 400 }}>
                         Radio[{radioNum}]
                       </span>
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr style={{ background: '#6e7c83' }}>
+                        <tr style={{ background: '#262626' }}>
                           <th style={th}>CH</th>
                           <th style={{ ...th, textAlign: 'left' }}>LABEL</th>
                           <th style={th}>FREQ (MHz)</th>
@@ -527,9 +527,9 @@ export function RadioPresetsSection() {
                       </thead>
                       <tbody>
                         {presets.map((p) => (
-                          <tr key={`${radioNum}-${p.ch}`} style={{ borderTop: '1px solid #aab4ba' }}>
+                          <tr key={`${radioNum}-${p.ch}`} style={{ borderTop: '1px solid #2a2a2a' }}>
                             <td style={{ ...td, textAlign: 'center', fontFamily: "'B612 Mono', monospace",
-                                          color: p.ch === PRESET_COUNT ? '#d29922' : '#3a4248', fontWeight: 600 }}>
+                                          color: p.ch === PRESET_COUNT ? '#d29922' : '#aaaaaa', fontWeight: 600 }}>
                               {p.ch}
                             </td>
                             <td style={td}>
@@ -578,11 +578,11 @@ export function RadioPresetsSection() {
 
 const th: React.CSSProperties = {
   padding: '5px 8px', textAlign: 'center', fontSize: 11,
-  color: '#1a1f25', borderBottom: '1px solid #4a5258',
+  color: '#cccccc', borderBottom: '1px solid #4a4a4a',
   textTransform: 'uppercase', letterSpacing: 0.5,
 };
 const td: React.CSSProperties = { padding: '2px 4px', verticalAlign: 'middle' };
 const cellInput: React.CSSProperties = {
-  width: '100%', background: '#7a8a92', border: '1px solid #4a5258',
-  color: '#1a1f25', padding: '3px 6px', fontSize: 12, fontFamily: 'inherit',
+  width: '100%', background: '#1a1a1a', border: '1px solid #3a3a3a',
+  color: '#e0e0e0', padding: '3px 6px', fontSize: 12, fontFamily: 'inherit',
 };

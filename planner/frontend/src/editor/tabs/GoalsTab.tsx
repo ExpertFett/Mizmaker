@@ -17,9 +17,9 @@ import { TextInput } from '../../components/TextInput';
 import { Select } from '../../components/Select';
 
 const SIDE_COLORS: Record<GoalSide, string> = {
-  blue: '#d49a30',
+  blue: '#4a8fd4',
   red: '#d95050',
-  neutral: '#3a4248',
+  neutral: '#aaaaaa',
   all: '#3fb950',
 };
 
@@ -50,17 +50,17 @@ export function GoalsTab() {
     <div style={{ maxWidth: 1000 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             Mission Goals & Objectives
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
             Squadron objective list. Written into the .miz on download
             and available in the Brief tab via{' '}
-            <code style={{ color: '#1a1f25' }}>{'{goals.blue}'}</code>{' / '}
-            <code style={{ color: '#1a1f25' }}>{'{goals.red}'}</code>{' / '}
-            <code style={{ color: '#1a1f25' }}>{'{goals.all}'}</code>{' '}
+            <code style={{ color: '#cccccc' }}>{'{goals.blue}'}</code>{' / '}
+            <code style={{ color: '#cccccc' }}>{'{goals.red}'}</code>{' / '}
+            <code style={{ color: '#cccccc' }}>{'{goals.all}'}</code>{' '}
             tokens. Side prefix encoded into the comment (e.g.{' '}
-            <code style={{ color: '#1a1f25' }}>[BLUE] Destroy SAM</code>) since
+            <code style={{ color: '#cccccc' }}>[BLUE] Destroy SAM</code>) since
             DCS goals don't carry a coalition field natively.
           </p>
         </div>
@@ -73,11 +73,11 @@ export function GoalsTab() {
           style={{
             display: 'flex', gap: 14, marginBottom: 14,
             padding: '8px 12px',
-            background: '#6e7c83', border: '1px solid #8c9ba2', borderRadius: 6,
+            background: '#0a1218', border: '1px solid #222', borderRadius: 6,
             fontSize: 12, alignItems: 'center',
           }}
         >
-          <span style={{ color: '#1a1f25', fontWeight: 600 }}>
+          <span style={{ color: '#e0e0e0', fontWeight: 600 }}>
             {goals.length} goal{goals.length !== 1 ? 's' : ''}
           </span>
           {(['blue', 'red', 'neutral', 'all'] as const).map((side) => (
@@ -115,8 +115,8 @@ export function GoalsTab() {
         <div style={{
           padding: '40px 20px', textAlign: 'center',
           background: 'rgba(74, 143, 212, 0.04)',
-          border: '1px solid #4a5258', borderRadius: 6,
-          color: '#3a4248', fontSize: 13,
+          border: '1px solid #4a4a4a', borderRadius: 6,
+          color: '#aaaaaa', fontSize: 13,
         }}>
           No goals defined. Click "+ Add Goal" to create the squadron's
           mission objectives.
@@ -124,7 +124,7 @@ export function GoalsTab() {
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #4a5258' }}>
+            <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
               <th style={{ ...thStyle, width: 36 }}>#</th>
               <th style={thStyle}>OBJECTIVE</th>
               <th style={{ ...thStyle, width: 110 }}>SIDE</th>
@@ -135,7 +135,7 @@ export function GoalsTab() {
           </thead>
           <tbody>
             {goals.map((g, i) => (
-              <tr key={g.id} style={{ borderBottom: '1px solid #6e7c83' }}>
+              <tr key={g.id} style={{ borderBottom: '1px solid #262626' }}>
                 <td style={{ ...tdStyle, textAlign: 'center', color: SIDE_COLORS[g.side], fontWeight: 700 }}>
                   {i + 1}
                 </td>
@@ -145,7 +145,7 @@ export function GoalsTab() {
                     value={g.text}
                     onChange={(e) => update(g.id, { text: e.target.value })}
                     placeholder="e.g. Destroy SA-11 site at bullseye 035/22"
-                    style={{ width: '95%', fontWeight: 500, color: '#1a1f25' }}
+                    style={{ width: '95%', fontWeight: 500, color: '#e0e0e0' }}
                   />
                 </td>
                 <td style={tdStyle}>
@@ -177,7 +177,7 @@ export function GoalsTab() {
                     value={g.notes}
                     onChange={(e) => update(g.id, { notes: e.target.value })}
                     placeholder="Internal notes (not exported)"
-                    style={{ width: '95%', color: '#5a6268' }}
+                    style={{ width: '95%', color: '#888' }}
                   />
                 </td>
                 <td style={{ ...tdStyle, display: 'flex', gap: 4, paddingTop: 6 }}>
@@ -200,7 +200,7 @@ export function GoalsTab() {
                   <button
                     onClick={() => remove(g.id)}
                     title="Remove"
-                    style={{ ...iconBtn, color: '#3a4248' }}
+                    style={{ ...iconBtn, color: '#aaaaaa' }}
                   >
                     ×
                   </button>
@@ -217,7 +217,7 @@ export function GoalsTab() {
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '6px 8px',
-  color: '#3a4248',
+  color: '#aaaaaa',
   fontSize: 11,
   fontWeight: 600,
   textTransform: 'uppercase',
@@ -230,10 +230,10 @@ const tdStyle: React.CSSProperties = {
 };
 
 const addBtn: React.CSSProperties = {
-  background: '#4a5258',
-  border: '1px solid #d49a30',
+  background: '#4a4a4a',
+  border: '1px solid #4a8fd4',
   borderRadius: 4,
-  color: '#d49a30',
+  color: '#4a8fd4',
   cursor: 'pointer',
   fontSize: 13,
   fontWeight: 600,
@@ -243,9 +243,9 @@ const addBtn: React.CSSProperties = {
 
 const iconBtn: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #4a5258',
+  border: '1px solid #3a3a3a',
   borderRadius: 3,
-  color: '#1a1f25',
+  color: '#cccccc',
   cursor: 'pointer',
   fontSize: 11,
   padding: '2px 6px',

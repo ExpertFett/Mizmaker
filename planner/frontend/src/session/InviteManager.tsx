@@ -62,7 +62,7 @@ export function InviteManager() {
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{
-        fontSize: 12, color: '#3a4248', fontWeight: 600,
+        fontSize: 12, color: '#aaaaaa', fontWeight: 600,
         textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6,
       }}>
         Share Session
@@ -90,10 +90,10 @@ export function InviteManager() {
           onClick={handleCreateInvite}
           disabled={!selectedGroup}
           style={{
-            background: selectedGroup ? '#4a5258' : '#6e7c83',
-            border: '1px solid #4a5258',
+            background: selectedGroup ? '#4a4a4a' : '#262626',
+            border: '1px solid #4a4a4a',
             borderRadius: 4,
-            color: selectedGroup ? '#d49a30' : '#4a5258',
+            color: selectedGroup ? '#4a8fd4' : '#4a4a4a',
             cursor: selectedGroup ? 'pointer' : 'not-allowed',
             fontSize: 13, padding: '6px 10px',
           }}
@@ -107,26 +107,26 @@ export function InviteManager() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {invites.map((inv, i) => (
             <div key={i} style={{
-              background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+              background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
               padding: '6px 8px', fontSize: 12,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#1a1f25', fontWeight: 500 }}>{inv.groupName}</span>
-                <span style={{ color: '#3a4248' }}>{inv.name}</span>
+                <span style={{ color: '#e0e0e0', fontWeight: 500 }}>{inv.groupName}</span>
+                <span style={{ color: '#aaaaaa' }}>{inv.name}</span>
               </div>
               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                 <input
                   readOnly
                   value={inv.url}
-                  style={{ ...inputStyle, flex: 1, fontSize: 11, color: '#3a4248' }}
+                  style={{ ...inputStyle, flex: 1, fontSize: 11, color: '#aaaaaa' }}
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
                 <button
                   onClick={() => copyUrl(i)}
                   style={{
-                    background: inv.copied ? '#1a4a2a' : '#4a5258',
+                    background: inv.copied ? '#1a4a2a' : '#3a3a3a',
                     border: 'none', borderRadius: 3,
-                    color: inv.copied ? '#3fb950' : '#1a1f25',
+                    color: inv.copied ? '#3fb950' : '#cccccc',
                     cursor: 'pointer', fontSize: 11, padding: '3px 8px',
                   }}
                 >
@@ -142,10 +142,10 @@ export function InviteManager() {
 }
 
 const selectStyle: React.CSSProperties = {
-  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
-  color: '#1a1f25', fontSize: 13, padding: '5px 8px',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '5px 8px',
 };
 const inputStyle: React.CSSProperties = {
-  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
-  color: '#1a1f25', fontSize: 13, padding: '5px 8px',
+  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+  color: '#e0e0e0', fontSize: 13, padding: '5px 8px',
 };
