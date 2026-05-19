@@ -248,17 +248,22 @@ export function MissionEditor() {
 
         {/* Tab buttons + section dividers.
             v0.9.60 — tab list can scroll when the sidebar gets too tall
-            for the viewport. flex-shrink kicks in (min-height:0 unlocks
-            it from the content's intrinsic min size), and overflow-y:auto
-            puts a scrollbar inside this region so the Auto-Setup + Export
-            buttons at the bottom of the sidebar stay reachable. Collapsed
-            mode (icons only) still uses overflow:hidden to keep the
-            horizontal ellipsis behaviour the old code relied on. */}
+            for the viewport.
+            v0.9.68 — flex behaviour reworked. Previously the tab list
+            had no flex declaration, so it took its full natural height
+            (~800px for 22 tabs) and the flight picker below got squashed
+            to near-zero on short viewports. Now we give it
+            `flex: '0 1 auto'` so it CAN shrink, plus the flight-picker
+            section below got a hard `minHeight` so flex shrink is forced
+            onto the tabs (which then scroll properly).
+            Collapsed mode (icons only) still uses overflow:hidden to
+            keep horizontal ellipsis behaviour. */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           paddingTop: 4,
           borderBottom: '1px solid #3a3a3a',
+          flex: '0 1 auto',
           minHeight: 0,
           overflowX: 'hidden',
           overflowY: isCollapsed ? 'hidden' : 'auto',
@@ -392,10 +397,21 @@ export function MissionEditor() {
           })}
         </div>
 
-        {/* Flights + export (only on map tab, not collapsed) */}
+        {/* Flights + export (only on map tab, not collapsed)
+            v0.9.68 — added `minHeight: 200` so the picker is always
+            visibly tall, even on short viewports. Without this the
+            tabs list above ate all the space and this section
+            collapsed to near-zero (Fett's "barely visible flight
+            picker" complaint). The minHeight forces flex shrink onto
+            the tabs list, which then scrolls within its own area. */}
         {isMap && !isCollapsed && (
           <>
-            <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
+            <div style={{
+              flex: '1 1 auto',
+              minHeight: 200,
+              overflow: 'auto',
+              padding: '8px 12px',
+            }}>
               <PlayerGroupsButton />
               <InviteManager />
             </div>
