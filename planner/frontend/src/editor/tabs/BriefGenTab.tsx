@@ -19,6 +19,9 @@ import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
 import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
+import { useAiStore } from '../../ai/aiStore';
+import { generateCommandersIntent } from '../../ai/commandersIntent';
+import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
 // ---------------------------------------------------------------------------
 // Types — mirror services/brief_builder.py WingBrief shape
@@ -70,6 +73,27 @@ export function BriefGenTab() {
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
 
+  // AI integration — BYOK Anthropic/Gemini. We read the active
+  // provider's key + model from aiStore; if empty, the AI button
+  // opens AiSettingsPanel instead of attempting a doomed call.
+  const aiProvider = useAiStore((s) => s.provider);
+  const aiKey = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicKey : s.geminiKey,
+  );
+  const aiModel = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicModel : s.geminiModel,
+  );
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  /** Last successful AI generation note for the toast under the
+   *  intent card — model + token count, ephemeral. Cleared when the
+   *  user edits the field or rebuilds the brief. */
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  /** Optional free-text steer the user can add before clicking the
+   *  AI button. Empty by default; rendered in a small input above
+   *  the textarea on the Commander's Intent card. */
+  const [aiSteer, setAiSteer] = useState('');
+
   // Inline preview pane state. Slides come from the server as base64 PNGs
   // rendered via LibreOffice → pypdfium2. Empty until user clicks Preview.
   // Edits don't auto-refresh — user clicks Refresh after a batch of edits
@@ -93,6 +117,11 @@ export function BriefGenTab() {
       return;
     }
     setBuilding(true); setError(null);
+    // Rebuilding from mission wipes any AI-generated intent — the new
+    // brief will come back with the templated placeholder. Clear the
+    // note + steer so the UI reflects the reset state honestly.
+    setAiNote(null);
+    setAiSteer('');
     try {
       const res = await fetch('/api/brief/build-wing', {
         method: 'POST',
@@ -219,6 +248,42 @@ export function BriefGenTab() {
       setError(e.message);
     } finally {
       setRendering(false);
+    }
+  };
+
+  // AI: regenerate Commander's Intent --------------------------------------
+  // Reads the current scenario / flights / threats from the in-editor brief,
+  // ships them to the active provider with the structured-intent prompt,
+  // and drops the result into brief.commanders_intent. The user can edit
+  // the textarea afterward exactly like the templated placeholder.
+  const handleAiIntent = async () => {
+    if (!brief) return;
+    if (!aiKey) {
+      setAiOpen(true);
+      return;
+    }
+    setAiBusy(true);
+    setError(null);
+    setAiNote(null);
+    try {
+      const result = await generateCommandersIntent(aiProvider, aiKey, aiModel, {
+        mission_name: brief.mission_name,
+        theater: brief.theater,
+        date: brief.date,
+        time_zulu: brief.time_zulu,
+        scenario: brief.scenario,
+        threats: brief.threats,
+        flights: brief.flights,
+        userSteer: aiSteer,
+      });
+      setBrief((b) => (b ? { ...b, commanders_intent: result.text } : null));
+      setAiNote(
+        `Generated via ${result.model} · ${result.usage.input_tokens} in / ${result.usage.output_tokens} out tokens.`,
+      );
+    } catch (e: any) {
+      setError(`AI intent generation failed: ${e.message}`);
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -463,9 +528,80 @@ export function BriefGenTab() {
                       onChange={(e) => set('scenario', e.target.value)} />
           </Card>
 
-          <Card title="Commander's Intent">
-            <textarea style={textareaStyle} rows={6} value={brief.commanders_intent}
-                      onChange={(e) => set('commanders_intent', e.target.value)} />
+          <Card
+            title="Commander's Intent"
+            right={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  onClick={handleAiIntent}
+                  disabled={aiBusy}
+                  style={{
+                    ...btnSmall,
+                    background: aiKey ? '#2a2418' : '#2a2a2a',
+                    borderColor: aiKey ? '#ffa500' : '#4a4a4a',
+                    color: aiKey ? '#ffa500' : '#cccccc',
+                    opacity: aiBusy ? 0.6 : 1,
+                  }}
+                  title={
+                    aiKey
+                      ? `Generate via ${aiProvider} (${aiModel}). Uses your BYOK key.`
+                      : 'No AI key configured. Click to open AI Settings.'
+                  }
+                >
+                  {aiBusy
+                    ? 'Thinking…'
+                    : aiKey
+                      ? '✨ Generate with AI'
+                      : '✨ Set up AI'}
+                </button>
+              </div>
+            }
+          >
+            {/* Optional steer — tucked above the textarea. Most users
+                will leave this blank; advanced users (training-flight
+                designers) can drop a sentence like "stress IFF
+                discipline" or "make it sound like a maintenance OPS
+                run". Cleared on Rebuild from mission. */}
+            {aiKey && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{
+                  fontSize: 10, color: '#888888', marginBottom: 3,
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                }}>
+                  Optional steer (passed to AI on Generate)
+                </div>
+                <input
+                  style={{ ...inputStyle, fontSize: 12 }}
+                  value={aiSteer}
+                  onChange={(e) => setAiSteer(e.target.value)}
+                  placeholder='e.g. "emphasise SEAD flow", "training mission tone"'
+                />
+              </div>
+            )}
+            <textarea
+              style={textareaStyle}
+              rows={6}
+              value={brief.commanders_intent}
+              onChange={(e) => {
+                set('commanders_intent', e.target.value);
+                setAiNote(null);
+              }}
+            />
+            {aiNote && (
+              <div style={{
+                marginTop: 6, fontSize: 11, color: '#ffa500',
+                fontFamily: "'B612 Mono', monospace",
+              }}>
+                {aiNote}
+              </div>
+            )}
+            {!aiKey && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#888888' }}>
+                Bring your own Anthropic or Gemini key to auto-generate
+                a tailored intent. Without a key the templated starter
+                above stays — fully editable.
+              </div>
+            )}
           </Card>
 
           <Card title="Threats" right={
@@ -607,6 +743,11 @@ export function BriefGenTab() {
         </summary>
         <CustomTemplateFlow />
       </details>
+
+      {/* BYOK AI settings — opened when the user clicks the ✨ button
+          with no key configured. Lives outside the brief-editor block so
+          it's available even before the user has built a brief. */}
+      <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   );
 }
