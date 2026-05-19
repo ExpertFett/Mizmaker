@@ -569,6 +569,53 @@ class TestWaypointTasks:
             assert re.search(r"\b" + rx + r"\b", name, re.IGNORECASE), \
                 f"WP1 name missing token {token}; got {name!r}"
 
+    def test_v3_remaining_tokens_round_trip(self, client, uploaded_session):
+        """v0.9.59 — completes the TIC name-token vocab the planner
+        emits: scale=N.M, direct=y/n, strength=N.M, "phase_name", and
+        bare mount/dismount. Each lands in the waypoint name with the
+        right shape and TIC_v1.1.lua::extract* parses it cleanly."""
+        sid = uploaded_session["sessionId"]
+        edit = {
+            "field": "waypointTasks",
+            "value": {
+                "groupId": 2,
+                "tasks": [{
+                    "wpIndex": 1, "action": "goto",
+                    "scale": "0.5", "direct": "y", "strength": "0.3",
+                    "phase": "alpha", "deployment": "mount",
+                }],
+            },
+        }
+        files = download_edited(client, sid, [edit])
+        name = self._wp_name(files["mission"], 2, 1)
+        # Each token in the resulting name. Use literal matchers so we
+        # don't accidentally match a substring that happens to look right.
+        assert "scale=0.5" in name,    f"missing scale=0.5; got {name!r}"
+        assert "direct=y" in name,     f"missing direct=y; got {name!r}"
+        assert "strength=0.3" in name, f"missing strength=0.3; got {name!r}"
+        assert '"alpha"' in name,      f'missing "alpha"; got {name!r}'
+        assert re.search(r"\bmount\b", name, re.IGNORECASE), \
+            f"missing mount; got {name!r}"
+
+    def test_v3_phase_replace(self, client, uploaded_session):
+        """Quoted phase token uses replace-not-append semantics (mirrors
+        the TIC script's `for s in gmatch ... break` first-match-wins
+        behaviour). Second call with a different phase must REPLACE the
+        first, not duplicate it."""
+        sid = uploaded_session["sessionId"]
+        files = download_edited(client, sid, [{
+            "field": "waypointTasks",
+            "value": {"groupId": 2, "tasks": [{
+                "wpIndex": 1, "action": "goto", "phase": "bravo",
+            }]},
+        }])
+        name = self._wp_name(files["mission"], 2, 1)
+        # Only one phase token should be present
+        phase_count = len(re.findall(r'"[^"]+"', name))
+        assert phase_count == 1, \
+            f"expected exactly one quoted phase token, got {phase_count} in {name!r}"
+        assert '"bravo"' in name
+
     def test_v2_secondary_token_strip(self, client, uploaded_session):
         """Empty / None value on a secondary token strips it from the
         name. Used by the frontend when the user clears an input field."""

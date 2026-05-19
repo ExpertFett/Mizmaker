@@ -1651,6 +1651,49 @@ def _set_named_token_in_tic_name(name: str, prefix: str, sep: str,
     return new_token
 
 
+def _set_quoted_phase_in_tic_name(name: str, phase: str | None) -> str:
+    """Insert / replace / strip the `"phase_name"` TIC token (extractPhase).
+
+    Lua side (TIC_v1.1.lua::extractPhase): the script iterates
+    `string.gmatch(string.lower(str), "\\"([^\\"]+)\\"")` and takes the
+    FIRST match. So we mirror that — replace the first quoted run if one
+    exists, or append a new one. `phase=None` or empty string strips ALL
+    quoted runs (defensive — if a name was somehow given two phase
+    tokens, normalize down to none).
+    """
+    name = name or ""
+    pat = re.compile(r'"[^"]+"')
+    if not phase:
+        cleaned = pat.sub('', name)
+        return re.sub(r'\s+', ' ', cleaned).strip()
+    new_token = f'"{phase}"'
+    if pat.search(name):
+        replaced = pat.sub(new_token, name, count=1)
+        return re.sub(r'\s+', ' ', replaced).strip()
+    rest = re.sub(r'\s+', ' ', name).strip()
+    return f'{rest} {new_token}' if rest else new_token
+
+
+def _set_deployment_in_tic_name(name: str, deployment: str | None) -> str:
+    """Insert / replace / strip the bare `mount` or `dismount` TIC token
+    (extractDeployment).
+
+    Lua side: the script iterates word-pattern matches and accepts the
+    literal strings `mount` or `dismount` (case-insensitive). So this
+    helper looks for those exact words as standalone tokens, strips any
+    existing one, and appends the new value. `deployment=None` /
+    empty / any value other than 'mount' or 'dismount' strips both.
+    """
+    name = name or ""
+    pat = re.compile(r'\b(?:mount|dismount)\b', re.IGNORECASE)
+    cleaned = pat.sub('', name)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    d = (deployment or '').strip().lower()
+    if d not in ('mount', 'dismount'):
+        return cleaned
+    return f'{cleaned} {d}' if cleaned else d
+
+
 def _set_offset_in_tic_name(name: str, minutes: int | None) -> str:
     """Insert / replace / remove the TIC `t+N` offset token in a waypoint name.
 
@@ -1776,16 +1819,19 @@ def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
     if not tasks:
         return text
 
-    # (token_kwarg, prefix, separator) — drives the v2 secondary token loop.
+    # (token_kwarg, prefix, separator) — drives the secondary token loop.
     # Order matters cosmetically (later tokens append to the right of
     # earlier ones in the rendered name); functionally the order is
     # irrelevant since TIC's parser sweeps the whole string.
     SECONDARY_TOKENS = (
-        ("speed",      "speed", "="),
-        ("roe",        "roe",   "="),
-        ("hdg",        "hdg",   "="),
-        ("flag_wait",  "flag",  "="),
-        ("flag_set",   "flag",  "+"),
+        ("speed",      "speed",    "="),  # v0.9.57
+        ("roe",        "roe",      "="),  # v0.9.57
+        ("hdg",        "hdg",      "="),  # v0.9.57
+        ("flag_wait",  "flag",     "="),  # v0.9.57
+        ("flag_set",   "flag",     "+"),  # v0.9.57
+        ("scale",      "scale",    "="),  # v0.9.59
+        ("direct",     "direct",   "="),  # v0.9.59
+        ("strength",   "strength", "="),  # v0.9.59
     )
 
     for spec in sorted(tasks, key=lambda t: int(t.get("wpIndex", 0)), reverse=True):
@@ -1814,6 +1860,14 @@ def _replace_waypoint_tasks(text: str, group_id: int, tasks: list[dict]) -> str:
             new_name = _set_named_token_in_tic_name(
                 new_name, prefix, sep, spec[kwarg],
             )
+
+        # v0.9.59 — quoted "phase" + bare-word mount/dismount don't fit
+        # the generic KEY<sep>VALUE token shape, so each has its own
+        # helper. Same "absent = leave alone, falsy = strip" convention.
+        if "phase" in spec:
+            new_name = _set_quoted_phase_in_tic_name(new_name, spec["phase"])
+        if "deployment" in spec:
+            new_name = _set_deployment_in_tic_name(new_name, spec["deployment"])
 
         if new_name == current_name:
             continue  # idempotent — skip the splice

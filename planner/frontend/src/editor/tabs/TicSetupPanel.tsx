@@ -355,21 +355,32 @@ type WpActionValue = (typeof WP_ACTIONS)[number]['value'];
 const ROE_OPTIONS = ['', 'simulate', 'kill', 'hold'] as const;
 type RoeValue = (typeof ROE_OPTIONS)[number];
 
+/** Deployment values TIC parses (bare words, NOT key=value). */
+const DEPLOYMENT_OPTIONS = ['', 'mount', 'dismount'] as const;
+type DeploymentValue = (typeof DEPLOYMENT_OPTIONS)[number];
+
 interface WpTaskAssignment {
   action: WpActionValue;
   eta_seconds: number;
 
-  // v2 secondary tokens — all optional. Backend semantics:
+  // v0.9.57 secondary tokens — all optional. Backend semantics:
   //   undefined  → leave the token alone in the waypoint name
   //   empty/null → strip the token
   //   value      → set/replace the token
   // We model "undefined" as `null` here so the JSON dispatch carries
   // unambiguous intent for "I touched this field and want it cleared".
-  speed?: number | null;       // speed=N    (km/h)
-  roe?: RoeValue | null;       // roe=simulate / kill / hold
-  hdg?: number | null;         // hdg=N      (degrees)
-  flag_wait?: string | null;   // flag=X     (TIC waits for this flag)
-  flag_set?: string | null;    // flag+X     (TIC sets this flag on arrival)
+  speed?: number | null;          // speed=N      (km/h)
+  roe?: RoeValue | null;          // roe=simulate / kill / hold
+  hdg?: number | null;            // hdg=N        (degrees)
+  flag_wait?: string | null;      // flag=X       (TIC waits for this flag)
+  flag_set?: string | null;       // flag+X       (TIC sets this flag on arrival)
+
+  // v0.9.59 — the remaining TIC tokens.
+  scale?: string | null;          // scale=N.M    (formation scale, decimal)
+  direct?: 'y' | 'n' | null;      // direct=y/n   (skip-to-WP retreat logic)
+  strength?: string | null;       // strength=N.M (retreat threshold 0-1)
+  phase?: string | null;          // "phase_name" (quoted phase identifier)
+  deployment?: DeploymentValue | null;  // mount / dismount (infantry load)
 }
 
 type GroupStatus = 'grey' | 'amber' | 'green';
@@ -599,11 +610,12 @@ export function TicSetupPanel() {
     });
   }, []);
 
-  // v2 secondary-token setter. Generic for `speed`, `roe`, `hdg`,
-  // `flag_wait`, `flag_set`. Passes the value through to the assignment
-  // patch unchanged (backend treats undefined-in-spec as "leave token
-  // alone", "" / null as "strip", any value as "set/replace").
-  type SecondaryTokenField = 'speed' | 'roe' | 'hdg' | 'flag_wait' | 'flag_set';
+  // Secondary-token setter. Generic over every TIC name token the
+  // planner exposes. Same "absent / falsy / value" semantics as
+  // documented on the backend.
+  type SecondaryTokenField =
+    | 'speed' | 'roe' | 'hdg' | 'flag_wait' | 'flag_set'
+    | 'scale' | 'direct' | 'strength' | 'phase' | 'deployment';
   const setWpToken = useCallback(<F extends SecondaryTokenField>(
     groupId: number, wpIndex: number, field: F, value: WpTaskAssignment[F],
   ) => {
@@ -660,11 +672,16 @@ export function TicSetupPanel() {
           // Include each secondary token only if the field was touched.
           // `undefined` = leave alone; null / "" = strip; anything else
           // = set. The backend handler honours those semantics 1:1.
-          if (t.speed     !== undefined) task.speed     = t.speed;
-          if (t.roe       !== undefined) task.roe       = t.roe;
-          if (t.hdg       !== undefined) task.hdg       = t.hdg;
-          if (t.flag_wait !== undefined) task.flag_wait = t.flag_wait;
-          if (t.flag_set  !== undefined) task.flag_set  = t.flag_set;
+          if (t.speed      !== undefined) task.speed      = t.speed;
+          if (t.roe        !== undefined) task.roe        = t.roe;
+          if (t.hdg        !== undefined) task.hdg        = t.hdg;
+          if (t.flag_wait  !== undefined) task.flag_wait  = t.flag_wait;
+          if (t.flag_set   !== undefined) task.flag_set   = t.flag_set;
+          if (t.scale      !== undefined) task.scale      = t.scale;
+          if (t.direct     !== undefined) task.direct     = t.direct;
+          if (t.strength   !== undefined) task.strength   = t.strength;
+          if (t.phase      !== undefined) task.phase      = t.phase;
+          if (t.deployment !== undefined) task.deployment = t.deployment;
           return task;
         });
         if (tasks.length > 0) {
@@ -1028,6 +1045,14 @@ export function TicSetupPanel() {
                                 const hdgMatch       = wpn.match(/\bhdg=(\d+)\b/i);
                                 const flagWaitMatch  = wpn.match(/\bflag=(\w+)\b/i);
                                 const flagSetMatch   = wpn.match(/\bflag\+(\w+)\b/i);
+                                // v0.9.59 — scale/direct/strength via the same
+                                // \w+ permissive shape (allowing `.` for
+                                // decimals on scale and strength).
+                                const scaleMatch    = wpn.match(/\bscale=([\d.]+)/i);
+                                const directMatch   = wpn.match(/\bdirect=(y|n|yes|no)\b/i);
+                                const strengthMatch = wpn.match(/\bstrength=([\d.]+)/i);
+                                const phaseMatch    = wpn.match(/"([^"]+)"/);
+                                const deployMatch   = wpn.match(/\b(mount|dismount)\b/i);
                                 const nameMinutes = tNameMatch ? parseInt(tNameMatch[1], 10) : 0;
                                 const action: WpActionValue = fromState?.action
                                   ?? (tNameMatch ? 'goto_at_time' : 'goto');
@@ -1051,6 +1076,23 @@ export function TicSetupPanel() {
                                   flag_set: fromState?.flag_set   !== undefined
                                        ? (fromState.flag_set ?? '')
                                        : (flagSetMatch ? flagSetMatch[1] : ''),
+                                  scale: fromState?.scale      !== undefined
+                                       ? (fromState.scale ?? '')
+                                       : (scaleMatch ? scaleMatch[1] : ''),
+                                  direct: (fromState?.direct   !== undefined
+                                       ? (fromState.direct ?? '')
+                                       : (directMatch
+                                           ? (directMatch[1].toLowerCase().startsWith('y') ? 'y' : 'n')
+                                           : '')) as string,
+                                  strength: fromState?.strength !== undefined
+                                       ? (fromState.strength ?? '')
+                                       : (strengthMatch ? strengthMatch[1] : ''),
+                                  phase: fromState?.phase      !== undefined
+                                       ? (fromState.phase ?? '')
+                                       : (phaseMatch ? phaseMatch[1] : ''),
+                                  deployment: (fromState?.deployment !== undefined
+                                       ? (fromState.deployment ?? '')
+                                       : (deployMatch ? deployMatch[1].toLowerCase() : '')) as string,
                                 };
                                 const touched = fromState !== undefined;
                                 return (
@@ -1185,6 +1227,76 @@ export function TicSetupPanel() {
                                             style={tokenInputStyle(96)}
                                             title="flag+X — TIC sets flag X true on arrival"
                                           />
+                                        </div>
+                                        {/* v0.9.59 row: scale + direct + strength */}
+                                        <div style={tokenRowStyle}>
+                                          <span style={paramLblStyle}>scale</span>
+                                          <input
+                                            type="number" min={0} max={2} step={0.1}
+                                            placeholder=""
+                                            value={eff.scale === '' ? '' : String(eff.scale)}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setWpToken(sel.groupId, wpIndex, 'scale', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(72)}
+                                            title="scale=N.M — formation scale factor (0.5 tight, 1.0 default, 2.0 spread)"
+                                          />
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>direct</span>
+                                          <select
+                                            value={eff.direct ?? ''}
+                                            onChange={(e) => {
+                                              const v = e.target.value as 'y' | 'n' | '';
+                                              setWpToken(sel.groupId, wpIndex, 'direct', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(64)}
+                                            title="direct=y/n — skip to this WP straight (retreat logic when combined with strength=)"
+                                          >
+                                            <option value="">—</option>
+                                            <option value="y">y</option>
+                                            <option value="n">n</option>
+                                          </select>
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>strength</span>
+                                          <input
+                                            type="number" min={0} max={1} step={0.1}
+                                            placeholder=""
+                                            value={eff.strength === '' ? '' : String(eff.strength)}
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setWpToken(sel.groupId, wpIndex, 'strength', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(72)}
+                                            title="strength=N.M — combat-effectiveness threshold (0.0-1.0); below this the formation moves to this WP. Pair with direct=y for retreat."
+                                          />
+                                        </div>
+                                        {/* v0.9.59 row: phase + deployment */}
+                                        <div style={tokenRowStyle}>
+                                          <span style={paramLblStyle}>phase</span>
+                                          <input
+                                            type="text"
+                                            placeholder=""
+                                            value={String(eff.phase ?? '')}
+                                            onChange={(e) => {
+                                              const v = e.target.value.trim();
+                                              setWpToken(sel.groupId, wpIndex, 'phase', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(140)}
+                                            title='"phase_name" — quoted phase identifier; TIC groups all WPs with the same phase together'
+                                          />
+                                          <span style={{ ...paramLblStyle, marginLeft: 8 }}>deploy</span>
+                                          <select
+                                            value={eff.deployment ?? ''}
+                                            onChange={(e) => {
+                                              const v = e.target.value as DeploymentValue;
+                                              setWpToken(sel.groupId, wpIndex, 'deployment', v === '' ? null : v);
+                                            }}
+                                            style={tokenInputStyle(112)}
+                                            title="mount / dismount — infantry-carrier load/unload at this WP"
+                                          >
+                                            <option value="">—</option>
+                                            <option value="mount">mount</option>
+                                            <option value="dismount">dismount</option>
+                                          </select>
                                         </div>
                                       </div>
                                     </td>
