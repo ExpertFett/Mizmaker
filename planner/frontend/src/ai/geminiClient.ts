@@ -69,12 +69,23 @@ export async function callGemini(opts: GeminiCallOpts): Promise<GeminiResult> {
     }
   }
 
+  // Gemini 2.5 Flash/Pro use internal "thinking" tokens by default.
+  // These DO count against maxOutputTokens but are NOT returned as
+  // visible text, so a 600-token budget can produce ~20 tokens of
+  // actual output. For our use cases (structured SOP extraction +
+  // constrained-format prose generation) thinking adds latency and
+  // cost without helping output quality. Disable it explicitly.
+  // The field is ignored on pre-2.5 models, but we gate on the model
+  // string anyway in case Google ever 400's on unsupported configs.
+  const is25 = /^gemini-2\.5/i.test(model);
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: maxTokens,
+    ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+    ...(is25 ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+  };
   const body: Record<string, unknown> = {
     contents: [{ role: 'user', parts }],
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
-    },
+    generationConfig,
   };
   if (system) {
     body.systemInstruction = { parts: [{ text: system }] };
