@@ -99,8 +99,8 @@ const CATEGORY_ORDER = ['Flight Model', 'Views & HUD', 'Comms & Traffic', 'AI & 
 const sectionStyle: React.CSSProperties = { marginBottom: 20 };
 
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, color: '#4a8fd4', textTransform: 'uppercase',
-  letterSpacing: 1, padding: '6px 0', borderBottom: '1px solid #4a4a4a', marginBottom: 8,
+  fontSize: 12, fontWeight: 600, color: '#d49a30', textTransform: 'uppercase',
+  letterSpacing: 1, padding: '6px 0', borderBottom: '1px solid #4a5258', marginBottom: 8,
 };
 
 const rowStyle: React.CSSProperties = {
@@ -111,8 +111,8 @@ const rowStyle: React.CSSProperties = {
 const altRow: React.CSSProperties = { ...rowStyle, background: 'rgba(74, 143, 212, 0.04)' };
 
 const selectStyle: React.CSSProperties = {
-  background: '#262626', border: '1px solid #4a4a4a', borderRadius: 4,
-  color: '#e0e0e0', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
+  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+  color: '#1a1f25', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
   fontFamily: 'inherit', minWidth: 140,
 };
 
@@ -143,22 +143,22 @@ function TriToggle({ value, onChange }: {
       {/* Track */}
       <div style={{
         width: 44, height: 22, borderRadius: 11, position: 'relative',
-        background: isOn ? 'rgba(63, 185, 80, 0.25)' : isOff ? 'rgba(217, 80, 80, 0.2)' : '#3a3a3a',
-        border: `1px solid ${isOn ? 'rgba(63, 185, 80, 0.4)' : isOff ? 'rgba(217, 80, 80, 0.3)' : '#3a3a3a'}`,
+        background: isOn ? 'rgba(63, 185, 80, 0.25)' : isOff ? 'rgba(217, 80, 80, 0.2)' : '#4a5258',
+        border: `1px solid ${isOn ? 'rgba(63, 185, 80, 0.4)' : isOff ? 'rgba(217, 80, 80, 0.3)' : '#4a5258'}`,
         transition: 'all 0.15s',
       }}>
         {/* Knob */}
         <div style={{
           width: 16, height: 16, borderRadius: '50%', position: 'absolute', top: 2,
           left: isOn ? 24 : isUnset ? 12 : 2,
-          background: isOn ? '#3fb950' : isOff ? '#d95050' : '#aaaaaa',
+          background: isOn ? '#3fb950' : isOff ? '#d95050' : '#3a4248',
           transition: 'all 0.15s',
         }} />
       </div>
       {/* Label */}
       <span style={{
         fontSize: 11, fontWeight: 600, minWidth: 55,
-        color: isOn ? '#3fb950' : isOff ? '#d95050' : '#aaaaaa',
+        color: isOn ? '#3fb950' : isOff ? '#d95050' : '#3a4248',
       }}>
         {isOn ? 'ON' : isOff ? 'OFF' : 'NOT SET'}
       </span>
@@ -223,15 +223,15 @@ export function MissionOptionsTab() {
 
   return (
     <div style={{ maxWidth: 700 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#e0e0e0', marginBottom: 4 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a1f25', marginBottom: 4 }}>
         Mission Options
       </h2>
-      <p style={{ fontSize: 12, color: '#aaaaaa', marginBottom: 4 }}>
+      <p style={{ fontSize: 12, color: '#3a4248', marginBottom: 4 }}>
         Force options for all players in this mission. Changes are written to the .miz on export.
-        {overview?.sortie && <span> &mdash; <strong style={{ color: '#e0e0e0' }}>{overview.sortie}</strong></span>}
+        {overview?.sortie && <span> &mdash; <strong style={{ color: '#1a1f25' }}>{overview.sortie}</strong></span>}
       </p>
-      <p style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 20 }}>
-        <strong style={{ color: '#4a8fd4' }}>NOT SET</strong> = uses each player's local settings &nbsp;|&nbsp;
+      <p style={{ fontSize: 11, color: '#3a4248', marginBottom: 20 }}>
+        <strong style={{ color: '#d49a30' }}>NOT SET</strong> = uses each player's local settings &nbsp;|&nbsp;
         <strong style={{ color: '#3fb950' }}>ON</strong> = forced enabled &nbsp;|&nbsp;
         <strong style={{ color: '#d95050' }}>OFF</strong> = forced disabled
       </p>
@@ -244,14 +244,14 @@ export function MissionOptionsTab() {
         style={{
           marginBottom: 20,
           padding: '10px 14px',
-          background: '#0a1218',
+          background: '#6e7c83',
           border: '1px solid #1a2a3a',
           borderRadius: 6,
         }}
       >
         <div
           style={{
-            fontSize: 11, color: '#888', textTransform: 'uppercase',
+            fontSize: 11, color: '#5a6268', textTransform: 'uppercase',
             letterSpacing: 1, fontWeight: 600, marginBottom: 8,
           }}
         >
@@ -267,14 +267,14 @@ export function MissionOptionsTab() {
             type="checkbox"
             checked={stripRequiredModules}
             onChange={(e) => setStripRequiredModules(e.target.checked)}
-            style={{ accentColor: '#4a8fd4', marginTop: 2 }}
+            style={{ accentColor: '#d49a30', marginTop: 2 }}
           />
           <span>
-            <span style={{ color: '#e0e0e0', fontWeight: 600 }}>
+            <span style={{ color: '#1a1f25', fontWeight: 600 }}>
               Strip required modules on download
             </span>
-            <span style={{ color: '#888', display: 'block', fontSize: 12, marginTop: 2 }}>
-              Empties the .miz's <code style={{ color: '#cccccc' }}>requiredModules</code> block
+            <span style={{ color: '#5a6268', display: 'block', fontSize: 12, marginTop: 2 }}>
+              Empties the .miz's <code style={{ color: '#1a1f25' }}>requiredModules</code> block
               so anyone can load the mission, regardless of which DCS mods they have installed.
               On by default — turn off if your mission genuinely needs a specific mod and you
               want DCS to enforce it.
@@ -290,7 +290,7 @@ export function MissionOptionsTab() {
             <div style={sectionTitleStyle}>{cat}</div>
             {defs.map((def, i) => (
               <div key={def.key} style={i % 2 === 0 ? rowStyle : altRow}>
-                <span style={{ color: '#e0e0e0' }}>{def.label}</span>
+                <span style={{ color: '#1a1f25' }}>{def.label}</span>
                 {def.format === 'bool' ? (
                   <TriToggle
                     value={missionOptions[def.key] as boolean | undefined}
@@ -322,7 +322,7 @@ export function MissionOptionsTab() {
           want the 5MC silenced or the deck cleared. */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>Supercarrier (Modules)</div>
-        <p style={{ fontSize: 11, color: '#888', padding: '0 12px 8px', margin: 0 }}>
+        <p style={{ fontSize: 11, color: '#5a6268', padding: '0 12px 8px', margin: 0 }}>
           Mission-wide rendering toggles for the DCS Supercarrier module.
           Default to ON when not set in the .miz; flip OFF to silence the
           5MC PA system or hide deck crew (e.g. for cinematic recovery
@@ -335,7 +335,7 @@ export function MissionOptionsTab() {
           const checked = scOpts[opt.key] !== false;  // missing -> ON
           return (
             <div key={opt.key} style={i % 2 === 0 ? rowStyle : altRow}>
-              <span style={{ color: '#e0e0e0' }}>{opt.label}</span>
+              <span style={{ color: '#1a1f25' }}>{opt.label}</span>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -345,7 +345,7 @@ export function MissionOptionsTab() {
                 />
                 <span style={{
                   fontSize: 11, fontWeight: 600, minWidth: 30,
-                  color: checked ? '#3fb950' : '#aaaaaa',
+                  color: checked ? '#3fb950' : '#3a4248',
                 }}>
                   {checked ? 'ON' : 'OFF'}
                 </span>

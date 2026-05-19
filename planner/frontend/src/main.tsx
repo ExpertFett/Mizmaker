@@ -15,6 +15,12 @@ style.textContent = `
   body {
     overflow: hidden;
     font-size: 15px;
+    /* Carrier-light theme background — prevents a white flash during
+       app boot and matches the editor chrome behind the scrollbar
+       track. See theme/dark-grey-backup.md for the prior dark-theme
+       palette + revert instructions. */
+    background: #7a8a92;
+    color: #1a1f25;
     /* B612 = Airbus cockpit display font; falls back through technical
        sans options before generic. */
     font-family: 'B612', 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
@@ -24,10 +30,10 @@ style.textContent = `
   /* Tabular data — coords, frequencies, channel numbers — stays mono. */
   pre, code, kbd, samp { font-family: 'B612 Mono', 'Consolas', monospace; }
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #222222; }
-  ::-webkit-scrollbar-thumb { background: #4a4a4a; }
+  ::-webkit-scrollbar-track { background: #8c9ba2; }
+  ::-webkit-scrollbar-thumb { background: #4a5258; }
   input, select, button, textarea { font-size: inherit; font-family: inherit; }
-  input:focus, select:focus { outline: 1px solid #4a8fd4; }
+  input:focus, select:focus { outline: 1px solid #d49a30; }
   /* Hide number input spinners (the up/down arrows) */
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

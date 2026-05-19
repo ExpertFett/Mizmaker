@@ -20,12 +20,12 @@ const CATEGORY_LABELS: Record<TicCategory, string> = {
 
 const CATEGORY_COLORS: Record<TicCategory, string> = {
   tank: '#d29922',
-  ifv: '#4a8fd4',
+  ifv: '#d49a30',
   apc: '#3fb950',
-  infantry: '#cccccc',
+  infantry: '#1a1f25',
   airdefense: '#d95050',
   artillery: '#c090d0',
-  other: '#aaaaaa',
+  other: '#3a4248',
 };
 
 /** Map DCS unit type strings to TIC categories */
@@ -725,7 +725,7 @@ export function TicSetupPanel() {
 
   if (totalVehicleGroups === 0) {
     return (
-      <div style={{ color: '#aaaaaa', fontSize: 14, padding: 16 }}>
+      <div style={{ color: '#3a4248', fontSize: 14, padding: 16 }}>
         No ground vehicle groups found in this mission.
       </div>
     );
@@ -739,7 +739,7 @@ export function TicSetupPanel() {
           <div style={{ fontSize: 15, fontWeight: 600, color: '#d29922', marginBottom: 4 }}>
             TIC Script Auto-Setup
           </div>
-          <div style={{ fontSize: 13, color: '#aaaaaa' }}>
+          <div style={{ fontSize: 13, color: '#3a4248' }}>
             Renames ground groups to TIC-compatible format with real-world military designations.
             Groups with the same formation name will fight together.
           </div>
@@ -777,7 +777,7 @@ export function TicSetupPanel() {
       </div>
 
       {vehicleGroups.length === 0 ? (
-        <div style={{ color: '#aaaaaa', fontSize: 14, padding: '16px 0' }}>
+        <div style={{ color: '#3a4248', fontSize: 14, padding: '16px 0' }}>
           No vehicle groups for this coalition. Try a different filter above.
         </div>
       ) : (
@@ -785,12 +785,12 @@ export function TicSetupPanel() {
           {/* Stats bar */}
           <div style={{
             display: 'flex', gap: 12, marginBottom: 16, padding: '10px 14px',
-            background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
+            background: '#8c9ba2', border: '1px solid #4a5258', borderRadius: 4,
             flexWrap: 'wrap',
           }}>
-            <div style={{ fontSize: 13, color: '#aaaaaa' }}>
-              <strong style={{ color: '#e0e0e0' }}>{assignments.length}</strong> groups in{' '}
-              <strong style={{ color: '#e0e0e0' }}>{formationNames.size}</strong> formations
+            <div style={{ fontSize: 13, color: '#3a4248' }}>
+              <strong style={{ color: '#1a1f25' }}>{assignments.length}</strong> groups in{' '}
+              <strong style={{ color: '#1a1f25' }}>{formationNames.size}</strong> formations
             </div>
             <div style={{ display: 'flex', gap: 10, flex: 1, justifyContent: 'flex-end' }}>
               {Array.from(categoryStats).map(([cat, count]) => (
@@ -807,8 +807,8 @@ export function TicSetupPanel() {
               everything TIC_v1.1.lua::extract* parses. */}
           <details style={{
             marginBottom: 16,
-            background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-            fontSize: 12, color: '#cccccc',
+            background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+            fontSize: 12, color: '#1a1f25',
           }}>
             <summary style={{
               padding: '8px 14px',
@@ -821,7 +821,7 @@ export function TicSetupPanel() {
             </summary>
             <div style={{ padding: '4px 14px 12px', lineHeight: 1.6 }}>
               <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: '#e0e0e0' }}>Workflow:</strong>{' '}
+                <strong style={{ color: '#1a1f25' }}>Workflow:</strong>{' '}
                 Click <em>Regenerate</em> to auto-assign formations →
                 tweak per-group <em>Leader/Member</em> + <em>Grouped/Split</em> →
                 set per-WP tokens on the right →
@@ -830,14 +830,14 @@ export function TicSetupPanel() {
                 bookends the WP scheduling locks DCS ME requires.
               </div>
               <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: '#e0e0e0' }}>Group name format:</strong>{' '}
+                <strong style={{ color: '#1a1f25' }}>Group name format:</strong>{' '}
                 <code style={{ color: '#3fb950' }}>TIC!Formation#</code> = leader,{' '}
                 <code style={{ color: '#d29922' }}>TIC:Formation#</code> = member,{' '}
-                <code style={{ color: '#4a8fd4' }}>+</code> after formation = keep units grouped
+                <code style={{ color: '#d49a30' }}>+</code> after formation = keep units grouped
                 (don&apos;t let TIC split them).
               </div>
               <div>
-                <strong style={{ color: '#e0e0e0' }}>Per-waypoint tokens</strong> —
+                <strong style={{ color: '#1a1f25' }}>Per-waypoint tokens</strong> —
                 each one goes into the WP name. Empty input = no token, fill it
                 in = TIC reads it at runtime. Tokens stack: a single WP can
                 carry every token below at once.
@@ -868,7 +868,7 @@ export function TicSetupPanel() {
                   <tr><td style={helpTdMonoStyle}>dismount</td>      <td style={helpTdStyle}>Infantry dismounts from its IFV carrier at this WP</td>                                       <td style={helpTdStyle}>(bare word)</td></tr>
                 </tbody>
               </table>
-              <div style={{ marginTop: 10, fontSize: 11, color: '#888' }}>
+              <div style={{ marginTop: 10, fontSize: 11, color: '#5a6268' }}>
                 The planner writes these tokens into each waypoint&apos;s name field.
                 TIC_v1.1.lua parses them at runtime (see <code>extractOffsetTime</code>,
                 <code> extractSpeed</code>, etc. inside the bundled script).
@@ -908,8 +908,8 @@ export function TicSetupPanel() {
                         onClick={() => setSelectedGroupId(a.groupId)}
                         style={{
                           ...listRowStyle,
-                          background: isSelected ? '#2a2a2a' : 'transparent',
-                          borderLeft: isSelected ? '3px solid #4a8fd4' : '3px solid transparent',
+                          background: isSelected ? '#aab4ba' : 'transparent',
+                          borderLeft: isSelected ? '3px solid #d49a30' : '3px solid transparent',
                         }}
                         title={`status: ${STATUS_LABEL[status]}`}
                       >
@@ -918,8 +918,8 @@ export function TicSetupPanel() {
                           background: STATUS_COLOR[status], flexShrink: 0,
                         }} />
                         <span style={{
-                          background: a.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-                          color: '#1a1a1a', fontSize: 10, fontWeight: 700,
+                          background: a.coalition === 'blue' ? '#d49a30' : '#d95050',
+                          color: '#7a8a92', fontSize: 10, fontWeight: 700,
                           padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase',
                         }}>
                           {a.coalition}
@@ -927,12 +927,12 @@ export function TicSetupPanel() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
                             fontFamily: "'B612 Mono', monospace", fontSize: 12.5,
-                            color: '#e0e0e0', whiteSpace: 'nowrap',
+                            color: '#1a1f25', whiteSpace: 'nowrap',
                             overflow: 'hidden', textOverflow: 'ellipsis',
                           }}>
                             {a.newGroupName}
                           </div>
-                          <div style={{ fontSize: 11, color: '#aaaaaa' }}>
+                          <div style={{ fontSize: 11, color: '#3a4248' }}>
                             {wpCount} WP{wpCount !== 1 ? 's' : ''} &middot; {CATEGORY_LABELS[a.ticCategory]} &middot; {a.isLeader ? 'leader' : 'member'}
                           </div>
                         </div>
@@ -944,7 +944,7 @@ export function TicSetupPanel() {
                 {/* RIGHT: detail pane for the selected group */}
                 <div style={detailColumnStyle}>
                   {!sel ? (
-                    <div style={{ padding: 24, color: '#aaaaaa', fontSize: 13, textAlign: 'center' }}>
+                    <div style={{ padding: 24, color: '#3a4248', fontSize: 13, textAlign: 'center' }}>
                       Select a group on the left to see its waypoints.
                     </div>
                   ) : (
@@ -952,13 +952,13 @@ export function TicSetupPanel() {
                       {/* Detail header */}
                       <div style={{
                         padding: '12px 16px',
-                        borderBottom: '1px solid #3a3a3a',
+                        borderBottom: '1px solid #4a5258',
                         borderLeft: `3px solid ${CATEGORY_COLORS[sel.ticCategory]}`,
                         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                       }}>
                         <span style={{
-                          background: sel.coalition === 'blue' ? '#4a8fd4' : '#d95050',
-                          color: '#1a1a1a', fontSize: 11, fontWeight: 700,
+                          background: sel.coalition === 'blue' ? '#d49a30' : '#d95050',
+                          color: '#7a8a92', fontSize: 11, fontWeight: 700,
                           padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase',
                         }}>{sel.coalition}</span>
                         <span style={{
@@ -968,11 +968,11 @@ export function TicSetupPanel() {
                           padding: '1px 6px', borderRadius: 3,
                         }}>{CATEGORY_LABELS[sel.ticCategory]}</span>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 200 }}>
-                          <span style={{ color: '#aaaaaa', fontSize: 12, textDecoration: 'line-through' }}>
+                          <span style={{ color: '#3a4248', fontSize: 12, textDecoration: 'line-through' }}>
                             {sel.originalName}
                           </span>
-                          <span style={{ color: '#aaaaaa' }}>&rarr;</span>
-                          <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>
+                          <span style={{ color: '#3a4248' }}>&rarr;</span>
+                          <span style={{ color: '#1a1f25', fontSize: 14, fontWeight: 600, fontFamily: "'B612 Mono', monospace" }}>
                             {sel.newGroupName}
                           </span>
                         </div>
@@ -980,8 +980,8 @@ export function TicSetupPanel() {
                           onClick={() => toggleLeader(sel.groupId)}
                           style={{
                             ...smallBtnStyle,
-                            color: sel.isLeader ? '#3fb950' : '#aaaaaa',
-                            border: `1px solid ${sel.isLeader ? '#3fb950' : '#3a3a3a'}`,
+                            color: sel.isLeader ? '#3fb950' : '#3a4248',
+                            border: `1px solid ${sel.isLeader ? '#3fb950' : '#4a5258'}`,
                           }}
                           title="Toggle formation leader (TIC! vs TIC:)"
                         >
@@ -991,8 +991,8 @@ export function TicSetupPanel() {
                           onClick={() => toggleKeepTogether(sel.groupId)}
                           style={{
                             ...smallBtnStyle,
-                            color: sel.keepTogether ? '#4a8fd4' : '#aaaaaa',
-                            border: `1px solid ${sel.keepTogether ? '#4a8fd4' : '#3a3a3a'}`,
+                            color: sel.keepTogether ? '#d49a30' : '#3a4248',
+                            border: `1px solid ${sel.keepTogether ? '#d49a30' : '#4a5258'}`,
                           }}
                           title="Keep units grouped (+) or let TIC split them"
                         >
@@ -1003,17 +1003,17 @@ export function TicSetupPanel() {
                       {/* Formation name + unit chips */}
                       <div style={{
                         padding: '8px 16px',
-                        borderBottom: '1px solid #262626',
+                        borderBottom: '1px solid #6e7c83',
                         display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
-                        fontSize: 12, color: '#aaaaaa',
+                        fontSize: 12, color: '#3a4248',
                       }}>
                         <label style={{ fontWeight: 600 }}>Formation:</label>
                         <input
                           value={sel.formationName}
                           onChange={(e) => updateFormationName(sel.groupId, e.target.value)}
                           style={{
-                            background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
-                            color: '#e0e0e0', fontSize: 13, padding: '3px 8px', width: 220, outline: 'none',
+                            background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
+                            color: '#1a1f25', fontSize: 13, padding: '3px 8px', width: 220, outline: 'none',
                             fontFamily: "'B612 Mono', monospace",
                           }}
                         />
@@ -1027,8 +1027,8 @@ export function TicSetupPanel() {
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {sel.units.map((u) => (
                             <span key={u.unitId} style={{
-                              fontSize: 11, color: '#cccccc', background: '#262626',
-                              padding: '2px 6px', borderRadius: 3, border: '1px solid #3a3a3a',
+                              fontSize: 11, color: '#1a1f25', background: '#6e7c83',
+                              padding: '2px 6px', borderRadius: 3, border: '1px solid #4a5258',
                               fontFamily: "'B612 Mono', monospace",
                             }}>
                               {u.newName}
@@ -1042,7 +1042,7 @@ export function TicSetupPanel() {
                         <h3 style={{
                           margin: '0 0 10px',
                           fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
-                          color: '#aaaaaa', fontWeight: 600,
+                          color: '#3a4248', fontWeight: 600,
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}>
                           <span>Route &mdash; {selWaypoints.length} waypoint{selWaypoints.length !== 1 ? 's' : ''}</span>
@@ -1056,7 +1056,7 @@ export function TicSetupPanel() {
                           )}
                         </h3>
                         {selWaypoints.length === 0 ? (
-                          <div style={{ color: '#aaaaaa', fontSize: 13, padding: '12px 0' }}>
+                          <div style={{ color: '#3a4248', fontSize: 13, padding: '12px 0' }}>
                             This group has no waypoints in the mission. Add waypoints in DCS ME first.
                           </div>
                         ) : (
@@ -1163,7 +1163,7 @@ export function TicSetupPanel() {
                                 const touched = fromState !== undefined;
                                 return (
                                   <tr key={wpIndex} style={{
-                                    borderBottom: '1px solid #262626',
+                                    borderBottom: '1px solid #6e7c83',
                                   }}>
                                     <td style={{
                                       ...wpTdStyle,
@@ -1174,7 +1174,7 @@ export function TicSetupPanel() {
                                     }}>
                                       WP{wpLabel}
                                     </td>
-                                    <td style={{ ...wpTdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#aaaaaa', whiteSpace: 'nowrap' }}>
+                                    <td style={{ ...wpTdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#3a4248', whiteSpace: 'nowrap' }}>
                                       {wp.lat != null && wp.lon != null
                                         ? <>N {wp.lat.toFixed(3)}<br />E {wp.lon.toFixed(3)}</>
                                         : <>x {wp.x.toFixed(0)}<br />y {wp.y.toFixed(0)}</>
@@ -1217,7 +1217,7 @@ export function TicSetupPanel() {
                                             <span style={paramLblStyle}>min after previous WP</span>
                                           </div>
                                         ) : (
-                                          <div style={{ ...paramLblStyle, color: '#666' }}>
+                                          <div style={{ ...paramLblStyle, color: '#5a6268' }}>
                                             &mdash; no time constraint &mdash;
                                           </div>
                                         )}
@@ -1383,10 +1383,10 @@ export function TicSetupPanel() {
           {/* Apply bar at bottom */}
           <div style={{
             marginTop: 16, padding: '12px 14px',
-            background: '#222222', border: '1px solid #3a3a3a', borderRadius: 4,
+            background: '#8c9ba2', border: '1px solid #4a5258', borderRadius: 4,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <div style={{ fontSize: 13, color: '#aaaaaa' }}>
+            <div style={{ fontSize: 13, color: '#3a4248' }}>
               {(() => {
                 const total = assignments.length;
                 const appliedCount = assignments.filter((a) => appliedGroups.has(a.groupId) && !dirtyGroups.has(a.groupId)).length;
@@ -1448,10 +1448,10 @@ function getMajority<T>(items: T[], fallback?: T): T {
 /* ------------------------------------------------------------------ */
 
 const btnStyle: React.CSSProperties = {
-  background: '#3a3a3a',
-  border: '1px solid #3a3a3a',
+  background: '#4a5258',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#4a8fd4',
+  color: '#d49a30',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 12px',
@@ -1468,10 +1468,10 @@ const smallBtnStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 13,
   padding: '6px 8px',
   outline: 'none',
@@ -1481,8 +1481,8 @@ const selectStyle: React.CSSProperties = {
 // === v0.9.42 side-panel layout styles ===
 
 const listColumnStyle: React.CSSProperties = {
-  background: '#222222',
-  border: '1px solid #3a3a3a',
+  background: '#8c9ba2',
+  border: '1px solid #4a5258',
   borderRadius: 4,
   overflow: 'hidden',
   alignSelf: 'flex-start',
@@ -1492,18 +1492,18 @@ const listColumnStyle: React.CSSProperties = {
 
 const listHeaderStyle: React.CSSProperties = {
   padding: '10px 12px',
-  borderBottom: '1px solid #3a3a3a',
+  borderBottom: '1px solid #4a5258',
   fontSize: 11,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
-  color: '#aaaaaa',
+  color: '#3a4248',
   background: '#1d1d1d',
   fontWeight: 600,
 };
 
 const listRowStyle: React.CSSProperties = {
   padding: '8px 12px',
-  borderBottom: '1px solid #262626',
+  borderBottom: '1px solid #6e7c83',
   cursor: 'pointer',
   display: 'flex',
   gap: 8,
@@ -1512,8 +1512,8 @@ const listRowStyle: React.CSSProperties = {
 };
 
 const detailColumnStyle: React.CSSProperties = {
-  background: '#222222',
-  border: '1px solid #3a3a3a',
+  background: '#8c9ba2',
+  border: '1px solid #4a5258',
   borderRadius: 4,
   display: 'flex',
   flexDirection: 'column',
@@ -1525,10 +1525,10 @@ const wpThStyle: React.CSSProperties = {
   fontSize: 10,
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
-  color: '#aaaaaa',
+  color: '#3a4248',
   fontWeight: 600,
   padding: '6px 8px 6px 0',
-  borderBottom: '1px solid #3a3a3a',
+  borderBottom: '1px solid #4a5258',
 };
 
 const wpTdStyle: React.CSSProperties = {
@@ -1538,7 +1538,7 @@ const wpTdStyle: React.CSSProperties = {
 
 const paramLblStyle: React.CSSProperties = {
   fontSize: 11,
-  color: '#aaaaaa',
+  color: '#3a4248',
 };
 
 // v0.9.57 — compact inline inputs for the per-WP TIC-token row.
@@ -1546,9 +1546,9 @@ const paramLblStyle: React.CSSProperties = {
 // numbers; flag identifiers are slightly wider).
 function tokenInputStyle(width: number): React.CSSProperties {
   return {
-    background: '#262626',
-    border: '1px solid #3a3a3a',
-    color: '#e0e0e0',
+    background: '#6e7c83',
+    border: '1px solid #4a5258',
+    color: '#1a1f25',
     fontFamily: "'B612 Mono', monospace",
     fontSize: 12.5,
     padding: '4px 6px',
@@ -1570,8 +1570,8 @@ const tokenRowStyle: React.CSSProperties = {
 const helpThStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '4px 8px',
-  borderBottom: '1px solid #3a3a3a',
-  color: '#888',
+  borderBottom: '1px solid #4a5258',
+  color: '#5a6268',
   fontSize: 10,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
@@ -1581,9 +1581,9 @@ const helpThStyle: React.CSSProperties = {
 
 const helpTdStyle: React.CSSProperties = {
   padding: '3px 8px',
-  borderBottom: '1px solid #2a2a2a',
+  borderBottom: '1px solid #aab4ba',
   verticalAlign: 'top',
-  color: '#cccccc',
+  color: '#1a1f25',
   fontFamily: '-apple-system, "Segoe UI", system-ui, sans-serif',
 };
 

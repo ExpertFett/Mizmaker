@@ -291,19 +291,19 @@ export function KneeboardTab() {
   };
 
   const selectStyle: React.CSSProperties = {
-    background: '#262626',
-    border: '1px solid #3a3a3a',
+    background: '#6e7c83',
+    border: '1px solid #4a5258',
     borderRadius: 4,
-    color: '#e0e0e0',
+    color: '#1a1f25',
     fontSize: 13,
     padding: '4px 8px',
   };
 
   const btnStyle: React.CSSProperties = {
     background: '#333333',
-    border: '1px solid #4a4a4a',
+    border: '1px solid #4a5258',
     borderRadius: 4,
-    color: '#e0e0e0',
+    color: '#1a1f25',
     padding: '6px 14px',
     cursor: 'pointer',
     fontSize: 13,
@@ -312,13 +312,13 @@ export function KneeboardTab() {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 16px', fontWeight: 600 }}>
+      <h2 style={{ color: '#1a1f25', fontSize: 18, margin: '0 0 16px', fontWeight: 600 }}>
         Kneeboards
       </h2>
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 13, color: '#aaaaaa' }}>
+        <label style={{ fontSize: 13, color: '#3a4248' }}>
           Flight:
           <select
             value={selectedGroupId ?? ''}
@@ -331,7 +331,7 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        <label style={{ fontSize: 13, color: '#aaaaaa' }}>
+        <label style={{ fontSize: 13, color: '#3a4248' }}>
           Coords:
           <select
             value={coordFormat}
@@ -343,7 +343,7 @@ export function KneeboardTab() {
           </select>
         </label>
 
-        <label style={{ fontSize: 13, color: '#aaaaaa' }}>
+        <label style={{ fontSize: 13, color: '#3a4248' }}>
           Speed:
           <select
             value={speedRef}
@@ -359,7 +359,7 @@ export function KneeboardTab() {
         </label>
 
         {speedRef === 'auto' && (
-          <label style={{ fontSize: 13, color: '#aaaaaa' }}>
+          <label style={{ fontSize: 13, color: '#3a4248' }}>
             Mach above:
             <select
               value={machThreshold}
@@ -377,7 +377,7 @@ export function KneeboardTab() {
         )}
 
         <label
-          style={{ fontSize: 13, color: '#aaaaaa' }}
+          style={{ fontSize: 13, color: '#3a4248' }}
           title="How much info the threat card reveals. Realistic = vague threat zones, no specific systems (training default)."
         >
           Threat fidelity:
@@ -398,7 +398,7 @@ export function KneeboardTab() {
                 : '#3fb950',
               borderColor: threatFidelity === 'full' ? '#5a2a2a'
                 : threatFidelity === 'operational' ? '#5a4a2a'
-                : '#3a3a3a',
+                : '#4a5258',
             }}
           >
             <option value="realistic">Realistic — vague zones (default)</option>
@@ -419,7 +419,7 @@ export function KneeboardTab() {
             alignItems: 'center',
             gap: 6,
             fontSize: 13,
-            color: '#aaaaaa',
+            color: '#3a4248',
             cursor: 'pointer',
             userSelect: 'none',
           }}
@@ -429,7 +429,7 @@ export function KneeboardTab() {
             type="checkbox"
             checked={threatMapVisible}
             onChange={(e) => setKneeboardSettings({ threatMapVisible: e.target.checked })}
-            style={{ accentColor: '#4a8fd4' }}
+            style={{ accentColor: '#d49a30' }}
           />
           Show threats on map
         </label>
@@ -449,11 +449,11 @@ export function KneeboardTab() {
 
       {/* Card Selection */}
       <div style={{
-        marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
-        border: '1px solid #3a3a3a',
+        marginBottom: 16, padding: '10px 14px', background: '#7a8a92', borderRadius: 6,
+        border: '1px solid #4a5258',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Card Types</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>Card Types</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={() => {
@@ -479,12 +479,12 @@ export function KneeboardTab() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '6px 24px', marginBottom: 12 }}>
           {PER_FLIGHT_CARDS.map((card) => (
-            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e0e0e0', cursor: 'pointer', padding: '3px 0' }}>
+            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1a1f25', cursor: 'pointer', padding: '3px 0' }}>
               <input
                 type="checkbox"
                 checked={kneeboardSettings.cards[card.key]}
                 onChange={(e) => setKneeboardSettings({ cards: { ...kneeboardSettings.cards, [card.key]: e.target.checked } })}
-                style={{ accentColor: '#4a8fd4', flexShrink: 0 }}
+                style={{ accentColor: '#d49a30', flexShrink: 0 }}
               />
               <span style={{ whiteSpace: 'nowrap' }}>{card.label}</span>
               <span style={{ fontSize: 11, color: '#555555' }}>{card.desc}</span>
@@ -497,12 +497,12 @@ export function KneeboardTab() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '6px 24px', marginBottom: 10 }}>
           {SHARED_CARDS.map((card) => (
-            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e0e0e0', cursor: 'pointer', padding: '3px 0' }}>
+            <label key={card.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1a1f25', cursor: 'pointer', padding: '3px 0' }}>
               <input
                 type="checkbox"
                 checked={kneeboardSettings.cards[card.key]}
                 onChange={(e) => setKneeboardSettings({ cards: { ...kneeboardSettings.cards, [card.key]: e.target.checked } })}
-                style={{ accentColor: '#4a8fd4', flexShrink: 0 }}
+                style={{ accentColor: '#d49a30', flexShrink: 0 }}
               />
               <span style={{ whiteSpace: 'nowrap' }}>{card.label}</span>
               <span style={{ fontSize: 11, color: '#555555' }}>{card.desc}</span>
@@ -511,13 +511,13 @@ export function KneeboardTab() {
         </div>
 
         {/* Inject toggle */}
-        <div style={{ borderTop: '1px solid #3a3a3a', paddingTop: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e0e0e0', cursor: 'pointer' }}>
+        <div style={{ borderTop: '1px solid #4a5258', paddingTop: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1a1f25', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={injectKneeboards}
               onChange={(e) => setInjectKneeboards(e.target.checked)}
-              style={{ accentColor: '#4a8fd4' }}
+              style={{ accentColor: '#d49a30' }}
             />
             Inject selected cards into .miz on download
           </label>
@@ -548,7 +548,7 @@ export function KneeboardTab() {
           <span style={{ fontWeight: 700 }}>
             {threatFidelity === 'full' ? 'SPOILER WARNING' : 'PARTIAL REVEAL'}
           </span>
-          <span style={{ color: '#cccccc' }}>
+          <span style={{ color: '#1a1f25' }}>
             {threatFidelity === 'full'
               ? 'Threat card will show every SAM with name, range, and MGRS — only print this for instructor / debrief copies.'
               : 'Threat card will show ring sizes and rough positions. Pilot kneeboards usually want "Realistic — vague zones" instead.'}
@@ -567,8 +567,8 @@ export function KneeboardTab() {
           gap: 12,
           margin: '0 0 10px',
           padding: '8px 12px',
-          background: '#1a1a1a',
-          border: '1px solid #3a3a3a',
+          background: '#7a8a92',
+          border: '1px solid #4a5258',
           borderRadius: 6,
           fontSize: 12,
         }}
@@ -576,10 +576,10 @@ export function KneeboardTab() {
         <button
           onClick={() => setRebuildAt(Date.now())}
           style={{
-            background: '#262626',
-            border: '1px solid #4a8fd4',
+            background: '#6e7c83',
+            border: '1px solid #d49a30',
             borderRadius: 4,
-            color: '#4a8fd4',
+            color: '#d49a30',
             cursor: 'pointer',
             fontSize: 12,
             fontWeight: 600,
@@ -590,13 +590,13 @@ export function KneeboardTab() {
         >
           ↻ Rebuild
         </button>
-        <span style={{ color: '#aaaaaa' }}>
+        <span style={{ color: '#3a4248' }}>
           Last built:{' '}
-          <span style={{ color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+          <span style={{ color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>
             {new Date(rebuildAt).toLocaleTimeString()}
           </span>
         </span>
-        <span style={{ color: '#666', fontSize: 11, marginLeft: 'auto' }}>
+        <span style={{ color: '#5a6268', fontSize: 11, marginLeft: 'auto' }}>
           Cards auto-update on edits — Rebuild is a manual refresh / sanity check.
         </span>
       </div>
@@ -812,9 +812,9 @@ function CardCarousel({
   if (cardList.length === 0) {
     return (
       <div style={{
-        width: 600, height: 400, border: '1px dashed #4a4a4a', borderRadius: 6,
+        width: 600, height: 400, border: '1px dashed #4a5258', borderRadius: 6,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#aaaaaa', fontSize: 15,
+        color: '#3a4248', fontSize: 15,
       }}>
         {!selectedGroup ? 'Select a flight to preview' : 'No card types selected'}
       </div>
@@ -824,10 +824,10 @@ function CardCarousel({
   const current = cardList[cardIndex];
 
   const arrowBtn: React.CSSProperties = {
-    background: '#262626',
-    border: '1px solid #4a4a4a',
+    background: '#6e7c83',
+    border: '1px solid #4a5258',
     borderRadius: 6,
-    color: '#4a8fd4',
+    color: '#d49a30',
     cursor: 'pointer',
     fontSize: 22,
     fontWeight: 700,
@@ -841,7 +841,7 @@ function CardCarousel({
 
   const arrowDisabled: React.CSSProperties = {
     ...arrowBtn,
-    color: '#3a3a3a',
+    color: '#4a5258',
     cursor: 'default',
   };
 
@@ -855,13 +855,13 @@ function CardCarousel({
         {/* Tactical C/S pilot selector */}
         {pilots.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
-            <span style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 600, letterSpacing: 0.5 }}>PILOT:</span>
+            <span style={{ fontSize: 11, color: '#3a4248', fontWeight: 600, letterSpacing: 0.5 }}>PILOT:</span>
             <select
               value={selectedPilotId ?? '__all__'}
               onChange={(e) => setSelectedPilotId(e.target.value === '__all__' ? null : Number(e.target.value))}
               style={{
-                background: '#262626', border: '1px solid #4a4a4a', borderRadius: 3,
-                color: selectedPilotId ? '#4a8fd4' : '#cccccc',
+                background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
+                color: selectedPilotId ? '#d49a30' : '#1a1f25',
                 fontSize: 12, fontWeight: 600, padding: '3px 8px', fontFamily: 'inherit',
               }}
             >
@@ -881,10 +881,10 @@ function CardCarousel({
           ‹
         </button>
         <div style={{ textAlign: 'center', minWidth: 180 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1f25' }}>
             {current.label}
           </div>
-          <div style={{ fontSize: 11, color: '#aaaaaa' }}>
+          <div style={{ fontSize: 11, color: '#3a4248' }}>
             {cardIndex + 1} / {cardList.length}
           </div>
         </div>
@@ -899,7 +899,7 @@ function CardCarousel({
 
       {/* Card preview */}
       <div style={{
-        border: '1px solid #4a4a4a',
+        border: '1px solid #4a5258',
         borderRadius: 6,
         overflow: 'hidden',
         display: 'inline-block',
@@ -922,7 +922,7 @@ function CardCarousel({
               height: 8,
               borderRadius: 4,
               border: 'none',
-              background: i === cardIndex ? '#4a8fd4' : '#3a3a3a',
+              background: i === cardIndex ? '#d49a30' : '#4a5258',
               cursor: 'pointer',
               transition: 'width 0.15s, background 0.15s',
               padding: 0,

@@ -15,17 +15,17 @@ export function MissionOverview() {
   const clientUnits = units.filter((u) => u.skill === 'Client' || u.skill === 'Player').length;
 
   return (
-    <div style={{ padding: '12px 16px', borderBottom: '1px solid #3a3a3a' }}>
-      <div style={{ fontSize: 13, color: '#aaaaaa', marginBottom: 4 }}>{filename}</div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 }}>
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid #4a5258' }}>
+      <div style={{ fontSize: 13, color: '#3a4248', marginBottom: 4 }}>{filename}</div>
+      <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1f25', marginBottom: 8 }}>
         {overview.sortie || overview.theater}
       </div>
-      <div style={{ fontSize: 14, color: '#cccccc', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+      <div style={{ fontSize: 14, color: '#1a1f25', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
         <span>Theater: {overview.theater}</span>
         <span>Date: {overview.date}</span>
         <span>Start: {formatTime(overview.start_time)}</span>
         <span>Clients: {clientUnits}</span>
-        <span style={{ color: '#4a8fd4' }}>Blue: {blueGroups} groups</span>
+        <span style={{ color: '#d49a30' }}>Blue: {blueGroups} groups</span>
         <span style={{ color: '#d95050' }}>Red: {redGroups} groups</span>
         <span>Threats: {threats.length}</span>
         <span>Total units: {units.length}</span>

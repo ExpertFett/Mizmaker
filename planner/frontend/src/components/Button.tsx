@@ -41,10 +41,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // the editor tabs. If we ever theme the planner, these are the tokens
 // to swap.
 const VARIANT: Record<ButtonVariant, { bg: string; border: string; fg: string }> = {
-  default: { bg: '#262626', border: '#4a8fd4', fg: '#4a8fd4' },
+  default: { bg: '#6e7c83', border: '#d49a30', fg: '#d49a30' },
   success: { bg: 'rgba(63, 185, 80, 0.15)', border: 'rgba(63, 185, 80, 0.4)', fg: '#3fb950' },
   danger:  { bg: '#3a1a1a', border: '#5a2a2a', fg: '#d95050' },
-  subtle:  { bg: '#262626', border: '#3a3a3a', fg: '#aaaaaa' },
+  subtle:  { bg: '#6e7c83', border: '#4a5258', fg: '#3a4248' },
 };
 
 const SIZE: Record<ButtonSize, { padding: string; fontSize: number }> = {

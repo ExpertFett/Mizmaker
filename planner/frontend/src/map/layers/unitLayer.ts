@@ -9,9 +9,9 @@ import type { ViewMode, UnitCategoryFilter } from '../../store/mapStore';
 import { isPlayerGroup, isCarrierGroup } from '../../utils/groups';
 
 const COALITION_COLORS: Record<string, string> = {
-  blue: '#4a8fd4',
+  blue: '#d49a30',
   red: '#d95050',
-  neutrals: '#cccccc',
+  neutrals: '#1a1f25',
 };
 
 const AIR_CATEGORIES = new Set(['plane', 'helicopter']);
@@ -64,13 +64,13 @@ export function populateUnitLayer(
     if (!firstUnit) continue;
 
     const isHiddenFromFLs = hiddenFromParticipants.has(group.groupId);
-    const baseColor = COALITION_COLORS[group.coalition] || '#888';
+    const baseColor = COALITION_COLORS[group.coalition] || '#5a6268';
     // Muted appearance for hidden groups — translucent fill +
     // dashed gray stroke. Distinct enough to spot at a glance
     // but not so loud that it competes with the rest of the
     // tactical picture.
     const color = isHiddenFromFLs ? `${baseColor}66` : baseColor;
-    const strokeColor = isHiddenFromFLs ? '#888' : '#fff';
+    const strokeColor = isHiddenFromFLs ? '#5a6268' : '#fff';
     const strokeDash = isHiddenFromFLs ? [3, 3] : undefined;
     const player = isPlayerGroup(group);
     const isAir = AIR_CATEGORIES.has(group.category);

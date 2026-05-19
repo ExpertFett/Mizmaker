@@ -89,13 +89,13 @@ function defaultInitials(name: string): string {
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  background: '#1a1a1a', border: '1px solid #4a4a4a', borderRadius: 6,
+  background: '#7a8a92', border: '1px solid #4a5258', borderRadius: 6,
   padding: 12, marginBottom: 8,
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#262626', border: '1px solid #4a4a4a', borderRadius: 4,
-  color: '#e0e0e0', fontSize: 12, padding: '4px 8px', fontFamily: 'inherit',
+  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+  color: '#1a1f25', fontSize: 12, padding: '4px 8px', fontFamily: 'inherit',
 };
 
 const selectStyle: React.CSSProperties = {
@@ -115,7 +115,7 @@ const btnSuccess: React.CSSProperties = {
 };
 
 const checkboxStyle: React.CSSProperties = {
-  accentColor: '#4a8fd4', width: 16, height: 16, cursor: 'pointer',
+  accentColor: '#d49a30', width: 16, height: 16, cursor: 'pointer',
 };
 
 /* ------------------------------------------------------------------ */
@@ -427,12 +427,12 @@ export function AtisConfigTab() {
 
   return (
     <div style={{ maxWidth: 700 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#e0e0e0', marginBottom: 4 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a1f25', marginBottom: 4 }}>
         ATIS Configurator
       </h2>
-      <p style={{ fontSize: 12, color: '#aaaaaa', marginBottom: 16 }}>
+      <p style={{ fontSize: 12, color: '#3a4248', marginBottom: 16 }}>
         Configure SRS ATIS broadcasts for airbases.
-        A <strong style={{ color: '#e0e0e0' }}>STTS.lua</strong> DO_SCRIPT_FILE trigger will be added automatically if not already present.
+        A <strong style={{ color: '#1a1f25' }}>STTS.lua</strong> DO_SCRIPT_FILE trigger will be added automatically if not already present.
       </p>
 
       {existingAtis && !added && (
@@ -468,8 +468,8 @@ export function AtisConfigTab() {
       {entries.length === 0 && (
         <div style={{
           padding: '24px 16px', background: 'rgba(74, 143, 212, 0.04)',
-          borderRadius: 6, border: '1px solid #4a4a4a', textAlign: 'center',
-          color: '#aaaaaa', fontSize: 13,
+          borderRadius: 6, border: '1px solid #4a5258', textAlign: 'center',
+          color: '#3a4248', fontSize: 13,
         }}>
           No ATIS stations configured. Select an airbase above to add one.
         </div>
@@ -481,7 +481,7 @@ export function AtisConfigTab() {
           <div key={entry.airbaseName} style={{
             ...cardStyle,
             opacity: entry.enabled ? 1 : 0.5,
-            borderColor: entry.enabled ? '#4a4a4a' : '#222222',
+            borderColor: entry.enabled ? '#4a5258' : '#8c9ba2',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -491,19 +491,19 @@ export function AtisConfigTab() {
                   onChange={(e) => handleUpdate(entry.airbaseName, { enabled: e.target.checked })}
                   style={checkboxStyle}
                 />
-                <strong style={{ color: '#e0e0e0', fontSize: 14 }}>
+                <strong style={{ color: '#1a1f25', fontSize: 14 }}>
                   {entry.displayName || entry.airbaseName}
                 </strong>
                 {entry.initials && entry.initials !== entry.airbaseName.slice(0, entry.initials.length).toUpperCase() && (
-                  <span style={{ fontSize: 11, color: '#fbb941',
+                  <span style={{ fontSize: 11, color: '#d49a30',
                                  fontFamily: "'B612 Mono', monospace",
                                  letterSpacing: 0.5 }}>{entry.initials}</span>
                 )}
                 {comms?.runways && (
-                  <span style={{ fontSize: 11, color: '#aaaaaa' }}>RWY {comms.runways}</span>
+                  <span style={{ fontSize: 11, color: '#3a4248' }}>RWY {comms.runways}</span>
                 )}
                 {comms?.elevation != null && (
-                  <span style={{ fontSize: 11, color: '#aaaaaa' }}>{comms.elevation}ft</span>
+                  <span style={{ fontSize: 11, color: '#3a4248' }}>{comms.elevation}ft</span>
                 )}
               </div>
               <button style={btnDanger} onClick={() => handleRemove(entry.airbaseName)}>Remove</button>
@@ -515,7 +515,7 @@ export function AtisConfigTab() {
                 Pashkovsky International' or 'Sukhumi-Babushara' fit. */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center',
                           flexWrap: 'wrap', marginBottom: 8 }}>
-              <label style={{ fontSize: 11, color: '#aaaaaa',
+              <label style={{ fontSize: 11, color: '#3a4248',
                               display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 280 }}>
                 Spoken name:
                 <input
@@ -526,7 +526,7 @@ export function AtisConfigTab() {
                   title="Used in the ATIS broadcast text and the brief"
                 />
               </label>
-              <label style={{ fontSize: 11, color: '#aaaaaa',
+              <label style={{ fontSize: 11, color: '#3a4248',
                               display: 'flex', alignItems: 'center', gap: 4 }}>
                 Initials / ICAO:
                 <input
@@ -541,7 +541,7 @@ export function AtisConfigTab() {
             </div>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#3a4248', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Freq (MHz):
                 <input
                   type="text"
@@ -562,9 +562,9 @@ export function AtisConfigTab() {
                     title="Restore the database / suggested frequency"
                     style={{
                       background: 'transparent',
-                      border: '1px solid #3a3a3a',
+                      border: '1px solid #4a5258',
                       borderRadius: 3,
-                      color: '#aaaaaa',
+                      color: '#3a4248',
                       cursor: 'pointer',
                       fontSize: 10,
                       padding: '2px 6px',
@@ -576,7 +576,7 @@ export function AtisConfigTab() {
                 )}
               </label>
 
-              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#3a4248', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Mod:
                 <select
                   value={entry.modulation}
@@ -588,7 +588,7 @@ export function AtisConfigTab() {
                 </select>
               </label>
 
-              <label style={{ fontSize: 11, color: '#aaaaaa', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 11, color: '#3a4248', display: 'flex', alignItems: 'center', gap: 4 }}>
                 Coalition:
                 <select
                   value={entry.coalition}
@@ -626,12 +626,12 @@ export function AtisConfigTab() {
       {/* Script preview */}
       {entries.length > 0 && activeCount > 0 && (
         <details style={{ marginTop: 16 }}>
-          <summary style={{ fontSize: 12, color: '#aaaaaa', cursor: 'pointer' }}>
+          <summary style={{ fontSize: 12, color: '#3a4248', cursor: 'pointer' }}>
             Preview generated script ({script.split('\n').length} lines)
           </summary>
           <pre style={{
-            marginTop: 8, padding: 12, background: '#060d14', borderRadius: 4,
-            border: '1px solid #4a4a4a', fontSize: 10, color: '#cccccc',
+            marginTop: 8, padding: 12, background: '#5a6870', borderRadius: 4,
+            border: '1px solid #4a5258', fontSize: 10, color: '#1a1f25',
             overflow: 'auto', maxHeight: 300, whiteSpace: 'pre-wrap',
           }}>
             {script}

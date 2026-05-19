@@ -36,10 +36,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   function Select({ size = 'md', style, ...rest }, ref) {
     const s = SIZE[size];
     const merged: CSSProperties = {
-      background: '#262626',
-      border: '1px solid #3a3a3a',
+      background: '#6e7c83',
+      border: '1px solid #4a5258',
       borderRadius: 4,
-      color: '#e0e0e0',
+      color: '#1a1f25',
       fontSize: s.fontSize,
       fontFamily: 'inherit',
       padding: s.padding,

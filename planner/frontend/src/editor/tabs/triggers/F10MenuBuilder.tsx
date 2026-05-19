@@ -45,9 +45,9 @@ const ACTION_LABEL: Record<MenuAction, string> = {
 };
 
 const COALITION_COLOR: Record<MenuCoalition, string> = {
-  blue: '#4a8fd4',
+  blue: '#d49a30',
   red:  '#d95050',
-  all:  '#aaaaaa',
+  all:  '#3a4248',
 };
 
 // Subtle row-tint backgrounds per coalition. Mostly transparent so
@@ -266,13 +266,13 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
 
   return (
     <div style={{ padding: 12, maxWidth: 1000 }}>
-      <h3 style={{ margin: '0 0 6px', color: '#e0e0e0', fontSize: 16 }}>
+      <h3 style={{ margin: '0 0 6px', color: '#1a1f25', fontSize: 16 }}>
         F10 Radio Menu Builder
       </h3>
-      <p style={{ margin: '0 0 14px', color: '#aaaaaa', fontSize: 13, lineHeight: 1.5 }}>
+      <p style={{ margin: '0 0 14px', color: '#3a4248', fontSize: 13, lineHeight: 1.5 }}>
         Stage menu entries here, then click <strong style={{ color: '#3fb950' }}>Generate Trigger</strong>
         {' '}to add a single mission-start trigger that registers all of them via{' '}
-        <code style={{ color: '#cccccc' }}>missionCommands.addCommandForCoalition</code>.
+        <code style={{ color: '#1a1f25' }}>missionCommands.addCommandForCoalition</code>.
         Each entry can activate, deactivate, or destroy a group — pilots pick from the F10
         radio menu in-game.
       </p>
@@ -285,7 +285,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
           gap: 8,
           alignItems: 'center',
           padding: '10px 12px',
-          background: '#0a1218',
+          background: '#6e7c83',
           border: '1px solid #1a2a3a',
           borderRadius: 6,
           marginBottom: 12,
@@ -343,9 +343,9 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
           style={{
             padding: '24px 16px',
             textAlign: 'center',
-            color: '#888',
+            color: '#5a6268',
             background: 'rgba(74, 143, 212, 0.04)',
-            border: '1px dashed #3a3a3a',
+            border: '1px dashed #4a5258',
             borderRadius: 6,
             fontSize: 13,
           }}
@@ -366,13 +366,13 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
               fontSize: 12,
             }}
           >
-            <span style={{ color: '#888', marginRight: 4 }}>Filter:</span>
+            <span style={{ color: '#5a6268', marginRight: 4 }}>Filter:</span>
             <Select
               size="sm"
               value={filterCoalition}
               onChange={(e) => setFilterCoalition(e.target.value as 'all' | MenuCoalition)}
               style={{
-                color: filterCoalition === 'all' ? '#aaaaaa' : COALITION_COLOR[filterCoalition],
+                color: filterCoalition === 'all' ? '#3a4248' : COALITION_COLOR[filterCoalition],
                 fontWeight: filterCoalition === 'all' ? 400 : 600,
               }}
             >
@@ -386,7 +386,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
               value={filterAction}
               onChange={(e) => setFilterAction(e.target.value as 'all' | MenuAction)}
               style={{
-                color: filterAction === 'all' ? '#aaaaaa' : ACTION_COLOR[filterAction],
+                color: filterAction === 'all' ? '#3a4248' : ACTION_COLOR[filterAction],
                 fontWeight: filterAction === 'all' ? 400 : 600,
               }}
             >
@@ -402,7 +402,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
               placeholder="Search label or group..."
               style={{ flex: 1, maxWidth: 280 }}
             />
-            <span style={{ color: '#888', marginLeft: 'auto' }}>
+            <span style={{ color: '#5a6268', marginLeft: 'auto' }}>
               {visibleEntries.length} / {entries.length} shown
             </span>
             {(filterCoalition !== 'all' || filterAction !== 'all' || filterSearch.trim()) && (
@@ -414,9 +414,9 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
                 }}
                 style={{
                   background: 'transparent',
-                  border: '1px solid #3a3a3a',
+                  border: '1px solid #4a5258',
                   borderRadius: 3,
-                  color: '#aaaaaa',
+                  color: '#3a4248',
                   fontSize: 11,
                   padding: '2px 8px',
                   cursor: 'pointer',
@@ -431,7 +431,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
+              <tr style={{ borderBottom: '2px solid #4a5258' }}>
                 <th style={th}>SIDE</th>
                 <th style={th}>LABEL</th>
                 <th style={th}>ACTION</th>
@@ -443,7 +443,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
               {visibleEntries.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{
-                    ...td, textAlign: 'center', color: '#666',
+                    ...td, textAlign: 'center', color: '#5a6268',
                     fontStyle: 'italic', padding: '12px',
                   }}>
                     No entries match the current filters.
@@ -453,18 +453,18 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
                 <tr
                   key={e.id}
                   style={{
-                    borderBottom: '1px solid #262626',
+                    borderBottom: '1px solid #6e7c83',
                     background: COALITION_TINT[e.coalition],
                   }}
                 >
                   <td style={{ ...td, color: COALITION_COLOR[e.coalition], fontWeight: 600 }}>
                     {COALITION_LABEL[e.coalition]}
                   </td>
-                  <td style={{ ...td, color: '#e0e0e0' }}>{e.label}</td>
+                  <td style={{ ...td, color: '#1a1f25' }}>{e.label}</td>
                   <td style={{ ...td, color: ACTION_COLOR[e.action], fontWeight: 600 }}>
                     {ACTION_LABEL[e.action]}
                   </td>
-                  <td style={{ ...td, color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+                  <td style={{ ...td, color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>
                     {e.groupName}
                   </td>
                   <td style={td}>
@@ -491,7 +491,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
           <div
             style={{
               fontSize: 11,
-              color: '#888',
+              color: '#5a6268',
               textTransform: 'uppercase',
               letterSpacing: 1,
               fontWeight: 600,
@@ -509,7 +509,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
               borderRadius: 6,
               fontSize: 11,
               fontFamily: "'B612 Mono', monospace",
-              color: '#cccccc',
+              color: '#1a1f25',
               maxHeight: 240,
               overflow: 'auto',
               whiteSpace: 'pre',
@@ -521,9 +521,9 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
             <Button variant="success" onClick={handleGenerate}>
               Generate Trigger ({entries.length} entr{entries.length === 1 ? 'y' : 'ies'})
             </Button>
-            <span style={{ color: '#888', fontSize: 12, alignSelf: 'center' }}>
+            <span style={{ color: '#5a6268', fontSize: 12, alignSelf: 'center' }}>
               → adds one mission-start rule to the trigger list. Don't forget to{' '}
-              <strong style={{ color: '#cccccc' }}>Save Triggers</strong> after.
+              <strong style={{ color: '#1a1f25' }}>Save Triggers</strong> after.
             </span>
           </div>
         </>
@@ -535,7 +535,7 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
 const th: React.CSSProperties = {
   textAlign: 'left',
   padding: '6px 8px',
-  color: '#aaaaaa',
+  color: '#3a4248',
   fontSize: 11,
   fontWeight: 600,
   textTransform: 'uppercase',

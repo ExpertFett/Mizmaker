@@ -318,9 +318,9 @@ export function BriefGenTab() {
   }
 
   return (
-    <div style={{ padding: 20, color: '#e0e0e0', overflow: 'auto', height: '100%' }}>
+    <div style={{ padding: 20, color: '#1a1f25', overflow: 'auto', height: '100%' }}>
       <h2 style={{ fontSize: 18, marginBottom: 6 }}>Brief Generator</h2>
-      <p style={{ fontSize: 13, color: '#aaaaaa', marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: '#3a4248', marginBottom: 16 }}>
         Auto-build a wing briefing from the loaded mission. Review and edit
         each section, then export as PowerPoint, PDF, or per-slide images.
       </p>
@@ -328,7 +328,7 @@ export function BriefGenTab() {
       {/* No brief yet — show Build button */}
       {!brief && (
         <div style={{
-          border: '1px solid #3a3a3a', background: '#222222',
+          border: '1px solid #4a5258', background: '#8c9ba2',
           padding: '24px 20px', textAlign: 'center', marginBottom: 16,
         }}>
           <p style={{ fontSize: 14, marginBottom: 14 }}>
@@ -346,9 +346,9 @@ export function BriefGenTab() {
           >
             {building ? 'Building…' : 'Build Wing Brief'}
           </button>
-          <p style={{ fontSize: 11, color: '#aaaaaa', marginTop: 12 }}>
+          <p style={{ fontSize: 11, color: '#3a4248', marginTop: 12 }}>
             Output formats:{' '}
-            <span style={{ color: '#cccccc', fontWeight: 600 }}>
+            <span style={{ color: '#1a1f25', fontWeight: 600 }}>
               {availableFormats.map((f) => FORMAT_LABEL[f].replace(/ \(.*\)/, '')).join(' · ')}
             </span>
           </p>
@@ -361,8 +361,8 @@ export function BriefGenTab() {
           {/* Sticky action bar */}
           <div style={{
             display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-            padding: '10px 14px', background: '#262626',
-            border: '1px solid #3a3a3a', marginBottom: 16,
+            padding: '10px 14px', background: '#6e7c83',
+            border: '1px solid #4a5258', marginBottom: 16,
           }}>
             <button
               onClick={handleRender}
@@ -399,8 +399,8 @@ export function BriefGenTab() {
               disabled={previewLoading}
               style={{
                 ...btnSecondary,
-                borderColor: previewOpen ? '#fbb941' : '#4a4a4a',
-                color: previewOpen ? '#fbb941' : '#cccccc',
+                borderColor: previewOpen ? '#d49a30' : '#4a5258',
+                color: previewOpen ? '#d49a30' : '#1a1f25',
               }}
               title="Render the brief as PNGs and show inline (~5s)"
             >
@@ -413,19 +413,19 @@ export function BriefGenTab() {
           {/* Preview pane — inline slide viewer with prev/next nav */}
           {previewOpen && (
             <div style={{
-              marginBottom: 16, background: '#1a1a1a',
-              border: '1px solid #3a3a3a',
+              marginBottom: 16, background: '#7a8a92',
+              border: '1px solid #4a5258',
             }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                padding: '6px 10px', background: '#262626',
-                borderBottom: '1px solid #3a3a3a',
+                padding: '6px 10px', background: '#6e7c83',
+                borderBottom: '1px solid #4a5258',
               }}>
-                <div style={{ fontSize: 11, color: '#fbb941', fontWeight: 600,
+                <div style={{ fontSize: 11, color: '#d49a30', fontWeight: 600,
                               letterSpacing: 1, textTransform: 'uppercase' }}>
                   Preview
                 </div>
-                <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+                <span style={{ fontSize: 12, color: '#3a4248' }}>
                   {previewSlides.length > 0
                     ? `Slide ${previewIdx + 1} / ${previewSlides.length}`
                     : previewLoading ? 'Rendering…' : 'No slides'}
@@ -449,10 +449,10 @@ export function BriefGenTab() {
               </div>
               <div style={{
                 padding: 12, display: 'flex', justifyContent: 'center',
-                background: '#0f0f0f', minHeight: 360,
+                background: '#5a6870', minHeight: 360,
               }}>
                 {previewLoading && previewSlides.length === 0 ? (
-                  <div style={{ color: '#aaaaaa', fontSize: 14, padding: 60 }}>
+                  <div style={{ color: '#3a4248', fontSize: 14, padding: 60 }}>
                     Rendering brief… (~5s)
                   </div>
                 ) : previewSlides[previewIdx] ? (
@@ -462,21 +462,21 @@ export function BriefGenTab() {
                     style={{
                       maxWidth: '100%', maxHeight: 600,
                       objectFit: 'contain',
-                      boxShadow: '0 0 0 1px #3a3a3a',
+                      boxShadow: '0 0 0 1px #4a5258',
                     }}
                     onClick={() => setPreviewIdx((i) =>
                       i + 1 < previewSlides.length ? i + 1 : 0)}
                   />
                 ) : (
-                  <div style={{ color: '#888', fontSize: 13, padding: 60 }}>
+                  <div style={{ color: '#5a6268', fontSize: 13, padding: 60 }}>
                     No slides to display.
                   </div>
                 )}
               </div>
               {previewSlides.length > 0 && !previewLoading && (
                 <div style={{
-                  padding: '6px 10px', borderTop: '1px solid #3a3a3a',
-                  fontSize: 11, color: '#888888',
+                  padding: '6px 10px', borderTop: '1px solid #4a5258',
+                  fontSize: 11, color: '#5a6268',
                 }}>
                   Click slide or hit Next ›  ·  Edit any section then ↻ Refresh Preview
                 </div>
@@ -556,10 +556,10 @@ export function BriefGenTab() {
               ) : undefined
             }
           >
-            <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 6, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 11, color: '#3a4248', marginBottom: 6, lineHeight: 1.5 }}>
               Write a paragraph or two about what's happening in this
               mission — the situation, what the enemy is doing, what's
-              at stake, what success looks like. <strong style={{ color: '#cccccc' }}>This text is
+              at stake, what success looks like. <strong style={{ color: '#1a1f25' }}>This text is
               not rendered on the brief slides</strong> — it's the
               context the AI uses to write a tailored Commander's Intent
               below. The more you write here, the better the AI output.
@@ -589,9 +589,9 @@ export function BriefGenTab() {
                   disabled={aiBusy}
                   style={{
                     ...btnSmall,
-                    background: aiKey ? '#2a2418' : '#2a2a2a',
-                    borderColor: aiKey ? '#fbb941' : '#4a4a4a',
-                    color: aiKey ? '#fbb941' : '#cccccc',
+                    background: aiKey ? '#2a2418' : '#aab4ba',
+                    borderColor: aiKey ? '#d49a30' : '#4a5258',
+                    color: aiKey ? '#d49a30' : '#1a1f25',
                     opacity: aiBusy ? 0.6 : 1,
                   }}
                   title={
@@ -637,7 +637,7 @@ export function BriefGenTab() {
             {aiKey && (
               <div style={{ marginBottom: 8 }}>
                 <div style={{
-                  fontSize: 10, color: '#888888', marginBottom: 3,
+                  fontSize: 10, color: '#5a6268', marginBottom: 3,
                   textTransform: 'uppercase', letterSpacing: 0.5,
                 }}>
                   Optional steer (passed to AI on Generate)
@@ -661,14 +661,14 @@ export function BriefGenTab() {
             />
             {aiNote && (
               <div style={{
-                marginTop: 6, fontSize: 11, color: '#fbb941',
+                marginTop: 6, fontSize: 11, color: '#d49a30',
                 fontFamily: "'B612 Mono', monospace",
               }}>
                 {aiNote}
               </div>
             )}
             {!aiKey && (
-              <div style={{ marginTop: 6, fontSize: 11, color: '#888888' }}>
+              <div style={{ marginTop: 6, fontSize: 11, color: '#5a6268' }}>
                 Bring your own Anthropic or Gemini key to auto-generate
                 a tailored intent. Without a key the templated starter
                 above stays — fully editable.
@@ -809,7 +809,7 @@ export function BriefGenTab() {
       )}
 
       {/* Custom template — preserved as advanced fallback */}
-      <details style={{ marginTop: 24, fontSize: 13, color: '#aaaaaa' }}>
+      <details style={{ marginTop: 24, fontSize: 13, color: '#3a4248' }}>
         <summary style={{ cursor: 'pointer', padding: '6px 0', userSelect: 'none' }}>
           Advanced — use a custom .pptx template instead
         </summary>
@@ -910,7 +910,7 @@ function CustomTemplateFlow() {
   };
 
   return (
-    <div style={{ marginTop: 12, padding: 14, background: '#222222', border: '1px solid #3a3a3a' }}>
+    <div style={{ marginTop: 12, padding: 14, background: '#8c9ba2', border: '1px solid #4a5258' }}>
       {!scan && (
         <div style={{ textAlign: 'center', padding: 20 }}>
           <p style={{ fontSize: 13, marginBottom: 12 }}>
@@ -924,7 +924,7 @@ function CustomTemplateFlow() {
           </label>
           <div style={{ marginTop: 10, fontSize: 11 }}>
             <a href="/api/brief/sample-template" download="mission_brief_template.pptx"
-               style={{ color: '#4a8fd4' }}>Download starter template</a>
+               style={{ color: '#d49a30' }}>Download starter template</a>
           </div>
         </div>
       )}
@@ -932,7 +932,7 @@ function CustomTemplateFlow() {
         <>
           <div style={{ marginBottom: 10, fontSize: 13, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <strong>{scan.filename}</strong>
-            <span style={{ color: '#aaaaaa' }}>— {scan.tokens.length} tokens</span>
+            <span style={{ color: '#3a4248' }}>— {scan.tokens.length} tokens</span>
             <button onClick={() => setScan(null)} style={{ ...btnSecondary }}>Different file</button>
             {/* Rebuild + last-built stamp. Tokens auto-update when the
                 mission store changes, but cross-store reads (goals,
@@ -945,9 +945,9 @@ function CustomTemplateFlow() {
             >
               ↻ Rebuild
             </button>
-            <span style={{ color: '#888', fontSize: 11 }}>
+            <span style={{ color: '#5a6268', fontSize: 11 }}>
               Last built:{' '}
-              <span style={{ color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
+              <span style={{ color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>
                 {new Date(rebuildAt).toLocaleTimeString()}
               </span>
             </span>
@@ -958,7 +958,7 @@ function CustomTemplateFlow() {
               {tokenRows.map((r) => (
                 <tr key={r.token}>
                   <td style={{ ...td, fontFamily: "'B612 Mono', monospace", fontSize: 11 }}>{r.token}</td>
-                  <td style={{ ...td, fontSize: 11, color: '#aaaaaa' }}>
+                  <td style={{ ...td, fontSize: 11, color: '#3a4248' }}>
                     {r.isOverridden ? 'manual' : r.isAutoResolved ? 'auto'
                       : <span style={{ color: '#d9a050' }}>unmapped</span>}
                   </td>
@@ -1127,13 +1127,13 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
 function Card({ title, children, right }:
               { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14, background: '#222222', border: '1px solid #3a3a3a' }}>
+    <div style={{ marginBottom: 14, background: '#8c9ba2', border: '1px solid #4a5258' }}>
       <div style={{
-        padding: '8px 14px', borderBottom: '1px solid #3a3a3a',
+        padding: '8px 14px', borderBottom: '1px solid #4a5258',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: '#262626',
+        background: '#6e7c83',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#fbb941',
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#d49a30',
                       letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
         {right}
       </div>
@@ -1159,12 +1159,12 @@ function ImageUploadField(props: {
   const { label, hint, inputId, value, onChange, onError, previewAspect } = props;
   return (
     <div>
-      <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 3,
+      <div style={{ fontSize: 11, color: '#3a4248', marginBottom: 3,
                     textTransform: 'uppercase', letterSpacing: 0.5 }}>
         {label}
       </div>
       {hint && (
-        <div style={{ fontSize: 10, color: '#888888', marginBottom: 6 }}>
+        <div style={{ fontSize: 10, color: '#5a6268', marginBottom: 6 }}>
           {hint}
         </div>
       )}
@@ -1198,7 +1198,7 @@ function ImageUploadField(props: {
           <div style={{
             width: '100%',
             aspectRatio: previewAspect === 'wide' ? '16 / 9' : '1 / 1',
-            background: '#0f0f0f', border: '1px solid #3a3a3a',
+            background: '#5a6870', border: '1px solid #4a5258',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginBottom: 6, overflow: 'hidden',
           }}>
@@ -1220,7 +1220,7 @@ function ImageUploadField(props: {
         <label htmlFor={inputId} style={{
           ...btnSecondary, display: 'block',
           textAlign: 'center', padding: '20px 12px',
-          border: '1px dashed #4a4a4a',
+          border: '1px dashed #4a5258',
         }}>
           Upload image
         </label>
@@ -1232,7 +1232,7 @@ function ImageUploadField(props: {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: 'block', fontSize: 11, color: '#aaaaaa' }}>
+    <label style={{ display: 'block', fontSize: 11, color: '#3a4248' }}>
       <div style={{ marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
       {children}
     </label>
@@ -1244,37 +1244,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ---------------------------------------------------------------------------
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', background: '#1a1a1a', border: '1px solid #4a4a4a',
-  color: '#e0e0e0', padding: '6px 8px', fontSize: 13, fontFamily: 'inherit',
+  width: '100%', background: '#7a8a92', border: '1px solid #4a5258',
+  color: '#1a1f25', padding: '6px 8px', fontSize: 13, fontFamily: 'inherit',
 };
 const textareaStyle: React.CSSProperties = {
-  width: '100%', background: '#1a1a1a', border: '1px solid #4a4a4a',
-  color: '#e0e0e0', padding: 8, fontSize: 13, fontFamily: 'inherit',
+  width: '100%', background: '#7a8a92', border: '1px solid #4a5258',
+  color: '#1a1f25', padding: 8, fontSize: 13, fontFamily: 'inherit',
   resize: 'vertical', lineHeight: 1.5,
 };
 const selectStyle: React.CSSProperties = {
-  background: '#2a2a2a', border: '1px solid #4a4a4a', color: '#e0e0e0',
+  background: '#aab4ba', border: '1px solid #4a5258', color: '#1a1f25',
   padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer',
 };
 const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'collapse',
 };
 const th: React.CSSProperties = {
-  padding: '6px 8px', textAlign: 'left', fontSize: 11, color: '#cccccc',
-  borderBottom: '1px solid #4a4a4a', textTransform: 'uppercase', letterSpacing: 0.5,
+  padding: '6px 8px', textAlign: 'left', fontSize: 11, color: '#1a1f25',
+  borderBottom: '1px solid #4a5258', textTransform: 'uppercase', letterSpacing: 0.5,
 };
 const td: React.CSSProperties = { padding: '3px 4px', verticalAlign: 'middle' };
 const cellInput: React.CSSProperties = {
-  width: '100%', background: '#1a1a1a', border: '1px solid #3a3a3a',
-  color: '#e0e0e0', padding: '4px 6px', fontSize: 12, fontFamily: 'inherit',
+  width: '100%', background: '#7a8a92', border: '1px solid #4a5258',
+  color: '#1a1f25', padding: '4px 6px', fontSize: 12, fontFamily: 'inherit',
 };
 const btnPrimary: React.CSSProperties = {
-  background: '#2a2a2a', border: '1px solid #fbb941', color: '#fbb941',
+  background: '#aab4ba', border: '1px solid #d49a30', color: '#d49a30',
   padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   fontFamily: 'inherit',
 };
 const btnSecondary: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #4a4a4a', color: '#cccccc',
+  background: 'transparent', border: '1px solid #4a5258', color: '#1a1f25',
   padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
 };
 const btnDanger: React.CSSProperties = {
@@ -1282,13 +1282,13 @@ const btnDanger: React.CSSProperties = {
   padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
 };
 const btnSmall: React.CSSProperties = {
-  background: '#2a2a2a', border: '1px solid #4a4a4a', color: '#cccccc',
+  background: '#aab4ba', border: '1px solid #4a5258', color: '#1a1f25',
   padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
 };
 const btnIcon: React.CSSProperties = {
-  background: 'transparent', border: '1px solid transparent', color: '#888888',
+  background: 'transparent', border: '1px solid transparent', color: '#5a6268',
   padding: '2px 6px', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
 };
 const emptyStyle: React.CSSProperties = {
-  fontStyle: 'italic', color: '#888888', fontSize: 13, padding: '6px 0',
+  fontStyle: 'italic', color: '#5a6268', fontSize: 13, padding: '6px 0',
 };

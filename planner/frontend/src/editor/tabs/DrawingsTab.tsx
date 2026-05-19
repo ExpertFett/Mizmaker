@@ -8,20 +8,20 @@ import type { PlannerDrawingType } from '../../types/mission';
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const card: React.CSSProperties = {
-  background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 8, padding: 14, marginBottom: 12,
+  background: '#7a8a92', border: '1px solid #4a5258', borderRadius: 8, padding: 14, marginBottom: 12,
 };
 const label: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: '#888888', marginBottom: 6,
+  fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: '#5a6268', marginBottom: 6,
 };
 const input: React.CSSProperties = {
-  background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4, color: '#e0e0e0',
+  background: '#7a8a92', border: '1px solid #4a5258', borderRadius: 4, color: '#1a1f25',
   padding: '5px 8px', fontSize: 14, width: '100%', boxSizing: 'border-box',
 };
 const btn: React.CSSProperties = {
-  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4, color: '#cccccc',
+  background: '#4a5258', border: '1px solid #4a5258', borderRadius: 4, color: '#1a1f25',
   padding: '5px 12px', fontSize: 13, cursor: 'pointer',
 };
-const btnPrimary: React.CSSProperties = { ...btn, background: '#4a4a4a', color: '#6ab4f0', borderColor: '#2a5a8a' };
+const btnPrimary: React.CSSProperties = { ...btn, background: '#4a5258', color: '#6ab4f0', borderColor: '#2a5a8a' };
 const btnDanger: React.CSSProperties = { ...btn, background: '#3a1a1a', color: '#e06060', borderColor: '#5a2a2a' };
 const btnSuccess: React.CSSProperties = { ...btn, background: '#1a3a2a', color: '#60c080', borderColor: '#2a5a3a' };
 
@@ -104,7 +104,7 @@ export function DrawingsTab() {
         Under Construction — This feature is still being developed.
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#e0e0e0' }}>Mission Overlays</h2>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1a1f25' }}>Mission Overlays</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {status && <span style={{ fontSize: 12, color: status === 'Saved' ? '#60c080' : '#e06060' }}>{status}</span>}
           <button onClick={handleRegenerate} style={btnPrimary} title="Scan mission data and generate overlays">
@@ -116,7 +116,7 @@ export function DrawingsTab() {
         </div>
       </div>
 
-      <div style={{ ...card, background: '#222222', fontSize: 12, color: '#aaaaaa', lineHeight: 1.6 }}>
+      <div style={{ ...card, background: '#8c9ba2', fontSize: 12, color: '#3a4248', lineHeight: 1.6 }}>
         Scans mission data for tanker, AWACS, and CAP groups to create racetrack orbits, and player flights for route corridors.
         Click <strong style={{ color: '#6ab4f0' }}>Generate</strong> to create overlays, then toggle visibility, adjust properties, or delete as needed.
       </div>
@@ -125,21 +125,21 @@ export function DrawingsTab() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <div style={{ ...card, flex: 1, textAlign: 'center', marginBottom: 0 }}>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#d29922' }}>{racetracks.length}</div>
-          <div style={{ fontSize: 11, color: '#aaaaaa' }}>Racetracks</div>
+          <div style={{ fontSize: 11, color: '#3a4248' }}>Racetracks</div>
         </div>
         <div style={{ ...card, flex: 1, textAlign: 'center', marginBottom: 0 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#4a8fd4' }}>{corridors.length}</div>
-          <div style={{ fontSize: 11, color: '#aaaaaa' }}>Corridors</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#d49a30' }}>{corridors.length}</div>
+          <div style={{ fontSize: 11, color: '#3a4248' }}>Corridors</div>
         </div>
         <div style={{ ...card, flex: 1, textAlign: 'center', marginBottom: 0 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#e0e0e0' }}>{drawings.filter((d) => d.visible).length}</div>
-          <div style={{ fontSize: 11, color: '#aaaaaa' }}>Visible</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#1a1f25' }}>{drawings.filter((d) => d.visible).length}</div>
+          <div style={{ fontSize: 11, color: '#3a4248' }}>Visible</div>
         </div>
       </div>
 
       {/* Drawing list */}
       {drawings.length === 0 && (
-        <div style={{ ...card, color: '#aaaaaa', textAlign: 'center', fontSize: 13 }}>
+        <div style={{ ...card, color: '#3a4248', textAlign: 'center', fontSize: 13 }}>
           No overlays yet. Click <strong style={{ color: '#6ab4f0' }}>Generate</strong> above to scan the mission.
         </div>
       )}
@@ -149,7 +149,7 @@ export function DrawingsTab() {
         return (
           <div key={d.id} style={{
             ...card,
-            border: isSelected ? `1px solid ${d.color}` : '1px solid #3a3a3a',
+            border: isSelected ? `1px solid ${d.color}` : '1px solid #4a5258',
             cursor: 'pointer',
             opacity: d.visible ? 1 : 0.5,
           }} onClick={() => selectDrawing(isSelected ? null : d.id)}>
@@ -160,7 +160,7 @@ export function DrawingsTab() {
                 title={d.visible ? 'Hide' : 'Show'}
                 style={{
                   ...btn, padding: '2px 6px', fontSize: 16,
-                  color: d.visible ? '#e0e0e0' : '#4a4a4a',
+                  color: d.visible ? '#1a1f25' : '#4a5258',
                   background: 'transparent', border: 'none',
                 }}
               >
@@ -182,7 +182,7 @@ export function DrawingsTab() {
                   <span style={{ marginRight: 6, fontSize: 12, opacity: 0.7 }}>{TYPE_ICONS[d.type]}</span>
                   {d.name}
                 </div>
-                <div style={{ fontSize: 11, color: '#aaaaaa' }}>
+                <div style={{ fontSize: 11, color: '#3a4248' }}>
                   {TYPE_LABELS[d.type]}
                   {(d.type === 'corridor' || d.type === 'racetrack') && ` \u00b7 ${d.widthNm ?? 5} NM wide`}
                   {d.type === 'threatRing' && ` \u00b7 ${d.radiusNm ?? 20} NM radius`}
@@ -200,7 +200,7 @@ export function DrawingsTab() {
 
             {/* Expanded edit panel */}
             {isSelected && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #3a3a3a' }}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #4a5258' }}
                 onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <div style={{ flex: 1 }}>
@@ -244,9 +244,9 @@ export function DrawingsTab() {
                       {(['dashed', 'solid'] as const).map((ls) => (
                         <button key={ls} onClick={() => updateDrawing(d.id, { lineStyle: ls })} style={{
                           ...btn,
-                          background: d.lineStyle === ls ? '#4a4a4a' : '#262626',
-                          border: `1px solid ${d.lineStyle === ls ? '#4a8fd4' : '#3a3a3a'}`,
-                          color: d.lineStyle === ls ? '#e0e0e0' : '#aaaaaa',
+                          background: d.lineStyle === ls ? '#4a5258' : '#6e7c83',
+                          border: `1px solid ${d.lineStyle === ls ? '#d49a30' : '#4a5258'}`,
+                          color: d.lineStyle === ls ? '#1a1f25' : '#3a4248',
                           textTransform: 'capitalize',
                         }}>{ls}</button>
                       ))}

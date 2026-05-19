@@ -177,24 +177,24 @@ function generateBriefing(store: ReturnType<typeof useMissionStore.getState>): {
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  background: '#1a1a1a', border: '1px solid #4a4a4a', borderRadius: 6,
+  background: '#7a8a92', border: '1px solid #4a5258', borderRadius: 6,
   padding: 14, marginBottom: 12,
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, color: '#aaaaaa', marginBottom: 6, display: 'block',
+  fontSize: 12, fontWeight: 600, color: '#3a4248', marginBottom: 6, display: 'block',
 };
 
 const textareaStyle: React.CSSProperties = {
-  width: '100%', minHeight: 120, background: '#0a1218', border: '1px solid #3a3a3a',
-  borderRadius: 4, color: '#e0e0e0', fontSize: 12, padding: '8px 10px',
+  width: '100%', minHeight: 120, background: '#6e7c83', border: '1px solid #4a5258',
+  borderRadius: 4, color: '#1a1f25', fontSize: 12, padding: '8px 10px',
   fontFamily: "'Consolas', 'Courier New', monospace", lineHeight: 1.5,
   resize: 'vertical', boxSizing: 'border-box',
 };
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', background: '#0a1218', border: '1px solid #3a3a3a',
-  borderRadius: 4, color: '#e0e0e0', fontSize: 13, padding: '6px 10px',
+  width: '100%', background: '#6e7c83', border: '1px solid #4a5258',
+  borderRadius: 4, color: '#1a1f25', fontSize: 13, padding: '6px 10px',
   fontFamily: 'inherit', boxSizing: 'border-box',
 };
 
@@ -294,10 +294,10 @@ export function BriefingTab() {
     <div style={{ maxWidth: 750 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
             Briefing & Situation
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#aaaaaa' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#3a4248' }}>
             Edit mission briefing text or auto-fill from mission data.
           </p>
         </div>
@@ -321,7 +321,7 @@ export function BriefingTab() {
       <div style={cardStyle}>
         <label style={labelStyle}>
           Situation / Description
-          <span style={{ fontWeight: 400, color: '#4a4a4a', marginLeft: 8 }}>
+          <span style={{ fontWeight: 400, color: '#4a5258', marginLeft: 8 }}>
             (shown to all players in briefing screen)
           </span>
         </label>
@@ -337,9 +337,9 @@ export function BriefingTab() {
       <div style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <div style={{
-            width: 10, height: 10, borderRadius: 2, background: '#4a8fd4',
+            width: 10, height: 10, borderRadius: 2, background: '#d49a30',
           }} />
-          <label style={{ ...labelStyle, margin: 0, color: '#4a8fd4' }}>
+          <label style={{ ...labelStyle, margin: 0, color: '#d49a30' }}>
             Blue Coalition Task
           </label>
         </div>
@@ -380,7 +380,7 @@ export function BriefingTab() {
         >
           {applied ? '✓ Staged' : 'Stage Now'}
         </button>
-        <span style={{ fontSize: 12, color: '#888' }}>
+        <span style={{ fontSize: 12, color: '#5a6268' }}>
           {applied
             ? 'Auto-saved. Will write to the .miz on download.'
             : hasChanges

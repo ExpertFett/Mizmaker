@@ -116,14 +116,14 @@ const COUNTRY_ALIASES: Record<string, string> = {
 /* ------------------------------------------------------------------ */
 
 const COAL_COLORS: Record<string, string> = {
-  blue: '#4a8fd4',
+  blue: '#d49a30',
   red: '#d95050',
   neutrals: '#8a8a6a',
 };
 
 const columnStyle: React.CSSProperties = {
   flex: 1, minWidth: 0,
-  background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
+  background: '#6e7c83', borderRadius: 6, border: '1px solid #8c9ba2',
   padding: 10, minHeight: 200,
 };
 
@@ -134,8 +134,8 @@ const countryPill: React.CSSProperties = {
 };
 
 const presetCard: React.CSSProperties = {
-  padding: '8px 12px', background: '#0a1218', borderRadius: 4,
-  border: '1px solid #222222', cursor: 'pointer', transition: 'border-color 0.15s',
+  padding: '8px 12px', background: '#6e7c83', borderRadius: 4,
+  border: '1px solid #8c9ba2', cursor: 'pointer', transition: 'border-color 0.15s',
 };
 
 /* ------------------------------------------------------------------ */
@@ -279,16 +279,16 @@ export function CoalitionsTab() {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
           Coalitions
         </h2>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             onClick={() => setShowPresets(!showPresets)}
             style={{
-              background: showPresets ? 'rgba(74, 143, 212, 0.15)' : '#3a3a3a',
-              border: '1px solid #3a3a3a', borderRadius: 4,
-              color: '#4a8fd4', cursor: 'pointer', fontSize: 12,
+              background: showPresets ? 'rgba(74, 143, 212, 0.15)' : '#4a5258',
+              border: '1px solid #4a5258', borderRadius: 4,
+              color: '#d49a30', cursor: 'pointer', fontSize: 12,
               padding: '5px 12px', fontFamily: 'inherit',
             }}
           >
@@ -296,8 +296,8 @@ export function CoalitionsTab() {
           </button>
           {hasChanges && (
             <button onClick={handleReset} style={{
-              background: 'transparent', border: '1px solid #3a3a3a', borderRadius: 4,
-              color: '#aaaaaa', cursor: 'pointer', fontSize: 12,
+              background: 'transparent', border: '1px solid #4a5258', borderRadius: 4,
+              color: '#3a4248', cursor: 'pointer', fontSize: 12,
               padding: '5px 12px', fontFamily: 'inherit',
             }}>
               Reset
@@ -305,17 +305,17 @@ export function CoalitionsTab() {
           )}
         </div>
       </div>
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#aaaaaa' }}>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#3a4248' }}>
         Click a country to cycle it between coalitions. Use presets for quick era-based setups.
       </p>
 
       {/* Presets panel */}
       {showPresets && (
         <div style={{
-          marginBottom: 14, padding: 12, background: '#1a1a1a',
-          border: '1px solid #4a4a4a', borderRadius: 6,
+          marginBottom: 14, padding: 12, background: '#7a8a92',
+          border: '1px solid #4a5258', borderRadius: 6,
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1f25', marginBottom: 8 }}>
             Alliance Presets
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
@@ -324,11 +324,11 @@ export function CoalitionsTab() {
                 key={p.id}
                 onClick={() => applyPreset(p)}
                 style={presetCard}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#4a8fd4')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#222222')}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#d49a30')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#8c9ba2')}
               >
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 2 }}>{p.description}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1f25' }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: '#3a4248', marginTop: 2 }}>{p.description}</div>
               </div>
             ))}
           </div>
@@ -338,8 +338,8 @@ export function CoalitionsTab() {
       {countries.length === 0 ? (
         <div style={{
           padding: '24px 16px', background: 'rgba(74, 143, 212, 0.04)',
-          borderRadius: 6, border: '1px solid #4a4a4a', textAlign: 'center',
-          color: '#aaaaaa', fontSize: 13,
+          borderRadius: 6, border: '1px solid #4a5258', textAlign: 'center',
+          color: '#3a4248', fontSize: 13,
         }}>
           No coalition data available. Upload a mission first.
         </div>
@@ -364,14 +364,14 @@ export function CoalitionsTab() {
                     <span style={{ fontSize: 14, fontWeight: 700, color }}>
                       {coal === 'neutrals' ? 'NEUTRAL' : coal.toUpperCase()}
                     </span>
-                    <span style={{ fontSize: 11, color: '#aaaaaa', marginLeft: 'auto' }}>
+                    <span style={{ fontSize: 11, color: '#3a4248', marginLeft: 'auto' }}>
                       {items.length}c / {totalGroups}g / {totalUnits}u
                     </span>
                   </div>
 
                   {/* Country pills */}
                   {items.length === 0 && (
-                    <div style={{ fontSize: 11, color: '#4a4a4a', textAlign: 'center', padding: '8px 0' }}>
+                    <div style={{ fontSize: 11, color: '#4a5258', textAlign: 'center', padding: '8px 0' }}>
                       No countries
                     </div>
                   )}
@@ -387,11 +387,11 @@ export function CoalitionsTab() {
                           border: `1px solid ${changed ? color + '50' : color + '20'}`,
                         }}
                       >
-                        <span style={{ color: '#e0e0e0', fontWeight: changed ? 600 : 400 }}>
+                        <span style={{ color: '#1a1f25', fontWeight: changed ? 600 : 400 }}>
                           {c.name}
                           {changed && <span style={{ color, marginLeft: 4, fontSize: 10 }}>*</span>}
                         </span>
-                        <span style={{ color: '#aaaaaa', fontSize: 11 }}>
+                        <span style={{ color: '#3a4248', fontSize: 11 }}>
                           {c.groupCount}g / {c.unitCount}u
                         </span>
                       </div>
@@ -401,7 +401,7 @@ export function CoalitionsTab() {
                   {/* Drop zone hint */}
                   <div style={{
                     marginTop: 4, padding: '4px 0', textAlign: 'center',
-                    fontSize: 10, color: '#3a3a3a',
+                    fontSize: 10, color: '#4a5258',
                   }}>
                     click country to cycle
                   </div>
@@ -417,7 +417,7 @@ export function CoalitionsTab() {
           {hasChanges && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12, marginTop: 14,
-              padding: '10px 14px', borderTop: '1px solid #3a3a3a',
+              padding: '10px 14px', borderTop: '1px solid #4a5258',
               background: 'rgba(63, 185, 80, 0.08)',
               borderRadius: 4,
             }}>
@@ -427,7 +427,7 @@ export function CoalitionsTab() {
               <span style={{ fontSize: 13, color: '#3fb950', fontWeight: 600 }}>
                 Edits queued — download .miz to save
               </span>
-              <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+              <span style={{ fontSize: 12, color: '#3a4248' }}>
                 {Array.from(assignments.entries()).filter(
                   ([name, coal]) => initialAssignments.get(name) !== coal
                 ).length} country reassignment(s)

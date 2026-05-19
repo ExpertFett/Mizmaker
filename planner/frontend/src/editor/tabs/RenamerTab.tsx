@@ -245,7 +245,7 @@ export function RenamerTab() {
 
   if (allGroupsRenamer.length === 0) {
     return (
-      <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
+      <div style={{ color: '#3a4248', fontSize: 15, padding: 20 }}>
         No groups available for renaming.
       </div>
     );
@@ -254,10 +254,10 @@ export function RenamerTab() {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
           Group &amp; Unit Renamer
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
           Rename groups and units. Use find &amp; replace for bulk operations.
         </p>
       </div>
@@ -282,10 +282,10 @@ export function RenamerTab() {
               border: '1px solid rgba(63, 185, 80, 0.5)',
               borderRadius: 3, padding: '2px 8px',
             }}>SOP CALLSIGNS</span>
-            <span style={{ fontSize: 13, color: '#e0e0e0', fontWeight: 600 }}>
+            <span style={{ fontSize: 13, color: '#1a1f25', fontWeight: 600 }}>
               {activeSop.name}
             </span>
-            <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+            <span style={{ fontSize: 12, color: '#3a4248' }}>
               {sopFlightsSorted.length} callsign{sopFlightsSorted.length !== 1 ? 's' : ''} available
               {' · '}
               {playerFlightCount} player flight{playerFlightCount !== 1 ? 's' : ''} in mission
@@ -308,7 +308,7 @@ export function RenamerTab() {
             >
               Apply SOP Callsigns to Player Flights
             </button>
-            <span style={{ fontSize: 11, color: '#888' }}>
+            <span style={{ fontSize: 11, color: '#5a6268' }}>
               First {Math.min(sopFlightsSorted.length, playerFlightCount)}: {sopFlightsSorted.slice(0, Math.min(sopFlightsSorted.length, playerFlightCount)).map((f) => f.callsign).join(', ')}
             </span>
           </div>
@@ -318,12 +318,12 @@ export function RenamerTab() {
       {/* Find & Replace */}
       <div style={{
         marginBottom: 16,
-        border: '1px solid #3a3a3a',
+        border: '1px solid #4a5258',
         borderRadius: 4,
-        background: '#222222',
+        background: '#8c9ba2',
         padding: '12px 14px',
       }}>
-        <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>Find &amp; Replace</div>
+        <div style={{ fontSize: 13, color: '#1a1f25', fontWeight: 600, marginBottom: 8 }}>Find &amp; Replace</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             placeholder="Find..."
@@ -337,7 +337,7 @@ export function RenamerTab() {
             onChange={(e) => setReplaceText(e.target.value)}
             style={textInputStyle}
           />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#aaaaaa', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#3a4248', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={useRegex}
@@ -349,7 +349,7 @@ export function RenamerTab() {
             Replace All
           </button>
           {findText && (
-            <span style={{ fontSize: 13, color: '#aaaaaa' }}>
+            <span style={{ fontSize: 13, color: '#3a4248' }}>
               {matchCount} match{matchCount !== 1 ? 'es' : ''}
             </span>
           )}
@@ -386,7 +386,7 @@ export function RenamerTab() {
           <option value="red">Red</option>
           <option value="neutrals">Neutral</option>
         </select>
-        <span style={{ fontSize: 13, color: '#aaaaaa' }}>
+        <span style={{ fontSize: 13, color: '#3a4248' }}>
           {filtered.length} group{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -428,15 +428,15 @@ function GroupCard({
   group, groupName, unitNames, isExpanded, onToggle,
   onGroupRename, onUnitRename, onAutoName, originalGroupName,
 }: GroupCardProps) {
-  const coalitionColor = group.coalition === 'blue' ? '#4a8fd4' : group.coalition === 'red' ? '#d95050' : '#8a8a5a';
+  const coalitionColor = group.coalition === 'blue' ? '#d49a30' : group.coalition === 'red' ? '#d95050' : '#8a8a5a';
   const groupChanged = groupName !== originalGroupName;
 
   return (
     <div style={{
       marginBottom: 8,
-      border: '1px solid #3a3a3a',
+      border: '1px solid #4a5258',
       borderRadius: 4,
-      background: '#222222',
+      background: '#8c9ba2',
     }}>
       {/* Group header */}
       <div style={{
@@ -449,12 +449,12 @@ function GroupCard({
       }}
         onClick={onToggle}
       >
-        <span style={{ color: '#aaaaaa', fontSize: 13, userSelect: 'none' }}>
+        <span style={{ color: '#3a4248', fontSize: 13, userSelect: 'none' }}>
           {isExpanded ? '\u25BC' : '\u25B6'}
         </span>
         <span style={{
           background: coalitionColor,
-          color: '#1a1a1a',
+          color: '#7a8a92',
           fontSize: 11,
           fontWeight: 700,
           padding: '1px 6px',
@@ -472,10 +472,10 @@ function GroupCard({
             ...(groupChanged ? { borderLeft: '3px solid #3fb950' } : {}),
           }}
         />
-        <span style={{ color: '#aaaaaa', fontSize: 13 }}>
+        <span style={{ color: '#3a4248', fontSize: 13 }}>
           {group.unitCount} unit{group.unitCount !== 1 ? 's' : ''}
         </span>
-        <span style={{ color: '#4a4a4a', fontSize: 12 }}>
+        <span style={{ color: '#4a5258', fontSize: 12 }}>
           {group.category}
         </span>
         <button
@@ -489,7 +489,7 @@ function GroupCard({
 
       {/* Expanded unit list */}
       {isExpanded && (
-        <div style={{ borderTop: '1px solid #3a3a3a', padding: '8px 14px 8px 30px' }}>
+        <div style={{ borderTop: '1px solid #4a5258', padding: '8px 14px 8px 30px' }}>
           {group.units.map((unit, i) => {
             const currentName = unitNames.get(unit.unitId) ?? unit.name;
             const changed = currentName !== unit.name;
@@ -499,9 +499,9 @@ function GroupCard({
                 alignItems: 'center',
                 gap: 10,
                 padding: '4px 0',
-                borderBottom: i < group.units.length - 1 ? '1px solid #262626' : 'none',
+                borderBottom: i < group.units.length - 1 ? '1px solid #6e7c83' : 'none',
               }}>
-                <span style={{ color: '#4a4a4a', fontSize: 12, width: 20, textAlign: 'right' }}>
+                <span style={{ color: '#4a5258', fontSize: 12, width: 20, textAlign: 'right' }}>
                   #{i + 1}
                 </span>
                 <input
@@ -512,7 +512,7 @@ function GroupCard({
                     ...(changed ? { borderLeft: '3px solid #3fb950' } : {}),
                   }}
                 />
-                <span style={{ color: '#aaaaaa', fontSize: 12 }}>{unit.type}</span>
+                <span style={{ color: '#3a4248', fontSize: 12 }}>{unit.type}</span>
               </div>
             );
           })}
@@ -534,10 +534,10 @@ function GroupCard({
 /* ------------------------------------------------------------------ */
 
 const textInputStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 14,
   padding: '6px 10px',
   outline: 'none',
@@ -546,10 +546,10 @@ const textInputStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 13,
   padding: '6px 8px',
   outline: 'none',
@@ -557,10 +557,10 @@ const selectStyle: React.CSSProperties = {
 };
 
 const actionBtnStyle: React.CSSProperties = {
-  background: '#3a3a3a',
-  border: '1px solid #3a3a3a',
+  background: '#4a5258',
+  border: '1px solid #4a5258',
   borderRadius: 3,
-  color: '#4a8fd4',
+  color: '#d49a30',
   cursor: 'pointer',
   fontSize: 13,
   padding: '6px 12px',
@@ -568,10 +568,10 @@ const actionBtnStyle: React.CSSProperties = {
 };
 
 const groupInputStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 3,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 14,
   fontWeight: 600,
   padding: '4px 8px',
@@ -581,10 +581,10 @@ const groupInputStyle: React.CSSProperties = {
 };
 
 const unitInputStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 3,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 13,
   padding: '3px 6px',
   outline: 'none',
@@ -594,9 +594,9 @@ const unitInputStyle: React.CSSProperties = {
 
 const autoNameBtnStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #3a3a3a',
+  border: '1px solid #4a5258',
   borderRadius: 3,
-  color: '#aaaaaa',
+  color: '#3a4248',
   cursor: 'pointer',
   fontSize: 12,
   padding: '3px 8px',

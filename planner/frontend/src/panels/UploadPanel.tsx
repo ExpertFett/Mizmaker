@@ -101,8 +101,8 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 0,
-        background: '#1a1a1a',
-        color: '#cccccc',
+        background: '#7a8a92',
+        color: '#1a1f25',
         fontFamily: 'system-ui, sans-serif',
         paddingTop: 40,
         paddingBottom: 40,
@@ -111,14 +111,14 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       <div style={{ maxWidth: 700, width: '100%', padding: '0 20px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
-          <h1 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
+          <h1 style={{ color: '#1a1f25', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
             DCS Mission Planner
           </h1>
-          <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
+          <p style={{ color: '#3a4248', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks
             <span style={{
               marginLeft: 10, padding: '2px 6px',
-              border: '1px solid #4a4a4a', color: '#cccccc',
+              border: '1px solid #4a5258', color: '#1a1f25',
               fontFamily: "'B612 Mono', monospace", fontSize: 11,
               letterSpacing: 0.5,
             }}>{VERSION}</span>
@@ -133,20 +133,20 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           onDragOver={(e) => e.preventDefault()}
           onDragEnter={(e) => e.preventDefault()}
           style={{
-            border: '2px dashed #3a3a3a',
+            border: '2px dashed #4a5258',
             borderRadius: 10,
             padding: '40px 30px',
             textAlign: 'center',
             cursor: 'pointer',
-            background: '#222222',
+            background: '#8c9ba2',
             marginBottom: 20,
           }}
           onClick={() => fileRef.current?.click()}
         >
-          <h2 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 18 }}>
+          <h2 style={{ color: '#1a1f25', margin: '0 0 8px', fontSize: 18 }}>
             Drop .miz file here or click to browse
           </h2>
-          <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
+          <p style={{ color: '#3a4248', fontSize: 14, margin: 0 }}>
             Upload a DCS mission file to start planning
           </p>
           <input
@@ -156,7 +156,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             onChange={onChange}
             style={{ display: 'none' }}
           />
-          {loading && <p style={{ color: '#4a8fd4', marginTop: 12 }}>Parsing mission...</p>}
+          {loading && <p style={{ color: '#d49a30', marginTop: 12 }}>Parsing mission...</p>}
           {error && <p style={{ color: '#d95050', marginTop: 12 }}>{error}</p>}
         </div>
 
@@ -172,10 +172,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             tucked in the top-right corner; promoted here so first-time
             users see what AI does and how to enable it. */}
         <div style={{
-          background: '#222222',
+          background: '#8c9ba2',
           border: `1px solid ${aiKey
             ? (lastTestOk && lastTestedAt > 0 ? 'rgba(63, 185, 80, 0.4)' : 'rgba(210, 153, 34, 0.4)')
-            : '#3a3a3a'}`,
+            : '#4a5258'}`,
           borderRadius: 8,
           padding: '20px 24px',
           marginBottom: 20,
@@ -184,8 +184,8 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
             marginBottom: 10, flexWrap: 'wrap', gap: 12,
           }}>
-            <p style={{ color: '#e0e0e0', fontSize: 16, fontWeight: 600, margin: 0 }}>
-              ✨ AI-Powered SOP Extraction <span style={{ color: '#aaaaaa', fontSize: 13, fontWeight: 400, marginLeft: 8 }}>(optional)</span>
+            <p style={{ color: '#1a1f25', fontSize: 16, fontWeight: 600, margin: 0 }}>
+              ✨ AI-Powered SOP Extraction <span style={{ color: '#3a4248', fontSize: 13, fontWeight: 400, marginLeft: 8 }}>(optional)</span>
             </p>
             {aiKey && lastTestOk && lastTestedAt > 0 && (
               <span style={{
@@ -208,10 +208,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
               </span>
             )}
           </div>
-          <p style={{ color: '#aaaaaa', fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>
+          <p style={{ color: '#3a4248', fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>
             Drop a kneeboard PNG / squadron SOP image into the SOP tab and the AI will
             read the page and fill in callsigns, frequencies, TACAN, and laser codes
-            for you. <strong style={{ color: '#cccccc' }}>Your typed values always win</strong> —
+            for you. <strong style={{ color: '#1a1f25' }}>Your typed values always win</strong> —
             extraction only fills empty fields.
           </p>
           <div style={{
@@ -222,7 +222,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             <div style={infoTileStyle('#3fb950')}>
               <div style={tileLabelStyle}>FREE OPTION</div>
               <div style={tileBodyStyle}>
-                <strong style={{ color: '#e0e0e0' }}>Google Gemini</strong> — free key in 30s at{' '}
+                <strong style={{ color: '#1a1f25' }}>Google Gemini</strong> — free key in 30s at{' '}
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#3fb950' }}>
                   aistudio.google.com
                 </a>. 1500 extractions/day on the free tier. No credit card.
@@ -231,7 +231,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             <div style={infoTileStyle('#a371f7')}>
               <div style={tileLabelStyle}>PAID OPTION</div>
               <div style={tileBodyStyle}>
-                <strong style={{ color: '#e0e0e0' }}>Anthropic (Claude)</strong> — get a key at{' '}
+                <strong style={{ color: '#1a1f25' }}>Anthropic (Claude)</strong> — get a key at{' '}
                 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{ color: '#c8a8ff' }}>
                   console.anthropic.com
                 </a>. Pay-per-use (~$0.02/extract). Separate from Claude.ai Pro.
@@ -240,7 +240,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             <div style={infoTileStyle('#6ab4f0')}>
               <div style={tileLabelStyle}>PRIVACY</div>
               <div style={tileBodyStyle}>
-                Your key lives in <strong style={{ color: '#e0e0e0' }}>this browser only</strong>.
+                Your key lives in <strong style={{ color: '#1a1f25' }}>this browser only</strong>.
                 Calls go directly browser → provider. Railway never sees the key or your images.
               </div>
             </div>
@@ -255,7 +255,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
                 : 'rgba(74, 143, 212, 0.12)',
               border: `1px solid ${aiKey
                 ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
-                : '#4a8fd4'}`,
+                : '#d49a30'}`,
               borderRadius: 4,
               color: aiKey
                 ? (lastTestOk && lastTestedAt > 0 ? '#3fb950' : '#d29922')
@@ -275,20 +275,20 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
 
         {/* Feature list */}
         <div style={{
-          background: '#222222',
+          background: '#8c9ba2',
           borderRadius: 8,
           padding: '20px 24px',
           fontSize: 14,
           lineHeight: 1.7,
         }}>
-          <p style={{ color: '#e0e0e0', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
+          <p style={{ color: '#1a1f25', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
             What is this?
           </p>
-          <p style={{ color: '#aaaaaa', marginBottom: 12 }}>
+          <p style={{ color: '#3a4248', marginBottom: 12 }}>
             A mission planning tool for DCS World. Upload a .miz, edit your mission, download the modified file. Nothing is saved on the server.
           </p>
-          <p style={{ color: '#e0e0e0', fontWeight: 600, marginBottom: 6 }}>Features:</p>
-          <ul style={{ margin: '0 0 0 18px', color: '#aaaaaa', padding: 0 }}>
+          <p style={{ color: '#1a1f25', fontWeight: 600, marginBottom: 6 }}>Features:</p>
+          <ul style={{ margin: '0 0 0 18px', color: '#3a4248', padding: 0 }}>
             <li><strong style={{ color: '#ffffff' }}>Interactive Map</strong> — route planning with waypoint editing, drag to move, right-click to add</li>
             <li><strong style={{ color: '#ffffff' }}>Flight Planning</strong> — per-waypoint speed (GS/CAS/TAS/Mach), altitude, ETE with wind correction</li>
             <li><strong style={{ color: '#ffffff' }}>Datalink</strong> — Link16 STN, voice callsigns, donors, team members</li>
@@ -310,10 +310,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
 }
 
 const toolBtnStyle: React.CSSProperties = {
-  background: '#2a2a2a',
-  border: '1px solid #4a4a4a',
+  background: '#aab4ba',
+  border: '1px solid #4a5258',
   borderRadius: 6,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   cursor: 'pointer',
   fontSize: 14,
   fontWeight: 500,
@@ -325,17 +325,17 @@ const toolBtnStyle: React.CSSProperties = {
 // without requiring users to read every line.
 function infoTileStyle(accent: string): React.CSSProperties {
   return {
-    background: '#1a1a1a',
-    border: '1px solid #3a3a3a',
+    background: '#7a8a92',
+    border: '1px solid #4a5258',
     borderLeft: `3px solid ${accent}`,
     borderRadius: 4,
     padding: '8px 10px',
   };
 }
 const tileLabelStyle: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: '#888', letterSpacing: 1,
+  fontSize: 10, fontWeight: 700, color: '#5a6268', letterSpacing: 1,
   marginBottom: 4, textTransform: 'uppercase',
 };
 const tileBodyStyle: React.CSSProperties = {
-  fontSize: 12, color: '#aaaaaa', lineHeight: 1.5,
+  fontSize: 12, color: '#3a4248', lineHeight: 1.5,
 };

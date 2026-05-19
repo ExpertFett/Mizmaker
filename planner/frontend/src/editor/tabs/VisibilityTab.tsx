@@ -22,9 +22,9 @@ import { useVisibilityStore } from '../../store/visibilityStore';
 import { useMapStore } from '../../store/mapStore';
 
 const COALITION_COLORS: Record<string, string> = {
-  blue: '#4a8fd4',
+  blue: '#d49a30',
   red: '#d95050',
-  neutrals: '#aaaaaa',
+  neutrals: '#3a4248',
 };
 
 const CATEGORY_ICON: Record<string, string> = {
@@ -86,10 +86,10 @@ export function VisibilityTab() {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
           Group Visibility (Intel Control)
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa', lineHeight: 1.5 }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248', lineHeight: 1.5 }}>
           Mission-maker-controlled list of groups hidden from flight
           leads when they join the planning session. Mission makers
           always see every group; only participants get the filtered
@@ -125,8 +125,8 @@ export function VisibilityTab() {
             gap: 10,
             marginBottom: 12,
             padding: '8px 12px',
-            background: previewAsFlightLead ? 'rgba(74, 143, 212, 0.10)' : '#1a1a1a',
-            border: `1px solid ${previewAsFlightLead ? '#4a8fd4' : '#3a3a3a'}`,
+            background: previewAsFlightLead ? 'rgba(74, 143, 212, 0.10)' : '#7a8a92',
+            border: `1px solid ${previewAsFlightLead ? '#d49a30' : '#4a5258'}`,
             borderRadius: 6,
             fontSize: 13,
           }}
@@ -136,13 +136,13 @@ export function VisibilityTab() {
               type="checkbox"
               checked={previewAsFlightLead}
               onChange={(e) => setPreviewAsFlightLead(e.target.checked)}
-              style={{ accentColor: '#4a8fd4' }}
+              style={{ accentColor: '#d49a30' }}
             />
-            <span style={{ color: previewAsFlightLead ? '#4a8fd4' : '#e0e0e0', fontWeight: 600 }}>
+            <span style={{ color: previewAsFlightLead ? '#d49a30' : '#1a1f25', fontWeight: 600 }}>
               Preview as Flight Lead
             </span>
           </label>
-          <span style={{ color: '#888', fontSize: 12 }}>
+          <span style={{ color: '#5a6268', fontSize: 12 }}>
             {previewAsFlightLead
               ? '↻ Map shows the restricted view a joined flight lead would see.'
               : 'Toggle to see exactly what flight leads will see when they join.'}
@@ -158,13 +158,13 @@ export function VisibilityTab() {
           gap: 14,
           marginBottom: 14,
           padding: '8px 12px',
-          background: '#0a1218',
-          border: '1px solid #222',
+          background: '#6e7c83',
+          border: '1px solid #8c9ba2',
           borderRadius: 6,
           fontSize: 12,
         }}
       >
-        <span style={{ color: '#e0e0e0', fontWeight: 600 }}>
+        <span style={{ color: '#1a1f25', fontWeight: 600 }}>
           {hiddenCount} / {totalCount} hidden from flight leads
         </span>
         {hiddenCount > 0 && (
@@ -208,10 +208,10 @@ export function VisibilityTab() {
           style={{
             flex: 1,
             minWidth: 200,
-            background: '#262626',
-            border: '1px solid #3a3a3a',
+            background: '#6e7c83',
+            border: '1px solid #4a5258',
             borderRadius: 4,
-            color: '#cccccc',
+            color: '#1a1f25',
             fontSize: 13,
             padding: '6px 10px',
             fontFamily: 'inherit',
@@ -265,9 +265,9 @@ export function VisibilityTab() {
             padding: '40px 20px',
             textAlign: 'center',
             background: 'rgba(74, 143, 212, 0.04)',
-            border: '1px solid #4a4a4a',
+            border: '1px solid #4a5258',
             borderRadius: 6,
-            color: '#aaaaaa',
+            color: '#3a4248',
             fontSize: 13,
           }}
         >
@@ -276,7 +276,7 @@ export function VisibilityTab() {
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
+            <tr style={{ borderBottom: '2px solid #4a5258' }}>
               <th style={{ ...thStyle, width: 50 }}>HIDDEN</th>
               <th style={thStyle}>GROUP NAME</th>
               <th style={{ ...thStyle, width: 90 }}>SIDE</th>
@@ -287,12 +287,12 @@ export function VisibilityTab() {
           <tbody>
             {filtered.map((g) => {
               const isHidden = hiddenSet.has(g.groupId);
-              const sideColor = COALITION_COLORS[g.coalition] || '#aaaaaa';
+              const sideColor = COALITION_COLORS[g.coalition] || '#3a4248';
               return (
                 <tr
                   key={g.groupId}
                   style={{
-                    borderBottom: '1px solid #262626',
+                    borderBottom: '1px solid #6e7c83',
                     background: isHidden ? 'rgba(217, 80, 80, 0.06)' : undefined,
                   }}
                 >
@@ -305,17 +305,17 @@ export function VisibilityTab() {
                       style={{ accentColor: '#d95050', cursor: role === 'flight_lead' ? 'not-allowed' : 'pointer' }}
                     />
                   </td>
-                  <td style={{ ...tdStyle, color: '#e0e0e0', fontWeight: 500 }}>
+                  <td style={{ ...tdStyle, color: '#1a1f25', fontWeight: 500 }}>
                     {g.groupName}
                   </td>
                   <td style={{ ...tdStyle, color: sideColor, fontWeight: 600 }}>
                     {g.coalition.toUpperCase()}
                   </td>
-                  <td style={{ ...tdStyle, color: '#cccccc' }}>
+                  <td style={{ ...tdStyle, color: '#1a1f25' }}>
                     <span style={{ marginRight: 6 }}>{CATEGORY_ICON[g.category] || '?'}</span>
                     {g.category}
                   </td>
-                  <td style={{ ...tdStyle, color: '#aaaaaa', fontFamily: "'B612 Mono', monospace" }}>
+                  <td style={{ ...tdStyle, color: '#3a4248', fontFamily: "'B612 Mono', monospace" }}>
                     {g.units.length}
                   </td>
                 </tr>
@@ -331,7 +331,7 @@ export function VisibilityTab() {
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '6px 8px',
-  color: '#aaaaaa',
+  color: '#3a4248',
   fontSize: 11,
   fontWeight: 600,
   textTransform: 'uppercase',
@@ -344,10 +344,10 @@ const tdStyle: React.CSSProperties = {
 };
 
 const selectStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 13,
   padding: '6px 8px',
   fontFamily: 'inherit',
@@ -357,10 +357,10 @@ const selectStyle: React.CSSProperties = {
 
 function bulkBtn(borderHex: string, fgHex: string, disabled: boolean): React.CSSProperties {
   return {
-    background: '#262626',
-    border: `1px solid ${disabled ? '#3a3a3a' : borderHex}`,
+    background: '#6e7c83',
+    border: `1px solid ${disabled ? '#4a5258' : borderHex}`,
     borderRadius: 4,
-    color: disabled ? '#666' : fgHex,
+    color: disabled ? '#5a6268' : fgHex,
     padding: '6px 12px',
     fontSize: 12,
     fontWeight: 600,

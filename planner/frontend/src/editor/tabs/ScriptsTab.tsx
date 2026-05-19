@@ -29,10 +29,10 @@ export function ScriptsTab() {
       <div style={{
         marginBottom: 12,
       }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
           Mission Scripts — Auto-Setup
         </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
           One-click renamers + edit dispatchers that prepare a mission for
           AEGIS IADS, TIC ground combat, or JTAC laser-designator scripts.
           Each script's framework lua is auto-bundled on download.
@@ -41,7 +41,7 @@ export function ScriptsTab() {
 
       <div style={{
         display: 'flex', gap: 2, marginBottom: 16,
-        background: '#222222', borderRadius: 6, padding: 3,
+        background: '#8c9ba2', borderRadius: 6, padding: 3,
       }}>
         {SUB_TABS.map((t) => (
           <button
@@ -53,7 +53,7 @@ export function ScriptsTab() {
               background: sub === t.id ? `${t.color}22` : 'transparent',
               border: sub === t.id ? `1px solid ${t.color}55` : '1px solid transparent',
               borderRadius: 4,
-              color: sub === t.id ? t.color : '#aaaaaa',
+              color: sub === t.id ? t.color : '#3a4248',
               fontWeight: sub === t.id ? 700 : 400,
               fontSize: 13,
               cursor: 'pointer',

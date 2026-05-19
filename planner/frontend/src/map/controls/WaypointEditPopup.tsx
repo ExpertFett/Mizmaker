@@ -170,13 +170,13 @@ export function WaypointEditPopup({
         left: '50%',
         transform: 'translateX(-50%)',
         background: 'rgba(8, 15, 28, 0.96)',
-        border: '1px solid #4a4a4a',
+        border: '1px solid #4a5258',
         borderRadius: 10,
         padding: 0,
         zIndex: 200,
         width: 380,
         fontSize: 13,
-        color: '#e0e0e0',
+        color: '#1a1f25',
         backdropFilter: 'blur(8px)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         overflow: 'hidden',
@@ -187,15 +187,15 @@ export function WaypointEditPopup({
         ...handleProps.style,
         display: 'flex', alignItems: 'center', padding: '10px 14px',
         background: 'rgba(20, 40, 70, 0.5)',
-        borderBottom: '1px solid #3a3a3a',
+        borderBottom: '1px solid #4a5258',
         userSelect: 'none',
       }}>
         <button
           onClick={() => hasPrev && onNavigate(groupId, wpNumbers[currentIdx - 1])}
           disabled={!hasPrev}
           style={{
-            background: 'none', border: '1px solid #3a3a3a', borderRadius: 4,
-            color: hasPrev ? '#4a8fd4' : '#3a3a3a',
+            background: 'none', border: '1px solid #4a5258', borderRadius: 4,
+            color: hasPrev ? '#d49a30' : '#4a5258',
             cursor: hasPrev ? 'pointer' : 'default',
             fontSize: 16, padding: '2px 8px', lineHeight: 1,
           }}
@@ -204,11 +204,11 @@ export function WaypointEditPopup({
 
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#e0e0e0' }}>
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#1a1f25' }}>
               WP{wpIndex}
             </span>
             {wp.waypoint_name && (
-              <span style={{ color: '#aaaaaa', fontSize: 12 }}>
+              <span style={{ color: '#3a4248', fontSize: 12 }}>
                 {wp.waypoint_name}
               </span>
             )}
@@ -233,8 +233,8 @@ export function WaypointEditPopup({
           onClick={() => hasNext && onNavigate(groupId, wpNumbers[currentIdx + 1])}
           disabled={!hasNext}
           style={{
-            background: 'none', border: '1px solid #3a3a3a', borderRadius: 4,
-            color: hasNext ? '#4a8fd4' : '#3a3a3a',
+            background: 'none', border: '1px solid #4a5258', borderRadius: 4,
+            color: hasNext ? '#d49a30' : '#4a5258',
             cursor: hasNext ? 'pointer' : 'default',
             fontSize: 16, padding: '2px 8px', lineHeight: 1,
           }}
@@ -244,7 +244,7 @@ export function WaypointEditPopup({
         <button
           onClick={onClose}
           style={{
-            background: 'none', border: 'none', color: '#aaaaaa',
+            background: 'none', border: 'none', color: '#3a4248',
             cursor: 'pointer', fontSize: 14, marginLeft: 8, padding: '2px 4px',
           }}
           title="Close (Esc)"
@@ -253,7 +253,7 @@ export function WaypointEditPopup({
 
       {/* Info strip */}
       <div style={{
-        display: 'flex', gap: 0, borderBottom: '1px solid #3a3a3a',
+        display: 'flex', gap: 0, borderBottom: '1px solid #4a5258',
         background: 'rgba(10, 18, 30, 0.5)',
       }}>
         <InfoCell label="ALT" value={`${altFt.toLocaleString()} ft`} sub={wp.altitude_type === 'BARO' ? 'MSL' : 'AGL'} />
@@ -266,8 +266,8 @@ export function WaypointEditPopup({
       {/* Coordinates */}
       {pos && (
         <div style={{
-          padding: '6px 14px', borderBottom: '1px solid #3a3a3a',
-          fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#aaaaaa',
+          padding: '6px 14px', borderBottom: '1px solid #4a5258',
+          fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#3a4248',
           background: 'rgba(10, 18, 30, 0.3)',
         }}>
           {pos}
@@ -294,9 +294,9 @@ export function WaypointEditPopup({
           }}>
             <span style={fieldLabel}>ABBR</span>
             <div style={{
-              background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+              background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
               padding: '5px 4px', fontSize: 13, fontFamily: "'B612 Mono', monospace",
-              color: abbr ? '#d29922' : '#3a3a3a', fontWeight: 700,
+              color: abbr ? '#d29922' : '#4a5258', fontWeight: 700,
               letterSpacing: 1, textAlign: 'center',
             }}>
               {abbr || '----'}
@@ -350,7 +350,7 @@ export function WaypointEditPopup({
       </div>
 
       {/* Notes */}
-      <div style={{ padding: '8px 14px 10px', borderTop: '1px solid #3a3a3a' }}>
+      <div style={{ padding: '8px 14px 10px', borderTop: '1px solid #4a5258' }}>
         <label>
           <span style={fieldLabel}>Notes</span>
           <textarea
@@ -378,16 +378,16 @@ function InfoCell({ label, value, sub, border }: { label: string; value: string;
   return (
     <div style={{
       flex: 1, padding: '8px 10px', textAlign: 'center',
-      borderLeft: border ? '1px solid #3a3a3a' : 'none',
+      borderLeft: border ? '1px solid #4a5258' : 'none',
     }}>
       <div style={{ fontSize: 9, color: '#555555', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const }}>
         {label}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0', fontFamily: "'B612 Mono', monospace" }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 9, color: '#aaaaaa' }}>{sub}</div>
+        <div style={{ fontSize: 9, color: '#3a4248' }}>{sub}</div>
       )}
     </div>
   );
@@ -395,8 +395,8 @@ function InfoCell({ label, value, sub, border }: { label: string; value: string;
 
 
 const inputStyle: React.CSSProperties = {
-  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-  color: '#e0e0e0', fontSize: 13, padding: '5px 8px', width: '100%',
+  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+  color: '#1a1f25', fontSize: 13, padding: '5px 8px', width: '100%',
   fontFamily: "'B612 Mono', monospace", boxSizing: 'border-box',
 };
 

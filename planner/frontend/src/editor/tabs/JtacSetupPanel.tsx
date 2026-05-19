@@ -32,24 +32,24 @@ const rowStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '7px 10px', borderRadius: 4, marginBottom: 3,
   fontSize: 12, background: 'rgba(74, 143, 212, 0.04)',
-  border: '1px solid #222222',
+  border: '1px solid #8c9ba2',
 };
 
 const inputSmall: React.CSSProperties = {
-  width: 60, background: '#0a1218', border: '1px solid #3a3a3a',
-  borderRadius: 3, color: '#e0e0e0', fontSize: 11, padding: '3px 6px',
+  width: 60, background: '#6e7c83', border: '1px solid #4a5258',
+  borderRadius: 3, color: '#1a1f25', fontSize: 11, padding: '3px 6px',
   fontFamily: 'inherit', textAlign: 'center',
 };
 
 const inputName: React.CSSProperties = {
-  width: 140, background: '#0a1218', border: '1px solid #3a3a3a',
-  borderRadius: 3, color: '#e0e0e0', fontSize: 12, padding: '4px 8px',
+  width: 140, background: '#6e7c83', border: '1px solid #4a5258',
+  borderRadius: 3, color: '#1a1f25', fontSize: 12, padding: '4px 8px',
   fontFamily: 'inherit', fontWeight: 600,
 };
 
 const btnSmall: React.CSSProperties = {
-  background: '#3a3a3a', border: '1px solid #3a3a3a', borderRadius: 4,
-  color: '#4a8fd4', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+  background: '#4a5258', border: '1px solid #4a5258', borderRadius: 4,
+  color: '#d49a30', cursor: 'pointer', fontSize: 11, fontWeight: 600,
   padding: '4px 10px', fontFamily: 'inherit',
 };
 
@@ -196,7 +196,7 @@ export function JtacSetupPanel() {
 
   if (groundGroups.length === 0) {
     return (
-      <div style={{ color: '#aaaaaa', fontSize: 12, padding: '8px 0' }}>
+      <div style={{ color: '#3a4248', fontSize: 12, padding: '8px 0' }}>
         No ground vehicle groups found in the mission.
       </div>
     );
@@ -204,7 +204,7 @@ export function JtacSetupPanel() {
 
   return (
     <div>
-      <p style={{ margin: '0 0 8px', fontSize: 12, color: '#aaaaaa' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 12, color: '#3a4248' }}>
         Select ground groups to designate as JTACs. They'll be renamed with "JTAC" prefix
         (required for autolase scripts), assigned laser codes, frequencies, set as
         Combined Arms player slots, and made invisible and invincible.
@@ -218,13 +218,13 @@ export function JtacSetupPanel() {
             onClick={() => setCoalFilter(f)}
             style={{
               ...btnSmall,
-              ...(coalFilter === f ? { background: 'rgba(74, 143, 212, 0.15)', color: '#e0e0e0' } : {}),
+              ...(coalFilter === f ? { background: 'rgba(74, 143, 212, 0.15)', color: '#1a1f25' } : {}),
             }}
           >
             {f === 'all' ? 'All' : f.toUpperCase()}
           </button>
         ))}
-        <span style={{ fontSize: 11, color: '#aaaaaa', marginLeft: 8, alignSelf: 'center' }}>
+        <span style={{ fontSize: 11, color: '#3a4248', marginLeft: 8, alignSelf: 'center' }}>
           {filteredGroups.length} groups / {selectedJtacs.size} selected as JTAC
         </span>
       </div>
@@ -234,12 +234,12 @@ export function JtacSetupPanel() {
         {filteredGroups.map((group) => {
           const config = selectedJtacs.get(group.groupId);
           const isSelected = !!config;
-          const coalColor = group.coalition === 'blue' ? '#4a8fd4' : group.coalition === 'red' ? '#d95050' : '#8a8a6a';
+          const coalColor = group.coalition === 'blue' ? '#d49a30' : group.coalition === 'red' ? '#d95050' : '#8a8a6a';
 
           return (
             <div key={group.groupId} style={{
               ...rowStyle,
-              borderColor: isSelected ? '#3fb95030' : '#222222',
+              borderColor: isSelected ? '#3fb95030' : '#8c9ba2',
               background: isSelected ? 'rgba(63, 185, 80, 0.04)' : 'rgba(74, 143, 212, 0.04)',
             }}>
               {/* Coalition badge */}
@@ -259,13 +259,13 @@ export function JtacSetupPanel() {
                   style={inputName}
                 />
               ) : (
-                <span style={{ color: '#e0e0e0', minWidth: 140, fontWeight: 500 }}>
+                <span style={{ color: '#1a1f25', minWidth: 140, fontWeight: 500 }}>
                   {group.groupName}
                 </span>
               )}
 
               {/* Unit info */}
-              <span style={{ color: '#aaaaaa', fontSize: 11 }}>
+              <span style={{ color: '#3a4248', fontSize: 11 }}>
                 {group.units.length}x {group.units[0]?.type || '?'}
               </span>
 
@@ -280,7 +280,7 @@ export function JtacSetupPanel() {
               {/* Laser & freq (when selected) */}
               {isSelected && config && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
-                  <span style={{ fontSize: 10, color: '#aaaaaa' }}>Laser:</span>
+                  <span style={{ fontSize: 10, color: '#3a4248' }}>Laser:</span>
                   <input
                     type="number"
                     value={config.laserCode}
@@ -289,7 +289,7 @@ export function JtacSetupPanel() {
                     min={1111}
                     max={1788}
                   />
-                  <span style={{ fontSize: 10, color: '#aaaaaa', marginLeft: 4 }}>Freq:</span>
+                  <span style={{ fontSize: 10, color: '#3a4248', marginLeft: 4 }}>Freq:</span>
                   <input
                     type="number"
                     value={config.freqMHz}
@@ -297,7 +297,7 @@ export function JtacSetupPanel() {
                     style={{ ...inputSmall, width: 55 }}
                     step={0.5}
                   />
-                  <span style={{ fontSize: 10, color: '#4a4a4a' }}>MHz</span>
+                  <span style={{ fontSize: 10, color: '#4a5258' }}>MHz</span>
                 </div>
               )}
             </div>

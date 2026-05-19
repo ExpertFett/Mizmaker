@@ -238,7 +238,7 @@ export function FloatingFlightPanel() {
         width: 720,
         maxHeight: '88vh',
         background: 'rgba(8, 15, 28, 0.97)',
-        border: '1px solid #4a4a4a',
+        border: '1px solid #4a5258',
         borderRadius: 8,
         display: 'flex',
         flexDirection: 'column',
@@ -255,8 +255,8 @@ export function FloatingFlightPanel() {
         onPointerUp={onDragEnd}
         style={{
           padding: '12px 18px',
-          background: '#1a1a1a',
-          borderBottom: '1px solid #3a3a3a',
+          background: '#7a8a92',
+          borderBottom: '1px solid #4a5258',
           cursor: 'grab',
           display: 'flex',
           justifyContent: 'space-between',
@@ -265,10 +265,10 @@ export function FloatingFlightPanel() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {locked && !isOwnGroup && <span style={{ color: '#aaaaaa', fontSize: 11 }} title="View only — not your assigned flight">VIEW</span>}
+          {locked && !isOwnGroup && <span style={{ color: '#3a4248', fontSize: 11 }} title="View only — not your assigned flight">VIEW</span>}
           {locked && isOwnGroup && <span style={{ color: '#d29922', fontSize: 14 }} title="Admin locked">&#128274;</span>}
-          <span style={{ fontWeight: 600, color: isOwnGroup ? '#e0e0e0' : '#aaaaaa', fontSize: 16 }}>{group.groupName}</span>
-          <span style={{ color: '#aaaaaa', fontSize: 13 }}>{airframe}</span>
+          <span style={{ fontWeight: 600, color: isOwnGroup ? '#1a1f25' : '#3a4248', fontSize: 16 }}>{group.groupName}</span>
+          <span style={{ color: '#3a4248', fontSize: 13 }}>{airframe}</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
@@ -286,14 +286,14 @@ export function FloatingFlightPanel() {
       {!minimized.current && (
         <>
           {/* Group info */}
-          <div style={{ padding: '10px 18px', borderBottom: '1px solid #3a3a3a', fontSize: 13, color: '#aaaaaa' }}>
+          <div style={{ padding: '10px 18px', borderBottom: '1px solid #4a5258', fontSize: 13, color: '#3a4248' }}>
             {group.task} &middot; {group.frequency ? `${group.frequency.toFixed(1)} MHz` : 'No freq'}
             &middot; {group.coalition} &middot; {group.units.length} units
             {player && <span style={{ color: '#3fb950', marginLeft: 8, fontWeight: 600 }}>FLYABLE</span>}
           </div>
 
           {/* Tab bar */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #3a3a3a', background: '#222222' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #4a5258', background: '#8c9ba2' }}>
             {(['route', 'datalink', 'loadout'] as const).map((tab) => (
               <button
                 key={tab}
@@ -301,8 +301,8 @@ export function FloatingFlightPanel() {
                 style={{
                   flex: 1, padding: '10px 0', fontSize: 13, fontWeight: panelTab === tab ? 600 : 400,
                   background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: panelTab === tab ? '#e0e0e0' : '#aaaaaa',
-                  borderBottom: panelTab === tab ? '2px solid #4a8fd4' : '2px solid transparent',
+                  color: panelTab === tab ? '#1a1f25' : '#3a4248',
+                  borderBottom: panelTab === tab ? '2px solid #d49a30' : '2px solid transparent',
                 }}
               >
                 {tab === 'route' ? 'Route' : tab === 'datalink' ? 'Datalink' : 'Loadout'}
@@ -323,9 +323,9 @@ export function FloatingFlightPanel() {
 
           {panelTab === 'route' && (
           <div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#e0e0e0' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#1a1f25' }}>
               <thead>
-                <tr style={{ color: '#bbbbbb', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a', position: 'sticky', top: 0 }}>
+                <tr style={{ color: '#bbbbbb', borderBottom: '1px solid #4a5258', background: '#7a8a92', position: 'sticky', top: 0 }}>
                   {!locked && <th style={{ ...thStyle, width: 36 }}></th>}
                   <th style={thStyle}>WP</th>
                   <th style={thStyle}>Name</th>
@@ -358,13 +358,13 @@ export function FloatingFlightPanel() {
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ borderTop: '1px solid #3a3a3a', color: '#aaaaaa' }}>
+                <tr style={{ borderTop: '1px solid #4a5258', color: '#3a4248' }}>
                   <td colSpan={locked ? 4 : 5} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>Total</td>
                   <td style={{ padding: '8px 14px', textAlign: 'right', fontFamily: "'B612 Mono', monospace", fontSize: 13 }}>
                     {group.waypoints.reduce((s, w) => s + (w.leg_distance_nm || 0), 0).toFixed(1)} nm
                   </td>
                   <td></td>
-                  <td style={{ padding: '8px 14px', textAlign: 'right', fontFamily: "'B612 Mono', monospace", fontSize: 13, color: '#aaaaaa' }}>
+                  <td style={{ padding: '8px 14px', textAlign: 'right', fontFamily: "'B612 Mono', monospace", fontSize: 13, color: '#3a4248' }}>
                     {(() => {
                       const totalEte = group.waypoints.reduce((s, w) => s + ((w.leg_distance_nm || 0) * 1852 / (w.speed_ms || 1)), 0);
                       return formatEte(totalEte);
@@ -394,21 +394,21 @@ export function FloatingFlightPanel() {
 
           {/* Footer */}
           {!locked && (
-            <div style={{ padding: '10px 18px', borderTop: '1px solid #3a3a3a', display: 'flex', gap: 10 }}>
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #4a5258', display: 'flex', gap: 10 }}>
               <button
                 onClick={() => setAddWaypointMode(!addWaypointMode)}
                 style={{
                   flex: 1, padding: '9px 14px', fontSize: 13, fontWeight: 500,
                   background: addWaypointMode ? '#1a4a2a' : '#333333',
-                  border: `1px solid ${addWaypointMode ? '#3fb950' : '#4a4a4a'}`,
+                  border: `1px solid ${addWaypointMode ? '#3fb950' : '#4a5258'}`,
                   borderRadius: 4,
-                  color: addWaypointMode ? '#3fb950' : '#e0e0e0',
+                  color: addWaypointMode ? '#3fb950' : '#1a1f25',
                   cursor: 'pointer',
                 }}
               >
                 {addWaypointMode ? 'Click map to place...' : '+ Add Waypoint'}
               </button>
-              <span style={{ color: '#aaaaaa', fontSize: 12, alignSelf: 'center' }}>
+              <span style={{ color: '#3a4248', fontSize: 12, alignSelf: 'center' }}>
                 or right-click map
               </span>
             </div>
@@ -443,12 +443,12 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
   const isWp0 = wp.waypoint_number === 0;
 
   const inputStyle: React.CSSProperties = {
-    background: 'transparent', border: 'none', color: '#e0e0e0',
+    background: 'transparent', border: 'none', color: '#1a1f25',
     fontSize: 14, fontFamily: "'B612 Mono', monospace", padding: '2px 0',
   };
 
   const arrowBtn: React.CSSProperties = {
-    background: 'transparent', border: 'none', color: '#aaaaaa',
+    background: 'transparent', border: 'none', color: '#3a4248',
     cursor: 'pointer', fontSize: 12, padding: '1px 2px', lineHeight: 1,
   };
 
@@ -456,10 +456,10 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
     <tr
       onClick={onSelect}
       style={{
-        borderBottom: '1px solid #262626',
+        borderBottom: '1px solid #6e7c83',
         opacity: isWp0 ? 0.45 : 1,
         background: selected ? 'rgba(74, 143, 212, 0.12)' : 'transparent',
-        borderLeft: selected ? '2px solid #4a8fd4' : '2px solid transparent',
+        borderLeft: selected ? '2px solid #d49a30' : '2px solid transparent',
         cursor: 'pointer',
       }}
     >
@@ -477,14 +477,14 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
           )}
         </td>
       )}
-      <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{wp.waypoint_number}</td>
+      <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#3a4248', fontSize: 13 }}>{wp.waypoint_number}</td>
       <td style={tdStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {locked ? (
-            <span style={{ color: '#cccccc', fontSize: 14 }}>{wp.waypoint_name}</span>
+            <span style={{ color: '#1a1f25', fontSize: 14 }}>{wp.waypoint_name}</span>
           ) : (
             <input defaultValue={wp.waypoint_name} onBlur={(e) => onPropChange(wp.waypoint_number, 'name', e.target.value)}
-              style={{ ...inputStyle, width: 100, color: '#e0e0e0' }} />
+              style={{ ...inputStyle, width: 100, color: '#1a1f25' }} />
           )}
           {abbreviate(wp.waypoint_name) && (
             <span style={{
@@ -501,14 +501,14 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
       </td>
       <td style={{ ...tdStyle, textAlign: 'right' }}>
         {locked ? (
-          <span style={{ fontFamily: "'B612 Mono', monospace", color: '#cccccc', fontSize: 14 }}>{altFt}</span>
+          <span style={{ fontFamily: "'B612 Mono', monospace", color: '#1a1f25', fontSize: 14 }}>{altFt}</span>
         ) : (
           <input type="number" defaultValue={altFt}
             onBlur={(e) => onPropChange(wp.waypoint_number, 'alt', feetToMeters(parseFloat(e.target.value)))}
             style={{ ...inputStyle, width: 65, textAlign: 'right' }} />
         )}
         {locked ? (
-          <span style={{ fontSize: 11, color: '#aaaaaa', marginLeft: 3 }}>
+          <span style={{ fontSize: 11, color: '#3a4248', marginLeft: 3 }}>
             {wp.altitude_type === 'RADIO' ? 'AGL' : ''}
           </span>
         ) : (
@@ -517,7 +517,7 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
             title={wp.altitude_type === 'BARO' ? 'MSL — click for AGL' : 'AGL — click for MSL'}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
-              fontSize: 10, color: wp.altitude_type === 'RADIO' ? '#d29922' : '#aaaaaa',
+              fontSize: 10, color: wp.altitude_type === 'RADIO' ? '#d29922' : '#3a4248',
               marginLeft: 2, padding: '1px 3px', fontWeight: 600,
             }}
           >
@@ -527,23 +527,23 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
       </td>
       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", lineHeight: 1.4 }}>
         {isWp0 ? (
-          <span style={{ color: '#aaaaaa' }}>-</span>
+          <span style={{ color: '#3a4248' }}>-</span>
         ) : locked ? (
           <SpeedBlock gs_ms={wp.speed_ms} alt_m={wp.altitude_m} heading={heading} weather={weather} />
         ) : (
           <SpeedEditor wp={wp} heading={heading} weather={weather} onPropChange={onPropChange} />
         )}
       </td>
-      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{distNm}</td>
-      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{brg}</td>
-      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{eteStr}</td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#3a4248', fontSize: 13 }}>{distNm}</td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#3a4248', fontSize: 13 }}>{brg}</td>
+      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#3a4248', fontSize: 13 }}>{eteStr}</td>
       {showControls && (
         <td style={{ ...tdStyle, textAlign: 'center' }}>
           {canDelete && (
             <button onClick={() => onDelete(wp.waypoint_number)} title="Delete waypoint"
-              style={{ background: 'transparent', border: '1px solid transparent', color: '#aaaaaa', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 5px', borderRadius: 3 }}
+              style={{ background: 'transparent', border: '1px solid transparent', color: '#3a4248', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 5px', borderRadius: 3 }}
               onMouseEnter={(e) => { e.currentTarget.style.color = '#d95050'; e.currentTarget.style.borderColor = '#d95050'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#aaaaaa'; e.currentTarget.style.borderColor = 'transparent'; }}>
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#3a4248'; e.currentTarget.style.borderColor = 'transparent'; }}>
               X
             </button>
           )}
@@ -556,8 +556,8 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
 const thStyle: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 13 };
 const tdStyle: React.CSSProperties = { padding: '8px 12px' };
 const titleBtnStyle: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #3a3a3a', borderRadius: 4,
-  color: '#aaaaaa', cursor: 'pointer', fontSize: 13, padding: '4px 10px',
+  background: 'transparent', border: '1px solid #4a5258', borderRadius: 4,
+  color: '#3a4248', cursor: 'pointer', fontSize: 13, padding: '4px 10px',
 };
 
 function SpeedEditor({ wp, heading, weather, onPropChange }: {
@@ -590,11 +590,11 @@ function SpeedEditor({ wp, heading, weather, onPropChange }: {
   };
 
   const selectStyle: React.CSSProperties = {
-    background: '#262626', border: '1px solid #3a3a3a', color: '#4a8fd4',
+    background: '#6e7c83', border: '1px solid #4a5258', color: '#d49a30',
     fontSize: 12, borderRadius: 3, padding: '3px 5px', cursor: 'pointer',
   };
   const inputStyle: React.CSSProperties = {
-    background: 'transparent', border: 'none', color: '#e0e0e0',
+    background: 'transparent', border: 'none', color: '#1a1f25',
     fontSize: 14, fontFamily: "'B612 Mono', monospace", padding: '2px 0', width: 56, textAlign: 'right' as const,
   };
 
@@ -631,7 +631,7 @@ function SpeedBlock({ gs_ms, alt_m, heading, weather, excludeRef }: {
   if (excludeRef !== 'mach') items.push({ label: 'M', value: convertSpeed(gs_ms, alt_m, heading, weather, 'mach').toFixed(2), ref: 'mach' });
 
   return (
-    <div style={{ display: 'flex', gap: 8, fontSize: 12, color: '#aaaaaa' }}>
+    <div style={{ display: 'flex', gap: 8, fontSize: 12, color: '#3a4248' }}>
       {items.map((it) => (
         <span key={it.ref} style={{ fontFamily: "'B612 Mono', monospace" }}>
           {it.value}<span style={{ fontSize: 10, color: '#555555', marginLeft: 1 }}>{it.label}</span>
@@ -651,7 +651,7 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
   const units = clientUnits.filter((u) => u.groupName === groupName);
   const [resetKey, setResetKey] = useState(0);
 
-  if (units.length === 0) return <div style={{ padding: 12, color: '#aaaaaa', fontSize: 12 }}>No client units in this group</div>;
+  if (units.length === 0) return <div style={{ padding: 12, color: '#3a4248', fontSize: 12 }}>No client units in this group</div>;
 
   // Derive a default STN L16 from voice callsign number (e.g. "11" → "00011")
   const defaultStn = (u: typeof units[0]) => {
@@ -708,8 +708,8 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
   };
 
   const inputSt: React.CSSProperties = {
-    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-    color: '#e0e0e0', fontSize: 14, fontFamily: "'B612 Mono', monospace", padding: '6px 8px', width: '100%',
+    background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+    color: '#1a1f25', fontSize: 14, fontFamily: "'B612 Mono', monospace", padding: '6px 8px', width: '100%',
     textAlign: 'center',
   };
 
@@ -720,16 +720,16 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
           <button
             onClick={handleAutoAssign}
             style={{
-              background: '#4a4a4a', border: '1px solid #2a5a8a', borderRadius: 4,
+              background: '#4a5258', border: '1px solid #2a5a8a', borderRadius: 4,
               color: '#6ab4f0', padding: '4px 12px', fontSize: 12, cursor: 'pointer',
               fontWeight: 500,
             }}
           >Auto Assign</button>
         </div>
       )}
-      <table key={resetKey} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#e0e0e0' }}>
+      <table key={resetKey} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, color: '#1a1f25' }}>
         <thead>
-          <tr style={{ color: '#bbbbbb', borderBottom: '1px solid #3a3a3a' }}>
+          <tr style={{ color: '#bbbbbb', borderBottom: '1px solid #4a5258' }}>
             <th style={{ ...thStyle, textAlign: 'left' }}>Unit</th>
             <th style={{ ...thStyle, width: 90 }}>Callsign</th>
             <th style={{ ...thStyle, width: 60 }}>#</th>
@@ -738,10 +738,10 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
         </thead>
         <tbody>
           {units.map((u) => (
-            <tr key={u.unitId} style={{ borderBottom: '1px solid #262626' }}>
+            <tr key={u.unitId} style={{ borderBottom: '1px solid #6e7c83' }}>
               <td style={tdStyle}>
-                <div style={{ fontSize: 14, color: '#cccccc', fontWeight: 500 }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: '#aaaaaa' }}>{u.type}</div>
+                <div style={{ fontSize: 14, color: '#1a1f25', fontWeight: 500 }}>{u.name}</div>
+                <div style={{ fontSize: 11, color: '#3a4248' }}>{u.type}</div>
               </td>
               <td style={tdStyle}>
                 {locked ? <span style={{ fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>{u.voiceCallsignLabel}</span> : (
@@ -780,7 +780,7 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
   const [expandedPylon, setExpandedPylon] = useState<string | null>(null);
   const [pylonSettings, setPylonSettings] = useState<Record<string, Record<string, any>>>({});
 
-  if (units.length === 0) return <div style={{ padding: 12, color: '#aaaaaa', fontSize: 12 }}>No client units in this group</div>;
+  if (units.length === 0) return <div style={{ padding: 12, color: '#3a4248', fontSize: 12 }}>No client units in this group</div>;
 
   const handlePylonChange = (unitId: number, pylonNum: number, clsid: string) => {
     const unit = units.find((u) => u.unitId === unitId);
@@ -829,8 +829,8 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
   };
 
   const selSt: React.CSSProperties = {
-    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-    color: '#e0e0e0', fontSize: 13, padding: '5px 8px', flex: 1,
+    background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+    color: '#1a1f25', fontSize: 13, padding: '5px 8px', flex: 1,
   };
 
   return (
@@ -839,9 +839,9 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
         const typeOpts = pylonOptions[unit.type] as Record<string, PylonInfo[]> | undefined;
         return (
           <div key={unit.unitId} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#cccccc', marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1f25', marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{unit.name}</span>
-              <span style={{ fontSize: 11, color: '#aaaaaa', fontFamily: "'B612 Mono', monospace" }}>
+              <span style={{ fontSize: 11, color: '#3a4248', fontFamily: "'B612 Mono', monospace" }}>
                 Fuel:{Math.round(unit.fuel)}lbs FL:{unit.flare} CH:{unit.chaff}
               </span>
             </div>
@@ -862,9 +862,9 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
                 return (
                   <div key={stationNum} style={{ marginBottom: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ color: '#aaaaaa', fontSize: 12, fontFamily: "'B612 Mono', monospace", minWidth: 32 }}>S{stationNum}</span>
+                      <span style={{ color: '#3a4248', fontSize: 12, fontFamily: "'B612 Mono', monospace", minWidth: 32 }}>S{stationNum}</span>
                       {locked ? (
-                        <span style={{ fontSize: 13, color: '#cccccc' }}>{pylon.shortName}</span>
+                        <span style={{ fontSize: 13, color: '#1a1f25' }}>{pylon.shortName}</span>
                       ) : (
                         <select value={pylon.clsid} onChange={(e) => handlePylonChange(unit.unitId, stationNum, e.target.value)} style={selSt}>
                           <option value="">&lt;Empty&gt;</option>
@@ -877,7 +877,7 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
                       )}
                       {pylon.clsid && !locked && (
                         <button onClick={() => setExpandedPylon(isExp ? null : key)}
-                          style={{ background: 'transparent', border: 'none', color: isExp ? '#4a8fd4' : '#4a4a4a', cursor: 'pointer', fontSize: 10 }}>
+                          style={{ background: 'transparent', border: 'none', color: isExp ? '#d49a30' : '#4a5258', cursor: 'pointer', fontSize: 10 }}>
                           {isExp ? '\u25B2' : '\u2699'}
                         </button>
                       )}
@@ -975,8 +975,8 @@ function WaypointDetail({
   const etaMin = wp.eta_seconds ? Math.round(wp.eta_seconds / 60) : null;
 
   const detailInputStyle: React.CSSProperties = {
-    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
-    color: '#e0e0e0', fontSize: 13, padding: '5px 8px', width: '100%',
+    background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
+    color: '#1a1f25', fontSize: 13, padding: '5px 8px', width: '100%',
     fontFamily: "'B612 Mono', monospace", boxSizing: 'border-box' as const,
   };
 
@@ -987,20 +987,20 @@ function WaypointDetail({
 
   return (
     <div style={{
-      borderTop: '1px solid #4a4a4a',
+      borderTop: '1px solid #4a5258',
       background: 'rgba(10, 20, 35, 0.6)',
     }}>
       {/* Nav header */}
       <div style={{
         display: 'flex', alignItems: 'center', padding: '8px 14px',
-        borderBottom: '1px solid #3a3a3a',
+        borderBottom: '1px solid #4a5258',
       }}>
         <button
           onClick={() => hasPrev && onNavigate(wpNumbers[currentIdx - 1])}
           disabled={!hasPrev}
           style={{
-            background: 'none', border: '1px solid #3a3a3a', borderRadius: 4,
-            color: hasPrev ? '#4a8fd4' : '#3a3a3a',
+            background: 'none', border: '1px solid #4a5258', borderRadius: 4,
+            color: hasPrev ? '#d49a30' : '#4a5258',
             cursor: hasPrev ? 'pointer' : 'default',
             fontSize: 14, padding: '2px 8px', lineHeight: 1,
           }}
@@ -1009,11 +1009,11 @@ function WaypointDetail({
 
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 14, color: '#e0e0e0' }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: '#1a1f25' }}>
               WP{wpIndex}
             </span>
             {wp.waypoint_name && (
-              <span style={{ color: '#aaaaaa', fontSize: 12 }}>
+              <span style={{ color: '#3a4248', fontSize: 12 }}>
                 {wp.waypoint_name}
               </span>
             )}
@@ -1038,8 +1038,8 @@ function WaypointDetail({
           onClick={() => hasNext && onNavigate(wpNumbers[currentIdx + 1])}
           disabled={!hasNext}
           style={{
-            background: 'none', border: '1px solid #3a3a3a', borderRadius: 4,
-            color: hasNext ? '#4a8fd4' : '#3a3a3a',
+            background: 'none', border: '1px solid #4a5258', borderRadius: 4,
+            color: hasNext ? '#d49a30' : '#4a5258',
             cursor: hasNext ? 'pointer' : 'default',
             fontSize: 14, padding: '2px 8px', lineHeight: 1,
           }}
@@ -1049,7 +1049,7 @@ function WaypointDetail({
         <button
           onClick={onClose}
           style={{
-            background: 'none', border: 'none', color: '#aaaaaa',
+            background: 'none', border: 'none', color: '#3a4248',
             cursor: 'pointer', fontSize: 13, marginLeft: 8, padding: '2px 4px',
           }}
           title="Close detail"
@@ -1058,7 +1058,7 @@ function WaypointDetail({
 
       {/* Info strip */}
       <div style={{
-        display: 'flex', gap: 0, borderBottom: '1px solid #3a3a3a',
+        display: 'flex', gap: 0, borderBottom: '1px solid #4a5258',
         background: 'rgba(10, 18, 30, 0.5)',
       }}>
         <DetailInfoCell label="ALT" value={`${altFt.toLocaleString()} ft`} sub={wp.altitude_type === 'BARO' ? 'MSL' : 'AGL'} />
@@ -1071,8 +1071,8 @@ function WaypointDetail({
       {/* Coordinates */}
       {pos && (
         <div style={{
-          padding: '4px 14px', borderBottom: '1px solid #3a3a3a',
-          fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#aaaaaa',
+          padding: '4px 14px', borderBottom: '1px solid #4a5258',
+          fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#3a4248',
           background: 'rgba(10, 18, 30, 0.3)',
         }}>
           {pos}
@@ -1096,9 +1096,9 @@ function WaypointDetail({
           <div style={{ width: 52, textAlign: 'center', paddingBottom: 1 }}>
             <span style={detailLabel}>ABBR</span>
             <div style={{
-              background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+              background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 4,
               padding: '5px 4px', fontSize: 13, fontFamily: "'B612 Mono', monospace",
-              color: abbr ? '#d29922' : '#3a3a3a', fontWeight: 700,
+              color: abbr ? '#d29922' : '#4a5258', fontWeight: 700,
               letterSpacing: 1, textAlign: 'center',
             }}>
               {abbr || '----'}
@@ -1155,7 +1155,7 @@ function WaypointDetail({
       </div>
 
       {/* Notes */}
-      <div style={{ padding: '6px 14px 10px', borderTop: '1px solid #3a3a3a' }}>
+      <div style={{ padding: '6px 14px 10px', borderTop: '1px solid #4a5258' }}>
         <label>
           <span style={detailLabel}>Notes</span>
           <textarea
@@ -1182,16 +1182,16 @@ function DetailInfoCell({ label, value, sub, border }: { label: string; value: s
   return (
     <div style={{
       flex: 1, padding: '6px 8px', textAlign: 'center',
-      borderLeft: border ? '1px solid #3a3a3a' : 'none',
+      borderLeft: border ? '1px solid #4a5258' : 'none',
     }}>
       <div style={{ fontSize: 9, color: '#555555', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' as const }}>
         {label}
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', fontFamily: "'B612 Mono', monospace" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1f25', fontFamily: "'B612 Mono', monospace" }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 9, color: '#aaaaaa' }}>{sub}</div>
+        <div style={{ fontSize: 9, color: '#3a4248' }}>{sub}</div>
       )}
     </div>
   );

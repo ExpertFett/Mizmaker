@@ -154,11 +154,11 @@ export function AiSettingsPanel({ open, onClose }: Props) {
         style={{
           width: 580,
           maxWidth: '92vw',
-          background: '#1a1a1a',
-          border: '1px solid #4a4a4a',
+          background: '#7a8a92',
+          border: '1px solid #4a5258',
           borderRadius: 8,
           padding: 22,
-          color: '#e0e0e0',
+          color: '#1a1f25',
           fontFamily: 'inherit',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         }}
@@ -171,7 +171,7 @@ export function AiSettingsPanel({ open, onClose }: Props) {
           <button
             onClick={onClose}
             style={{
-              background: 'transparent', border: 'none', color: '#aaaaaa',
+              background: 'transparent', border: 'none', color: '#3a4248',
               fontSize: 18, cursor: 'pointer', padding: 4,
             }}
             title="Close"
@@ -197,11 +197,11 @@ export function AiSettingsPanel({ open, onClose }: Props) {
                       : 'transparent',
                     border: `1px solid ${active
                       ? (p === 'gemini' ? '#3fb950' : '#a371f7')
-                      : '#3a3a3a'}`,
+                      : '#4a5258'}`,
                     borderRadius: 4,
                     color: active
                       ? (p === 'gemini' ? '#3fb950' : '#c8a8ff')
-                      : '#cccccc',
+                      : '#1a1f25',
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: 600,
@@ -213,7 +213,7 @@ export function AiSettingsPanel({ open, onClose }: Props) {
                   {i.label}
                   <div style={{
                     marginTop: 4, fontSize: 10, fontWeight: 500,
-                    color: active ? 'inherit' : '#aaaaaa',
+                    color: active ? 'inherit' : '#3a4248',
                     letterSpacing: 0.3,
                   }}>
                     {i.paid ? 'PAID' : 'FREE TIER'}
@@ -225,7 +225,7 @@ export function AiSettingsPanel({ open, onClose }: Props) {
         </label>
 
         <div style={{
-          fontSize: 12, color: '#aaaaaa', lineHeight: 1.5,
+          fontSize: 12, color: '#3a4248', lineHeight: 1.5,
           marginBottom: 16, padding: '10px 12px',
           background: draftProvider === 'gemini'
             ? 'rgba(63, 185, 80, 0.06)'
@@ -259,7 +259,7 @@ export function AiSettingsPanel({ open, onClose }: Props) {
                 flex: 1,
                 fontFamily: "'B612 Mono', monospace",
                 fontSize: 12,
-                borderColor: !draftKey ? '#3a3a3a' : keyValid ? '#3fb950' : '#d29922',
+                borderColor: !draftKey ? '#4a5258' : keyValid ? '#3fb950' : '#d29922',
               }}
             />
             <button
@@ -322,7 +322,7 @@ export function AiSettingsPanel({ open, onClose }: Props) {
         {/* Footer buttons */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          marginTop: 20, paddingTop: 14, borderTop: '1px solid #3a3a3a',
+          marginTop: 20, paddingTop: 14, borderTop: '1px solid #4a5258',
         }}>
           <button onClick={handleSave} style={btnSave}>Save</button>
           <button onClick={onClose} style={btnGhost}>Cancel</button>
@@ -341,16 +341,16 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 12,
   fontWeight: 600,
-  color: '#cccccc',
+  color: '#1a1f25',
   marginBottom: 12,
   letterSpacing: 0.3,
 };
 
 const inputStyle: React.CSSProperties = {
-  background: '#262626',
-  border: '1px solid #3a3a3a',
+  background: '#6e7c83',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#e0e0e0',
+  color: '#1a1f25',
   fontSize: 13,
   padding: '7px 10px',
   fontFamily: 'inherit',
@@ -361,9 +361,9 @@ const inputStyle: React.CSSProperties = {
 
 const btnPrimary: React.CSSProperties = {
   background: 'rgba(74, 143, 212, 0.12)',
-  border: '1px solid #4a8fd4',
+  border: '1px solid #d49a30',
   borderRadius: 4,
-  color: '#4a8fd4',
+  color: '#d49a30',
   cursor: 'pointer',
   fontSize: 13,
   fontWeight: 600,
@@ -385,9 +385,9 @@ const btnSave: React.CSSProperties = {
 
 const btnGhost: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid #3a3a3a',
+  border: '1px solid #4a5258',
   borderRadius: 4,
-  color: '#cccccc',
+  color: '#1a1f25',
   cursor: 'pointer',
   fontSize: 13,
   padding: '7px 14px',

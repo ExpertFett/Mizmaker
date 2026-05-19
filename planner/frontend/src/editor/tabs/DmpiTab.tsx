@@ -47,10 +47,10 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
     <div style={{ maxWidth: 1000 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#1a1f25' }}>
             DMPI — Designated Mean Points of Impact
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#3a4248' }}>
             Define target designation points for strike missions. Use the 📍
             button to pick coordinates on the map. Data is session-only (not
             saved to .miz).
@@ -67,26 +67,26 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
           style={{
             display: 'flex', alignItems: 'center', gap: 12,
             padding: '8px 12px', marginBottom: 12,
-            background: '#0a1218',
+            background: '#6e7c83',
             border: '1px solid #2a5a8a',
-            borderLeft: '3px solid #4a8fd4',
+            borderLeft: '3px solid #d49a30',
             borderRadius: 4,
           }}
         >
-          <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
+          <span style={{ color: '#d49a30', fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>
             PICKING ON MAP
           </span>
-          <span style={{ color: '#cccccc', fontSize: 13, flex: 1 }}>
+          <span style={{ color: '#1a1f25', fontSize: 13, flex: 1 }}>
             Click anywhere on the map to set coordinates for{' '}
-            <strong style={{ color: '#e0e0e0' }}>
+            <strong style={{ color: '#1a1f25' }}>
               {dmpis.find((d) => d.id === pickingForId)?.name ?? '—'}
             </strong>.
           </span>
           <button
             onClick={cancelPicking}
             style={{
-              background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
-              color: '#aaaaaa', cursor: 'pointer', fontSize: 12, padding: '4px 10px',
+              background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
+              color: '#3a4248', cursor: 'pointer', fontSize: 12, padding: '4px 10px',
             }}
           >
             Cancel
@@ -98,15 +98,15 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
         <div style={{
           padding: '40px 20px', textAlign: 'center',
           background: 'rgba(74, 143, 212, 0.04)',
-          border: '1px solid #4a4a4a', borderRadius: 6,
-          color: '#aaaaaa', fontSize: 13,
+          border: '1px solid #4a5258', borderRadius: 6,
+          color: '#3a4248', fontSize: 13,
         }}>
           No DMPIs defined. Click "+ Add DMPI" to create target designation points for your kneeboard.
         </div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #3a3a3a' }}>
+            <tr style={{ borderBottom: '2px solid #4a5258' }}>
               <th style={thStyle}>#</th>
               <th style={thStyle}>NAME</th>
               <th style={{ ...thStyle, width: 100 }}>LAT</th>
@@ -122,7 +122,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
           <tbody>
             {dmpis.map((d: Dmpi, i: number) => (
               <tr key={d.id} style={{
-                borderBottom: '1px solid #262626',
+                borderBottom: '1px solid #6e7c83',
                 background: pickingForId === d.id ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
               }}>
                 <td style={{ ...tdStyle, textAlign: 'center', color: '#d29922', fontWeight: 700 }}>
@@ -131,7 +131,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                 <td style={tdStyle}>
                   <TextInput size="sm" value={d.name}
                     onChange={(e) => update(d.id, { name: e.target.value })}
-                    style={{ width: '95%', fontWeight: 600, color: '#e0e0e0' }} />
+                    style={{ width: '95%', fontWeight: 600, color: '#1a1f25' }} />
                 </td>
                 <td style={tdStyle}>
                   <TextInput size="sm" type="number" step="0.0001" value={d.lat || ''}
@@ -148,7 +148,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                     onChange={(e) => update(d.id, { elevation: parseInt(e.target.value, 10) || 0 })}
                     style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} />
                 </td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#cccccc' }}>
+                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#1a1f25' }}>
                   {d.lat && d.lon ? fmtMgrs(d.lat, d.lon) : '—'}
                 </td>
                 <td style={tdStyle}>
@@ -180,7 +180,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                     style={{
                       ...pickBtn,
                       ...(pickingForId === d.id
-                        ? { background: '#1a3050', borderColor: '#4a8fd4', color: '#4a8fd4' }
+                        ? { background: '#1a3050', borderColor: '#d49a30', color: '#d49a30' }
                         : {}),
                     }}
                   >
@@ -201,23 +201,23 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left', padding: '6px 8px',
-  color: '#aaaaaa', fontSize: 11, fontWeight: 600,
+  color: '#3a4248', fontSize: 11, fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: 0.5,
 };
 const tdStyle: React.CSSProperties = {
   padding: '4px 6px', verticalAlign: 'top',
 };
 const addBtn: React.CSSProperties = {
-  background: '#4a4a4a', border: '1px solid #4a8fd4', borderRadius: 4,
-  color: '#4a8fd4', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+  background: '#4a5258', border: '1px solid #d49a30', borderRadius: 4,
+  color: '#d49a30', cursor: 'pointer', fontSize: 13, fontWeight: 600,
   padding: '6px 14px', fontFamily: 'inherit',
 };
 const xBtn: React.CSSProperties = {
-  background: 'transparent', border: 'none', color: '#aaaaaa',
+  background: 'transparent', border: 'none', color: '#3a4248',
   cursor: 'pointer', fontSize: 16, padding: '0 4px',
 };
 const pickBtn: React.CSSProperties = {
-  background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
-  color: '#aaaaaa', cursor: 'pointer', fontSize: 14, padding: '2px 6px',
+  background: '#6e7c83', border: '1px solid #4a5258', borderRadius: 3,
+  color: '#3a4248', cursor: 'pointer', fontSize: 14, padding: '2px 6px',
   fontFamily: 'inherit',
 };
