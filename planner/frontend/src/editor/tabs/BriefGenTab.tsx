@@ -609,6 +609,26 @@ export function BriefGenTab() {
               </div>
             }
           >
+            {/* Visible warning when AI is configured but Mission Story
+                is empty — that's the failure mode that produces
+                generic / hallucinated output. Skipped when the user
+                has the .miz scenario filled OR has typed in the
+                story; either way the AI has real context to work
+                with. */}
+            {aiKey && !missionStory.trim() && (
+              <div style={{
+                marginBottom: 10, padding: '8px 10px',
+                background: '#3a2a18', border: '1px solid #d9a050',
+                color: '#d9a050', fontSize: 11, lineHeight: 1.5,
+              }}>
+                <strong>Heads up:</strong> the Mission Story box above
+                is empty. The AI will fall back to flight-role +
+                threat-list inference, which tends to produce generic
+                output. Write a paragraph up there describing what's
+                actually happening in your mission for a tailored
+                Commander's Intent.
+              </div>
+            )}
             {/* Optional steer — tucked above the textarea. Most users
                 will leave this blank; advanced users (training-flight
                 designers) can drop a sentence like "stress IFF

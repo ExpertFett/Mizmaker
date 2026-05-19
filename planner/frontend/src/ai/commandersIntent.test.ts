@@ -13,8 +13,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildCommandersIntentUserMessage,
+  detectPrimaryMissionType,
   type CommandersIntentInput,
+  type CIFlight,
 } from './commandersIntent';
+
+function flight(role: string, callsign = 'TEST', count = 2): CIFlight {
+  return {
+    callsign, aircraft: 'FA-18C_hornet', count, role,
+    frequency: '', tacan: '', home_plate: '',
+  };
+}
 
 function makeInput(overrides: Partial<CommandersIntentInput> = {}): CommandersIntentInput {
   return {
@@ -36,6 +45,14 @@ describe('buildCommandersIntentUserMessage', () => {
     expect(msg).toContain('Mission: Operation Steel Rain');
     expect(msg).toContain('Theatre: Caucasus');
     expect(msg).toContain('When: 2026-05-18 0830Z');
+  });
+
+  it('marks the theatre as "setting only, not a strategic indicator"', () => {
+    // Regression: v0.9.62 produced Norwegian Sea / NATO maritime nonsense
+    // on Kola CAS missions because the model treated theatre as a
+    // strategic context. The "setting only" tag steers it away.
+    const msg = buildCommandersIntentUserMessage(makeInput({ theater: 'Kola' }));
+    expect(msg).toContain('Theatre: Kola (DCS map name — setting only');
   });
 
   it('quotes the scenario block when one is provided', () => {
@@ -124,6 +141,48 @@ describe('buildCommandersIntentUserMessage', () => {
     const msg = buildCommandersIntentUserMessage(makeInput());
     expect(msg).toMatch(/Write the Commander'?s Intent now/);
     expect(msg).toContain('Purpose / Method / End State');
+  });
+
+  describe('primary mission type anchor', () => {
+    it('classifies a pure CAS package as cas', () => {
+      expect(detectPrimaryMissionType([flight('cas'), flight('cas')])).toBe('cas');
+    });
+
+    it('recognises SEAD and DEAD as the same bucket', () => {
+      expect(detectPrimaryMissionType([flight('SEAD')])).toBe('sead');
+      expect(detectPrimaryMissionType([flight('DEAD')])).toBe('sead');
+    });
+
+    it('returns "mixed" for strike + SEAD packages (tanker excluded)', () => {
+      expect(detectPrimaryMissionType([
+        flight('strike'), flight('SEAD'), flight('Refueling'),
+      ])).toBe('mixed');
+    });
+
+    it('returns "tanker" for tanker-only packages', () => {
+      expect(detectPrimaryMissionType([flight('Refueling')])).toBe('tanker');
+    });
+
+    it('returns "unknown" when no flight has a recognisable role', () => {
+      expect(detectPrimaryMissionType([])).toBe('unknown');
+      expect(detectPrimaryMissionType([flight('')])).toBe('unknown');
+      expect(detectPrimaryMissionType([flight('Nothing')])).toBe('unknown');
+    });
+
+    it('emits the PRIMARY MISSION TYPE line with the role-specific label', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({
+        flights: [
+          { callsign: 'ENFIELD', aircraft: 'FA-18C_hornet', count: 4, role: 'cas',
+            frequency: '', tacan: '', home_plate: '' },
+        ],
+      }));
+      expect(msg).toContain('PRIMARY MISSION TYPE: CAS (close air support');
+    });
+
+    it('emits PRIMARY MISSION TYPE: UNKNOWN when no flights have roles', () => {
+      const msg = buildCommandersIntentUserMessage(makeInput({ flights: [] }));
+      expect(msg).toContain('PRIMARY MISSION TYPE: UNKNOWN');
+    });
   });
 
   describe('mission story (user-authored narrative)', () => {

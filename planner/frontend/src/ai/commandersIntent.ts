@@ -77,14 +77,56 @@ Write EXACTLY three short paragraphs, each prefixed with its label on its own li
   Method:
   End State:
 
-Rules:
-- Purpose is one sentence (max two): the strategic "why". Name the target / objective / threat in operational terms, not vague.
-- Method is 2-4 sentences: the high-level plan. Who pushes, in what order, with what mutual support. Reference the actual flights provided. Do not list waypoints — that's mission flow's job.
-- End State is one to two sentences: what the AO looks like when we're done. Include force preservation ("package RTB safe / all flights accounted for") when appropriate.
-- Use the ACTUAL flight callsigns, aircraft types, and threats from the input. If the input is sparse, write a reasonable intent for the mission type but stay grounded in what is given. Never invent specific callsigns or threat names not in the input.
+GROUNDING RULES — these prevent hallucination:
+- The THEATRE field is just the DCS map (Caucasus, Kola, Marianas, etc.). It is a SETTING, not a strategic context. NEVER infer geopolitics or named operations from the theatre — no "Norwegian Sea freedom of navigation", no "Black Sea fleet defence", no "South China Sea contingency". The theatre alone tells you NOTHING about what side is doing what or why.
+- The mission type comes from the PRIMARY MISSION TYPE field and the blue flight roles. If the flights say "cas", this is close air support — not maritime defence, not a strike, not DCA. Write the intent for the role you are given.
+- If the mission story or scenario describes the situation, use THAT verbatim as your context. Do not contradict it. Do not "improve" it with details you invented.
+- If the story AND scenario are both empty: write a generic intent for the PRIMARY MISSION TYPE that names no specific geography, no specific enemy forces, no specific objectives beyond what the role implies. Better to say "destroy the assigned target set" than to invent a target.
+- Use the ACTUAL flight callsigns and aircraft types from the input. Never invent specific callsigns, ship names, unit designations, geographic features, or threat sites not in the input.
+
+WRITING RULES:
+- Purpose: one sentence (max two). The "why" — anchored to the role and the scenario/story when given, generic otherwise.
+- Method: 2-4 sentences. The high-level plan. Who pushes, in what order, with what mutual support. Reference the actual flights provided. Do not list waypoints.
+- End State: one to two sentences. What the AO looks like when we're done. Include force preservation ("package RTB safe") when appropriate.
 - Total length: 80-160 words. Tight is better than verbose.
 - Output PLAIN TEXT only. No markdown headings, no bullets, no asterisks, no code fences. Just three labelled paragraphs separated by blank lines.
 - Do not add a fourth section. Do not include any preamble or sign-off.`;
+
+/** Classify a flight's role string into a coarse mission-type bucket.
+ *  Mirrors services/brief_builder.py::_detect_mission_type so the AI
+ *  prompt anchors to the same vocabulary the backend uses elsewhere. */
+function classifyRole(role: string): string | null {
+  const r = (role || '').toLowerCase();
+  if (!r) return null;
+  if (r.includes('cas')) return 'cas';
+  if (r.includes('anti-ship') || r.includes('antiship')) return 'antiship';
+  if (r.includes('sead') || r.includes('dead')) return 'sead';
+  if (r.includes('strike')) return 'strike';
+  if (r.includes('cap') || r.includes('intercept') || r.includes('escort')) return 'dca';
+  if (r.includes('recon') || r.includes('afac')) return 'recon';
+  if (r.includes('refuel') || r.includes('tanker')) return 'tanker';
+  return null;
+}
+
+/** Bucket the package's blue flights into a primary mission type so
+ *  the AI can anchor its intent to a concrete role rather than the
+ *  theatre name. Returns 'unknown' when no flights have a recognisable
+ *  role — the prompt rules then ask the model for a generic intent. */
+export function detectPrimaryMissionType(flights: CIFlight[]): string {
+  const buckets: Record<string, number> = {};
+  for (const f of flights) {
+    const k = classifyRole(f.role);
+    if (k) buckets[k] = (buckets[k] || 0) + 1;
+  }
+  const keys = Object.keys(buckets);
+  if (keys.length === 0) return 'unknown';
+  // Tanker on its own is a support package; mixed with anything else
+  // it's not the primary. Exclude it when computing "mixed".
+  const nonTanker = keys.filter((k) => k !== 'tanker');
+  if (nonTanker.length > 1) return 'mixed';
+  if (nonTanker.length === 1) return nonTanker[0];
+  return 'tanker';
+}
 
 /** Build the user-content text block from structured brief fields.
  *  Exported for unit testing — the prompt builder is the part most
@@ -92,10 +134,32 @@ Rules:
 export function buildCommandersIntentUserMessage(input: CommandersIntentInput): string {
   const lines: string[] = [];
   lines.push(`Mission: ${input.mission_name || 'Untitled'}`);
-  if (input.theater) lines.push(`Theatre: ${input.theater}`);
+  // Theatre prefixed with "(setting only)" hint so the model treats it
+  // as a map, not a strategic context. Belt-and-braces with the system
+  // prompt rule — costs almost no tokens and removed the Kola →
+  // Norwegian Sea / NATO maritime hallucination we saw in v0.9.62.
+  if (input.theater) lines.push(`Theatre: ${input.theater} (DCS map name — setting only, not a strategic indicator)`);
   if (input.date || input.time_zulu) {
     lines.push(`When: ${[input.date, input.time_zulu].filter(Boolean).join(' ')}`);
   }
+
+  // Primary mission type derived from the actual blue flight roles.
+  // The model anchors its intent to this, not the theatre. When we
+  // have no role data, we say so explicitly so the model writes
+  // generic prose instead of inventing a scenario.
+  const primary = detectPrimaryMissionType(input.flights);
+  const primaryLabel: Record<string, string> = {
+    cas: 'CAS (close air support to friendly ground forces)',
+    sead: 'SEAD/DEAD (suppress or destroy enemy air defences)',
+    strike: 'STRIKE (deliberate attack on fixed targets)',
+    antiship: 'ANTI-SHIP (maritime strike on surface vessels)',
+    dca: 'DCA (defensive counter-air / CAP / intercept)',
+    recon: 'RECON / AFAC (reconnaissance or forward air control)',
+    tanker: 'TANKER (aerial refuelling support)',
+    mixed: 'MIXED PACKAGE (multiple mission types — cover each element)',
+    unknown: 'UNKNOWN (no role data; write a generic intent)',
+  };
+  lines.push(`PRIMARY MISSION TYPE: ${primaryLabel[primary] || primary}`);
   lines.push('');
 
   // Mission story — the user's own narrative is the primary context.
