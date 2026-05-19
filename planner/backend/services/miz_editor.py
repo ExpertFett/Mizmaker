@@ -270,13 +270,14 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
     Bare filename references don't resolve at mission load time. We
     rewrite filename refs → ResKeys + update mapResource on the fly.
     """
-    # Resolve the set of bundled script files we'd embed if the mission
-    # references them. Build the lookup once; missing references are no-ops.
-    script_assets = _bundled_script_assets()
-    referenced = _scan_script_file_references(new_mission_text)
-    auto_embed = {fname: script_assets[fname] for fname in referenced if fname in script_assets}
-
-    # Read the current mapResource so we can extend it with our ResKeys.
+    # Read the current mapResource first — we need it to resolve any
+    # ResKey-indirected `a_do_script_file(getValueResourceByKey(...))`
+    # references in the mission (v0.9.58). Without this resolve step,
+    # missions that have already been through a planner round-trip (the
+    # ResKey rewrite happens during _link_script_files_to_reskeys below)
+    # carry triggers in a shape the scanner used to see as opaque, and
+    # the auto-bundle override silently skipped — letting stale user
+    # copies of Moose_.lua / TIC_v1.1.lua ride through unchanged.
     existing_map_resource = ""
     try:
         with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as _zin_peek:
@@ -286,6 +287,12 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                 pass
     except zipfile.BadZipFile:
         pass
+
+    # Resolve the set of bundled script files we'd embed if the mission
+    # references them. Build the lookup once; missing references are no-ops.
+    script_assets = _bundled_script_assets()
+    referenced = _scan_script_file_references(new_mission_text, existing_map_resource)
+    auto_embed = {fname: script_assets[fname] for fname in referenced if fname in script_assets}
 
     # Translate filename refs to ResKeys, updating mission text + map.
     new_mission_text, new_map_resource_text, embed_filenames = _link_script_files_to_reskeys(
@@ -337,13 +344,20 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     zout.writestr(path, kb["data"])
 
             # Embed every referenced bundled-script file with the vetted
-            # asset-library bytes. v0.9.49 — the source-zip loop above
-            # already skipped any user-supplied copies for these names,
-            # so a single unconditional write per name does the right
-            # thing (no duplicate ZipFile entries, no stale-copy bleed).
-            for fname in embed_filenames:
-                if fname in script_assets:
-                    zout.writestr(f"l10n/DEFAULT/{fname}", script_assets[fname])
+            # asset-library bytes. v0.9.58 — drive off `auto_embed` (the
+            # scanner-derived set) rather than `embed_filenames` (the
+            # ResKey-rewriter's set). The two are usually equal, but for
+            # missions where the trigger source ALREADY went through a
+            # planner round-trip (and so already carries
+            # `a_do_script_file(getValueResourceByKey("ResKey_X"))` form),
+            # _link_script_files_to_reskeys' internal regex patterns
+            # don't see those refs and return an empty embed_set — even
+            # though the scanner correctly resolved them via mapResource.
+            # Using `auto_embed` here means the bundling step happens
+            # whenever the scanner agrees there's a referenced asset,
+            # independent of whether a rewrite was needed too.
+            for fname, blob in auto_embed.items():
+                zout.writestr(f"l10n/DEFAULT/{fname}", blob)
     return output.getvalue()
 
 
@@ -564,35 +578,44 @@ def _bundled_script_assets() -> dict[str, bytes]:
     return cache
 
 
-def _scan_script_file_references(mission_text: str) -> set[str]:
+def _scan_script_file_references(mission_text: str,
+                                  map_resource_text: str = "") -> set[str]:
     """Collect every filename referenced by a_do_script_file actions.
 
-    Both rendering shapes are picked up:
-      - inline:  ["predicate"] = "a_do_script_file", ["file"] = "Moose_.lua"
-      - indexed: a_do_script_file("Moose_.lua")  (in trig.actions[N])
+    Three rendering shapes are picked up:
+      1. inline:    ["predicate"] = "a_do_script_file", ["file"] = "Moose_.lua"
+      2. direct:    a_do_script_file("Moose_.lua")            (raw or escaped)
+      3. ResKey:    a_do_script_file(getValueResourceByKey("ResKey_Action_N"))
+                    — resolved via map_resource_text's
+                      ["ResKey_Action_N"] = "Moose_.lua" mapping.
 
-    The indexed form is stored inside a Lua-source string literal:
+    Shape (3) was added in v0.9.58 to plug the bundling-bypass that
+    caused stale Moose / TIC scripts to ride through repack untouched
+    even when the planner had already done a ResKey rewrite on a
+    previous round-trip. Without the resolver, the scanner saw
+    `getValueResourceByKey("ResKey_Action_1")` as opaque and never
+    flagged `Moose_.lua` for the asset-library override.
+
+    The indexed direct form (shape 2) is stored inside a Lua-source
+    string literal in trig.actions arrays:
         [1] = "a_do_script_file(\\"Moose_.lua\\")"
     so the inner `"` chars appear as `\\"` (backslash + quote) in the
     raw file bytes Python reads. The optional `\\?` in the regex makes
     it tolerant of both the unescaped form (rare — only present when
     the trigger source isn't wrapped in another string literal) and
-    the escaped form (the common case in trig.actions arrays). Pre-
-    v0.9.46 a bare quote-only pattern missed the escaped form, so the
-    script-auto-bundling silently skipped and DCS hung at terrain
-    init looking for the missing Moose_.lua / TIC_v1.1.lua.
+    the escaped form (the common case in trig.actions arrays).
     """
     import re as _re
     refs: set[str] = set()
-    # Indexed: function call inside trig.actions, with or without
-    # backslash-escaping on the surrounding quotes.
+
+    # Shape 2 (direct, raw or escaped). Optional backslash on either side
+    # of the inner `"` covers both forms.
     for m in _re.finditer(
         r'a_do_script_file\s*\(\s*\\?"([^"\\]+)\\?"\s*\)', mission_text,
     ):
         refs.add(m.group(1))
-    # Inline: ["file"] = "..." inside an a_do_script_file action block.
-    # Match "file" key followed (within ~200 chars) by predicate=a_do_script_file
-    # OR vice versa. Simpler: any ["file"] = "<name>.lua" near the predicate.
+
+    # Shape 1 (inline ["file"]/["predicate"] pair, either field order).
     for m in _re.finditer(
         r'\["file"\]\s*=\s*"([^"]+\.lua)"[^}]*?\["predicate"\]\s*=\s*"a_do_script_file"',
         mission_text,
@@ -605,6 +628,27 @@ def _scan_script_file_references(mission_text: str) -> set[str]:
         flags=_re.DOTALL,
     ):
         refs.add(m.group(1))
+
+    # Shape 3 (ResKey indirection). Parse the ResKey → filename map out
+    # of map_resource_text, then look for `getValueResourceByKey("ResKey_X")`
+    # references in the mission to resolve back to filenames. Same
+    # optional-backslash trick handles both raw and escaped-quote forms.
+    if map_resource_text:
+        reskey_to_file: dict[str, str] = {}
+        for mr in _re.finditer(
+            r'\["(ResKey_[A-Za-z]+_\d+)"\]\s*=\s*"([^"]+)"',
+            map_resource_text,
+        ):
+            reskey_to_file[mr.group(1)] = mr.group(2)
+        if reskey_to_file:
+            for m in _re.finditer(
+                r'a_do_script_file\s*\(\s*getValueResourceByKey\s*\(\s*\\?"(ResKey_[A-Za-z]+_\d+)\\?"\s*\)\s*\)',
+                mission_text,
+            ):
+                key = m.group(1)
+                if key in reskey_to_file:
+                    refs.add(reskey_to_file[key])
+
     # Strip directory prefixes (DCS stores bare filenames in l10n/DEFAULT)
     return {r.rsplit("/", 1)[-1] for r in refs}
 

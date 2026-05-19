@@ -666,6 +666,67 @@ class TestScriptAutoBundle:
         )
         assert _scan_script_file_references(sample) == {"Moose_.lua", "TIC_v1.1.lua"}
 
+    def test_scanner_resolves_reskey_indirected_refs(self):
+        """v0.9.58 — when a mission has already been through a planner
+        round-trip, its do_script_file triggers reference the script
+        files via the ResKey indirection layer:
+
+            [1] = "a_do_script_file(getValueResourceByKey(\\"ResKey_Action_1\\"));",
+
+        With ["ResKey_Action_1"] = "Moose_.lua" in mapResource. The
+        scanner needs to resolve through that map back to the bundled
+        filename so the auto-embed pass replaces the user's stale copy
+        with the asset-library version (the v0.9.49 vetted-wins rule).
+        """
+        from services.miz_editor import _scan_script_file_references
+        mission = (
+            r'[1] = "a_do_script_file(getValueResourceByKey(\"ResKey_Action_1\"));",' "\n"
+            r'[2] = "a_do_script_file(getValueResourceByKey(\"ResKey_Action_2\"));",'
+        )
+        mapres = (
+            'mapResource = {\n'
+            '    ["ResKey_Action_1"] = "Moose_.lua",\n'
+            '    ["ResKey_Action_2"] = "TIC_v1.1.lua",\n'
+            '}\n'
+        )
+        # Without mapResource: no resolve, scanner returns empty (those
+        # references look opaque without the lookup table).
+        assert _scan_script_file_references(mission, "") == set()
+        # With mapResource: scanner resolves both refs.
+        assert _scan_script_file_references(mission, mapres) == {"Moose_.lua", "TIC_v1.1.lua"}
+
+    def test_reskey_indirected_mission_gets_vetted_scripts(self):
+        """Full repack: a .miz that already carries ResKey-rewritten
+        trigger refs + stale user copies of Moose/TIC. After repack
+        the bundled .lua files are the vetted asset-library bytes."""
+        import io as _io, zipfile as _zf
+        from services.miz_editor import repack_miz, _bundled_script_assets
+        mission = (
+            '["trig"] = {\n'
+            '    ["actions"] = {\n'
+            r'        [1] = "a_do_script_file(getValueResourceByKey(\"ResKey_Action_1\"));",' "\n"
+            '    },\n'
+            '}\n'
+        )
+        mapres = (
+            'mapResource = {\n'
+            '    ["ResKey_Action_1"] = "Moose_.lua",\n'
+            '}\n'
+        )
+        stale_bytes = b"-- STALE MOOSE — should be overridden\n"
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission)
+            z.writestr("l10n/DEFAULT/mapResource", mapres)
+            z.writestr("l10n/DEFAULT/Moose_.lua", stale_bytes)
+        out = repack_miz(buf.getvalue(), mission)
+        assets = _bundled_script_assets()
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            moose = zf.read("l10n/DEFAULT/Moose_.lua")
+        assert moose == assets["Moose_.lua"], \
+            "ResKey-indirected mission's stale Moose wasn't replaced"
+        assert moose != stale_bytes, "stale bytes leaked through"
+
     def test_link_script_files_preserves_escaped_calls_but_still_embeds(self):
         """The ResKey rewrite is for the inline `["file"]` form. The
         escaped indexed form should be left verbatim (rewriting it would
