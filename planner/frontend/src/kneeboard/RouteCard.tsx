@@ -28,6 +28,9 @@ interface RouteCardProps {
   speedRef?: KneeboardSpeedRef;
   machThreshold?: number;
   overview?: MissionOverviewData;
+  /** Planner-typed notes rendered inside the NOTES box. Empty = the
+   *  box stays blank for cockpit handwriting. (v0.9.70) */
+  notes?: string;
 }
 
 // -- Style Guide Constants --
@@ -146,7 +149,7 @@ const tdStyle: React.CSSProperties = {
 
 // -- Component --
 
-export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'auto', machThreshold = 18000, overview }: RouteCardProps) {
+export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'auto', machThreshold = 18000, overview, notes }: RouteCardProps) {
   const wps = group.waypoints;
   const airframe = getAircraftType(group);
   const fmtCoord = coordFormat === 'mgrs' ? fmtMgrs : fmtLatLon;
@@ -350,6 +353,14 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
         padding: '6px 8px',
       }}>
         <div style={{ fontSize: 17, color: TEXT_MUTED, fontWeight: 'bold' }}>NOTES</div>
+        {notes && notes.trim() && (
+          <div style={{
+            fontSize: 17, color: TEXT, marginTop: 4,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.35,
+          }}>
+            {notes.trim()}
+          </div>
+        )}
       </div>
 
       {/* Footer */}

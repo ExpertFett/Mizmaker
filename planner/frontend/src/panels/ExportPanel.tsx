@@ -124,6 +124,7 @@ export function ExportPanel() {
       const playerGroups = groups.filter(isPlayerGroup);
       const wx = overview?.weather as Weather | undefined;
       const cards = kneeboardSettings.cards;
+      const cardNotes = kneeboardSettings.cardNotes ?? {};
       const coalition = playerGroups[0]?.coalition || 'blue';
 
       const addCard = async (aircraftType: string, filename: string, el: React.ReactElement) => {
@@ -138,19 +139,19 @@ export function ExportPanel() {
         try {
           if (cards.lineup)
             await addCard(aircraftType, `${safeName}_Route.png`,
-              createElement(RouteCard, { group: g, weather: wx, coordFormat: kneeboardSettings.coordFormat, speedRef: kneeboardSettings.speedRef as any, machThreshold: kneeboardSettings.machThreshold }));
+              createElement(RouteCard, { group: g, weather: wx, coordFormat: kneeboardSettings.coordFormat, speedRef: kneeboardSettings.speedRef as any, machThreshold: kneeboardSettings.machThreshold, notes: cardNotes.lineup }));
           if (cards.flight)
             await addCard(aircraftType, `${safeName}_Flight.png`,
-              createElement(FlightCard, { group: g, clientUnits }));
+              createElement(FlightCard, { group: g, clientUnits, notes: cardNotes.flight }));
           if (cards.comms)
             await addCard(aircraftType, `${safeName}_Comms.png`,
-              createElement(CommsCard, { group: g, allGroups: groups }));
+              createElement(CommsCard, { group: g, allGroups: groups, notes: cardNotes.comms }));
           if (cards.routeDetail)
             await addCard(aircraftType, `${safeName}_RouteDetail.png`,
-              createElement(RouteDetailCard, { group: g, threats }));
+              createElement(RouteDetailCard, { group: g, threats, notes: cardNotes.routeDetail }));
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
-              createElement(FuelLadderCard, { group: g, clientUnits }));
+              createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));
         } catch (e) {
           console.error(`Kneeboard render failed for ${g.groupName}:`, e);
         }
@@ -163,19 +164,20 @@ export function ExportPanel() {
           const pageCount = supportAssetsPageCount({ groups, coalition });
           for (let p = 0; p < pageCount; p++) {
             const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
-            await addCard(sharedType, fname, createElement(SupportAssetsCard, { groups, coalition, page: p }));
+            await addCard(sharedType, fname, createElement(SupportAssetsCard, { groups, coalition, page: p, notes: cardNotes.supportAssets }));
           }
         }
         if (cards.radioLadder)
-          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, { groups, coalition }));
+          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, { groups, coalition, notes: cardNotes.radioLadder }));
         if (cards.airbaseRef)
           await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, {
             airbases, theater: theater || '', groups, coalition,
+            notes: cardNotes.airbaseRef,
             // groups + coalition trigger the route-relevance filter so we
             // don't dump all 36 Kola airfields onto a kneeboard.
           }));
         if (cards.bullseyeRef && overview)
-          await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition }));
+          await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef }));
         if (cards.threatCard) {
           const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
           for (let p = 0; p < pageCount; p++) {
@@ -184,11 +186,12 @@ export function ExportPanel() {
               threats, playerCoalition: coalition, page: p,
               fidelity: kneeboardSettings.threatFidelity ?? 'full',
               mapVisible: kneeboardSettings.threatMapVisible !== false,
+              notes: cardNotes.threatCard,
             }));
           }
         }
         if (cards.weatherBrief && overview)
-          await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { overview }));
+          await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { overview, notes: cardNotes.weatherBrief }));
         // SOP Comms — only injected when an SOP is active. The carousel
         // already shows a "select SOP" hint if the toggle is on but no
         // SOP is loaded; here we just silently skip rather than emit an

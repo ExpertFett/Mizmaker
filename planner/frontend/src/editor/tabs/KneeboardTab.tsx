@@ -54,6 +54,24 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
 ];
 
+// Cards that have a NOTES box the planner can fill with typed notes.
+// `perFlight` cards render once per player flight, so a note here shows
+// on every flight's copy of that card. Order roughly follows the card
+// list above. (v0.9.70)
+const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean }[] = [
+  { key: 'lineup', label: 'Route Card', perFlight: true },
+  { key: 'flight', label: 'Flight Card', perFlight: true },
+  { key: 'comms', label: 'Comms Card', perFlight: true },
+  { key: 'routeDetail', label: 'Route Detail', perFlight: true },
+  { key: 'fuelLadder', label: 'Fuel Ladder', perFlight: true },
+  { key: 'supportAssets', label: 'Support Assets', perFlight: false },
+  { key: 'radioLadder', label: 'Radio Ladder', perFlight: false },
+  { key: 'airbaseRef', label: 'Airbase Reference', perFlight: false },
+  { key: 'bullseyeRef', label: 'Bullseye Reference', perFlight: false },
+  { key: 'threatCard', label: 'Threat Card', perFlight: false },
+  { key: 'weatherBrief', label: 'Weather Briefing', perFlight: false },
+];
+
 export function KneeboardTab() {
   const groups = useMissionStore((s) => s.groups);
   const overview = useMissionStore((s) => s.overview);
@@ -99,6 +117,9 @@ export function KneeboardTab() {
   // that pre-date the field.
   const notesText = kneeboardSettings.notesText ?? '';
   const notesTitle = kneeboardSettings.notesTitle ?? '';
+  // Per-card notes map (v0.9.70) — keyed by card type. Each card's
+  // NOTES box renders cardNotes[key] when set.
+  const cardNotes = kneeboardSettings.cardNotes ?? {};
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
@@ -137,23 +158,23 @@ export function KneeboardTab() {
     const safeName = g.groupName.replace(/\s+/g, '_');
 
     if (cards.lineup) {
-      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined });
+      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined, notes: cardNotes.lineup });
       results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.flight) {
-      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined });
+      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.flight });
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.comms) {
-      const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined });
+      const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms });
       results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.routeDetail) {
-      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined });
+      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail });
       results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.fuelLadder) {
-      const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined });
+      const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder });
       results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el) });
     }
     if (cards.homePlate) {
@@ -170,12 +191,12 @@ export function KneeboardTab() {
       const pageCount = supportAssetsPageCount({ groups, coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
-        const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p });
+        const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets });
         results.push({ name: fname, blob: await renderCardToBlob(el) });
       }
     }
     if (cards.radioLadder) {
-      const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined });
+      const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined, notes: cardNotes.radioLadder });
       results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el) });
     }
     if (cards.airbaseRef) {
@@ -185,23 +206,24 @@ export function KneeboardTab() {
       // useful as a kneeboard reference.
       const el = createElement(AirbaseRefCard, {
         airbases, theater, overview: overview || undefined, groups, coalition,
+        notes: cardNotes.airbaseRef,
       });
       results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.bullseyeRef && overview) {
-      const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition });
+      const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef });
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
     }
     if (cards.threatCard) {
       const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible });
+        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard });
         results.push({ name: fname, blob: await renderCardToBlob(el) });
       }
     }
     if (cards.weatherBrief && overview) {
-      const el = createElement(WeatherBriefCard, { overview });
+      const el = createElement(WeatherBriefCard, { overview, notes: cardNotes.weatherBrief });
       results.push({ name: 'Weather_Brief.png', blob: await renderCardToBlob(el) });
     }
     // SOP Comms card — only generated if a SOP is currently active.
@@ -539,19 +561,79 @@ export function KneeboardTab() {
         </div>
       </div>
 
-      {/* Mission Notes editor — feeds the Notes card. Lives just under
-          the Card Types panel so the "Mission Notes" checkbox above and
-          this editor read as one feature. Typing here auto-enables the
-          card (so the planner doesn't have to also tick the box), and
-          the text persists in kneeboardSettings across tab switches. */}
+      {/* Per-card notes — fill the NOTES box on existing cards. Only
+          shows inputs for cards that are currently enabled, so the
+          panel tracks the Card Types selection above. Each note prints
+          inside that card's NOTES box (replacing the blank ruled
+          space). Per-flight cards show the same note on every flight's
+          copy. (v0.9.70) */}
       <div style={{
         marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
         border: '1px solid #3a3a3a',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Mission Notes</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Notes on Cards</span>
           <span style={{ fontSize: 11, color: '#666' }}>
-            Prints as the “Mission Notes” kneeboard card
+            Fills the NOTES box on each enabled card
+          </span>
+        </div>
+
+        {(() => {
+          const enabled = NOTE_CARDS.filter((c) => cards[c.key]);
+          if (enabled.length === 0) {
+            return (
+              <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic', padding: '6px 0' }}>
+                No note-capable cards are enabled. Tick cards in Card Types above
+                (Route, Flight, Comms, Threat, etc.) to add notes to them.
+              </div>
+            );
+          }
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              {enabled.map((c) => (
+                <label key={c.key} style={{ display: 'block', fontSize: 11, color: '#aaaaaa' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <span style={{ color: '#cccccc', fontWeight: 600 }}>{c.label}</span>
+                    {c.perFlight && (
+                      <span
+                        title="This card is rendered once per flight — the note shows on every flight's copy."
+                        style={{ fontSize: 9, color: '#5a8a6a', border: '1px solid #2a4a3a', borderRadius: 3, padding: '0 4px' }}
+                      >
+                        per-flight
+                      </span>
+                    )}
+                  </span>
+                  <textarea
+                    value={cardNotes[c.key] ?? ''}
+                    onChange={(e) => setKneeboardSettings({
+                      cardNotes: { ...cardNotes, [c.key]: e.target.value },
+                    })}
+                    placeholder={`Notes for the ${c.label}…`}
+                    rows={3}
+                    style={{
+                      width: '100%', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+                      color: '#e0e0e0', fontSize: 12, padding: '6px 8px', fontFamily: 'inherit',
+                      lineHeight: 1.4, resize: 'vertical',
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Standalone Mission Notes card editor — feeds the dedicated
+          "Mission Notes" kneeboard card (separate from the per-card
+          notes above). Typing here auto-enables that card. */}
+      <div style={{
+        marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
+        border: '1px solid #3a3a3a',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Standalone Notes Card</span>
+          <span style={{ fontSize: 11, color: '#666' }}>
+            Prints as its own “Mission Notes” page
           </span>
         </div>
 
@@ -703,6 +785,7 @@ export function KneeboardTab() {
         dmpis={dmpis}
         notesText={notesText}
         notesTitle={notesTitle}
+        cardNotes={cardNotes}
       />
     </div>
   );
@@ -734,6 +817,7 @@ interface CarouselProps {
   dmpis: ReturnType<typeof useDmpiStore.getState>['dmpis'];
   notesText: string;
   notesTitle: string;
+  cardNotes: Record<string, string>;
 }
 
 interface CardEntry {
@@ -752,6 +836,7 @@ function CardCarousel({
   dmpis,
   notesText,
   notesTitle,
+  cardNotes,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -777,31 +862,31 @@ function CardCarousel({
       if (cards.lineup) {
         list.push({
           key: 'lineup', label: 'Route Card',
-          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined }),
+          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined, notes: cardNotes.lineup }),
         });
       }
       if (cards.flight) {
         list.push({
           key: 'flight', label: 'Flight Card',
-          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined }),
+          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight }),
         });
       }
       if (cards.comms) {
         list.push({
           key: 'comms', label: 'Comms Card',
-          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups, overview: overview || undefined }),
+          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms }),
         });
       }
       if (cards.routeDetail) {
         list.push({
           key: 'routeDetail', label: 'Route Detail',
-          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined }),
+          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail }),
         });
       }
       if (cards.fuelLadder) {
         list.push({
           key: 'fuelLadder', label: 'Fuel Ladder',
-          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits, overview: overview || undefined }),
+          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder }),
         });
       }
       if (cards.homePlate) {
@@ -819,14 +904,14 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `supportAssets-${p}`, label: `Support Assets${suffix}`,
-          element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p }),
+          element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets }),
         });
       }
     }
     if (cards.radioLadder) {
       list.push({
         key: 'radioLadder', label: 'Radio Ladder',
-        element: createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined }),
+        element: createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined, notes: cardNotes.radioLadder }),
       });
     }
     if (cards.airbaseRef) {
@@ -834,13 +919,14 @@ function CardCarousel({
         key: 'airbaseRef', label: 'Airbase Reference',
         element: createElement(AirbaseRefCard, {
           airbases, theater, overview: overview || undefined, groups, coalition,
+          notes: cardNotes.airbaseRef,
         }),
       });
     }
     if (cards.bullseyeRef && overview) {
       list.push({
         key: 'bullseyeRef', label: 'Bullseye Reference',
-        element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition }),
+        element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef }),
       });
     }
     if (cards.threatCard) {
@@ -849,14 +935,14 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `threatCard-${p}`, label: `Threat Card${suffix}`,
-          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible }),
+          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard }),
         });
       }
     }
     if (cards.weatherBrief && overview) {
       list.push({
         key: 'weatherBrief', label: 'Weather Briefing',
-        element: createElement(WeatherBriefCard, { overview }),
+        element: createElement(WeatherBriefCard, { overview, notes: cardNotes.weatherBrief }),
       });
     }
     if (cards.sopComms && activeSop) {
@@ -895,7 +981,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes]);
 
   // Clamp index when list changes
   useEffect(() => {

@@ -62,6 +62,13 @@ export interface KneeboardSettings {
   /** Optional heading shown at the top of the Notes card. Defaults
    *  to "MISSION NOTES" when blank. (v0.9.69) */
   notesTitle: string;
+  /** Per-card planner notes, keyed by card type (lineup, flight,
+   *  comms, fuelLadder, routeDetail, weatherBrief, threatCard,
+   *  airbaseRef, radioLadder, bullseyeRef, supportAssets). The text
+   *  for a key is rendered inside that card's existing NOTES box.
+   *  Lets the planner write a different note per card type rather
+   *  than only the standalone Notes card. (v0.9.70) */
+  cardNotes: Record<string, string>;
 }
 
 interface EditState {
@@ -101,6 +108,7 @@ export const useEditStore = create<EditState>((set) => ({
     threatMapVisible: true,
     notesText: '',
     notesTitle: '',
+    cardNotes: {},
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
