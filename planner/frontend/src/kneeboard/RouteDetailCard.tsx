@@ -2,10 +2,9 @@
  * Route Detail Card — per-flight kneeboard card.
  *
  * Renders the flight's route on a terrain-tile map (route line, DEP/ARR/
- * waypoint markers, leg distances) with enemy threat rings overlaid, plus
- * a clean waypoint table. Detailed threat names/ranges/positions live on
- * the dedicated Threat Card — this card only shows the visual rings so it
- * stays a route-planning aid, not a second threat inventory. (v0.9.72)
+ * waypoint markers, leg distances) plus a clean waypoint table. No threat
+ * info at all — the dedicated Threat Card owns the threat picture; this
+ * card stays a pure route-planning aid. (v0.9.73)
  */
 
 import { forward as toMGRS } from 'mgrs';
@@ -28,30 +27,27 @@ function fmtCoord(lat?: number, lon?: number): string {
   try { return toMGRS([lon, lat], 3); } catch { return '—'; }
 }
 
-export function RouteDetailCard({ group, threats, overview, notes }: RouteDetailCardProps) {
+export function RouteDetailCard({ group, overview, notes }: RouteDetailCardProps) {
   const airframe = getAircraftType(group);
   const wps = group.waypoints;
-  const enemyThreats = threats.filter((t) => t.coalition !== group.coalition);
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
       <div style={headerStyle}>
         <div style={titleStyle}>ROUTE DETAIL — {group.groupName.toUpperCase()}</div>
         <div style={subtitleStyle}>
-          {airframe} | {wps.length} waypoints | {enemyThreats.length} known threats
+          {airframe} | {wps.length} waypoints
         </div>
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
       {/* Visual route map — terrain tiles with the flight's route line,
-          DEP/ARR/WP markers, leg-distance labels and enemy threat rings.
-          (v0.9.71) Reuses the TileMap + projection used by the Threat
-          Card. Only renders when the route has ≥2 plottable waypoints. */}
-      <RouteMap group={group} threats={enemyThreats} />
+          DEP/ARR/WP markers and leg-distance labels. No threats: the
+          Threat Card owns the threat picture; this card is pure route.
+          (v0.9.73) Only renders when the route has ≥2 plottable waypoints. */}
+      <RouteMap group={group} />
 
-      {/* Route waypoint table — pure route detail. Threat columns
-          intentionally omitted; the map rings show the threat picture
-          and the Threat Card carries the detailed inventory. */}
+      {/* Route waypoint table — pure route detail, no threat columns. */}
       <div style={sectionTitle}>ROUTE WAYPOINTS</div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
@@ -116,21 +112,14 @@ const ROUTE_MAP_W = CARD_W - 24;
 const ROUTE_MAP_H = 360;
 const NICE_SCALE_NM = [5, 10, 20, 25, 50, 100, 150, 200, 300];
 
-function RouteMap({ group, threats }: { group: MissionGroup; threats: ThreatRing[] }) {
+function RouteMap({ group }: { group: MissionGroup }) {
   // Plottable waypoints — need at least two to draw a line.
   const pts = group.waypoints.filter(
     (w): w is Waypoint & { lat: number; lon: number } => w.lat != null && w.lon != null,
   );
   if (pts.length < 2) return null;
 
-  const enemy = threats.filter(
-    (t): t is ThreatRing & { lat: number; lon: number } => t.lat != null && t.lon != null,
-  );
-
-  // Bound to the ROUTE only (not the full threat-ring extents) so the
-  // map zooms in tight on the flight path. Threat rings still draw on
-  // top and simply clip at the map edge if they reach beyond it — the
-  // Threat Card carries the full picture. (v0.9.72)
+  // Bound to the route, zoomed in tight on the flight path. (v0.9.72)
   let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
   const extend = (lat: number, lon: number) => {
     minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
@@ -176,23 +165,6 @@ function RouteMap({ group, threats }: { group: MissionGroup; threats: ThreatRing
           maxLon={maxLon}
         >
           <svg width={ROUTE_MAP_W} height={ROUTE_MAP_H} style={{ display: 'block' }}>
-            {/* Enemy threat rings — dashed engagement circles + crosshair */}
-            {enemy.map((t, i) => {
-              const [tx, ty] = proj.project(t.lat, t.lon);
-              const r = proj.metersToPixels(t.range || 0);
-              if (r < 2) return null;
-              const color = '#d95050';
-              return (
-                <g key={`tr-${i}`}>
-                  <circle cx={tx} cy={ty} r={r}
-                    fill={`${color}14`} stroke={color} strokeWidth={1}
-                    strokeDasharray="4 3" strokeOpacity={0.75} />
-                  <line x1={tx - 4} y1={ty} x2={tx + 4} y2={ty} stroke={color} strokeWidth={1} />
-                  <line x1={tx} y1={ty - 4} x2={tx} y2={ty + 4} stroke={color} strokeWidth={1} />
-                </g>
-              );
-            })}
-
             {/* Route line */}
             <polyline points={polyline} fill="none"
               stroke="#4ad0e0" strokeWidth={2.5} strokeOpacity={0.95}
