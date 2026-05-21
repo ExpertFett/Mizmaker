@@ -24,6 +24,7 @@ import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
+import { NotesCard } from '../../kneeboard/NotesCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { useSopStore } from '../../sop/sopStore';
 import { useGoalsStore } from '../../store/goalsStore';
@@ -50,6 +51,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
   { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
+  { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
 ];
 
 export function KneeboardTab() {
@@ -93,6 +95,10 @@ export function KneeboardTab() {
   // — preserves the existing fog-of-war map render unless the
   // user explicitly turns it off.
   const threatMapVisible = kneeboardSettings.threatMapVisible !== false;
+  // Free-text planner notes (v0.9.69). Default '' for settings objects
+  // that pre-date the field.
+  const notesText = kneeboardSettings.notesText ?? '';
+  const notesTitle = kneeboardSettings.notesTitle ?? '';
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
@@ -225,6 +231,15 @@ export function KneeboardTab() {
         overview: overview || undefined,
       });
       results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el) });
+    }
+    if (cards.notesCard) {
+      const el = createElement(NotesCard, {
+        text: notesText,
+        title: notesTitle,
+        squadron: activeSop?.squadron,
+        overview: overview || undefined,
+      });
+      results.push({ name: 'Mission_Notes.png', blob: await renderCardToBlob(el) });
     }
     return results;
   };
@@ -524,6 +539,69 @@ export function KneeboardTab() {
         </div>
       </div>
 
+      {/* Mission Notes editor — feeds the Notes card. Lives just under
+          the Card Types panel so the "Mission Notes" checkbox above and
+          this editor read as one feature. Typing here auto-enables the
+          card (so the planner doesn't have to also tick the box), and
+          the text persists in kneeboardSettings across tab switches. */}
+      <div style={{
+        marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
+        border: '1px solid #3a3a3a',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Mission Notes</span>
+          <span style={{ fontSize: 11, color: '#666' }}>
+            Prints as the “Mission Notes” kneeboard card
+          </span>
+        </div>
+
+        <label style={{ display: 'block', fontSize: 11, color: '#aaaaaa', marginBottom: 8 }}>
+          <span style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>Card heading (optional)</span>
+          <input
+            value={notesTitle}
+            onChange={(e) => setKneeboardSettings({ notesTitle: e.target.value })}
+            placeholder="MISSION NOTES"
+            style={{
+              display: 'block', width: '100%', marginTop: 4,
+              background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+              color: '#e0e0e0', fontSize: 13, padding: '6px 8px', fontFamily: 'inherit',
+            }}
+          />
+        </label>
+
+        <textarea
+          value={notesText}
+          onChange={(e) => {
+            // Auto-enable the card the moment the planner starts typing
+            // so they don't get a "where's my note?" surprise. They can
+            // still untick it in Card Types if they want to suppress it.
+            const next = e.target.value;
+            setKneeboardSettings({
+              notesText: next,
+              ...(next.trim() && !cards.notesCard ? { cards: { ...cards, notesCard: true } } : {}),
+            });
+          }}
+          placeholder={
+            'e.g.\n' +
+            '• ROE: weapons tight until JTAC clears\n' +
+            '• Code-word for abort: "BINGO HORN"\n' +
+            '• Tanker drops off-station at 1430Z — plan fuel accordingly\n' +
+            '• Divert to Batumi if Senaki socks in'
+          }
+          rows={8}
+          style={{
+            width: '100%', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+            color: '#e0e0e0', fontSize: 13, padding: '8px', fontFamily: 'inherit',
+            lineHeight: 1.5, resize: 'vertical',
+          }}
+        />
+        <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+          {notesText.trim().length > 0
+            ? `${notesText.trim().length} characters · line breaks are preserved on the card`
+            : 'Tip: keep it punchy — long notes may run off the bottom of a single card.'}
+        </div>
+      </div>
+
       {/* Spoiler banner — shown when the user has chosen a fidelity
           that reveals enemy positions to the pilot. Easy to miss the
           dropdown when generating kneeboards in a hurry; the banner
@@ -623,6 +701,8 @@ export function KneeboardTab() {
         activeSop={activeSop}
         goals={goals}
         dmpis={dmpis}
+        notesText={notesText}
+        notesTitle={notesTitle}
       />
     </div>
   );
@@ -652,6 +732,8 @@ interface CarouselProps {
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
   goals: ReturnType<typeof useGoalsStore.getState>['goals'];
   dmpis: ReturnType<typeof useDmpiStore.getState>['dmpis'];
+  notesText: string;
+  notesTitle: string;
 }
 
 interface CardEntry {
@@ -668,6 +750,8 @@ function CardCarousel({
   activeSop,
   goals,
   dmpis,
+  notesText,
+  notesTitle,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -800,9 +884,18 @@ function CardCarousel({
         }),
       });
     }
+    if (cards.notesCard) {
+      list.push({
+        key: 'notesCard', label: 'Mission Notes',
+        element: createElement(NotesCard, {
+          text: notesText, title: notesTitle,
+          squadron: activeSop?.squadron, overview: overview || undefined,
+        }),
+      });
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle]);
 
   // Clamp index when list changes
   useEffect(() => {

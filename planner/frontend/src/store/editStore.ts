@@ -28,6 +28,10 @@ export interface KneeboardCards {
    *  delivery. Pulls from useDmpiStore. Renders an empty-state
    *  placeholder when the DMPI list is empty. (v0.9.16) */
   dmpiCard: boolean;
+  /** Notes Card — free-text mission notes the planner types in the
+   *  Kneeboard tab. Renders the planner's notesText verbatim as a
+   *  printable card. Empty-state placeholder when no text. (v0.9.69) */
+  notesCard: boolean;
 }
 
 export interface KneeboardSettings {
@@ -51,6 +55,13 @@ export interface KneeboardSettings {
    *  "realistic + map" or "realistic + no map" without changing
    *  the inventory presentation. (v0.9.23) */
   threatMapVisible: boolean;
+  /** Free-text mission notes the planner types in the Kneeboard tab.
+   *  Rendered by the Notes card (when enabled). Persists in the
+   *  settings object so it survives tab switches. (v0.9.69) */
+  notesText: string;
+  /** Optional heading shown at the top of the Notes card. Defaults
+   *  to "MISSION NOTES" when blank. (v0.9.69) */
+  notesTitle: string;
 }
 
 interface EditState {
@@ -88,10 +99,15 @@ export const useEditStore = create<EditState>((set) => ({
     // can switch to 'full' for their own debrief copy.
     threatFidelity: 'realistic',
     threatMapVisible: true,
+    notesText: '',
+    notesTitle: '',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
-      sopComms: true, goalsCard: true, dmpiCard: true,
+      // Notes card defaults OFF — only emit it when the planner has
+      // actually written notes, so an empty card doesn't ride along
+      // in every download.
+      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false,
     },
   },
 

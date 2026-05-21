@@ -18,6 +18,7 @@ import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { SopCommsCard } from '../kneeboard/SopCommsCard';
 import { GoalsCard } from '../kneeboard/GoalsCard';
 import { DmpiCard } from '../kneeboard/DmpiCard';
+import { NotesCard } from '../kneeboard/NotesCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
 import { useSopStore } from '../sop/sopStore';
 import { useGoalsStore } from '../store/goalsStore';
@@ -205,6 +206,16 @@ export function ExportPanel() {
         if (cards.dmpiCard)
           await addCard(sharedType, 'DMPI_List.png',
             createElement(DmpiCard, { dmpis, squadron: activeSop?.squadron, overview: overview || undefined }));
+        // Mission Notes — free-text planner card (v0.9.69). Emitted
+        // when the toggle is on; the card shows an empty-state notice
+        // if no text was typed, same as Goals/DMPI.
+        if (cards.notesCard)
+          await addCard(sharedType, 'Mission_Notes.png',
+            createElement(NotesCard, {
+              text: kneeboardSettings.notesText ?? '',
+              title: kneeboardSettings.notesTitle ?? '',
+              squadron: activeSop?.squadron, overview: overview || undefined,
+            }));
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
       }

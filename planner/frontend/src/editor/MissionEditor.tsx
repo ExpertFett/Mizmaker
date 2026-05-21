@@ -29,6 +29,7 @@ import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
 import { VisibilityTab } from './tabs/VisibilityTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
+import { WindCalcTab } from './tabs/WindCalcTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
 import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
@@ -91,6 +92,11 @@ const SIDEBAR: SidebarItem[] = [
   // (set square / ruler) was reading as "measure distance" and pilots
   // kept skipping past it expecting the map's measure tool.
   { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '🎯' },
+  // Bomb wind correction — CCIP wind-drift calculator. Lives in PLANNING
+  // alongside DMPI/Range because it's an employment-planning aid for the
+  // target run, not a per-flight loadout/avionics setting. Pure local
+  // state, no mission coupling.
+  { kind: 'tab', id: 'windCalc',    label: 'Bomb Wind',   icon: '💨' },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
@@ -519,6 +525,11 @@ export function MissionEditor() {
             {visitedTabs.has('rangePlan') && (
               <div style={{ display: activeTab === 'rangePlan' ? 'block' : 'none' }}>
                 <RangePlanTab />
+              </div>
+            )}
+            {visitedTabs.has('windCalc') && (
+              <div style={{ display: activeTab === 'windCalc' ? 'block' : 'none' }}>
+                <WindCalcTab />
               </div>
             )}
             {visitedTabs.has('tools') && (
