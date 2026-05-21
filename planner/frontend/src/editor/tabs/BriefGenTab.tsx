@@ -21,6 +21,7 @@ import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 import { useAiStore } from '../../ai/aiStore';
 import { generateCommandersIntent } from '../../ai/commandersIntent';
+import { generateFullBrief } from '../../ai/briefWriter';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,10 @@ export function BriefGenTab() {
   );
   const [aiOpen, setAiOpen] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  /** Busy + result-note state for the "Generate Full Brief" action
+   *  (writes scenario + intent + mission flow + notes from the story). */
+  const [aiFullBusy, setAiFullBusy] = useState(false);
+  const [aiFullNote, setAiFullNote] = useState<string | null>(null);
   /** Last successful AI generation note for the toast under the
    *  intent card — model + token count, ephemeral. Cleared when the
    *  user edits the field or rebuilds the brief. */
@@ -127,8 +132,9 @@ export function BriefGenTab() {
     setBuilding(true); setError(null);
     // Rebuilding from mission wipes any AI-generated intent — the new
     // brief will come back with the templated placeholder. Clear the
-    // note + steer so the UI reflects the reset state honestly.
+    // notes + steer so the UI reflects the reset state honestly.
     setAiNote(null);
+    setAiFullNote(null);
     setAiSteer('');
     try {
       const res = await fetch('/api/brief/build-wing', {
@@ -293,6 +299,58 @@ export function BriefGenTab() {
       setError(`AI intent generation failed: ${e.message}`);
     } finally {
       setAiBusy(false);
+    }
+  };
+
+  // AI: write the WHOLE brief from the mission story -----------------------
+  // Fills scenario + commander's intent + mission flow + notes in one call.
+  // Structured tables (flights/threats/comms/timeline) come from the .miz
+  // and are left untouched; the cover + theatre overview are left as-is.
+  const handleAiFullBrief = async () => {
+    if (!brief) return;
+    if (!aiKey) {
+      setAiOpen(true);
+      return;
+    }
+    setAiFullBusy(true);
+    setError(null);
+    setAiFullNote(null);
+    setAiNote(null);
+    try {
+      const result = await generateFullBrief(aiProvider, aiKey, aiModel, {
+        mission_name: brief.mission_name,
+        theater: brief.theater,
+        date: brief.date,
+        time_zulu: brief.time_zulu,
+        scenario: brief.scenario,
+        missionStory,
+        threats: brief.threats,
+        flights: brief.flights,
+        userSteer: aiSteer,
+      });
+      const s = result.sections;
+      setBrief((b) => (b ? {
+        ...b,
+        // Only overwrite a section if the model produced text for it,
+        // so a sparse response can't blank out an existing field.
+        ...(s.scenario ? { scenario: s.scenario } : {}),
+        ...(s.commanders_intent ? { commanders_intent: s.commanders_intent } : {}),
+        ...(s.mission_flow ? { mission_flow: s.mission_flow } : {}),
+        ...(s.notes ? { notes: s.notes } : {}),
+      } : null));
+      const filled = [
+        s.scenario && 'Scenario',
+        s.commanders_intent && "Commander's Intent",
+        s.mission_flow && 'Mission Flow',
+        s.notes && 'Notes',
+      ].filter(Boolean).join(', ');
+      setAiFullNote(
+        `Wrote ${filled || 'nothing'} via ${result.model} · ${result.usage.input_tokens} in / ${result.usage.output_tokens} out tokens.`,
+      );
+    } catch (e: any) {
+      setError(`AI full-brief generation failed: ${e.message}`);
+    } finally {
+      setAiFullBusy(false);
     }
   };
 
@@ -538,22 +596,42 @@ export function BriefGenTab() {
           </Card>
 
           {/* Mission Story — the maker's own narrative of what's going
-              on. Not rendered onto a slide; feeds the AI commander's
-              intent (and future AI features) as the canonical context.
-              .miz dictionaries are usually sparse, so this is where
-              the actual story lives. */}
+              on. Not rendered onto a slide; feeds the AI as the canonical
+              context. The "Generate Full Brief" button writes the whole
+              narrative (scenario + intent + flow + notes) from it. */}
           <Card
             title="Mission Story"
             right={
-              missionStory ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {missionStory && (
+                  <button
+                    onClick={() => set('scenario', missionStory)}
+                    style={btnSmall}
+                    title="Copy this prose into the Scenario card above so it also renders on the brief slides"
+                  >
+                    Copy to Scenario
+                  </button>
+                )}
                 <button
-                  onClick={() => set('scenario', missionStory)}
-                  style={btnSmall}
-                  title="Copy this prose into the Scenario card above so it also renders on the brief slides"
+                  onClick={handleAiFullBrief}
+                  disabled={aiFullBusy || aiBusy}
+                  style={{
+                    ...btnSmall,
+                    background: aiKey ? '#2a2418' : '#2a2a2a',
+                    borderColor: aiKey ? '#fbb941' : '#4a4a4a',
+                    color: aiKey ? '#fbb941' : '#cccccc',
+                    fontWeight: 600,
+                    opacity: aiFullBusy ? 0.6 : 1,
+                  }}
+                  title={
+                    aiKey
+                      ? `Write the whole brief (Scenario, Commander's Intent, Mission Flow, Notes) from the story via ${aiProvider} (${aiModel}).`
+                      : 'No AI key configured. Click to open AI Settings.'
+                  }
                 >
-                  Copy to Scenario
+                  {aiFullBusy ? 'Writing brief…' : aiKey ? '✨ Generate Full Brief' : '✨ Set up AI'}
                 </button>
-              ) : undefined
+              </div>
             }
           >
             <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 6, lineHeight: 1.5 }}>
@@ -561,8 +639,10 @@ export function BriefGenTab() {
               mission — the situation, what the enemy is doing, what's
               at stake, what success looks like. <strong style={{ color: '#cccccc' }}>This text is
               not rendered on the brief slides</strong> — it's the
-              context the AI uses to write a tailored Commander's Intent
-              below. The more you write here, the better the AI output.
+              context the AI uses. Hit <strong style={{ color: '#fbb941' }}>Generate Full Brief</strong>{' '}
+              and the AI fills the Scenario, Commander's Intent, Mission
+              Flow, and Notes sections from it (the flight / threat / comms
+              tables stay as pulled from the .miz).
             </div>
             <textarea
               style={textareaStyle}
@@ -578,6 +658,20 @@ export function BriefGenTab() {
                 'the brigade command post before they consolidate.'
               }
             />
+            {aiFullNote && (
+              <div style={{
+                marginTop: 6, fontSize: 11, color: '#fbb941',
+                fontFamily: "'B612 Mono', monospace",
+              }}>
+                {aiFullNote}
+              </div>
+            )}
+            {!aiKey && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#888888' }}>
+                Bring your own Anthropic or Gemini key (AI Settings) to
+                auto-write the brief from your story.
+              </div>
+            )}
           </Card>
 
           <Card
