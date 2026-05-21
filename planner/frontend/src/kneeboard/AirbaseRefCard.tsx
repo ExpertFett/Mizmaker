@@ -12,9 +12,9 @@
  * not every dirt strip on the map.
  */
 
-import { forward as toMGRS } from 'mgrs';
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, MissionDateLine } from './cardStyles';
 import type { Airbase, MissionGroup, MissionOverviewData } from '../types/mission';
+import { formatCoord, type CoordFormat } from './coords';
 import { isPlayerGroup } from '../utils/groups';
 
 interface AirbaseRefCardProps {
@@ -28,11 +28,8 @@ interface AirbaseRefCardProps {
   coalition?: string;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
-}
-
-function fmtCoord(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  try { return toMGRS([lon, lat], 3); } catch { return '—'; }
+  /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
 
 /** Great-circle distance in nm. */
@@ -45,7 +42,7 @@ function distNm(lat1: number, lon1: number, lat2: number, lon2: number): number 
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export function AirbaseRefCard({ airbases, theater, overview, groups, notes }: AirbaseRefCardProps) {
+export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coordFormat = 'mgrs' }: AirbaseRefCardProps) {
   // `coalition` prop is currently unused — the route filter keys off
   // player-flight waypoints regardless of side. Kept on the props
   // interface so callers don't break and so we can re-enable a side
@@ -144,8 +141,9 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes }: A
       }}>
         {ab._role || '—'}
       </td>
-      <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px' }}>
-        {fmtCoord(ab.lat, ab.lon)}
+      <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px',
+        fontSize: coordFormat === 'mgrs' ? 19 : 14 }}>
+        {formatCoord(ab.lat, ab.lon, coordFormat, 3)}
       </td>
     </tr>
   );
@@ -156,7 +154,7 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes }: A
         <tr>
           <th style={{ ...th, textAlign: 'left', padding: '6px 8px' }}>AIRFIELD</th>
           <th style={{ ...th, width: 60, padding: '6px 8px' }}>ROLE</th>
-          <th style={{ ...th, width: useTwoColumns ? 110 : 140, padding: '6px 8px' }}>MGRS</th>
+          <th style={{ ...th, width: useTwoColumns ? 110 : 140, padding: '6px 8px' }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
         </tr>
       </thead>
       <tbody>{rows.map(renderRow)}</tbody>

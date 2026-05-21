@@ -174,7 +174,7 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.routeDetail) {
-      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail });
+      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat });
       results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.fuelLadder) {
@@ -182,7 +182,7 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.homePlate) {
-      const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined });
+      const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined, coordFormat });
       results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el, theme) });
     }
     return results;
@@ -210,19 +210,19 @@ export function KneeboardTab() {
       // useful as a kneeboard reference.
       const el = createElement(AirbaseRefCard, {
         airbases, theater, overview: overview || undefined, groups, coalition,
-        notes: cardNotes.airbaseRef,
+        notes: cardNotes.airbaseRef, coordFormat,
       });
       results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.bullseyeRef && overview) {
-      const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef });
+      const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat });
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.threatCard) {
       const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard });
+        const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard, coordFormat });
         results.push({ name: fname, blob: await renderCardToBlob(el, theme) });
       }
     }
@@ -255,6 +255,7 @@ export function KneeboardTab() {
         dmpis,
         squadron: activeSop?.squadron,
         overview: overview || undefined,
+        coordFormat,
       });
       results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el, theme) });
     }
@@ -905,7 +906,7 @@ function CardCarousel({
       if (cards.routeDetail) {
         list.push({
           key: 'routeDetail', label: 'Route Detail',
-          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail }),
+          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat }),
         });
       }
       if (cards.fuelLadder) {
@@ -917,7 +918,7 @@ function CardCarousel({
       if (cards.homePlate) {
         list.push({
           key: 'homePlate', label: 'Home Plate / Divert',
-          element: createElement(HomePlateCard, { group: selectedGroup, airbases, overview: overview || undefined }),
+          element: createElement(HomePlateCard, { group: selectedGroup, airbases, overview: overview || undefined, coordFormat }),
         });
       }
     }
@@ -944,14 +945,14 @@ function CardCarousel({
         key: 'airbaseRef', label: 'Airbase Reference',
         element: createElement(AirbaseRefCard, {
           airbases, theater, overview: overview || undefined, groups, coalition,
-          notes: cardNotes.airbaseRef,
+          notes: cardNotes.airbaseRef, coordFormat,
         }),
       });
     }
     if (cards.bullseyeRef && overview) {
       list.push({
         key: 'bullseyeRef', label: 'Bullseye Reference',
-        element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef }),
+        element: createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat }),
       });
     }
     if (cards.threatCard) {
@@ -960,7 +961,7 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `threatCard-${p}`, label: `Threat Card${suffix}`,
-          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard }),
+          element: createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard, coordFormat }),
         });
       }
     }
@@ -991,7 +992,7 @@ function CardCarousel({
       list.push({
         key: 'dmpiCard', label: 'DMPI List',
         element: createElement(DmpiCard, {
-          dmpis, squadron: activeSop?.squadron, overview: overview || undefined,
+          dmpis, squadron: activeSop?.squadron, overview: overview || undefined, coordFormat,
         }),
       });
     }

@@ -23,12 +23,15 @@ import {
 } from './cardStyles';
 import type { Dmpi } from '../store/dmpiStore';
 import type { MissionOverviewData } from '../types/mission';
-import { formatLatLon, metersToFeet } from '../utils/conversions';
+import { metersToFeet } from '../utils/conversions';
+import { formatCoord, type CoordFormat } from './coords';
 
 interface DmpiCardProps {
   dmpis: Dmpi[];
   squadron?: string;
   overview?: MissionOverviewData;
+  /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
 
 const MAX_ROWS = 12;
@@ -38,7 +41,7 @@ function fmtElev(meters: number): string {
   return `${Math.round(metersToFeet(meters)).toLocaleString()} ft`;
 }
 
-export function DmpiCard({ dmpis, squadron, overview }: DmpiCardProps) {
+export function DmpiCard({ dmpis, squadron, overview, coordFormat = 'mgrs' }: DmpiCardProps) {
   // Drop placeholder rows (blank name OR coordinates still 0/0).
   // Same filter the brief-token formatter uses, so the card and the
   // brief stay in lockstep.
@@ -125,7 +128,7 @@ export function DmpiCard({ dmpis, squadron, overview }: DmpiCardProps) {
                     {d.name}
                   </td>
                   <td style={{ ...cell, fontFamily: 'monospace', fontSize: 16, whiteSpace: 'normal' }}>
-                    {formatLatLon(d.lat, d.lon)}
+                    {formatCoord(d.lat, d.lon, coordFormat, 4)}
                   </td>
                   <td style={{ ...cell, textAlign: 'center', fontFamily: 'monospace' }}>
                     {fmtElev(d.elevation)}

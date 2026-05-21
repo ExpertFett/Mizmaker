@@ -20,6 +20,7 @@ import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
   cell, th, notesBox, BORDER_MED, TEXT, DIM, ACCENT, footerStyle, MissionDateLine,
 } from './cardStyles';
+import { formatCoord, type CoordFormat } from './coords';
 import type { Airbase, MissionGroup, ThreatRing, MissionOverviewData } from '../types/mission';
 import { metersToNm } from '../utils/conversions';
 
@@ -31,6 +32,9 @@ interface BullseyeRefCardProps {
   coalition: string;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Coordinate display format from the Kneeboard tab. Applies to the
+   *  nearby-points table; the bullseye anchor always shows both. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
 
 function fmtMGRS(lat?: number, lon?: number, precision = 4): string {
@@ -78,7 +82,7 @@ interface RefPoint {
   threatRangeNm?: number;
 }
 
-export function BullseyeRefCard({ overview, airbases, groups, threats, coalition, notes }: BullseyeRefCardProps) {
+export function BullseyeRefCard({ overview, airbases, groups, threats, coalition, notes, coordFormat = 'mgrs' }: BullseyeRefCardProps) {
   const theater = overview.theater;
   // overview.bullseye is `{blue: {x, y, lat, lon}, red: {...}}` from the
   // backend. Pick the friendly side's bullseye — that's what blue / red
@@ -245,7 +249,7 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
                 <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
                 <th style={{ ...th, width: 100 }}>TYPE</th>
                 <th style={{ ...th, width: 130 }}>BRG / RNG (BE)</th>
-                <th style={{ ...th, width: 150 }}>MGRS</th>
+                <th style={{ ...th, width: 150 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
               </tr>
             </thead>
           <tbody>
@@ -270,8 +274,9 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
                     : '—'}
                 </td>
                 <td style={{ ...cell, textAlign: 'center', color: DIM,
-                              fontFamily: "'B612 Mono', monospace" }}>
-                  {fmtMGRS(pt.lat, pt.lon)}
+                              fontFamily: "'B612 Mono', monospace",
+                              fontSize: coordFormat === 'mgrs' ? 19 : 14 }}>
+                  {formatCoord(pt.lat, pt.lon, coordFormat, 4)}
                 </td>
               </tr>
             ))}

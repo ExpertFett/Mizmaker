@@ -6,7 +6,6 @@
  * the SOP if active, otherwise fields are left blank for the pilot to fill.
  */
 
-import { forward as toMGRS } from 'mgrs';
 import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
   cell, th, TEXT_MUTED, DIM, ROW_ALT,
@@ -14,19 +13,15 @@ import {
 } from './cardStyles';
 import type { MissionGroup, Airbase, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
+import { formatCoord, type CoordFormat } from './coords';
 
 interface HomePlateCardProps {
   group: MissionGroup;
   airbases: Airbase[];
   overview?: MissionOverviewData;
+  /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
-
-function fmtCoord(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  try { return toMGRS([lon, lat], 3); } catch { return '—'; }
-}
-
-// fmtLatLon helper removed — card formats coords via MGRS only (fmtCoord).
 
 /** Haversine distance in nm */
 function distNm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -47,7 +42,7 @@ function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps) {
+export function HomePlateCard({ group, airbases, overview, coordFormat = 'mgrs' }: HomePlateCardProps) {
   const airframe = getAircraftType(group);
 
   // Home plate = first waypoint (parking/departure)
@@ -99,8 +94,8 @@ export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps)
           <tbody>
             <tr>
               <td style={{ ...cell, fontWeight: 600 }}>{home.name}</td>
-              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: 15, textAlign: 'center' }}>
-                {fmtCoord(home.lat, home.lon)}
+              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: coordFormat === 'mgrs' ? 15 : 13, textAlign: 'center' }}>
+                {formatCoord(home.lat, home.lon, coordFormat, 3)}
               </td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>—</td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>—</td>
@@ -121,7 +116,7 @@ export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps)
             <th style={{ ...th, textAlign: 'left' }}>FIELD</th>
             <th style={{ ...th, width: 50 }}>BRG</th>
             <th style={{ ...th, width: 50 }}>DIST</th>
-            <th style={{ ...th, width: 110 }}>MGRS</th>
+            <th style={{ ...th, width: 110 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
             <th style={{ ...th, width: 60 }}>TCN</th>
           </tr>
         </thead>
@@ -135,8 +130,8 @@ export function HomePlateCard({ group, airbases, overview }: HomePlateCardProps)
               <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace" }}>
                 {a.dist < 1 ? '<1' : Math.round(a.dist)} nm
               </td>
-              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: 15, textAlign: 'center' }}>
-                {fmtCoord(a.lat, a.lon)}
+              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: coordFormat === 'mgrs' ? 15 : 13, textAlign: 'center' }}>
+                {formatCoord(a.lat, a.lon, coordFormat, 3)}
               </td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>—</td>
             </tr>

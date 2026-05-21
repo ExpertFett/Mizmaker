@@ -3,8 +3,8 @@
  * Shows enemy air defense systems on a tile map with an inventory table.
  */
 
-import { forward as toMGRS } from 'mgrs';
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, BG, W as CARD_W, MissionDateLine } from './cardStyles';
+import { formatCoord, type CoordFormat } from './coords';
 import type { ThreatRing, MissionOverviewData } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';
@@ -45,6 +45,8 @@ interface ThreatCardProps {
   mapVisible?: boolean;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
 
 /** First-page inventory has the map above it, so it fits fewer rows
@@ -108,14 +110,10 @@ const CAT_COLORS: Record<string, string> = {
   aaa:       '#8fa8c0',
 };
 
-function fmtCoord(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  try { return toMGRS([lon, lat], 3); } catch { return '—'; }
-}
 
 export function ThreatCard({
   threats, playerCoalition, overview, page = 0, fidelity = 'full',
-  mapVisible = true, notes,
+  mapVisible = true, notes, coordFormat = 'mgrs',
 }: ThreatCardProps) {
   const enemy = threats.filter((t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
 
@@ -275,7 +273,7 @@ export function ThreatCard({
                 {fidelity === 'full' && <th style={{ ...th, width: 40 }}>GDE</th>}
                 <th style={{ ...th, width: 40 }}>RNG</th>
                 <th style={{ ...th, width: 45 }}>ALT</th>
-                {fidelity === 'full' && <th style={{ ...th, width: 95 }}>MGRS</th>}
+                {fidelity === 'full' && <th style={{ ...th, width: coordFormat === 'mgrs' ? 95 : 130 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>}
               </tr>
             </thead>
             <tbody>
@@ -308,8 +306,8 @@ export function ThreatCard({
                       {t.info ? `${(t.info.altMaxFt / 1000).toFixed(0)}k ft` : '—'}
                     </td>
                     {fidelity === 'full' && (
-                      <td style={{ ...cell, textAlign: 'center', color: DIM }}>
-                        {fmtCoord(t.lat, t.lon)}
+                      <td style={{ ...cell, textAlign: 'center', color: DIM, fontSize: coordFormat === 'mgrs' ? 19 : 14 }}>
+                        {formatCoord(t.lat, t.lon, coordFormat, 3)}
                       </td>
                     )}
                   </tr>

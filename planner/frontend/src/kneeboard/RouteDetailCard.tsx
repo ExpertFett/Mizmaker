@@ -7,12 +7,12 @@
  * card stays a pure route-planning aid. (v0.9.73)
  */
 
-import { forward as toMGRS } from 'mgrs';
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BG, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, W as CARD_W, MissionDateLine } from './cardStyles';
 import type { MissionGroup, ThreatRing, MissionOverviewData, Waypoint } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet } from '../utils/conversions';
 import { TileMap, createProjection } from './TileMap';
+import { formatCoord, type CoordFormat } from './coords';
 
 interface RouteDetailCardProps {
   group: MissionGroup;
@@ -20,14 +20,11 @@ interface RouteDetailCardProps {
   overview?: MissionOverviewData;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
+  coordFormat?: CoordFormat;
 }
 
-function fmtCoord(lat?: number, lon?: number): string {
-  if (lat == null || lon == null) return '—';
-  try { return toMGRS([lon, lat], 3); } catch { return '—'; }
-}
-
-export function RouteDetailCard({ group, overview, notes }: RouteDetailCardProps) {
+export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs' }: RouteDetailCardProps) {
   const airframe = getAircraftType(group);
   const wps = group.waypoints;
 
@@ -54,7 +51,7 @@ export function RouteDetailCard({ group, overview, notes }: RouteDetailCardProps
           <tr>
             <th style={{ ...th, width: 34 }}>WP</th>
             <th style={{ ...th, textAlign: 'left' }}>NAME</th>
-            <th style={{ ...th, width: 120 }}>MGRS</th>
+            <th style={{ ...th, width: coordFormat === 'mgrs' ? 120 : 150 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
             <th style={{ ...th, width: 70 }}>ALT</th>
             <th style={{ ...th, width: 50 }}>HDG</th>
             <th style={{ ...th, width: 60 }}>DIST</th>
@@ -65,7 +62,7 @@ export function RouteDetailCard({ group, overview, notes }: RouteDetailCardProps
             <tr key={wp.waypoint_number} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{wp.waypoint_number}</td>
               <td style={{ ...cell }}>{(wp.waypoint_name || '').substring(0, 14)}</td>
-              <td style={{ ...cell, textAlign: 'center', color: DIM }}>{fmtCoord(wp.lat, wp.lon)}</td>
+              <td style={{ ...cell, textAlign: 'center', color: DIM, fontSize: coordFormat === 'mgrs' ? 19 : 15 }}>{formatCoord(wp.lat, wp.lon, coordFormat, 3)}</td>
               <td style={{ ...cell, textAlign: 'right' }}>
                 {Math.round(metersToFeet(wp.altitude_m)).toLocaleString()}
               </td>

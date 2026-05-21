@@ -149,7 +149,7 @@ export function ExportPanel() {
               createElement(CommsCard, { group: g, allGroups: groups, notes: cardNotes.comms }));
           if (cards.routeDetail)
             await addCard(aircraftType, `${safeName}_RouteDetail.png`,
-              createElement(RouteDetailCard, { group: g, threats, notes: cardNotes.routeDetail }));
+              createElement(RouteDetailCard, { group: g, threats, notes: cardNotes.routeDetail, coordFormat: kneeboardSettings.coordFormat }));
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
               createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));
@@ -173,12 +173,12 @@ export function ExportPanel() {
         if (cards.airbaseRef)
           await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, {
             airbases, theater: theater || '', groups, coalition,
-            notes: cardNotes.airbaseRef,
+            notes: cardNotes.airbaseRef, coordFormat: kneeboardSettings.coordFormat,
             // groups + coalition trigger the route-relevance filter so we
             // don't dump all 36 Kola airfields onto a kneeboard.
           }));
         if (cards.bullseyeRef && overview)
-          await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef }));
+          await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat: kneeboardSettings.coordFormat }));
         if (cards.threatCard) {
           const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
           for (let p = 0; p < pageCount; p++) {
@@ -187,7 +187,7 @@ export function ExportPanel() {
               threats, playerCoalition: coalition, page: p,
               fidelity: kneeboardSettings.threatFidelity ?? 'full',
               mapVisible: kneeboardSettings.threatMapVisible !== false,
-              notes: cardNotes.threatCard,
+              notes: cardNotes.threatCard, coordFormat: kneeboardSettings.coordFormat,
             }));
           }
         }
@@ -209,7 +209,7 @@ export function ExportPanel() {
             createElement(GoalsCard, { goals, squadron: activeSop?.squadron, overview: overview || undefined }));
         if (cards.dmpiCard)
           await addCard(sharedType, 'DMPI_List.png',
-            createElement(DmpiCard, { dmpis, squadron: activeSop?.squadron, overview: overview || undefined }));
+            createElement(DmpiCard, { dmpis, squadron: activeSop?.squadron, overview: overview || undefined, coordFormat: kneeboardSettings.coordFormat }));
         // Mission Notes — free-text planner card (v0.9.69). Emitted
         // when the toggle is on; the card shows an empty-state notice
         // if no text was typed, same as Goals/DMPI.
