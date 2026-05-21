@@ -69,6 +69,10 @@ export interface KneeboardSettings {
    *  Lets the planner write a different note per card type rather
    *  than only the standalone Notes card. (v0.9.70) */
   cardNotes: Record<string, string>;
+  /** Kneeboard color scheme. 'night' = dark background (default,
+   *  cockpit-at-night), 'day' = white background (daylight / printing).
+   *  Drives the --kb-* CSS variables the cards resolve. (v0.9.74) */
+  theme: 'night' | 'day';
 }
 
 interface EditState {
@@ -109,6 +113,7 @@ export const useEditStore = create<EditState>((set) => ({
     notesText: '',
     notesTitle: '',
     cardNotes: {},
+    theme: 'night',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,

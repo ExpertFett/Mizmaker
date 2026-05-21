@@ -132,7 +132,7 @@ export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
       {/* METAR-style summary */}
       <div style={{
         padding: '6px 16px',
-        background: '#222',
+        background: 'var(--kb-surface, #222)',
         fontFamily: "'B612 Mono', monospace",
         fontSize: 16,
         color: TEXT,

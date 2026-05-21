@@ -249,7 +249,7 @@ export function SopCommsCard({ sop, overview }: SopCommsCardProps) {
           style={{
             flex: 1,
             border: `1px solid ${BORDER_MED}`,
-            background: '#222',
+            background: 'var(--kb-surface, #222)',
             padding: '6px 10px',
           }}
         >
@@ -262,7 +262,7 @@ export function SopCommsCard({ sop, overview }: SopCommsCardProps) {
           style={{
             flex: 1,
             border: `1px solid ${BORDER_MED}`,
-            background: '#222',
+            background: 'var(--kb-surface, #222)',
             padding: '6px 10px',
           }}
         >
@@ -279,7 +279,7 @@ export function SopCommsCard({ sop, overview }: SopCommsCardProps) {
         <div
           style={{
             border: `1px solid ${BORDER}`,
-            background: '#1a1a1a',
+            background: 'var(--kb-bg, #1a1a1a)',
             padding: '5px 8px',
             fontSize: 14,
             color: TEXT,

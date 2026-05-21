@@ -34,18 +34,22 @@ interface RouteCardProps {
 }
 
 // -- Style Guide Constants --
+// Colors are CSS variables with dark "night" fallbacks so the day theme
+// (set via --kb-* on the captured container) flips them. Mirrors
+// cardStyles.ts. (v0.9.74)
 const W = 600;
 const H = 850;
 const FONT = "'Arial', sans-serif";
-const BG = '#1a1a1a';
-const BG_NOTES = '#4a4a4a';
-const BORDER = '#444';
-const BORDER_MED = '#555';
-const BORDER_LIGHT = '#666';
-const TEXT = '#e0e0e0';
-const TEXT_BRIGHT = '#fff';
-const TEXT_MUTED = '#ccc';
+const BG = 'var(--kb-bg, #1a1a1a)';
+const BG_NOTES = 'var(--kb-notes-bg, #4a4a4a)';
+const BORDER = 'var(--kb-border, #444)';
+const BORDER_MED = 'var(--kb-border-med, #555)';
+const BORDER_LIGHT = 'var(--kb-border-light, #666)';
+const TEXT = 'var(--kb-text, #e0e0e0)';
+const TEXT_BRIGHT = 'var(--kb-text-bright, #fff)';
+const TEXT_MUTED = 'var(--kb-text-muted, #ccc)';
 const ACCENT = '#ffa500';
+const TH_BG = 'var(--kb-th-bg, #333)';
 
 // -- Formatters --
 
@@ -131,7 +135,7 @@ function speedColLabel(mode: KneeboardSpeedRef): string {
 // -- Shared cell styles --
 
 const thStyle: React.CSSProperties = {
-  backgroundColor: '#333',
+  backgroundColor: TH_BG,
   color: TEXT_MUTED,
   padding: '4px 6px',
   textAlign: 'center',
@@ -270,14 +274,14 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
           })}
           {/* Totals */}
           <tr>
-            <td colSpan={5} style={{ ...tdStyle, fontWeight: 'bold', backgroundColor: '#333' }}>
+            <td colSpan={5} style={{ ...tdStyle, fontWeight: 'bold', backgroundColor: TH_BG }}>
               TOTAL
             </td>
-            <td style={{ ...tdStyle, textAlign: 'center', backgroundColor: '#333', color: TEXT_MUTED }}>-</td>
-            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', backgroundColor: '#333' }}>
+            <td style={{ ...tdStyle, textAlign: 'center', backgroundColor: TH_BG, color: TEXT_MUTED }}>-</td>
+            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', backgroundColor: TH_BG }}>
               {totalDist.toFixed(1)}
             </td>
-            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', backgroundColor: '#333' }}>
+            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', backgroundColor: TH_BG }}>
               {fmtEte(totalEta)}
             </td>
           </tr>

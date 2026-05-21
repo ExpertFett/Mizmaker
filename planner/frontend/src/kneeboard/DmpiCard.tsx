@@ -76,7 +76,7 @@ export function DmpiCard({ dmpis, squadron, overview }: DmpiCardProps) {
           style={{
             flex: 1,
             border: `1px solid ${BORDER_MED}`,
-            background: '#222',
+            background: 'var(--kb-surface, #222)',
             padding: '6px 10px',
           }}
         >

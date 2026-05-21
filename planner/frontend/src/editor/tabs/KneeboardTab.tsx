@@ -26,6 +26,7 @@ import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
+import { kbThemeStyle, type KneeboardTheme } from '../../kneeboard/cardStyles';
 import { useSopStore } from '../../sop/sopStore';
 import { useGoalsStore } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
@@ -120,6 +121,9 @@ export function KneeboardTab() {
   // Per-card notes map (v0.9.70) — keyed by card type. Each card's
   // NOTES box renders cardNotes[key] when set.
   const cardNotes = kneeboardSettings.cardNotes ?? {};
+  // Day/night color scheme (v0.9.74). Default 'night' for settings
+  // objects that pre-date the field.
+  const theme: KneeboardTheme = kneeboardSettings.theme ?? 'night';
 
   const playerGroups = groups.filter(isPlayerGroup);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(
@@ -159,27 +163,27 @@ export function KneeboardTab() {
 
     if (cards.lineup) {
       const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined, notes: cardNotes.lineup });
-      results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.flight) {
       const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.flight });
-      results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.comms) {
       const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms });
-      results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.routeDetail) {
       const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail });
-      results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.fuelLadder) {
       const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder });
-      results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el, theme) });
     }
     if (cards.homePlate) {
       const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined });
-      results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el) });
+      results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el, theme) });
     }
     return results;
   };
@@ -192,12 +196,12 @@ export function KneeboardTab() {
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
         const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets });
-        results.push({ name: fname, blob: await renderCardToBlob(el) });
+        results.push({ name: fname, blob: await renderCardToBlob(el, theme) });
       }
     }
     if (cards.radioLadder) {
       const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined, notes: cardNotes.radioLadder });
-      results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.airbaseRef) {
       // Pass groups + coalition so the route-relevance filter fires.
@@ -208,23 +212,23 @@ export function KneeboardTab() {
         airbases, theater, overview: overview || undefined, groups, coalition,
         notes: cardNotes.airbaseRef,
       });
-      results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.bullseyeRef && overview) {
       const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef });
-      results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.threatCard) {
       const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
         const el = createElement(ThreatCard, { threats, playerCoalition: coalition, overview: overview || undefined, page: p, fidelity: threatFidelity, mapVisible: threatMapVisible, notes: cardNotes.threatCard });
-        results.push({ name: fname, blob: await renderCardToBlob(el) });
+        results.push({ name: fname, blob: await renderCardToBlob(el, theme) });
       }
     }
     if (cards.weatherBrief && overview) {
       const el = createElement(WeatherBriefCard, { overview, notes: cardNotes.weatherBrief });
-      results.push({ name: 'Weather_Brief.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Weather_Brief.png', blob: await renderCardToBlob(el, theme) });
     }
     // SOP Comms card — only generated if a SOP is currently active.
     // No-op when the user has the toggle on but no SOP loaded; we don't
@@ -232,7 +236,7 @@ export function KneeboardTab() {
     // hint in that case so it's discoverable.
     if (cards.sopComms && activeSop) {
       const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined });
-      results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el, theme) });
     }
     // Mission Goals card — emitted even when the goals list is empty
     // so the user gets a clear "no goals defined" placeholder rather
@@ -244,7 +248,7 @@ export function KneeboardTab() {
         squadron: activeSop?.squadron,
         overview: overview || undefined,
       });
-      results.push({ name: 'Mission_Goals.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Mission_Goals.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.dmpiCard) {
       const el = createElement(DmpiCard, {
@@ -252,7 +256,7 @@ export function KneeboardTab() {
         squadron: activeSop?.squadron,
         overview: overview || undefined,
       });
-      results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el, theme) });
     }
     if (cards.notesCard) {
       const el = createElement(NotesCard, {
@@ -261,7 +265,7 @@ export function KneeboardTab() {
         squadron: activeSop?.squadron,
         overview: overview || undefined,
       });
-      results.push({ name: 'Mission_Notes.png', blob: await renderCardToBlob(el) });
+      results.push({ name: 'Mission_Notes.png', blob: await renderCardToBlob(el, theme) });
     }
     return results;
   };
@@ -469,6 +473,24 @@ export function KneeboardTab() {
             style={{ accentColor: '#4a8fd4' }}
           />
           Show threats on map
+        </label>
+
+        {/* Day / Night color scheme. Unchecked = night (dark, default);
+            checked = day (white background, for printing / daylight). */}
+        <label
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
+            color: '#aaaaaa', cursor: 'pointer', userSelect: 'none',
+          }}
+          title="White background for the kneeboards (daylight / printing). Off = dark night background."
+        >
+          <input
+            type="checkbox"
+            checked={theme === 'day'}
+            onChange={(e) => setKneeboardSettings({ theme: e.target.checked ? 'day' : 'night' })}
+            style={{ accentColor: '#4a8fd4' }}
+          />
+          Day mode (white)
         </label>
 
         <button onClick={handleDownloadOne} disabled={!selectedGroup || rendering || noCardsSelected} style={btnStyle}>
@@ -786,6 +808,7 @@ export function KneeboardTab() {
         notesText={notesText}
         notesTitle={notesTitle}
         cardNotes={cardNotes}
+        theme={theme}
       />
     </div>
   );
@@ -818,6 +841,7 @@ interface CarouselProps {
   notesText: string;
   notesTitle: string;
   cardNotes: Record<string, string>;
+  theme: KneeboardTheme;
 }
 
 interface CardEntry {
@@ -837,6 +861,7 @@ function CardCarousel({
   notesText,
   notesTitle,
   cardNotes,
+  theme,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
@@ -1076,13 +1101,15 @@ function CardCarousel({
         </button>
       </div>
 
-      {/* Card preview */}
+      {/* Card preview — themed wrapper sets the --kb-* CSS variables so
+          the in-page preview matches the day/night PNG output. */}
       <div style={{
         border: '1px solid #4a4a4a',
         borderRadius: 6,
         overflow: 'hidden',
         display: 'inline-block',
         boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        ...kbThemeStyle(theme),
       }}>
         {current.element}
       </div>

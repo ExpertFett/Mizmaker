@@ -4,18 +4,61 @@ import { createElement } from 'react';
 export const W = 600;
 export const H = 850;
 export const FONT = "'Arial', sans-serif";
-export const BG = '#1a1a1a';
-export const BG_NOTES = '#4a4a4a';
-export const BORDER = '#444';
-export const BORDER_MED = '#555';
-export const BORDER_LIGHT = '#666';
-export const TEXT = '#e0e0e0';
-export const TEXT_BRIGHT = '#fff';
-export const TEXT_MUTED = '#ccc';
+// Color tokens are CSS variables with the dark ("night") values baked in
+// as fallbacks. Night mode therefore needs NO variables set — the
+// fallbacks apply. Day mode is opted into by setting --kb-* variables on
+// a wrapping element (see KB_DAY_VARS / applyKbTheme below); html2canvas
+// resolves them via getComputedStyle at capture time. ACCENT + WARN stay
+// fixed (orange/amber read fine on both backgrounds). (v0.9.74)
+export const BG = 'var(--kb-bg, #1a1a1a)';
+export const BG_NOTES = 'var(--kb-notes-bg, #4a4a4a)';
+export const BORDER = 'var(--kb-border, #444)';
+export const BORDER_MED = 'var(--kb-border-med, #555)';
+export const BORDER_LIGHT = 'var(--kb-border-light, #666)';
+export const TEXT = 'var(--kb-text, #e0e0e0)';
+export const TEXT_BRIGHT = 'var(--kb-text-bright, #fff)';
+export const TEXT_MUTED = 'var(--kb-text-muted, #ccc)';
 export const ACCENT = '#ffa500';
 export const WARN = '#d9a050';
-export const ROW_ALT = 'rgba(255, 165, 0, 0.04)';
-export const DIM = '#aaa';
+export const ROW_ALT = 'var(--kb-row-alt, rgba(255, 165, 0, 0.04))';
+export const DIM = 'var(--kb-dim, #aaa)';
+/** Table-header background. Themed via --kb-th-bg (dark #333 fallback). */
+export const TH_BG = 'var(--kb-th-bg, #333)';
+
+export type KneeboardTheme = 'night' | 'day';
+
+/** CSS-variable overrides for the light "day" theme. Night uses the
+ *  literal fallbacks above, so it needs no overrides. */
+export const KB_DAY_VARS: Record<string, string> = {
+  '--kb-bg': '#ffffff',
+  '--kb-surface': '#f0f0f0',
+  '--kb-notes-bg': '#ededed',
+  '--kb-border': '#bcbcbc',
+  '--kb-border-med': '#9a9a9a',
+  '--kb-border-light': '#888888',
+  '--kb-text': '#1a1a1a',
+  '--kb-text-bright': '#000000',
+  '--kb-text-muted': '#333333',
+  '--kb-dim': '#555555',
+  '--kb-row-alt': 'rgba(0, 0, 0, 0.05)',
+  '--kb-th-bg': '#d8d8d8',
+};
+
+/** Inline style applying a theme's CSS variables — for a wrapper around
+ *  a card in the live in-page preview. Cast through `unknown` because
+ *  CSS custom properties aren't part of the React.CSSProperties type. */
+export function kbThemeStyle(theme: KneeboardTheme): React.CSSProperties {
+  return theme === 'day' ? ({ ...KB_DAY_VARS } as unknown as React.CSSProperties) : {};
+}
+
+/** Set (or clear) a theme's CSS variables on a DOM element — used by the
+ *  PNG renderer on the captured container so html2canvas resolves them. */
+export function applyKbTheme(el: HTMLElement, theme: KneeboardTheme): void {
+  for (const k of Object.keys(KB_DAY_VARS)) {
+    if (theme === 'day') el.style.setProperty(k, KB_DAY_VARS[k]);
+    else el.style.removeProperty(k);
+  }
+}
 
 export const cardRoot: React.CSSProperties = {
   width: W,
@@ -72,7 +115,7 @@ export const cell: React.CSSProperties = {
 };
 
 export const th: React.CSSProperties = {
-  backgroundColor: '#333',
+  backgroundColor: TH_BG,
   color: TEXT_MUTED,
   padding: '4px 6px',
   textAlign: 'center',

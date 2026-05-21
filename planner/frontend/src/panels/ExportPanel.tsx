@@ -125,10 +125,11 @@ export function ExportPanel() {
       const wx = overview?.weather as Weather | undefined;
       const cards = kneeboardSettings.cards;
       const cardNotes = kneeboardSettings.cardNotes ?? {};
+      const theme = kneeboardSettings.theme ?? 'night';
       const coalition = playerGroups[0]?.coalition || 'blue';
 
       const addCard = async (aircraftType: string, filename: string, el: React.ReactElement) => {
-        const blob = await renderCardToBlob(el);
+        const blob = await renderCardToBlob(el, theme);
         kneeboards.push({ aircraft_type: aircraftType, filename, data: await blobToBase64(blob) });
       };
 
