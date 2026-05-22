@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useSopStore } from '../../sop/sopStore';
+import type { SOP } from '../../sop/types';
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
 import { formatLatLon } from '../../utils/conversions';
@@ -157,8 +158,16 @@ export function BriefGenTab() {
         const err = await res.json().catch(() => ({ error: 'Build failed' }));
         throw new Error(err.error || 'Build failed');
       }
-      const data = await res.json();
-      setBrief(data as WingBrief);
+      const data = await res.json() as WingBrief;
+      // Auto-fill the standard comm-card slots (GCI / AAR / Tower / Approach /
+      // Guard) from the active SOP; slots with no SOP match show a clean dash
+      // instead of the backend's literal "edit — ..." prompt. The planner can
+      // still override any row in the editable Comms section below. (v0.9.99)
+      const sopState = useSopStore.getState();
+      const activeSop = sopState.activeId
+        ? sopState.sops.find((x) => x.id === sopState.activeId) || null
+        : null;
+      setBrief({ ...data, comms: fillCommsFromSop(data.comms, activeSop) });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1408,6 +1417,43 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     case 'country':    return g.country;
     default: return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// SOP comm-slot auto-fill
+// ---------------------------------------------------------------------------
+
+/** Fill the standard comm-card slots (GCI / AAR Boom / BTW Tower / Approach /
+ *  Guard) from the active SOP's comms where a role keyword matches. Slots with
+ *  no SOP match get a clean dash instead of the backend's literal "edit — ..."
+ *  prompt, so an unfilled brief still looks finished. The planner can override
+ *  any row in the editable Comms section. (v0.9.99) */
+function fillCommsFromSop(comms: CommsRow[], sop: SOP | null): CommsRow[] {
+  if (!comms) return comms;
+  const fmt = (f?: number, m?: string): string | null =>
+    f && f > 0 ? `${f.toFixed(3)} ${m ?? 'AM'}` : null;
+  const commFor = (re: RegExp): string | null => {
+    const c = sop?.comms.find((x) => x.role && re.test(x.role) && x.frequency > 0);
+    return c ? fmt(c.frequency, c.modulation) : null;
+  };
+  const firstTanker = sop?.tankers?.find((t) => t.frequency && t.frequency > 0);
+  const SLOT: Record<string, () => string | null> = {
+    'GCI':       () => commFor(/gci|\bcontrol\b|intercept/i),
+    'AAR Boom':  () => commFor(/aar|tanker|boom|refuel/i)
+                       ?? fmt(firstTanker?.frequency, firstTanker?.modulation),
+    'BTW Tower': () => commFor(/tower/i),
+    'Approach':  () => commFor(/approach|departure/i),
+  };
+  return comms.map((r) => {
+    const label = (r.label || '').trim();
+    const slot = SLOT[label];
+    if (slot) return { ...r, value: slot() ?? '—' };
+    if (/^guard$/i.test(label)) {
+      const g = commFor(/guard/i);
+      return g ? { ...r, value: g } : r;  // else keep backend's 243.000 (UHF)
+    }
+    return r;
+  });
 }
 
 // ---------------------------------------------------------------------------
