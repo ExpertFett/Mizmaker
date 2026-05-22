@@ -134,13 +134,14 @@ class ThreatRow:
 
 @dataclass
 class AirThreatRow:
-    """One row on the AIR THREATS section — an enemy aircraft group with a
-    simple tactical readout (what / role / where / how high)."""
-    composition: str  # "2× MiG-29S"
-    role: str         # "CAP" / "Intercept" / "Escort" / "Ground Attack" / "—"
-    location: str     # "BE 120/45" or "lat, lon" or "—"
-    altitude: str     # "FL250" / "12,000 ft" / "—"
-    coalition: str    # "red"
+    """One row on the AIR THREATS section — an enemy airframe TYPE aggregated
+    across the whole mission, with a capability rundown useful to friendly
+    pilots (what it shoots, and how to fight it)."""
+    composition: str     # "8× Su-27"  (total of this type, enemy-wide)
+    airframe_class: str  # "Heavy 4th-gen fighter"
+    weapons: str         # "R-27ER/ET (BVR ~30nm) · R-73 (WVR)"
+    notes: str           # terse tactical advice for blue pilots
+    coalition: str       # "red"
 
 
 @dataclass
@@ -1103,70 +1104,183 @@ def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List
     return [asdict(r) for r in rows]
 
 
-# Air-to-air roles that directly threaten the blue air picture — sorted to the
-# top of the AIR THREATS list.
-_AIR_TO_AIR_ROLES = {"CAP", "Intercept", "Escort"}
+# ---------------------------------------------------------------------------
+# Air-threat capability database
+# ---------------------------------------------------------------------------
+# Maps a DCS unit-type SUBSTRING (case-insensitive) to the capability a blue
+# pilot actually cares about: a clean display name, the airframe class, primary
+# A2A weapons + rough WEZ, and a terse "how to fight it" note. Longest matching
+# key wins ("Su-33" beats "Su-3", "MiG-29S" beats "MiG-29"). Unknown types fall
+# back to a generic "verify" profile so nothing is silently dropped.
+
+_AIRFRAME_DB: "list[tuple[str, dict]]" = [
+    # ---- Russian / Chinese fighters ----
+    ("Su-27",  {"name": "Su-27",  "class": "Heavy 4th-gen fighter",
+                "weapons": "R-27ER/ET (BVR ~30nm) · R-73 (WVR, HMS)",
+                "notes": "Capable BVR shooter, very agile WVR — defend the R-27 early; avoid a prolonged merge."}),
+    ("Su-33",  {"name": "Su-33",  "class": "Naval heavy fighter",
+                "weapons": "R-27ER/ET (BVR) · R-73 (WVR)",
+                "notes": "Flanker capability off a carrier — fight it like an Su-27."}),
+    ("Su-30",  {"name": "Su-30",  "class": "Multirole heavy fighter",
+                "weapons": "R-77 (active BVR) · R-27 · R-73 (WVR)",
+                "notes": "Active-radar BVR plus Flanker agility — high threat in both regimes."}),
+    ("Su-34",  {"name": "Su-34",  "class": "Strike fighter",
+                "weapons": "R-77 / R-73 (self-defense)",
+                "notes": "Primarily a striker but can shoot back — not a dedicated fighter."}),
+    ("Su-24",  {"name": "Su-24",  "class": "Strike bomber",
+                "weapons": "— (air-to-ground)",
+                "notes": "Bomber, no real A2A — but its escort may be nearby."}),
+    ("Su-25",  {"name": "Su-25",  "class": "Attack jet (CAS)",
+                "weapons": "R-60 (short IR, self-defense)",
+                "notes": "Low/slow CAS, minimal A2A — a ground threat, not an air one."}),
+    ("MiG-31", {"name": "MiG-31", "class": "Long-range interceptor",
+                "weapons": "R-33 / R-37 (very-long-range BVR)",
+                "notes": "Extreme-range BVR — shoots from outside a normal WEZ. Fast/high, not agile; deny the geometry."}),
+    ("MiG-29S",{"name": "MiG-29S","class": "Fulcrum (upgraded)",
+                "weapons": "R-77 / R-27ER (BVR) · R-73 (WVR, HMS)",
+                "notes": "BVR-capable AND deadly WVR (R-73 + helmet sight) — dangerous at the merge."}),
+    ("MiG-29", {"name": "MiG-29", "class": "Fulcrum",
+                "weapons": "R-27R (BVR) · R-73 (WVR, HMS)",
+                "notes": "WVR-focused; R-73 + helmet sight make the merge very dangerous."}),
+    ("MiG-25", {"name": "MiG-25", "class": "High-speed interceptor",
+                "weapons": "R-40 (BVR, dated)",
+                "notes": "Very fast/high but a poor turner — out-turn it, don't try to out-run it."}),
+    ("MiG-23", {"name": "MiG-23", "class": "Swing-wing fighter",
+                "weapons": "R-24/R-23 (BVR, dated) · R-60 (WVR)",
+                "notes": "Fast in a straight line, poor turner — beat it in a turning fight."}),
+    ("MiG-21", {"name": "MiG-21", "class": "Light day fighter",
+                "weapons": "R-60/R-3 (short IR)",
+                "notes": "WVR-only, fast and small (low RCS) — hard to see; no BVR threat."}),
+    ("J-11",   {"name": "J-11",   "class": "Heavy 4th-gen fighter",
+                "weapons": "R-77 / PL-12 · R-73 (WVR)",
+                "notes": "Chinese Flanker — modern active BVR plus Flanker agility."}),
+    ("JF-17",  {"name": "JF-17",  "class": "Multirole fighter",
+                "weapons": "SD-10 (active BVR) · PL-5 (WVR)",
+                "notes": "Modern active-radar BVR (SD-10 ≈ AMRAAM-class) — respect it at range."}),
+    # ---- Western fighters (may appear as the red side) ----
+    ("F-14",   {"name": "F-14",   "class": "Fleet-defense interceptor",
+                "weapons": "AIM-54 Phoenix (very-long-range) · AIM-7 · AIM-9",
+                "notes": "Phoenix = extreme-range shots — respect the AIM-54 timeline; strong BVR."}),
+    ("F-15E",  {"name": "F-15E",  "class": "Strike fighter",
+                "weapons": "AIM-120 (active BVR) · AIM-9",
+                "notes": "Striker with full A2A — treat it like an Eagle if airborne."}),
+    ("F-15",   {"name": "F-15C",  "class": "Air-superiority fighter",
+                "weapons": "AIM-120 (active BVR) · AIM-7 · AIM-9",
+                "notes": "Premier BVR threat — AMRAAM + big radar. Don't take a BVR fight you can't win."}),
+    ("F-16",   {"name": "F-16C",  "class": "Multirole fighter",
+                "weapons": "AIM-120 (active BVR) · AIM-9",
+                "notes": "AMRAAM shooter, very agile WVR — dangerous in both regimes."}),
+    ("FA-18",  {"name": "F/A-18C","class": "Multirole fighter",
+                "weapons": "AIM-120 · AIM-7 · AIM-9",
+                "notes": "AMRAAM + excellent WVR (HMS) — dangerous in both regimes."}),
+    ("M-2000", {"name": "M-2000C","class": "Multirole delta",
+                "weapons": "Super 530D (SARH BVR) · Magic II (WVR)",
+                "notes": "Agile delta; semi-active BVR only — force the 530 into the notch."}),
+    ("Mirage-F1", {"name": "Mirage F1", "class": "Fighter",
+                "weapons": "Super 530 (BVR, dated) · R550 Magic (WVR)",
+                "notes": "Limited BVR; quick at low level — capable WVR with Magic."}),
+    ("F-5",    {"name": "F-5E",   "class": "Light fighter",
+                "weapons": "AIM-9P (short IR) · guns",
+                "notes": "WVR-only, small and agile — hard to spot; beat it BVR, respect the sustained turn."}),
+    ("F-4",    {"name": "F-4E",   "class": "Fighter-bomber",
+                "weapons": "AIM-7 (BVR, dated) · AIM-9 (WVR)",
+                "notes": "Dated BVR but the AIM-7 still bites — smoky and visible."}),
+    ("AV8",    {"name": "AV-8B",  "class": "VSTOL attack",
+                "weapons": "AIM-9 (WVR, self-defense)",
+                "notes": "Attack jet — only short-range IR for self-defense."}),
+    # ---- Bombers / high-value ----
+    ("Tu-160", {"name": "Tu-160", "class": "Strategic bomber",
+                "weapons": "— (stand-off cruise missiles)",
+                "notes": "Fast missile carrier, no A2A — high-value; may launch from stand-off."}),
+    ("Tu-22",  {"name": "Tu-22M3","class": "Strategic bomber",
+                "weapons": "— (stand-off missiles)",
+                "notes": "Missile carrier, no A2A — high-value; can launch from range."}),
+    ("Tu-95",  {"name": "Tu-95",  "class": "Strategic bomber",
+                "weapons": "— (cruise missiles)",
+                "notes": "Slow bomber, no A2A — high-value target."}),
+    ("A-50",   {"name": "A-50",   "class": "AEW&C (AWACS)",
+                "weapons": "— (none)",
+                "notes": "Enemy AWACS — feeds their fighters the picture. Killing it blinds their intercepts; high-value."}),
+    ("E-3",    {"name": "E-3",    "class": "AEW&C (AWACS)",
+                "weapons": "— (none)",
+                "notes": "Enemy AWACS — high-value; kill it to blind their fighters."}),
+    ("IL-78",  {"name": "Il-78",  "class": "Tanker",
+                "weapons": "— (none)",
+                "notes": "Enemy tanker — no A2A; high-value (denies their fighters fuel/persistence)."}),
+    ("IL-76",  {"name": "Il-76",  "class": "Transport",
+                "weapons": "— (none)",
+                "notes": "Transport, no A2A — high-value if tasked."}),
+    # ---- Helicopters ----
+    ("Ka-50",  {"name": "Ka-50",  "class": "Attack helicopter",
+                "weapons": "— (Vikhr AT; some IR AA)",
+                "notes": "Low-altitude attack helo — mainly a ground threat; watch low."}),
+    ("Ka-52",  {"name": "Ka-52",  "class": "Attack helicopter",
+                "weapons": "— (AT; some IR AA)",
+                "notes": "Low-altitude attack helo — mainly a ground threat."}),
+    ("Mi-24",  {"name": "Mi-24",  "class": "Attack/assault helo",
+                "weapons": "— (rockets/AT; R-60 possible)",
+                "notes": "Low and slow — mainly an air-to-ground threat."}),
+    ("Mi-28",  {"name": "Mi-28",  "class": "Attack helicopter",
+                "weapons": "— (AT; Igla)",
+                "notes": "Low-altitude ground threat; some IR AA."}),
+    ("Mi-8",   {"name": "Mi-8",   "class": "Transport helicopter",
+                "weapons": "— (door guns)",
+                "notes": "Transport helo — low/slow, minimal A2A."}),
+    ("AH-64",  {"name": "AH-64",  "class": "Attack helicopter",
+                "weapons": "— (Hellfire; Stinger possible)",
+                "notes": "Low-altitude attack helo — primarily a ground threat."}),
+]
+
+
+def _airframe_profile(dcs_type: str) -> dict:
+    """Return {name, class, weapons, notes} for a DCS unit type. Longest
+    substring match wins; unknown types get a generic 'verify' profile."""
+    t = (dcs_type or "").lower()
+    best = None
+    best_len = -1
+    for key, prof in _AIRFRAME_DB:
+        if key.lower() in t and len(key) > best_len:
+            best = prof
+            best_len = len(key)
+    if best:
+        return best
+    clean = (dcs_type or "Unknown").replace("_", " ").strip() or "Unknown"
+    return {
+        "name": clean,
+        "class": "Unknown type",
+        "weapons": "verify in mission",
+        "notes": "Capabilities unknown — verify the airframe and its loadout.",
+    }
 
 
 def _build_air_threats(groups: List[dict], bullseye: Optional[dict] = None) -> List[Dict[str, Any]]:
-    """Analyse ENEMY aircraft groups into a simple per-group air-threat readout
-    for the brief: composition, role, position (bullseye bearing/range from the
-    group's first plotted waypoint), and altitude. Air-to-air roles
-    (CAP/Intercept/Escort) sort to the top, then larger formations first.
-    The brief audience is blue, so only non-blue air counts as a threat.
+    """Aggregate ENEMY aircraft by AIRFRAME TYPE across the whole mission and
+    attach a capability rundown for friendly pilots — e.g. '8× Su-27' followed
+    by its class, A2A weapons/WEZ, and how to fight it. The brief audience is
+    blue, so only non-blue air is counted. `bullseye` is unused (kept for
+    caller compatibility). Sorted by count, highest first.
     """
-    be_lat = be_lon = None
-    if bullseye and isinstance(bullseye, dict):
-        blue_be = bullseye.get("blue") or {}
-        be_lat = blue_be.get("lat")
-        be_lon = blue_be.get("lon")
-
     from collections import Counter
-    scored: List[tuple] = []
+    counts = Counter()
     for g in groups:
         if g.get("category") not in ("plane", "helicopter"):
             continue
         if g.get("coalition") == "blue":
             continue  # only enemy air is a threat to the blue audience
-        units = g.get("units") or []
-        if not units:
-            continue
+        for u in (g.get("units") or []):
+            counts[u.get("type") or "Unknown"] += 1
 
-        type_counts = Counter(u.get("type") or "Unknown" for u in units)
-        composition = " + ".join(f"{cnt}× {name}" for name, cnt in type_counts.most_common())
-        task = (g.get("task") or "").strip()
-        role = _infer_role_from_task(task) or (task or "—")
-
-        # Representative point: first waypoint with coords (orbit / start).
-        location = "—"
-        altitude = "—"
-        for wp in (g.get("waypoints") or []):
-            lat = wp.get("lat"); lon = wp.get("lon")
-            if lat is None or lon is None:
-                continue
-            lat = float(lat); lon = float(lon)
-            if be_lat is not None and be_lon is not None:
-                bearing, dist = _bearing_distance_from_be(lat, lon, be_lat, be_lon)
-                location = f"BE {bearing:03d}/{dist}"
-            else:
-                location = f"{lat:.3f}, {lon:.3f}"
-            alt_m = wp.get("altitude_m")
-            if alt_m:
-                ft = int(round(float(alt_m) * 3.28084))
-                altitude = f"FL{int(round(ft / 100)):03d}" if ft >= 18000 else f"{ft:,} ft"
-            break
-
-        a2a = 1 if role in _AIR_TO_AIR_ROLES else 0
-        scored.append((a2a, len(units), AirThreatRow(
-            composition=composition,
-            role=role,
-            location=location,
-            altitude=altitude,
-            coalition=g.get("coalition", "red"),
-        )))
-
-    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    return [asdict(r) for _a2a, _n, r in scored]
+    rows: List[AirThreatRow] = []
+    for dcs_type, count in counts.most_common():
+        prof = _airframe_profile(dcs_type)
+        rows.append(AirThreatRow(
+            composition=f"{count}× {prof['name']}",
+            airframe_class=prof["class"],
+            weapons=prof["weapons"],
+            notes=prof["notes"],
+            coalition="red",
+        ))
+    return [asdict(r) for r in rows]
 
 
 def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:

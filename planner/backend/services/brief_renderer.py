@@ -921,7 +921,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
 
     def _render_threats_slide(rows_for_slide, page_idx, total_pages):
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        title = "THREATS" if total_pages == 1 else f"THREATS ({page_idx}/{total_pages})"
+        title = "SURFACE THREATS" if total_pages == 1 else f"SURFACE THREATS ({page_idx}/{total_pages})"
         _slide_header(s, title)
 
         if page_idx == 1:
@@ -1002,7 +1002,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                                   page_idx, total_pages)
     else:
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        _slide_header(s, "THREATS")
+        _slide_header(s, "SURFACE THREATS")
         msg = "No surface (SAM/AAA) threats detected in this mission."
         if brief.get("air_threats"):
             msg += "  Enemy air picture follows on the AIR THREATS slide."
@@ -1010,16 +1010,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
              msg, size=18, color=DIM, italic=True)
 
     # ---------- Slide 5b: Air threats -----------------------------------
-    # Enemy aircraft groups, one row each: what / role / where (bullseye) /
-    # altitude. Air-to-air roles sort to the top in the builder. Paginated
-    # like the surface threats slide.
+    # Enemy aircraft aggregated by airframe TYPE (e.g. "8× Su-27"), each with a
+    # capability rundown for friendly pilots: class, A2A weapons/WEZ, and how to
+    # fight it. Paginated like the surface threats slide.
     air_list = brief.get("air_threats") or []
     if air_list:
         AIR_COLS = (  # (label, x, w) — non-overlapping, total 12.1"
-            ("COMPOSITION", Inches(0.6),  Inches(4.5)),
-            ("ROLE",        Inches(5.2),  Inches(2.5)),
-            ("POSITION",    Inches(7.8),  Inches(2.1)),
-            ("ALT",         Inches(10.0), Inches(2.7)),
+            ("TYPE",    Inches(0.6),  Inches(2.3)),
+            ("CLASS",   Inches(3.0),  Inches(2.4)),
+            ("WEAPONS", Inches(5.5),  Inches(3.3)),
+            ("NOTES",   Inches(8.9),  Inches(3.8)),
         )
         A_ROWS = _threats_per_slide
         n_air = len(air_list)
@@ -1030,11 +1030,11 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             _slide_header(s, a_title)
             if pidx == 0:
                 _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
-                     f"{n_air} enemy air group(s) — position is bearing/range (nm) "
-                     f"from bullseye; altitude at the group's first waypoint.",
+                     f"{n_air} enemy airframe type(s) on the map — A2A weapons and "
+                     f"how to fight each.",
                      size=11, color=DIM, italic=True)
             A_TOP = Inches(1.7) if pidx == 0 else Inches(1.3)
-            A_ROW_H = Inches(0.55)
+            A_ROW_H = Inches(0.7)  # taller — NOTES wraps to ~2 lines
             for label, x, w in AIR_COLS:
                 _txt(s, x, A_TOP, w, A_ROW_H, label, size=12, bold=True, color=ACCENT)
             a_underline = s.shapes.add_shape(
@@ -1045,15 +1045,14 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             a_underline.line.fill.background()
             for i, a in enumerate(air_list[pidx * A_ROWS:(pidx + 1) * A_ROWS]):
                 y = A_TOP + Inches(0.7) + A_ROW_H * i
-                comp = a.get("composition") or "?"
                 _txt(s, AIR_COLS[0][1], y, AIR_COLS[0][2], A_ROW_H,
-                     comp, size=(13 if len(comp) <= 48 else 11), color=LIGHT)
+                     a.get("composition") or "?", size=14, bold=True, color=ACCENT)
                 _txt(s, AIR_COLS[1][1], y, AIR_COLS[1][2], A_ROW_H,
-                     a.get("role") or "—", size=13, bold=True, color=ACCENT)
+                     a.get("airframe_class") or "—", size=12, color=LIGHT)
                 _txt(s, AIR_COLS[2][1], y, AIR_COLS[2][2], A_ROW_H,
-                     a.get("location") or "—", size=13, bold=True, color=LIGHT)
+                     a.get("weapons") or "—", size=11, color=LIGHT)
                 _txt(s, AIR_COLS[3][1], y, AIR_COLS[3][2], A_ROW_H,
-                     a.get("altitude") or "—", size=12, color=LIGHT)
+                     a.get("notes") or "—", size=10, color=DIM)
 
     # ---------- Slide 6: Force composition -------------------------------
     # Paginated when there are more flights than fit comfortably on one

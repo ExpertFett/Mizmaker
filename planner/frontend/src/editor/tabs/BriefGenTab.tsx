@@ -33,7 +33,7 @@ interface TimelineRow { phase: string; time_zulu: string; note: string }
 interface FlightRow { callsign: string; aircraft: string; count: number; role: string;
                       frequency: string; tacan: string; home_plate: string }
 interface ThreatRow { name: string; type: string; coalition: string; range_km: number; location: string }
-interface AirThreatRow { composition: string; role: string; location: string; altitude: string; coalition?: string }
+interface AirThreatRow { composition: string; airframe_class: string; weapons: string; notes: string; coalition?: string }
 interface CommsRow  { label: string; value: string }
 
 interface WingBrief {
@@ -914,7 +914,7 @@ export function BriefGenTab() {
           </Card>
 
           <Card title="Air Threats" right={
-            <button onClick={() => addRow('air_threats', { composition: '', role: '', location: '', altitude: '', coalition: 'red' })}
+            <button onClick={() => addRow('air_threats', { composition: '', airframe_class: '', weapons: '', notes: '', coalition: 'red' })}
                     style={btnSmall}>+ Add</button>
           }>
             {brief.air_threats.length === 0 ? (
@@ -922,20 +922,20 @@ export function BriefGenTab() {
             ) : (
               <table style={tableStyle}>
                 <thead>
-                  <tr><th style={th}>Composition</th><th style={th}>Role</th>
-                      <th style={th}>Position</th><th style={th}>Altitude</th><th style={th}></th></tr>
+                  <tr><th style={th}>Type</th><th style={th}>Class</th>
+                      <th style={th}>Weapons</th><th style={th}>Notes</th><th style={th}></th></tr>
                 </thead>
                 <tbody>
                   {brief.air_threats.map((a, i) => (
                     <tr key={i}>
                       <td style={td}><input style={cellInput} value={a.composition}
                           onChange={(e) => setRow('air_threats', i, { ...a, composition: e.target.value })} /></td>
-                      <td style={td}><input style={cellInput} value={a.role}
-                          onChange={(e) => setRow('air_threats', i, { ...a, role: e.target.value })} /></td>
-                      <td style={td}><input style={cellInput} value={a.location}
-                          onChange={(e) => setRow('air_threats', i, { ...a, location: e.target.value })} /></td>
-                      <td style={td}><input style={cellInput} value={a.altitude}
-                          onChange={(e) => setRow('air_threats', i, { ...a, altitude: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.airframe_class}
+                          onChange={(e) => setRow('air_threats', i, { ...a, airframe_class: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.weapons}
+                          onChange={(e) => setRow('air_threats', i, { ...a, weapons: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.notes}
+                          onChange={(e) => setRow('air_threats', i, { ...a, notes: e.target.value })} /></td>
                       <td style={td}><button style={btnIcon}
                           onClick={() => removeRow('air_threats', i)} title="Delete row">×</button></td>
                     </tr>
