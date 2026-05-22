@@ -188,6 +188,7 @@ class FlightBrief:
     fuel_bingo_lbs: int  # placeholder
     fuel_rtb_lbs: int    # placeholder
     notes: str           # special instructions for this flight, default empty
+    timeline: List[Dict[str, str]]  # this flight's own schedule (TimelineRow list)
 
 
 @dataclass
@@ -784,83 +785,141 @@ def _build_timeline(
     groups: Optional[List[dict]] = None,
     mission_type: Optional[str] = None,
 ) -> List[Dict[str, str]]:
-    """Build a PER-FLIGHT timeline that mirrors the actual mission: one row
-    per player flight, sorted by takeoff time, with that flight's own schedule
-    derived from ITS waypoint times — Takeoff in the Time column, and any of
-    Push / TOT / Egress / RTB that exist on the flight's route packed into the
-    Note (prefixed with the flight's role).
+    """Build a squadron/package-level phase timeline anchored on mission start,
+    enriched with actual waypoint times when player flights have meaningfully
+    named waypoints. Falls back to heuristic offsets when names aren't matched.
+    Per-flight detail lives on each individual flight brief, not here.
 
-    This replaces the old synthesised strike-package timeline (aggregated
-    Push/TOT/Egress phases with boilerplate notes), which didn't reflect what
-    each flight was actually doing. Carrier spawn waves are still appended.
-
-    Waypoint name conventions matched (case-insensitive substring):
-      Push  : "push", "marshal", "ip"
+    Naming conventions we look for (case-insensitive substring match):
+      Push  : "push", "marshal", "ip" (initial point — start of run-in)
       TOT   : "tgt", "target", "tot"
       Egress: "egress", "egr", "fence-out"
 
-    `mission_type` is accepted for caller compatibility but no longer used —
-    each flight's own route now drives its schedule.
+    Aggregation across player flights:
+      Push    = earliest push time (first flight begins the run-in)
+      TOT     = median target time (centre of the strike window)
+      Egress  = latest egress time (last flight clear of MEZ)
+      RTB     = latest landing time across all flights (last bird home)
+
+    Pre-takeoff phases (Ground Ops, Engine Start) stay heuristic — there's
+    no waypoint data for them.
     """
     if start_seconds is None:
         start_seconds = 0.0
     groups = groups or []
 
-    def _takeoff_of(g: dict) -> float:
-        wps = g.get("waypoints") or []
-        if not wps:
-            return start_seconds
-        return _waypoint_time(wps[0], float(wps[0].get("eta_seconds") or 0), start_seconds)
+    # Collect named-waypoint times across all player flights
+    push_times: List[float] = []
+    tot_times: List[float] = []
+    egress_times: List[float] = []
+    rtb_times: List[float] = []
 
-    flights = [g for g in groups if _is_player_group(g)]
-    flights.sort(key=_takeoff_of)  # chronological, earliest takeoff first
-
-    rows: List[TimelineRow] = []
-    for g in flights:
-        units = g.get("units") or []
-        callsign = (units[0].get("name") if units else None) or g.get("groupName", "Flight")
-        aircraft = (units[0].get("type") if units else "") or ""
-        count = len(units)
-        label = callsign + (f" ({aircraft} ×{count})" if aircraft else (f" ×{count}" if count else ""))
-
-        wps = g.get("waypoints") or []
-        if not wps:
-            rows.append(TimelineRow(label, _format_zulu(start_seconds), "No route defined"))
+    for g in groups:
+        if not _is_player_group(g):
             continue
+        wps = g.get("waypoints") or []
+        if len(wps) < 2:
+            continue
+        # Reference: first waypoint = takeoff for this flight
+        takeoff_eta_local = float(wps[0].get("eta_seconds") or 0)
 
-        takeoff_eta = float(wps[0].get("eta_seconds") or 0)
-        to_t   = _waypoint_time(wps[0], takeoff_eta, start_seconds)
-        push_t = _find_waypoint_time(wps, ["push", "marshal", "ip"], takeoff_eta, start_seconds)
-        tot_t  = _find_waypoint_time(wps, ["tgt", "target", "tot"], takeoff_eta, start_seconds)
-        egr_t  = _find_waypoint_time(wps, ["egress", "egr", "fence-out", "fence out"], takeoff_eta, start_seconds)
-        rtb_t  = _waypoint_time(wps[-1], takeoff_eta, start_seconds)
+        push_t = _find_waypoint_time(wps, ["push", "marshal", "ip"],
+                                     takeoff_eta_local, start_seconds)
+        tot_t  = _find_waypoint_time(wps, ["tgt", "target", "tot"],
+                                     takeoff_eta_local, start_seconds)
+        egr_t  = _find_waypoint_time(wps, ["egress", "egr", "fence-out", "fence out"],
+                                     takeoff_eta_local, start_seconds)
+        # RTB = last waypoint absolute time
+        last_wp = wps[-1]
+        rtb_t = _waypoint_time(last_wp, takeoff_eta_local, start_seconds)
 
-        events: List[str] = []
-        if push_t is not None: events.append(f"Push {_format_zulu(push_t)}")
-        if tot_t  is not None: events.append(f"TOT {_format_zulu(tot_t)}")
-        if egr_t  is not None: events.append(f"Egress {_format_zulu(egr_t)}")
-        if rtb_t  is not None: events.append(f"RTB {_format_zulu(rtb_t)}")
+        if push_t is not None: push_times.append(push_t)
+        if tot_t is not None:  tot_times.append(tot_t)
+        if egr_t is not None:  egress_times.append(egr_t)
+        if rtb_t is not None:  rtb_times.append(rtb_t)
 
-        role = _infer_role_from_task(g.get("task", "")) or (g.get("task") or "").strip()
-        note_bits: List[str] = []
-        if role:
-            note_bits.append(role)
-        note_bits.extend(events)
-        note = "  ·  ".join(note_bits) if note_bits else f"{len(wps)} waypoints"
+    # Aggregate. Keep times as seconds-since-midnight floats so we can
+    # enforce monotonic ordering across phases before formatting.
+    def _aggregate(times: List[float], fallback_offset_min: int,
+                   aggregator) -> float:
+        if times:
+            return aggregator(times)
+        return start_seconds + fallback_offset_min * 60
 
-        rows.append(TimelineRow(label, _format_zulu(to_t), note))
+    def _median(xs: List[float]) -> float:
+        xs = sorted(xs); n = len(xs)
+        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+    push_t   = _aggregate(push_times,   15, min)
+    tot_t    = _aggregate(tot_times,    30, _median)
+    egress_t = _aggregate(egress_times, 50, max)
+    rtb_t    = _aggregate(rtb_times,    90, max)
+
+    # Enforce monotonic ordering. When real waypoint data gives us a
+    # tight mission (e.g. CAP loop landing 18 min after takeoff), the
+    # heuristic fallbacks for the missing phases can land AFTER RTB,
+    # which would print a nonsense timeline. Walk backward from RTB and
+    # clamp each phase to ≤ the next.
+    pts = [push_t, tot_t, egress_t, rtb_t]
+    for i in range(len(pts) - 2, -1, -1):
+        if pts[i] > pts[i + 1]:
+            pts[i] = pts[i + 1]
+    push_t, tot_t, egress_t, rtb_t = pts
+
+    # Annotate notes when waypoint data was used so the mission maker
+    # can tell what's authoritative vs. heuristic.
+    push_note = ("Coordinated push from marshal"
+                 + (" (from waypoint data)" if push_times else ""))
+    tot_note = ("Time on target — synchronised across strike package"
+                + (" (from waypoint data)" if tot_times else ""))
+    egress_note = ("All flights clear of MEZ"
+                   + (" (from waypoint data)" if egress_times else ""))
+    rtb_note = ("Recovery to home plate or alternate"
+                + (f" (from waypoint data, {len(rtb_times)} flight(s))" if rtb_times else ""))
+
+    # Mission types that spend significant time over the AO get an
+    # on-station WINDOW (start/end) instead of a single TOT — for CAS,
+    # DCA, recon flights the meaningful planning value is the window
+    # the package is available, not a single moment over the target.
+    mtype = (mission_type or "").lower()
+    is_window_mission = mtype in {"cas", "dca", "recon"}
+
+    if is_window_mission:
+        # Window start = the existing tot_t (push-into-AO time).
+        # Window end heuristic: 15 min before RTB for CAS (typical
+        # off-station handoff), or 10 min for DCA/recon.
+        end_offset_min = 15 if mtype == "cas" else 10
+        on_station_end = max(rtb_t - end_offset_min * 60, tot_t)
+        on_station_label = {
+            "cas":   "On-Station (CAS)",
+            "dca":   "On-Station (CAP)",
+            "recon": "On-Station (Recon)",
+        }[mtype]
+        action_rows = [
+            TimelineRow(f"{on_station_label} Start", _format_zulu(tot_t), tot_note),
+            TimelineRow(f"{on_station_label} End",   _format_zulu(on_station_end),
+                        f"Hand-off / off-station — RTB minus {end_offset_min} min"),
+        ]
+    else:
+        action_rows = [
+            TimelineRow("TOT", _format_zulu(tot_t), tot_note),
+        ]
+
+    rows: List[TimelineRow] = [
+        TimelineRow("Ground Ops", _add_minutes(start_seconds, -30), "Pre-flight, brief, walk to jets"),
+        TimelineRow("Engine Start", _add_minutes(start_seconds, -10), "Sequence per ground"),
+        TimelineRow("Takeoff", _format_zulu(start_seconds), "Rolling takeoff, flow takeoff per flight"),
+        TimelineRow("Push", _format_zulu(push_t), push_note),
+        *action_rows,
+        TimelineRow("Egress Complete", _format_zulu(egress_t), egress_note),
+        TimelineRow("RTB", _format_zulu(rtb_t), rtb_note),
+    ]
 
     # Append carrier spawn waves (if any) so deck launch sequencing is
-    # visible on the timeline. _build_carrier_spawn_waves returns an empty
-    # list when one wave fits the deck or no carriers are launched.
+    # visible on the timeline. _build_carrier_spawn_waves returns an
+    # empty list when one wave fits the deck or no carriers are launched.
     out = [asdict(r) for r in rows]
     out.extend(_build_carrier_spawn_waves(groups, start_seconds))
-
-    if not out:
-        out = [asdict(TimelineRow(
-            "Mission Start", _format_zulu(start_seconds),
-            "No player flights detected in this mission.",
-        ))]
     return out
 
 
@@ -1471,6 +1530,25 @@ def build_flight_briefs(
             )
             wp_rows.append(asdict(row))
 
+        # Per-flight schedule — this flight's own Takeoff / Push / TOT / Egress
+        # / RTB from ITS waypoints. The wing brief's timeline is package-level;
+        # this is the per-flight detail that moved here.
+        ft_rows: List[TimelineRow] = []
+        if wps:
+            ft_rows.append(TimelineRow(
+                "Takeoff", _format_zulu(_waypoint_time(wps[0], takeoff_eta, start_seconds)),
+                home_plate or "Departure"))
+            f_push = _find_waypoint_time(wps, ["push", "marshal", "ip"], takeoff_eta, start_seconds)
+            f_tot  = _find_waypoint_time(wps, ["tgt", "target", "tot"], takeoff_eta, start_seconds)
+            f_egr  = _find_waypoint_time(wps, ["egress", "egr", "fence-out", "fence out"], takeoff_eta, start_seconds)
+            if f_push is not None: ft_rows.append(TimelineRow("Push", _format_zulu(f_push), "IP / start of run-in"))
+            if f_tot  is not None: ft_rows.append(TimelineRow("TOT", _format_zulu(f_tot), "Time on target"))
+            if f_egr  is not None: ft_rows.append(TimelineRow("Egress", _format_zulu(f_egr), "Fence out / clear of MEZ"))
+            ft_rows.append(TimelineRow(
+                "RTB", _format_zulu(_waypoint_time(wps[-1], takeoff_eta, start_seconds)),
+                f"Divert: {divert}" if divert else (home_plate or "Recovery")))
+        flight_timeline = [asdict(r) for r in ft_rows]
+
         brief = FlightBrief(
             mission_name=str(mission_name),
             theater=theater,
@@ -1494,6 +1572,7 @@ def build_flight_briefs(
             fuel_bingo_lbs=3500,
             fuel_rtb_lbs=2500,
             notes="",
+            timeline=flight_timeline,
         )
         out.append(asdict(brief))
     return out

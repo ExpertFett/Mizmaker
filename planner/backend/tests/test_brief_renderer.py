@@ -567,3 +567,62 @@ class TestAirThreatsSlide:
             sh.text_frame.text for s in prs.slides for sh in s.shapes if sh.has_text_frame
         )
         assert "SURFACE THREATS" in joined
+
+
+def _player_strike_mission() -> dict:
+    return {
+        "overview": {"start_time": 28800, "date": "2026-07-09"},
+        "airbases": [{"name": "Senaki", "lat": 42.24, "lon": 42.05}],
+        "groups": [{
+            "groupName": "Bengal", "category": "plane", "coalition": "blue",
+            "task": "strike", "frequency": 305000000,
+            "units": [{"type": "FA-18C_hornet", "name": "Bengal 1", "skill": "Player"}],
+            "waypoints": [
+                {"waypoint_name": "DEP", "eta_seconds": 0, "lat": 42.24, "lon": 42.05, "altitude_m": 0, "speed_ms": 150},
+                {"waypoint_name": "IP ALPHA", "eta_seconds": 900, "lat": 42.4, "lon": 42.3, "altitude_m": 6000, "speed_ms": 230, "leg_distance_nm": 20},
+                {"waypoint_name": "TARGET", "eta_seconds": 1500, "lat": 42.5, "lon": 42.5, "altitude_m": 5000, "speed_ms": 250, "leg_distance_nm": 12},
+                {"waypoint_name": "RTB", "eta_seconds": 3000, "lat": 42.24, "lon": 42.05, "altitude_m": 0, "speed_ms": 200, "leg_distance_nm": 30},
+            ],
+        }],
+    }
+
+
+class TestWingTimelineSquadronLevel:
+    """The wing brief's timeline is package/squadron-level phases, NOT one row
+    per flight (per-flight detail lives on each flight brief)."""
+
+    def test_timeline_is_package_phases_not_flight_callsigns(self):
+        from services.brief_builder import _build_timeline
+        groups = _player_strike_mission()["groups"]
+        rows = _build_timeline(28800.0, groups, "strike")
+        phases = [r["phase"] for r in rows]
+        assert "Takeoff" in phases and "Push" in phases and "RTB" in phases
+        assert not any("Bengal" in p for p in phases)  # not per-flight rows
+
+
+class TestFlightBriefSchedule:
+    """Each flight brief carries its OWN schedule (Takeoff / Push / TOT / RTB
+    from its own waypoints)."""
+
+    def test_flight_brief_has_own_schedule(self):
+        from services.brief_builder import build_flight_briefs
+        briefs = build_flight_briefs(
+            mission_data=_player_strike_mission(), theater="Caucasus", filename="x.miz",
+        )
+        assert len(briefs) == 1
+        phases = [r["phase"] for r in briefs[0]["timeline"]]
+        assert phases[0] == "Takeoff"
+        assert "TOT" in phases
+        assert phases[-1] == "RTB"
+
+    def test_flight_brief_renders_with_schedule(self):
+        from services.brief_builder import build_flight_briefs
+        from services.brief_renderer import render_flight_brief
+        briefs = build_flight_briefs(
+            mission_data=_player_strike_mission(), theater="Caucasus", filename="x.miz",
+        )
+        prs = Presentation(io.BytesIO(render_flight_brief(briefs[0])))
+        joined = "\n".join(
+            sh.text_frame.text for s in prs.slides for sh in s.shapes if sh.has_text_frame
+        )
+        assert "SCHEDULE" in joined and "TOT" in joined

@@ -1343,6 +1343,20 @@ def render_flight_brief(brief: Dict[str, Any]) -> bytes:
          "(Edit fuel values in the editor — defaults are placeholders)",
          size=10, color=DIM, italic=True)
 
+    # This flight's own schedule (package timeline lives on the wing brief).
+    tl = brief.get("timeline") or []
+    if tl:
+        _txt(s, col1_x, Inches(4.7), Inches(12.1), Inches(0.4),
+             "SCHEDULE", size=14, bold=True, color=ACCENT)
+        for i, row in enumerate(tl[:5]):
+            y = Inches(5.2 + i * 0.42)
+            _txt(s, col1_x, y, Inches(2.0), Inches(0.4),
+                 row.get("phase", ""), size=13, color=DIM)
+            _txt(s, col1_x + Inches(2.1), y, Inches(1.6), Inches(0.4),
+                 row.get("time_zulu", ""), size=15, bold=True, color=LIGHT)
+            _txt(s, col1_x + Inches(3.9), y, Inches(7.8), Inches(0.4),
+                 row.get("note", ""), size=12, color=DIM)
+
     # ---------- 5: Notes (only if non-empty) ---------------------------
     notes = brief.get("notes") or ""
     if notes.strip():
