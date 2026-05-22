@@ -939,6 +939,13 @@ function CustomTemplateFlow() {
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Inline preview pane — renders the token-filled TEMPLATE to PNG slides
+  // (was previously missing; the only "Preview" was the auto-build one,
+  // which showed the auto brief, not the uploaded template). (v0.9.77)
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewSlides, setPreviewSlides] = useState<string[]>([]);
+  const [previewIdx, setPreviewIdx] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
   // Rebuild stamp — bumped when the user hits the Rebuild button.
   // The token-resolution useMemo below depends on it, so a click
   // forces tokens to re-resolve against the current mission state.
@@ -980,11 +987,16 @@ function CustomTemplateFlow() {
     } catch (e: any) { setError(e.message); }
   };
 
+  const buildValues = (): Record<string, string> => {
+    const values: Record<string, string> = {};
+    for (const r of tokenRows) if (r.final !== '') values[r.token] = r.final;
+    return values;
+  };
+
   const handleRender = async () => {
     if (!scan) return;
     setRendering(true); setError(null);
-    const values: Record<string, string> = {};
-    for (const r of tokenRows) if (r.final !== '') values[r.token] = r.final;
+    const values = buildValues();
     try {
       const fd = new FormData();
       fd.append('file', new Blob([scan.templateBytes]), scan.filename);
@@ -1001,6 +1013,34 @@ function CustomTemplateFlow() {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e: any) { setError(e.message); } finally { setRendering(false); }
+  };
+
+  const handlePreview = async () => {
+    if (!scan) return;
+    setPreviewOpen(true); setPreviewLoading(true); setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', new Blob([scan.templateBytes]), scan.filename);
+      fd.append('values', JSON.stringify(buildValues()));
+      fd.append('dpi', '100');
+      const res = await fetch('/api/brief/preview-template', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Preview failed' }));
+        if (err.needs_libreoffice) {
+          throw new Error('Preview requires LibreOffice on the server. ' +
+            'Production has it via the Dockerfile; local dev needs it installed.');
+        }
+        throw new Error(err.error || 'Preview failed');
+      }
+      const data = await res.json();
+      setPreviewSlides(data.slides || []);
+      setPreviewIdx(0);
+    } catch (e: any) {
+      setError(e.message);
+      setPreviewOpen(false);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   return (
@@ -1064,7 +1104,7 @@ function CustomTemplateFlow() {
               ))}
             </tbody>
           </table>
-          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={handleRender} disabled={rendering} style={btnPrimary}>
               {rendering ? 'Rendering…' : 'Render & Download'}
             </button>
@@ -1076,7 +1116,65 @@ function CustomTemplateFlow() {
                 </option>
               ))}
             </select>
+            <button
+              onClick={handlePreview}
+              disabled={previewLoading}
+              style={{
+                ...btnSecondary,
+                borderColor: previewOpen ? '#fbb941' : '#4a4a4a',
+                color: previewOpen ? '#fbb941' : '#cccccc',
+              }}
+              title="Render your template with the values above and show it inline (~5s)"
+            >
+              {previewLoading ? 'Rendering…' : previewOpen ? '↻ Refresh Preview' : 'Preview'}
+            </button>
           </div>
+
+          {/* Inline preview of the filled template */}
+          {previewOpen && (
+            <div style={{ marginTop: 12, background: '#1a1a1a', border: '1px solid #3a3a3a' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 10px', background: '#262626', borderBottom: '1px solid #3a3a3a',
+              }}>
+                <div style={{ fontSize: 11, color: '#fbb941', fontWeight: 600,
+                              letterSpacing: 1, textTransform: 'uppercase' }}>
+                  Template Preview
+                </div>
+                <span style={{ fontSize: 12, color: '#aaaaaa' }}>
+                  {previewSlides.length > 0
+                    ? `Slide ${previewIdx + 1} / ${previewSlides.length}`
+                    : previewLoading ? 'Rendering…' : 'No slides'}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button onClick={() => setPreviewIdx((i) => Math.max(0, i - 1))}
+                        disabled={previewIdx === 0 || previewLoading}
+                        style={{ ...btnSmall, opacity: previewIdx === 0 ? 0.4 : 1 }}>‹ Prev</button>
+                <button onClick={() => setPreviewIdx((i) => Math.min(previewSlides.length - 1, i + 1))}
+                        disabled={previewIdx >= previewSlides.length - 1 || previewLoading}
+                        style={{ ...btnSmall, opacity: previewIdx >= previewSlides.length - 1 ? 0.4 : 1 }}>Next ›</button>
+                <button onClick={() => setPreviewOpen(false)} style={btnSmall}>Close</button>
+              </div>
+              <div style={{ padding: 12, display: 'flex', justifyContent: 'center',
+                            background: '#0f0f0f', minHeight: 320 }}>
+                {previewLoading && previewSlides.length === 0 ? (
+                  <div style={{ color: '#aaaaaa', fontSize: 14, padding: 60 }}>
+                    Rendering template… (~5s)
+                  </div>
+                ) : previewSlides[previewIdx] ? (
+                  <img
+                    src={`data:image/png;base64,${previewSlides[previewIdx]}`}
+                    alt={`slide ${previewIdx + 1}`}
+                    style={{ maxWidth: '100%', maxHeight: 560, objectFit: 'contain',
+                             boxShadow: '0 0 0 1px #3a3a3a' }}
+                    onClick={() => setPreviewIdx((i) => i + 1 < previewSlides.length ? i + 1 : 0)}
+                  />
+                ) : (
+                  <div style={{ color: '#888', fontSize: 13, padding: 60 }}>No slides to display.</div>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
       {error && (

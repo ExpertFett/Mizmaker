@@ -1588,6 +1588,65 @@ def brief_build_wing():
     return jsonify(brief)
 
 
+@app.route("/api/brief/preview-template", methods=["POST"])
+def brief_preview_template():
+    """Render a custom .pptx template (with {{tokens}} substituted) to
+    per-slide PNGs for the custom-template flow's inline preview.
+
+    Mirrors /api/brief/preview-wing but for the upload-your-own-template
+    path so the user can see their template filled in before download.
+
+    Request: multipart/form-data with:
+      - 'file': the .pptx template
+      - 'values': JSON string of {token_path: substituted_value}
+      - 'dpi' (optional): raster DPI (default 100, capped 60-200)
+    Response: {"slides": ["<base64 png>", ...]}
+
+    Requires LibreOffice on the server — returns 503 when unavailable.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename or not f.filename.lower().endswith(".pptx"):
+        return jsonify({"error": "Template must be a .pptx file"}), 400
+    template_bytes = f.read()
+    if not template_bytes:
+        return jsonify({"error": "Empty template"}), 400
+
+    values_raw = request.form.get("values", "{}")
+    try:
+        values = json.loads(values_raw)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"Bad values JSON: {e}"}), 400
+    if not isinstance(values, dict):
+        return jsonify({"error": "values must be a JSON object"}), 400
+    values = {k: ("" if v is None else str(v)) for k, v in values.items()}
+
+    dpi = int(request.form.get("dpi") or 100)
+    dpi = max(60, min(dpi, 200))
+
+    try:
+        from services.brief_renderer import (
+            render_template, convert_pptx, _rasterize_pdf,
+            LibreOfficeNotFoundError,
+        )
+        rendered_pptx = render_template(template_bytes, values)
+        pdf_bytes, _ = convert_pptx(rendered_pptx, "pdf")
+        slide_pngs = _rasterize_pdf(pdf_bytes, "png", dpi=dpi)
+    except LibreOfficeNotFoundError as e:
+        return jsonify({"error": str(e), "needs_libreoffice": True}), 503
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"Preview render failed: {e}"}), 500
+
+    import base64
+    return jsonify({
+        "slides": [base64.b64encode(b).decode("ascii") for b in slide_pngs],
+    })
+
+
 @app.route("/api/brief/preview-wing", methods=["POST"])
 def brief_preview_wing():
     """Render an (edited) WingBrief to per-slide PNGs for the editor's
