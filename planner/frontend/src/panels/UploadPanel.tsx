@@ -7,6 +7,7 @@ import { useVisibilityStore } from '../store/visibilityStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 import { VERSION } from '../version';
 import { useAiStore } from '../ai/aiStore';
+import { useAuthStore, discordDisplayName, discordAvatarUrl } from '../store/authStore';
 import { AiSettingsPanel } from './AiSettingsPanel';
 
 export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
@@ -23,6 +24,8 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const lastTestedAt = useAiStore((s) => s.lastTestedAt[s.provider]);
   const aiKey = aiProvider === 'anthropic' ? aiAnthropicKey : aiGeminiKey;
   const [aiOpen, setAiOpen] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -89,6 +92,28 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         paddingBottom: 40,
       }}
     >
+      {/* Auth chip — top-right, out of the centered flow. Shows the logged-in
+          Discord identity + Log out, or a Log in link for guests. */}
+      <div style={{ position: 'fixed', top: 12, right: 16, zIndex: 50, display: 'flex', alignItems: 'center', gap: 8 }}>
+        {user ? (
+          <>
+            {discordAvatarUrl(user) && (
+              <img src={discordAvatarUrl(user)!} alt="" style={{ width: 24, height: 24 }} />
+            )}
+            <span style={{ fontSize: 13, color: '#cccccc' }}>{discordDisplayName(user)}</span>
+            <button onClick={() => logout()} style={{
+              background: 'transparent', border: '1px solid #4a4a4a', color: '#aaaaaa',
+              fontSize: 12, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit',
+            }}>Log out</button>
+          </>
+        ) : (
+          <a href="/api/auth/discord/login" style={{
+            fontSize: 12, color: '#6ab4f0', textDecoration: 'none',
+            border: '1px solid #4a4a4a', padding: '3px 10px',
+          }}>Log in with Discord</a>
+        )}
+      </div>
+
       <div style={{ maxWidth: 1040, width: '100%', padding: '0 20px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>

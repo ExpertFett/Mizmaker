@@ -84,6 +84,7 @@ from services.dtc_builder import (
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
 from services.session_store import default_store as _store
+from services.auth import register_auth_routes
 import srtm
 
 # Initialize SRTM elevation data (downloads HGT tiles on first use, caches locally)
@@ -97,6 +98,12 @@ app = Flask(__name__, static_folder=None)
 
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB — kneeboard mod packs can be 50-100+ MB
+app.secret_key = os.environ.get("APP_SECRET_KEY", "dev-insecure-secret-change-me")
+
+# Discord OAuth (identify-only) identity gate. Registered before the SPA
+# catch-all so /api/auth/* are matched as specific routes. Degrades to guest-
+# only when DISCORD_* env vars are unset (see services/auth.py).
+register_auth_routes(app)
 
 # Session storage. The dict + lock + helpers that lived here moved to
 # services.session_store as part of Phase 2 (Supabase migration). Step 1
