@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Optional
@@ -84,6 +85,15 @@ def _current_user() -> Optional[dict]:
     return read_auth_token(request.cookies.get(AUTH_COOKIE, ""))
 
 
+class _TokenError(Exception):
+    """Carries Discord's own error code so the callback can report exactly why
+    the token exchange failed (invalid_client = bad ID/secret pair;
+    invalid_grant = redirect_uri mismatch or a reused/expired code)."""
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
+
+
 def _exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: str) -> str:
     data = urllib.parse.urlencode({
         "client_id": client_id,
@@ -96,9 +106,22 @@ def _exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: 
         DISCORD_TOKEN, data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(req, timeout=10) as r:
-        payload = json.loads(r.read().decode("utf-8"))
-    return payload["access_token"]
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            payload = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read().decode("utf-8"))
+            detail = body.get("error") or f"http_{e.code}"
+        except Exception:
+            detail = f"http_{e.code}"
+        raise _TokenError(detail)
+    except Exception:
+        raise _TokenError("network")
+    token = payload.get("access_token")
+    if not token:
+        raise _TokenError(payload.get("error") or "no_access_token")
+    return token
 
 
 def _fetch_user(access_token: str) -> dict:
@@ -162,9 +185,13 @@ def register_auth_routes(app) -> None:
             return redirect("/?auth_error=state")
         try:
             access_token = _exchange_code(client_id, client_secret, redirect_uri, code)
-        except Exception:
-            # Almost always a bad/rotated DISCORD_CLIENT_SECRET, or a redirect_uri
-            # that doesn't match the one registered in the Discord app.
+        except _TokenError as e:
+            # Surface Discord's own error code so we can tell a bad secret
+            # (invalid_client) from a redirect/code problem (invalid_grant).
+            print(f"[auth] token exchange failed: {e.detail}", flush=True)
+            return redirect(f"/?auth_error=token&detail={urllib.parse.quote(e.detail)}")
+        except Exception as e:
+            print(f"[auth] token exchange error: {e}", flush=True)
             return redirect("/?auth_error=token")
         try:
             user = _fetch_user(access_token)

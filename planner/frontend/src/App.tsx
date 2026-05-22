@@ -17,14 +17,16 @@ export default function App() {
   // stable across the re-render that checkMe triggers) so the landing page can
   // reliably surface a login error.
   const [authError] = useState(() => new URLSearchParams(window.location.search).get('auth_error'));
+  const [authDetail] = useState(() => new URLSearchParams(window.location.search).get('detail'));
 
   useEffect(() => {
     checkMe();
     // Strip the OAuth result params so they don't linger in the URL/bookmarks.
     const u = new URL(window.location.href);
-    if (u.searchParams.has('auth') || u.searchParams.has('auth_error')) {
+    if (u.searchParams.has('auth') || u.searchParams.has('auth_error') || u.searchParams.has('detail')) {
       u.searchParams.delete('auth');
       u.searchParams.delete('auth_error');
+      u.searchParams.delete('detail');
       window.history.replaceState({}, '', u.pathname + u.search + u.hash);
     }
   }, [checkMe]);
@@ -48,7 +50,7 @@ export default function App() {
 
   // Gate: landing/login page until the user logs in or chooses guest.
   if (!user && !enteredAsGuest) {
-    return <LandingPage authError={authError} />;
+    return <LandingPage authError={authError} authDetail={authDetail} />;
   }
 
   if (!sessionId) {

@@ -12,6 +12,8 @@ import { VERSION } from '../version';
 interface LandingPageProps {
   /** ?auth_error value from the OAuth redirect, if any. */
   authError?: string | null;
+  /** ?detail value (e.g. Discord's own error code) for a precise message. */
+  authDetail?: string | null;
 }
 
 const FEATURES: { title: string; body: string }[] = [
@@ -39,17 +41,20 @@ const MUTED = '#9a9a9a';
 const ACCENT = '#e8833a';        // DCS:OPT orange
 const DISCORD = '#5865F2';
 
-export function LandingPage({ authError }: LandingPageProps) {
+export function LandingPage({ authError, authDetail }: LandingPageProps) {
   const enterGuest = useAuthStore((s) => s.enterGuest);
 
-  const errMsg =
+  let errMsg =
     authError === 'unconfigured' ? 'Discord login isn’t set up yet — continue as guest for now.'
     : authError === 'nocode' ? 'Discord login was cancelled or returned no code. Try again.'
     : authError === 'state' ? 'Login security check failed (state cookie missing/expired). Make sure cookies aren’t blocked, then try again.'
-    : authError === 'token' ? 'Discord rejected the login (token exchange) — usually a bad Client Secret or a redirect URI that doesn’t match the Discord app. (auth_error=token)'
+    : authError === 'token' ? 'Discord rejected the login (token exchange) — usually a bad Client Secret or a redirect URI that doesn’t match the Discord app.'
     : authError === 'user' ? 'Couldn’t fetch your Discord profile after login. Try again.'
     : authError === 'failed' ? 'Discord login failed or was cancelled. Try again, or continue as guest.'
     : null;
+  if (errMsg && authDetail) {
+    errMsg += `  (Discord said: ${authDetail})`;
+  }
 
   return (
     <div style={{
