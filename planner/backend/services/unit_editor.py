@@ -841,26 +841,13 @@ def _replace_livery(text: str, unit_id: int, new_livery: str) -> str:
     """Replace the ["livery_id"] field for a specific unit.
     If the field doesn't exist, insert it near the unit block."""
     import logging
-    unit_pos = _find_unit_block_start(text, unit_id)
-
-    # Walk backward from unitId to find the unit block's opening brace.
-    # In DCS Lua, units are `[N] = { ... ["unitId"] = X, ... },`
-    # livery_id is near the top of the block, unitId is near the bottom.
-    depth = 0
-    i = unit_pos
-    while i > 0:
-        ch = text[i]
-        if ch == '}':
-            depth += 1
-        elif ch == '{':
-            if depth == 0:
-                break  # found the opening brace of this unit block
-            depth -= 1
-        i -= 1
-    block_start = i
-
-    # The unit block extends from block_start to somewhere past unit_pos
-    unit_block = text[block_start:unit_pos + 500]
+    # Scope to the unit block via the string-aware _find_unit_block_bounds.
+    # The old hand-rolled backward brace walk did NOT skip string contents,
+    # so a '{', '}' or '"' inside a mod livery/type string miscounted brace
+    # depth and landed block_start mid-string; the fixed +500 forward window
+    # could also fall short on a big unit block. (Pre-beta audit P1 #7.)
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
 
     livery_pattern = re.compile(r'\["livery_id"\]\s*=\s*"([^"]*)"')
     m = livery_pattern.search(unit_block)

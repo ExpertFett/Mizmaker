@@ -1164,3 +1164,96 @@ class TestInlineTriggerSerialization:
         trig_str, _ = serialize_triggers_to_lua(td)
         assert re.search(r'\[1\]\s*=\s*true', trig_str)
         assert re.search(r'\[2\]\s*=\s*false', trig_str)
+
+
+# ---------------------------------------------------------------------------
+# Livery edit — string-aware block scoping (pre-beta audit P1 #7)
+# ---------------------------------------------------------------------------
+
+class TestLiveryBlockScoping:
+    """`_replace_livery` must scope to the correct unit block even when an
+    earlier string field contains a brace. The old hand-rolled backward
+    brace walk didn't skip string contents, so a `}` inside a unit name
+    miscounted depth and the livery_id of a NEIGHBOURING unit got rewritten."""
+
+    def test_brace_in_string_does_not_retarget_livery(self):
+        from services.unit_editor import _replace_livery
+        mission = (
+            '["units"] = {\n'
+            '    [1] = {\n'
+            '        ["name"] = "Decoy",\n'
+            '        ["type"] = "FA-18C_hornet",\n'
+            '        ["livery_id"] = "decoy_livery",\n'
+            '        ["unitId"] = 41,\n'
+            '    },\n'
+            '    [2] = {\n'
+            '        ["name"] = "Striker }Lead",\n'   # brace inside the string
+            '        ["type"] = "FA-18C_hornet",\n'
+            '        ["livery_id"] = "old_livery",\n'
+            '        ["unitId"] = 42,\n'
+            '    },\n'
+            '}\n'
+        )
+        out = _replace_livery(mission, 42, "new_livery")
+        assert '["livery_id"] = "new_livery"' in out, "target unit's livery not set"
+        assert '"decoy_livery"' in out, "neighbouring unit's livery was wrongly rewritten"
+        assert '"old_livery"' not in out, "target unit's old livery still present"
+        assert '"Striker }Lead"' in out, "brace-bearing unit name was corrupted"
+
+    def test_livery_inserted_after_type_when_missing(self):
+        from services.unit_editor import _replace_livery
+        mission = (
+            '["units"] = {\n'
+            '    [1] = {\n'
+            '        ["type"] = "FA-18C_hornet",\n'
+            '        ["unitId"] = 7,\n'
+            '    },\n'
+            '}\n'
+        )
+        out = _replace_livery(mission, 7, "usn_vfa")
+        assert '["livery_id"] = "usn_vfa"' in out, "livery_id not inserted when absent"
+
+
+# ---------------------------------------------------------------------------
+# Repack — dictionary/options created when absent (pre-beta audit P1 #8)
+# ---------------------------------------------------------------------------
+
+class TestRepackCreatesMissingFiles:
+    """A minimal .miz may lack `l10n/DEFAULT/dictionary` or `options`.
+    repack_miz must still write the edited text instead of silently
+    dropping it — only `mapResource` had this create-if-absent fallback
+    before. A briefing edit (dictionary) or forced-options edit (options)
+    on such a mission was lost with no error."""
+
+    def test_dictionary_and_options_written_when_absent(self):
+        import io as _io, zipfile as _zf
+        from services.miz_editor import repack_miz
+        mission = '["start_time"] = 0,\n'
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission)   # NO dictionary, NO options
+        new_dict = 'dictionary = {\n    ["DictKey_descriptionText_1"] = "New brief",\n}\n'
+        new_opts = 'options = {\n    ["difficulty"] = {},\n}\n'
+        out = repack_miz(
+            buf.getvalue(), mission,
+            new_dictionary_text=new_dict, new_options_text=new_opts,
+        )
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            names = zf.namelist()
+            assert "l10n/DEFAULT/dictionary" in names, "dictionary not created"
+            assert "options" in names, "options not created"
+            assert zf.read("l10n/DEFAULT/dictionary").decode("utf-8") == new_dict
+            assert zf.read("options").decode("utf-8") == new_opts
+
+    def test_existing_dictionary_still_overwritten(self):
+        import io as _io, zipfile as _zf
+        from services.miz_editor import repack_miz
+        mission = '["start_time"] = 0,\n'
+        buf = _io.BytesIO()
+        with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+            z.writestr("mission", mission)
+            z.writestr("l10n/DEFAULT/dictionary", 'dictionary = { ["old"] = "x", }\n')
+        new_dict = 'dictionary = { ["new"] = "y", }\n'
+        out = repack_miz(buf.getvalue(), mission, new_dictionary_text=new_dict)
+        with _zf.ZipFile(_io.BytesIO(out)) as zf:
+            assert zf.read("l10n/DEFAULT/dictionary").decode("utf-8") == new_dict

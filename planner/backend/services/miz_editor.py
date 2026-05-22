@@ -301,6 +301,8 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
 
     output = io.BytesIO()
     map_resource_written = False
+    dictionary_written = False
+    options_written = False
     with zipfile.ZipFile(io.BytesIO(original_miz_bytes), "r") as zin:
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -308,8 +310,10 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
                     zout.writestr(item, new_mission_text.encode("utf-8"))
                 elif new_dictionary_text is not None and item.filename == "l10n/DEFAULT/dictionary":
                     zout.writestr(item, new_dictionary_text.encode("utf-8"))
+                    dictionary_written = True
                 elif new_options_text is not None and item.filename == "options":
                     zout.writestr(item, new_options_text.encode("utf-8"))
+                    options_written = True
                 elif item.filename == "l10n/DEFAULT/mapResource" and new_map_resource_text:
                     zout.writestr(item, new_map_resource_text.encode("utf-8"))
                     map_resource_written = True
@@ -332,6 +336,16 @@ def repack_miz(original_miz_bytes: bytes, new_mission_text: str,
             # If mapResource didn't exist in the original miz, write a new one.
             if new_map_resource_text and not map_resource_written:
                 zout.writestr("l10n/DEFAULT/mapResource", new_map_resource_text.encode("utf-8"))
+
+            # Same create-if-absent fallback for dictionary / options. A
+            # minimal .miz may lack these entries entirely; without this, a
+            # briefing edit (dictionary) or forced-options edit (options) on
+            # such a mission was silently dropped — the loop above only
+            # overwrites entries that ALREADY exist. (Pre-beta audit P1 #8.)
+            if new_dictionary_text is not None and not dictionary_written:
+                zout.writestr("l10n/DEFAULT/dictionary", new_dictionary_text.encode("utf-8"))
+            if new_options_text is not None and not options_written:
+                zout.writestr("options", new_options_text.encode("utf-8"))
 
             # Inject kneeboard PNGs into KNEEBOARD/<aircraft_type>/IMAGES/
             # Shared cards (aircraft_type == '_SHARED_') go into KNEEBOARD/IMAGES/
