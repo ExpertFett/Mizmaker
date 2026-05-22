@@ -477,6 +477,54 @@ def generate_default_template() -> bytes:
 # aesthetic of the kneeboard cards. Mission makers can re-style after
 # download.
 
+def _hex_is_dark(hexval: str) -> bool:
+    """Perceptual-luminance check for a 'RRGGBB' hex string. True = dark."""
+    try:
+        h = hexval.strip().lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        # Rec.601 luma, 0-255.
+        return (0.299 * r + 0.587 * g + 0.114 * b) < 128
+    except Exception:
+        return True
+
+
+def _master_bg_is_dark(prs) -> bool:
+    """Decide whether the uploaded template's slide-master background is
+    dark. Drives the brief's text palette so content stays readable.
+
+    Reads the master's <p:bg> fill: a literal srgbClr is luminance-tested;
+    a schemeClr name is mapped through the master's clrMap and judged by
+    its theme-slot prefix (lt* = light, dk*/tx* = dark). When the master
+    has no explicit background we assume light (PowerPoint's default is a
+    white slide), since that's the common 'branded blank' case and a wrong
+    'dark' guess there would render invisible light text on white.
+    """
+    try:
+        from pptx.oxml.ns import qn
+        melem = prs.slide_masters[0].element
+        bg = melem.find(".//" + qn("p:bg"))
+        if bg is None:
+            return False  # no explicit bg → PPT default white → light
+        srgb = bg.find(".//" + qn("a:srgbClr"))
+        if srgb is not None and srgb.get("val"):
+            return _hex_is_dark(srgb.get("val"))
+        scheme = bg.find(".//" + qn("a:schemeClr"))
+        if scheme is None or not scheme.get("val"):
+            return False
+        name = scheme.get("val")
+        clrmap = melem.find(".//" + qn("p:clrMap"))
+        mapping = dict(clrmap.attrib) if clrmap is not None else {}
+        slot = mapping.get(name, name)  # e.g. bg1 -> lt1
+        if slot.startswith("lt"):
+            return False
+        if slot.startswith("dk") or slot.startswith("tx"):
+            return True
+        return False
+    except Exception:
+        # Inconclusive — assume light so we don't hide text on a white deck.
+        return False
+
+
 def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
 
@@ -539,17 +587,39 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             return prs.slide_layouts[0]
     BLANK = _pick_blank_layout()
 
-    BG = RGBColor(0x1A, 0x1A, 0x1A)
-    LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
-    BRIGHT = RGBColor(0xFF, 0xFF, 0xFF)
-    ACCENT = RGBColor(0xFF, 0xA5, 0x00)
-    DIM = RGBColor(0xAA, 0xAA, 0xAA)
-    BORDER = RGBColor(0x55, 0x55, 0x55)
-    TABLE_HEADER_BG = RGBColor(0x33, 0x33, 0x33)
+    # Palette (v0.9.80). Default = dark (built-in deck). When building on a
+    # user template we DON'T paint our own background — the template's
+    # master branding shows through — so the text palette must match the
+    # template's background brightness, or text vanishes (e.g. light grey
+    # on a white master). Auto-detect dark vs light from the master bg.
+    dark = True if not use_template else _master_bg_is_dark(prs)
+    if dark:
+        BG = RGBColor(0x1A, 0x1A, 0x1A)
+        LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
+        BRIGHT = RGBColor(0xFF, 0xFF, 0xFF)
+        ACCENT = RGBColor(0xFF, 0xA5, 0x00)
+        DIM = RGBColor(0xAA, 0xAA, 0xAA)
+        BORDER = RGBColor(0x55, 0x55, 0x55)
+        TABLE_HEADER_BG = RGBColor(0x33, 0x33, 0x33)
+        CELL_BG = RGBColor(0x1A, 0x1A, 0x1A)
+    else:
+        # Light template — dark text, light table panels, a strong dark
+        # amber accent that reads on white.
+        BG = RGBColor(0xFF, 0xFF, 0xFF)
+        LIGHT = RGBColor(0x1A, 0x1A, 0x1A)
+        BRIGHT = RGBColor(0x00, 0x00, 0x00)
+        ACCENT = RGBColor(0xB8, 0x74, 0x0C)
+        DIM = RGBColor(0x55, 0x55, 0x55)
+        BORDER = RGBColor(0x99, 0x99, 0x99)
+        TABLE_HEADER_BG = RGBColor(0xD8, 0xD8, 0xD8)
+        CELL_BG = RGBColor(0xF3, 0xF3, 0xF3)
 
     # ---------- helpers ---------------------------------------------------
 
     def _apply_bg(slide):
+        # On a user template, let the master's branding/background show.
+        if use_template:
+            return
         rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
         rect.fill.solid(); rect.fill.fore_color.rgb = BG
         rect.line.fill.background()
@@ -613,7 +683,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         for ri, row in enumerate(rows, start=1):
             for ci, val in enumerate(row):
                 cell = table.cell(ri, ci)
-                cell.fill.solid(); cell.fill.fore_color.rgb = BG
+                cell.fill.solid(); cell.fill.fore_color.rgb = CELL_BG
                 cell.text = str(val) if val is not None else ""
                 for p in cell.text_frame.paragraphs:
                     for r in p.runs:

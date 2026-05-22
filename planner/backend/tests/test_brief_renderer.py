@@ -310,3 +310,79 @@ class TestRenderWingBriefBaseTemplate:
         ))
         # 1 template slide + 9 content = 10.
         assert len(prs.slides._sldIdLst) == 10
+
+
+def _set_master_bg(prs, inner_fill_xml: str):
+    """Inject a <p:bg> with the given fill into the presentation's master."""
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls, qn
+    m = prs.slide_masters[0].element
+    csld = m.find(qn("p:cSld"))
+    bg = parse_xml(
+        f'<p:bg {nsdecls("p", "a")}><p:bgPr>{inner_fill_xml}<a:effectLst/></p:bgPr></p:bg>'
+    )
+    csld.insert(0, bg)
+
+
+def _template_with_bg(inner_fill_xml: str) -> str:
+    import base64
+    prs = Presentation()
+    prs.slide_width = Inches(13.333); prs.slide_height = Inches(7.5)
+    _set_master_bg(prs, inner_fill_xml)
+    prs.slides.add_slide(prs.slide_layouts[6])
+    out = io.BytesIO(); prs.save(out)
+    return base64.b64encode(out.getvalue()).decode("ascii")
+
+
+class TestPaletteDetection:
+    def test_hex_is_dark(self):
+        from services.brief_renderer import _hex_is_dark
+        assert _hex_is_dark("000000") is True
+        assert _hex_is_dark("1A1A1A") is True
+        assert _hex_is_dark("FFFFFF") is False
+        assert _hex_is_dark("F3F3F3") is False
+        assert _hex_is_dark("#101010") is True
+
+    def test_no_explicit_bg_assumes_light(self):
+        from services.brief_renderer import _master_bg_is_dark
+        prs = Presentation()  # default master has no explicit <p:bg>
+        assert _master_bg_is_dark(prs) is False
+
+    def test_dark_srgb_master_detected_dark(self):
+        from services.brief_renderer import _master_bg_is_dark
+        prs = Presentation()
+        _set_master_bg(prs, '<a:solidFill><a:srgbClr val="101010"/></a:solidFill>')
+        assert _master_bg_is_dark(prs) is True
+
+    def test_light_srgb_master_detected_light(self):
+        from services.brief_renderer import _master_bg_is_dark
+        prs = Presentation()
+        _set_master_bg(prs, '<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>')
+        assert _master_bg_is_dark(prs) is False
+
+    def test_scheme_lt1_is_light_dk1_is_dark(self):
+        from services.brief_renderer import _master_bg_is_dark
+        light = Presentation()
+        _set_master_bg(light, '<a:solidFill><a:schemeClr val="lt1"/></a:solidFill>')
+        assert _master_bg_is_dark(light) is False
+        dk = Presentation()
+        _set_master_bg(dk, '<a:solidFill><a:schemeClr val="dk1"/></a:solidFill>')
+        assert _master_bg_is_dark(dk) is True
+
+    def test_render_on_light_template_skips_black_rect(self):
+        """On a light template the brief must NOT paint its dark rectangle —
+        otherwise the master branding is hidden. Verify no full-slide dark
+        rectangle is present on a content slide."""
+        from services.brief_renderer import render_wing_brief
+        from pptx.util import Emu
+        tpl = _template_with_bg('<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>')
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64=tpl)
+        ))
+        # A content slide (last one = Notes). No autoshape should fill the
+        # whole slide (that would be our dark bg rect, which we skip).
+        notes_slide = prs.slides[len(prs.slides._sldIdLst) - 1]
+        full = [sh for sh in notes_slide.shapes
+                if sh.width and sh.height
+                and sh.width >= prs.slide_width and sh.height >= prs.slide_height]
+        assert full == []

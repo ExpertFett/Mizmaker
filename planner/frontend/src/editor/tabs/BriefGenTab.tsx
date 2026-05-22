@@ -523,7 +523,8 @@ export function BriefGenTab() {
                   {templateName}
                 </span>
                 <span style={{ fontSize: 11, color: '#cccccc' }}>
-                  — your template's cover + theme; auto content follows.
+                  — built on your template: cover + branding + theme. Text color
+                  auto-adapts to your background.
                 </span>
                 <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
                   Replace
@@ -539,8 +540,9 @@ export function BriefGenTab() {
                 </label>
                 <span style={{ fontSize: 11, color: '#888888' }}>
                   Optional — without one, the brief uses the built-in dark template.
-                  Your template's slide(s) become the cover; the auto sections (scenario,
-                  threats, flights, etc.) are appended after.
+                  With one, the whole brief renders on your template's background +
+                  branding (text color auto-adapts to light/dark); your cover slide(s)
+                  lead the deck.
                 </span>
               </>
             )}
