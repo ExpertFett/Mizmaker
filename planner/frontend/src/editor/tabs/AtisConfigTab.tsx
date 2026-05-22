@@ -130,9 +130,15 @@ function generateAtisScript(entries: AtisEntry[]): string {
     // Parse runways from airbaseComms
     const comms = getAirbaseComms(e.airbaseName);
     const rwyStr = comms?.runways || '';
-    // Extract runway headings (e.g., "08/26" → {8, 26})
+    // Parse runway designators (e.g., "08/26" → 8, 26)…
     const rwyNums = rwyStr.split(/[/,]/).map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-    const rwyLua = rwyNums.length > 0 ? `{ ${rwyNums.join(', ')} }` : '{}';
+    // …and emit HEADINGS (designator × 10 → {80, 260}). getActiveRunway
+    // compares against wind direction in degrees, and the broadcast formatter
+    // prints rwy/10 as the "%02d" designator. Storing the raw designator broke
+    // BOTH: wind selection compared 8° vs 080°, and "08" printed as "01".
+    // (Pre-beta audit P2.)
+    const rwyHeadings = rwyNums.map((n) => n * 10);
+    const rwyLua = rwyHeadings.length > 0 ? `{ ${rwyHeadings.join(', ')} }` : '{}';
     const elev = comms?.elevation ? Math.round(comms.elevation * 0.3048) : 0; // ft to meters
 
     // `name` stays as the DCS internal name so Airbase.getByName() finds
@@ -141,12 +147,15 @@ function generateAtisScript(entries: AtisEntry[]): string {
     // customised. `initials` (ICAO/squadron code) prefixes the broadcast.
     const displayName = e.displayName || e.airbaseName;
     const initials = e.initials || defaultInitials(e.airbaseName);
+    // freq is user-editable — strip to digits/dot so a stray quote or empty
+    // value can't break the generated Lua string. (Pre-beta audit P2.)
+    const safeFreq = (e.freq || '').replace(/[^0-9.]/g, '') || '0';
     return [
       `  {`,
       `    name        = "${e.airbaseName}",`,
       `    displayName = "${displayName.replace(/"/g, '\\"')}",`,
       `    initials    = "${initials.replace(/"/g, '\\"')}",`,
-      `    freq        = "${e.freq}",`,
+      `    freq        = "${safeFreq}",`,
       `    modulation  = "${e.modulation}",`,
       `    coalition   = ${e.coalition},`,
       `    runways     = ${rwyLua},`,
