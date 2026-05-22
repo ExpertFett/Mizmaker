@@ -580,68 +580,73 @@ export function WeatherTab() {
     }
   }, [overview]);
 
+  // Side effects (addEdit, store sync) run in the event handler — NOT inside
+  // the setWeather updater, which must stay pure (StrictMode double-invokes
+  // updaters and would double-dispatch). NaN numeric values (a cleared or
+  // half-typed field like "-") are dropped so they never reach the .miz.
   const update = useCallback((partial: Partial<WeatherState>) => {
-    setWeather((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...partial };
-      setHasChanges(true);
-      // Queue edit in the format _replace_weather_block expects
-      addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
+    if (!weather) return;
+    const clean: Partial<WeatherState> = {};
+    for (const [k, v] of Object.entries(partial)) {
+      if (typeof v === 'number' && !Number.isFinite(v)) continue;
+      (clean as Record<string, unknown>)[k] = v;
+    }
+    const next = { ...weather, ...clean };
+    setWeather(next);
+    setHasChanges(true);
+    // Queue edit in the format _replace_weather_block expects
+    addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
 
-      // Sync back to store so WeatherPanel on map stays current
-      const { overview, setOverview } = useMissionStore.getState();
-      if (overview) {
-        setOverview({
-          ...overview,
-          weather: {
-            ...overview.weather,
-            wind: next.wind,
-            temperature_c: next.temperature_c,
-            qnh_mmhg: next.qnh_mmhg,
-            qnh_inhg: Math.round(next.qnh_mmhg * 0.03937 * 100) / 100,
-            qnh_hpa: Math.round(next.qnh_mmhg * 1.33322 * 10) / 10,
-            clouds_base_m: next.clouds_base_m,
-            clouds_density: next.clouds_density,
-            clouds_thickness: next.clouds_thickness,
-            clouds_precipitation: next.clouds_precipitation,
-            clouds_preset: next.clouds_preset,
-            visibility_m: next.visibility_m,
-            fog_enabled: (next.fog_mode ?? prev.fog_mode) > 0,
-            fog_visibility: next.fog_visibility,
-            fog_thickness: next.fog_thickness,
-            dust_enabled: next.dust_enabled,
-            dust_density: next.dust_density,
-            turbulence: next.ground_turbulence,
-          },
-          date: `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`,
-          start_time: next.start_time,
-        });
-      }
-
-      return next;
-    });
-  }, [addEdit]);
+    // Sync back to store so WeatherPanel on map stays current
+    const { overview, setOverview } = useMissionStore.getState();
+    if (overview) {
+      setOverview({
+        ...overview,
+        weather: {
+          ...overview.weather,
+          wind: next.wind,
+          temperature_c: next.temperature_c,
+          qnh_mmhg: next.qnh_mmhg,
+          qnh_inhg: Math.round(next.qnh_mmhg * 0.03937 * 100) / 100,
+          qnh_hpa: Math.round(next.qnh_mmhg * 1.33322 * 10) / 10,
+          clouds_base_m: next.clouds_base_m,
+          clouds_density: next.clouds_density,
+          clouds_thickness: next.clouds_thickness,
+          clouds_precipitation: next.clouds_precipitation,
+          clouds_preset: next.clouds_preset,
+          visibility_m: next.visibility_m,
+          fog_enabled: (next.fog_mode ?? weather.fog_mode) > 0,
+          fog_visibility: next.fog_visibility,
+          fog_thickness: next.fog_thickness,
+          dust_enabled: next.dust_enabled,
+          dust_density: next.dust_density,
+          turbulence: next.ground_turbulence,
+        },
+        date: `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`,
+        start_time: next.start_time,
+      });
+    }
+  }, [weather, addEdit]);
 
   const updateWind = useCallback((layer: 'atGround' | 'at2000' | 'at8000', field: 'speed' | 'dir', value: number) => {
-    setWeather((prev) => {
-      if (!prev) return prev;
-      const next = {
-        ...prev,
-        wind: {
-          ...prev.wind,
-          [layer]: { ...prev.wind[layer], [field]: value },
-        },
-      };
-      setHasChanges(true);
-      addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
+    if (!weather) return;
+    if (!Number.isFinite(value)) return;  // ignore NaN from a cleared field
+    const next = {
+      ...weather,
+      wind: {
+        ...weather.wind,
+        [layer]: { ...weather.wind[layer], [field]: value },
+      },
+    };
+    setWeather(next);
+    setHasChanges(true);
+    addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
 
-      const { overview, setOverview } = useMissionStore.getState();
-      if (overview) {
-        setOverview({ ...overview, weather: { ...overview.weather, wind: next.wind } });
-      }
-      return next;
-    });
-  }, [addEdit]);
+    const { overview, setOverview } = useMissionStore.getState();
+    if (overview) {
+      setOverview({ ...overview, weather: { ...overview.weather, wind: next.wind } });
+    }
+  }, [weather, addEdit]);
 
   if (!weather) {
     return (

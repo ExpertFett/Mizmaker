@@ -1091,11 +1091,10 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
   steerNotes: Record<number, string>;
   setSteerNotes: React.Dispatch<React.SetStateAction<Record<number, string>>>;
 }) {
-  if (data.length === 0) {
-    return <div style={{ color: '#aaaaaa', fontSize: 14 }}>No waypoints in DTC data.</div>;
-  }
-
-  // Compute leg distances (simplified great circle approx)
+  // Compute leg distances (simplified great circle approx). This hook MUST
+  // run before any early return so the hook order stays stable when `data`
+  // toggles between empty and populated — otherwise React throws
+  // "rendered fewer hooks than expected" and the tab crashes.
   const distances = useMemo(() => {
     const dists: number[] = [0];
     for (let i = 1; i < data.length; i++) {
@@ -1113,6 +1112,10 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
     }
     return dists;
   }, [data]);
+
+  if (data.length === 0) {
+    return <div style={{ color: '#aaaaaa', fontSize: 14 }}>No waypoints in DTC data.</div>;
+  }
 
   const totalDist = distances.reduce((s, d) => s + d, 0);
 
@@ -1188,7 +1191,7 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
       const entry: typeof refs[0] = { name: g.groupName, type: g.category || '' };
       if (g.frequency) {
         const freqMhz = g.frequency >= 1e6 ? (g.frequency / 1e6).toFixed(3) : g.frequency.toFixed(3);
-        entry.freq = `${freqMhz} ${g.modulation === 1 ? 'AM' : 'FM'}`;
+        entry.freq = `${freqMhz} ${g.modulation === 1 ? 'FM' : 'AM'}`;
       }
       if (g.tacan) entry.tacan = `${g.tacan.channel}${g.tacan.band}${g.tacan.callsign ? ' ' + g.tacan.callsign : ''}`;
       if (g.icls) entry.icls = `CH ${g.icls.channel}`;
@@ -1358,7 +1361,7 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
       g.groupName.toLowerCase().includes('shell') || g.groupName.toLowerCase().includes('arco')
     ).map((g) => ({
       name: g.groupName,
-      freq: g.frequency ? (g.frequency >= 1e6 ? (g.frequency / 1e6).toFixed(3) : g.frequency.toFixed(3)) + (g.modulation === 1 ? ' AM' : ' FM') : null,
+      freq: g.frequency ? (g.frequency >= 1e6 ? (g.frequency / 1e6).toFixed(3) : g.frequency.toFixed(3)) + (g.modulation === 1 ? ' FM' : ' AM') : null,
       tacan: g.tacan ? `${g.tacan.channel}${g.tacan.band}${g.tacan.callsign ? ' ' + g.tacan.callsign : ''}` : null,
     }));
   }, [groups]);

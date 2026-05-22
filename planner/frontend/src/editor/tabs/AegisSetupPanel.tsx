@@ -3,6 +3,17 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { GroupRenamerData } from '../../types/mission';
 
+/**
+ * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
+ * stable hash instead of Math.random() means re-clicking Apply re-emits the
+ * SAME heading for each unit, so it doesn't silently re-randomize facings the
+ * planner already reviewed. (Classic fract-sin hash — well distributed.)
+ */
+function stableHeading(unitId: number): number {
+  const x = Math.sin(unitId * 12.9898) * 43758.5453;
+  return (x - Math.floor(x)) * Math.PI * 2;
+}
+
 /* ------------------------------------------------------------------ */
 /* AEGIS IADS SYSTEM_DB — maps DCS unit types to AEGIS system codes   */
 /* ------------------------------------------------------------------ */
@@ -358,7 +369,7 @@ export function AegisSetupPanel() {
       // Set late activation + random heading for each unit
       for (const u of a.units) {
         addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
-        addEdit({ unitId: u.unitId, field: 'heading', value: Math.random() * Math.PI * 2 } as any);
+        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) } as any);
       }
     }
     setApplied(true);

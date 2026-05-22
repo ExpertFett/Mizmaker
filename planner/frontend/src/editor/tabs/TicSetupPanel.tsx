@@ -2,6 +2,17 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 
+/**
+ * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
+ * stable hash instead of Math.random() means re-clicking Apply re-emits the
+ * SAME heading for each unit, so it doesn't silently re-randomize facings the
+ * planner already reviewed. (Classic fract-sin hash — well distributed.)
+ */
+function stableHeading(unitId: number): number {
+  const x = Math.sin(unitId * 12.9898) * 43758.5453;
+  return (x - Math.floor(x)) * Math.PI * 2;
+}
+
 /* ------------------------------------------------------------------ */
 /* DCS unit type → TIC category mapping                                */
 /* ------------------------------------------------------------------ */
@@ -654,7 +665,7 @@ export function TicSetupPanel() {
       // Set late activation + random heading for each unit
       for (const u of a.units) {
         addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
-        addEdit({ unitId: u.unitId, field: 'heading', value: Math.random() * Math.PI * 2 } as any);
+        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) } as any);
       }
       // v0.9.42 — primary `t+N` token via action + eta_seconds.
       // v0.9.57 — secondary TIC tokens (speed=, roe=, hdg=, flag=, flag+)
