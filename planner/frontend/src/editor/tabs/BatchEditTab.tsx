@@ -163,19 +163,33 @@ export function BatchEditTab() {
       tailNums = pool.slice(0, targets.length);
     }
 
+    // Parse the radio freq once and validate — parseFloat("") / parseFloat(".")
+    // is NaN, which would otherwise be written straight into the .miz as a
+    // garbage frequency. (Pre-beta audit P2.)
+    const radioHz = radioMhz ? Math.round(parseFloat(radioMhz) * 1e6) : null;
+    const radioValid = radioHz != null && Number.isFinite(radioHz) && radioHz > 0;
+
     for (let i = 0; i < targets.length; i++) {
       const u = targets[i];
       if (skill) addEdit({ unitId: u.unitId, field: 'skill', value: skill } as any);
       if (livery) addEdit({ unitId: u.unitId, field: 'livery', value: livery } as any);
-      if (radioMhz && (u.category === 'plane' || u.category === 'helicopter')) {
-        addEdit({ unitId: u.unitId, field: 'radioFrequency', value: Math.round(parseFloat(radioMhz) * 1e6) } as any);
+      if (radioValid && (u.category === 'plane' || u.category === 'helicopter')) {
+        addEdit({ unitId: u.unitId, field: 'radioFrequency', value: radioHz } as any);
       }
-      if (tailNums.length > 0) {
+      // tailNums can be shorter than targets if the range had too few
+      // octal-valid numbers — guard so we never write the string "undefined".
+      if (tailNums.length > 0 && tailNums[i] != null) {
         addEdit({ unitId: u.unitId, field: 'onboard_num', value: String(tailNums[i]) } as any);
       }
     }
 
-    setResult(`Applied to ${targets.length} unit${targets.length !== 1 ? 's' : ''}`);
+    setResult(
+      `Applied to ${targets.length} unit${targets.length !== 1 ? 's' : ''}` +
+      (radioMhz && !radioValid ? ' (radio freq invalid — skipped)' : '') +
+      (tailMin && tailNums.length < targets.length
+        ? ` (only ${tailNums.length} valid tail number${tailNums.length !== 1 ? 's' : ''} in range)`
+        : ''),
+    );
   }, [country, checkedTypes, skill, radioMhz, livery, tailMin, tailMax, units, addEdit]);
 
   return (

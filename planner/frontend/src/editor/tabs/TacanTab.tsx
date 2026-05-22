@@ -192,6 +192,7 @@ export function TacanTab() {
   const handleApply = useCallback(() => {
     if (overrides.size === 0) { setResult('No changes to apply'); return; }
     let count = 0;
+    let skipped = 0;
     for (const [groupId] of overrides) {
       const row = getRow(groupId);
       const group = groups.find((g) => g.groupId === groupId);
@@ -199,13 +200,19 @@ export function TacanTab() {
       const unitId = group.units[0]?.unitId;
       if (!unitId) continue;
 
+      // A TACAN channel must be an integer 1-126. A blank/0/NaN value is a
+      // dead beacon, so skip it (and report) rather than silently writing an
+      // inert channel the planner believes they set. (Pre-beta audit P2.)
+      const ch = Number(row.channel);
+      if (!Number.isInteger(ch) || ch < 1 || ch > 126) { skipped++; continue; }
+
       // Apply TACAN
       addEdit({
         unitId,
         groupId,
         field: 'tacan',
         value: {
-          channel: row.channel,
+          channel: ch,
           band: row.band,
           callsign: row.callsign,
         },
@@ -223,7 +230,10 @@ export function TacanTab() {
 
       count++;
     }
-    setResult(`Applied TACAN${carriers.length > 0 ? ' + ICLS' : ''} to ${count} group${count !== 1 ? 's' : ''}`);
+    setResult(
+      `Applied TACAN${carriers.length > 0 ? ' + ICLS' : ''} to ${count} group${count !== 1 ? 's' : ''}` +
+      (skipped > 0 ? ` — skipped ${skipped} with no valid channel (1-126)` : ''),
+    );
   }, [overrides, tacanGroups, groups, addEdit]);
 
   const tankers = tacanGroups.filter((r) => r.role === 'tanker');

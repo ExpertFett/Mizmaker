@@ -466,13 +466,18 @@ export function CarrierSetupPanel() {
         const carrierUnitId = grp?.units[0]?.unitId;
         if (!carrierUnitId) continue;
 
-        // TACAN — every carrier has one. Always dispatch.
-        addEdit({
-          unitId: carrierUnitId,
-          groupId: c.groupId,
-          field: 'tacan',
-          value: { channel: c.tacanCh, band: c.tacanBand, callsign: c.tacanCallsign },
-        } as never);
+        // TACAN — every carrier has one. Skip when the channel was cleared
+        // to NaN/0/out-of-range so we never queue a dead or garbage beacon
+        // to the carrier. (Pre-beta audit P2.)
+        const tch = Number(c.tacanCh);
+        if (Number.isInteger(tch) && tch >= 1 && tch <= 126) {
+          addEdit({
+            unitId: carrierUnitId,
+            groupId: c.groupId,
+            field: 'tacan',
+            value: { channel: tch, band: c.tacanBand, callsign: c.tacanCallsign },
+          } as never);
+        }
 
         // ICLS — only when the carrier supports it AND we have a
         // non-zero channel. Dispatching with 0 would clobber the
@@ -919,7 +924,7 @@ function NumField({ label, value, onChange, min, max }: {
         value={value}
         min={min}
         max={max}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) onChange(v); }}
         style={{ ...inputStyle, width: 80 }}
       />
     </div>
