@@ -72,25 +72,6 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
     [handleFile],
   );
 
-  const handleStandaloneDtc = async () => {
-    try {
-      const res = await fetch('/api/dtc/export-standalone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dtcName: 'Standalone' }),
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Standalone.dtc';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error('DTC export failed:', e);
-    }
-  };
-
   return (
     <div
       onDrop={onDrop}
@@ -160,13 +141,6 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           />
           {loading && <p style={{ color: '#4a8fd4', marginTop: 12 }}>Parsing mission...</p>}
           {error && <p style={{ color: '#d95050', marginTop: 12 }}>{error}</p>}
-        </div>
-
-        {/* Standalone tools */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 24, justifyContent: 'center' }}>
-          <button onClick={handleStandaloneDtc} style={toolBtnStyle}>
-            F/A-18C DTC Generator
-          </button>
         </div>
 
         {/* AI Connection card — explains what BYOK is, why you might
@@ -310,17 +284,6 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
     </div>
   );
 }
-
-const toolBtnStyle: React.CSSProperties = {
-  background: '#2a2a2a',
-  border: '1px solid #4a4a4a',
-  borderRadius: 6,
-  color: '#e0e0e0',
-  cursor: 'pointer',
-  fontSize: 14,
-  fontWeight: 500,
-  padding: '10px 20px',
-};
 
 // Tile within the AI explanation card. Color-coded left border for the
 // three categories (free / paid / privacy) so the card scans visually
