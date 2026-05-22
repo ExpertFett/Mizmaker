@@ -35,6 +35,10 @@ DISCORD_AUTHORIZE = "https://discord.com/api/oauth2/authorize"
 DISCORD_TOKEN = "https://discord.com/api/oauth2/token"
 DISCORD_USER = "https://discord.com/api/users/@me"
 
+# Discord's API sits behind Cloudflare, which 403s requests with the default
+# urllib User-Agent ("Python-urllib/3.x"). A descriptive UA is required.
+_USER_AGENT = "DCS-OPT/1.0 (+https://dcsopt.up.railway.app)"
+
 
 def _secret() -> str:
     # A stable per-deploy secret. The dev fallback is intentionally obvious so
@@ -104,7 +108,11 @@ def _exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: 
     }).encode()
     req = urllib.request.Request(
         DISCORD_TOKEN, data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": _USER_AGENT,
+            "Accept": "application/json",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
@@ -126,7 +134,11 @@ def _exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: 
 
 def _fetch_user(access_token: str) -> dict:
     req = urllib.request.Request(
-        DISCORD_USER, headers={"Authorization": f"Bearer {access_token}"},
+        DISCORD_USER, headers={
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": _USER_AGENT,
+            "Accept": "application/json",
+        },
     )
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read().decode("utf-8"))
