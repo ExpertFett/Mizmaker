@@ -91,14 +91,17 @@ export async function callGemini(opts: GeminiCallOpts): Promise<GeminiResult> {
     body.systemInstruction = { parts: [{ text: system }] };
   }
 
-  // Auth: Gemini takes the API key as a query parameter, not a header.
-  const url = `${API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Auth via the x-goog-api-key header rather than a ?key= query param, so
+  // the key never lands in the request URL (which is the most-logged surface
+  // in a browser — DevTools, history, any future RUM/error reporting). The
+  // key still goes only browser → Google; Railway never sees it.
+  const url = `${API_BASE}/${encodeURIComponent(model)}:generateContent`;
 
   let res: Response;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -108,8 +111,19 @@ export async function callGemini(opts: GeminiCallOpts): Promise<GeminiResult> {
   if (!res.ok) {
     let errBody: unknown = null;
     try { errBody = await res.json(); } catch { /* not JSON */ }
-    const errMsg = (errBody as { error?: { message?: string } })?.error?.message
-      || `Gemini API returned ${res.status}`;
+    const apiMsg = (errBody as { error?: { message?: string } })?.error?.message;
+    // Friendlier messages for the statuses BYOK users actually hit on the
+    // free tier, while still carrying the status + raw body on the error.
+    let errMsg: string;
+    if ((res.status === 400 && /api key not valid/i.test(apiMsg || '')) || res.status === 401 || res.status === 403) {
+      errMsg = 'Gemini rejected the API key (invalid or lacking access). Re-check it in AI Settings.';
+    } else if (res.status === 429) {
+      errMsg = 'Gemini rate limit / daily free-tier quota reached. Wait a bit, or switch model/provider in AI Settings.';
+    } else if (res.status >= 500) {
+      errMsg = `Gemini service error (${res.status}) — try again shortly.`;
+    } else {
+      errMsg = apiMsg || `Gemini API returned ${res.status}`;
+    }
     throw new GeminiError(res.status, errMsg, errBody);
   }
 

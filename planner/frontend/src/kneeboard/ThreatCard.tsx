@@ -104,7 +104,7 @@ function lookupSam(type: string): SamInfo | null {
 const CAT_COLORS: Record<string, string> = {
   strategic: '#f85149',
   medium:    '#d29922',
-  short:     '#d29922',
+  short:     '#e8833a',
   shorad:    '#3fb950',
   manpad:    '#3fb950',
   aaa:       '#8fa8c0',
@@ -329,7 +329,7 @@ export function ThreatCard({
         {[
           { label: 'STRAT', color: '#f85149' },
           { label: 'MED', color: '#d29922' },
-          { label: 'SHORT', color: '#d29922' },
+          { label: 'SHORT', color: '#e8833a' },
           { label: 'SHORAD', color: '#3fb950' },
           { label: 'AAA', color: '#8fa8c0' },
         ].map((l) => (
