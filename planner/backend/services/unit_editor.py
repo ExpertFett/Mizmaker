@@ -238,6 +238,27 @@ def _enclosing_block_bounds(text: str, pos: int) -> tuple[int, int]:
     return block_start, j + 1
 
 
+def _brace_depth(text: str, start: int, pos: int) -> int:
+    """Brace depth at `pos`, counting unescaped braces from `start` (the index
+    of an opening '{', which itself raises depth to 1). String contents are
+    skipped. Used to tell a group-level field (depth 1) from one nested in a
+    unit's task params (depth > 1). (Pre-beta audit P1 #9.)"""
+    depth = 0
+    in_str = False
+    i = start
+    while i < pos:
+        ch = text[i]
+        if ch == '"' and (i == 0 or text[i - 1] != '\\'):
+            in_str = not in_str
+        elif not in_str:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+        i += 1
+    return depth
+
+
 def _find_group_block_start(text: str, group_id: int) -> int:
     """Find the position of ["groupId"] = N in an actual group definition.
 
@@ -945,40 +966,58 @@ def _replace_heading(text: str, unit_id: int, heading_rad: float) -> str:
 def _replace_late_activation(text: str, unit_id: int, enabled: bool) -> str:
     """Set lateActivation on the group that contains a given unit.
 
-    lateActivation is a group-level field. We locate the unit block and walk
-    out two levels (unit block -> enclosing ["units"] table -> group block)
-    via brace matching, then set/insert the flag within that group block.
-    This replaces a fixed 15000-char backward window that could miss the
-    group header on a dense group (big datalink / many units) or grab a
-    neighbouring group's field. (Pre-beta audit P1 #9.)
+    lateActivation is a group-level field. We anchor on the unit, then climb
+    enclosing brace blocks until we reach the real GROUP block — identified by
+    having a ["units"] table AND a depth-1 ["groupId"] (a task-action param
+    block can carry a groupId but never a units table). We then set an existing
+    flag or insert one right after the group's ["groupId"] line.
+
+    Insert position is load-bearing: _find_group_block_start disambiguates real
+    groups from trigger refs by the field that follows ["groupId"], so the flag
+    MUST land there. Climbing + the ["units"] check replaces a fixed 15000-char
+    backward window that could miss the header on a dense group or bleed into a
+    neighbouring group. (Pre-beta audit P1 #9.)
     """
     try:
-        ub_start, _ = _find_unit_block_bounds(text, unit_id)
+        unit_pos = _find_unit_block_start(text, unit_id)
     except ValueError:
         return text
     lua_val = "true" if enabled else "false"
+    gid_re = r'\["groupId"\]\s*=\s*\d+\s*,'
 
-    # unit block -> enclosing ["units"] = { ... } table -> enclosing group block
-    units_start, _ = _enclosing_block_bounds(text, ub_start - 1)
-    grp_start, grp_end = _enclosing_block_bounds(text, units_start - 1)
-    if grp_start >= grp_end:
+    # Climb to the enclosing group block.
+    grp_start = grp_end = None
+    pos = unit_pos
+    for _ in range(8):
+        bs, be = _enclosing_block_bounds(text, pos)
+        if bs >= be or bs <= 0:
+            break
+        blk = text[bs:be]
+        if '["units"]' in blk:
+            for gm in re.finditer(gid_re, blk):
+                if _brace_depth(text, bs, bs + gm.start()) == 1:
+                    grp_start, grp_end = bs, be
+                    break
+        if grp_start is not None:
+            break
+        pos = bs - 1  # climb to the parent block
+    if grp_start is None:
         return text
     region = text[grp_start:grp_end]
 
-    # Existing group-level lateActivation? (units never carry this field, so a
-    # single search within the group block is safely scoped.)
+    # Existing group-level lateActivation? (units never carry this field)
     m = re.search(r'(\["lateActivation"\]\s*=\s*)(true|false)', region)
     if m:
         abs_start = grp_start + m.start(2)
         abs_end = grp_start + m.end(2)
         return text[:abs_start] + lua_val + text[abs_end:]
 
-    # Otherwise insert right after the group block's opening brace. We avoid
-    # anchoring on ["groupId"] because a task-action param inside the units'
-    # routes can also carry ["groupId"] = N; inserting at the block head is
-    # unambiguously group-level.
-    insert_pos = grp_start + 1
-    return text[:insert_pos] + f'\n\t\t\t\t["lateActivation"] = {lua_val},' + text[insert_pos:]
+    # Insert right after the group-level ["groupId"] (depth-1 within the block).
+    for gm in re.finditer(gid_re, region):
+        if _brace_depth(text, grp_start, grp_start + gm.start()) == 1:
+            insert_pos = grp_start + gm.end()
+            return text[:insert_pos] + f'\n\t\t\t\t["lateActivation"] = {lua_val},' + text[insert_pos:]
+    return text
 
 
 def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
