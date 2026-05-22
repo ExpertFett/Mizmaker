@@ -418,6 +418,28 @@ class TestPaletteDetection:
         assert t0 is not None and t2 is not None
         assert t2 > t0 + Inches(1.0)  # shifted down by ~the margin
 
+    def test_template_margin_shrinks_rows_per_page(self):
+        """A bigger top-margin must reduce flights/threats per page so tables
+        keep a bottom margin instead of overflowing — i.e. more pages."""
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief()
+        brief["flights"] = [
+            {"callsign": f"F{i}", "aircraft": "FA-18C", "count": 4, "role": "cas",
+             "frequency": "305.000", "tacan": "", "home_plate": "X"} for i in range(20)
+        ]
+        tpl = _make_base_template(1)
+
+        def friendly_pages(margin):
+            prs = Presentation(io.BytesIO(render_wing_brief(
+                brief, base_template_b64=tpl, top_margin_in=margin)))
+            return sum(
+                1 for idx in range(len(prs.slides._sldIdLst))
+                if any(sh.has_text_frame and "FRIENDLY FORCES" in (sh.text_frame.text or "").upper()
+                       for sh in prs.slides[idx].shapes)
+            )
+
+        assert friendly_pages(2.5) > friendly_pages(0.3)
+
     def test_render_on_light_template_skips_black_rect(self):
         """On a light template the brief must NOT paint its dark rectangle —
         otherwise the master branding is hidden. Verify no full-slide dark

@@ -625,6 +625,19 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _top = 0.0
     _MY = Inches(_top)
 
+    # Paginated-table budgets (v0.9.83). When a template top-margin pushes
+    # content down, shrink the per-page row counts + table height so tables
+    # keep a ~0.5" bottom margin instead of running off the slide. Default
+    # deck (no margin) keeps its existing, tuned counts.
+    if _top > 0:
+        _tbl_h_in = max(2.6, 7.5 - (1.4 + _top) - 0.5)
+        _flights_per_slide = max(4, int((_tbl_h_in - 0.4) / 0.46))
+        _threats_per_slide = max(3, int((_tbl_h_in - 0.7) / 0.65))
+    else:
+        _tbl_h_in = 5.5
+        _flights_per_slide = 12
+        _threats_per_slide = 7
+
     # ---------- helpers ---------------------------------------------------
 
     def _apply_bg(slide):
@@ -929,7 +942,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         # plus the 1.7" header zone = 6.95" total — fits in 7.5" slide.
         # Was 9 rows × 0.55" = 4.95" but with text wrapping that exceeded
         # the row band and overlapped the next row's text.
-        ROWS_PER_SLIDE = 7
+        ROWS_PER_SLIDE = _threats_per_slide
         n = len(threats_list)
         total_pages = (n + ROWS_PER_SLIDE - 1) // ROWS_PER_SLIDE
         for page_idx in range(1, total_pages + 1):
@@ -951,7 +964,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # row count exceeds what fits — causing rows to fall off the slide.
     flights_list = brief.get("flights") or []
     if flights_list:
-        FLIGHTS_PER_SLIDE = 12
+        FLIGHTS_PER_SLIDE = _flights_per_slide
         n = len(flights_list)
         flight_pages = (n + FLIGHTS_PER_SLIDE - 1) // FLIGHTS_PER_SLIDE
         for page_idx in range(1, flight_pages + 1):
@@ -962,7 +975,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                      else f"FRIENDLY FORCES ({page_idx}/{flight_pages})")
             _slide_header(s, title)
             _table(
-                s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5),
+                s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(_tbl_h_in),
                 ["Callsign", "Aircraft", "#", "Role", "Freq (MHz)", "TACAN", "Home Plate"],
                 [[f.get("callsign", ""), f.get("aircraft", ""), str(f.get("count", "")),
                   f.get("role", ""), f.get("frequency", ""), f.get("tacan", ""),
@@ -997,7 +1010,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     _slide_header(s, "TIMELINE")
     if brief["timeline"]:
         _table(
-            s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.0),
+            s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(max(2.5, 5.0 - _top)),
             ["Phase", "Time (Z)", "Note"],
             [[r.get("phase", ""), r.get("time_zulu", ""), r.get("note", "")]
              for r in brief["timeline"]],
