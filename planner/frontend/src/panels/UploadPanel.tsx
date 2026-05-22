@@ -108,13 +108,13 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         paddingBottom: 40,
       }}
     >
-      <div style={{ maxWidth: 960, width: '100%', padding: '0 20px' }}>
+      <div style={{ maxWidth: 1040, width: '100%', padding: '0 20px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <img
             src="/logo.png"
             alt="DCS:OPT — Digital Combat Simulator Operational Planning Team"
-            style={{ width: 380, maxWidth: '80%', height: 'auto', display: 'block', margin: '0 auto 12px' }}
+            style={{ width: 480, maxWidth: '85%', height: 'auto', display: 'block', margin: '0 auto 12px' }}
           />
           <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks
