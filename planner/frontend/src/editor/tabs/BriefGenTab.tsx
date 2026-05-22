@@ -775,6 +775,14 @@ export function BriefGenTab() {
                 {aiFullNote}
               </div>
             )}
+            {error && error.startsWith('AI ') && (
+              <div style={{
+                marginTop: 6, padding: '6px 8px', fontSize: 11, color: '#d95050',
+                border: '1px solid #d95050', lineHeight: 1.4,
+              }}>
+                {error}
+              </div>
+            )}
             {!aiKey && (
               <div style={{ marginTop: 6, fontSize: 11, color: '#888888' }}>
                 Bring your own Anthropic or Gemini key (AI Settings) to
@@ -868,6 +876,14 @@ export function BriefGenTab() {
                 fontFamily: "'B612 Mono', monospace",
               }}>
                 {aiNote}
+              </div>
+            )}
+            {error && error.startsWith('AI ') && (
+              <div style={{
+                marginTop: 6, padding: '6px 8px', fontSize: 11, color: '#d95050',
+                border: '1px solid #d95050', lineHeight: 1.4,
+              }}>
+                {error}
               </div>
             )}
             {!aiKey && (
