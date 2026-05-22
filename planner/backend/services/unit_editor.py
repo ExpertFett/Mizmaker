@@ -186,6 +186,58 @@ def _find_unit_block_bounds(text: str, unit_id: int) -> tuple[int, int]:
     return block_start, block_end
 
 
+def _enclosing_block_bounds(text: str, pos: int) -> tuple[int, int]:
+    """Return (start, end) of the innermost { ... } that directly encloses
+    `pos`: start is the index of the opening '{', end is just past the
+    matching '}'. String contents are skipped so braces/quotes inside Lua
+    strings can't throw off the depth count. Returns (pos, pos) if no
+    enclosing block is found.
+
+    Used to brace-bound edits to a task-action block (ActivateBeacon /
+    ActivateICLS) or a group block, instead of a fixed +/-N-char window that
+    silently partial-edits on large param blocks. (Pre-beta audit P1 #9.)
+    """
+    # Walk backward to the enclosing opening brace, skipping string contents.
+    depth = 0
+    i = pos - 1
+    while i >= 0:
+        ch = text[i]
+        if ch == '"':
+            i -= 1
+            while i >= 0 and text[i] != '"':
+                if text[i] == '\\' and i > 0:
+                    i -= 1
+                i -= 1
+        elif ch == '}':
+            depth += 1
+        elif ch == '{':
+            if depth == 0:
+                break
+            depth -= 1
+        i -= 1
+    if i < 0:
+        return pos, pos
+    block_start = i
+
+    # Walk forward to the matching closing brace.
+    depth = 0
+    j = block_start
+    in_string = False
+    while j < len(text):
+        ch = text[j]
+        if ch == '"' and (j == 0 or text[j - 1] != '\\'):
+            in_string = not in_string
+        elif not in_string:
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+        j += 1
+    return block_start, j + 1
+
+
 def _find_group_block_start(text: str, group_id: int) -> int:
     """Find the position of ["groupId"] = N in an actual group definition.
 
@@ -893,37 +945,40 @@ def _replace_heading(text: str, unit_id: int, heading_rad: float) -> str:
 def _replace_late_activation(text: str, unit_id: int, enabled: bool) -> str:
     """Set lateActivation on the group that contains a given unit.
 
-    lateActivation is a group-level field in DCS Lua.  We locate the unit,
-    then search backward to find the enclosing group block and set the flag.
+    lateActivation is a group-level field. We locate the unit block and walk
+    out two levels (unit block -> enclosing ["units"] table -> group block)
+    via brace matching, then set/insert the flag within that group block.
+    This replaces a fixed 15000-char backward window that could miss the
+    group header on a dense group (big datalink / many units) or grab a
+    neighbouring group's field. (Pre-beta audit P1 #9.)
     """
-    unit_pos = _find_unit_block_start(text, unit_id)
+    try:
+        ub_start, _ = _find_unit_block_bounds(text, unit_id)
+    except ValueError:
+        return text
     lua_val = "true" if enabled else "false"
 
-    # Search backward from unit position for the group-level region
-    search_start = max(0, unit_pos - 15000)
-    region = text[search_start:unit_pos]
+    # unit block -> enclosing ["units"] = { ... } table -> enclosing group block
+    units_start, _ = _enclosing_block_bounds(text, ub_start - 1)
+    grp_start, grp_end = _enclosing_block_bounds(text, units_start - 1)
+    if grp_start >= grp_end:
+        return text
+    region = text[grp_start:grp_end]
 
-    # Look for existing lateActivation in the group block above the unit
-    pattern = r'(\["lateActivation"\]\s*=\s*)(true|false)'
-    m = None
-    for m in re.finditer(pattern, region):
-        pass  # get the last match (closest to unit)
-
+    # Existing group-level lateActivation? (units never carry this field, so a
+    # single search within the group block is safely scoped.)
+    m = re.search(r'(\["lateActivation"\]\s*=\s*)(true|false)', region)
     if m:
-        abs_start = search_start + m.start(2)
-        abs_end = search_start + m.end(2)
-        text = text[:abs_start] + lua_val + text[abs_end:]
-    else:
-        # No lateActivation field exists — insert one after groupId line
-        gid_pattern = r'\["groupId"\]\s*=\s*\d+\s*,'
-        gm = None
-        for gm in re.finditer(gid_pattern, region):
-            pass
-        if gm:
-            insert_pos = search_start + gm.end()
-            text = text[:insert_pos] + f'\n\t\t\t\t["lateActivation"] = {lua_val},' + text[insert_pos:]
+        abs_start = grp_start + m.start(2)
+        abs_end = grp_start + m.end(2)
+        return text[:abs_start] + lua_val + text[abs_end:]
 
-    return text
+    # Otherwise insert right after the group block's opening brace. We avoid
+    # anchoring on ["groupId"] because a task-action param inside the units'
+    # routes can also carry ["groupId"] = N; inserting at the block head is
+    # unambiguously group-level.
+    insert_pos = grp_start + 1
+    return text[:insert_pos] + f'\n\t\t\t\t["lateActivation"] = {lua_val},' + text[insert_pos:]
 
 
 def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
@@ -933,20 +988,25 @@ def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
     Finds the ActivateBeacon that has a matching unitId param, then updates
     its channel, modeChannel (band), and callsign.
     """
-    # Find ALL ActivateBeacon occurrences and pick the one with matching unitId
+    # Find ALL ActivateBeacon occurrences and pick the one whose enclosing
+    # action block contains our unitId. Brace-bounding the action block
+    # (instead of a fixed +/-1000-char window) means a long callsign or extra
+    # params can't push the unitId out of range or leave ["callsign"] beyond
+    # the window unedited (silent partial edit). (Pre-beta audit P1 #9.)
     beacon_pattern = r'\["id"\]\s*=\s*"ActivateBeacon"'
-    beacon_pos = None
+    block = None  # (start, end) of the matched action block
     for m in re.finditer(beacon_pattern, text):
-        # Check if this beacon's params contain our unitId
-        region = text[m.start():m.start() + 1000]
-        uid_match = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', region)
-        if uid_match:
-            beacon_pos = m.start()
+        bs, be = _enclosing_block_bounds(text, m.start())
+        if re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', text[bs:be]):
+            block = (bs, be)
             break
 
-    if beacon_pos is None:
-        # Fallback: find the closest ActivateBeacon before the unit position
-        unit_pos = _find_unit_block_start(text, unit_id)
+    if block is None:
+        # Fallback: closest ActivateBeacon before the unit position.
+        try:
+            unit_pos = _find_unit_block_start(text, unit_id)
+        except ValueError:
+            return text
         best = None
         for m in re.finditer(beacon_pattern, text):
             if m.start() < unit_pos:
@@ -955,36 +1015,29 @@ def _replace_tacan_beacon(text: str, unit_id: int, channel: int, band: str,
                 break
         if best is None:
             return text
-        beacon_pos = best
+        block = _enclosing_block_bounds(text, best)
 
-    beacon_region = text[beacon_pos:beacon_pos + 1000]
+    bs, be = block
 
-    # Replace channel
-    ch_match = re.search(r'(\["channel"\]\s*=\s*)(\d+)', beacon_region)
-    if ch_match:
-        abs_s = beacon_pos + ch_match.start(2)
-        abs_e = beacon_pos + ch_match.end(2)
-        text = text[:abs_s] + str(channel) + text[abs_e:]
-
-    # Re-read region after text shift
-    beacon_region = text[beacon_pos:beacon_pos + 1000]
+    # Replace channel within the action block (recompute bounds after each
+    # edit since the text length shifts; bs is stable — it's the opening '{'
+    # before any field we touch).
+    m = re.search(r'(\["channel"\]\s*=\s*)(\d+)', text[bs:be])
+    if m:
+        text = text[:bs + m.start(2)] + str(channel) + text[bs + m.end(2):]
+        bs, be = _enclosing_block_bounds(text, bs + 1)
 
     # Replace modeChannel (band: "X" or "Y")
     mode_val = '"Y"' if band.upper() == 'Y' else '"X"'
-    mc_match = re.search(r'(\["modeChannel"\]\s*=\s*)("[^"]*"|\d+)', beacon_region)
-    if mc_match:
-        abs_s = beacon_pos + mc_match.start(2)
-        abs_e = beacon_pos + mc_match.end(2)
-        text = text[:abs_s] + mode_val + text[abs_e:]
-
-    beacon_region = text[beacon_pos:beacon_pos + 1000]
+    m = re.search(r'(\["modeChannel"\]\s*=\s*)("[^"]*"|\d+)', text[bs:be])
+    if m:
+        text = text[:bs + m.start(2)] + mode_val + text[bs + m.end(2):]
+        bs, be = _enclosing_block_bounds(text, bs + 1)
 
     # Replace callsign
-    cs_match = re.search(r'(\["callsign"\]\s*=\s*")([^"]*)', beacon_region)
-    if cs_match:
-        abs_s = beacon_pos + cs_match.start(2)
-        abs_e = beacon_pos + cs_match.end(2)
-        text = text[:abs_s] + callsign + text[abs_e:]
+    m = re.search(r'(\["callsign"\]\s*=\s*")([^"]*)', text[bs:be])
+    if m:
+        text = text[:bs + m.start(2)] + callsign + text[bs + m.end(2):]
 
     return text
 
@@ -1003,15 +1056,16 @@ def _replace_icls(text: str, unit_id: int, channel: int) -> str:
     waypoint-attached ICLS task entirely on simple.miz.
     """
     icls_pattern = r'\["id"\]\s*=\s*"ActivateICLS"'
-    icls_pos = None
+    block = None  # (start, end) of the matched action block
     for m in re.finditer(icls_pattern, text):
-        region = text[m.start():m.start() + 500]
-        uid_match = re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', region)
-        if uid_match:
-            icls_pos = m.start()
+        # Brace-bound the action block instead of a fixed +/-500-char window
+        # so the unitId match isn't missed on larger ICLS params. (P1 #9.)
+        bs, be = _enclosing_block_bounds(text, m.start())
+        if re.search(rf'\["unitId"\]\s*=\s*{unit_id}\b', text[bs:be]):
+            block = (bs, be)
             break
 
-    if icls_pos is None:
+    if block is None:
         try:
             unit_pos = _find_unit_block_start(text, unit_id)
         except ValueError:
@@ -1025,14 +1079,12 @@ def _replace_icls(text: str, unit_id: int, channel: int) -> str:
                 best = m.start()
         if best is None:
             return text
-        icls_pos = best
+        block = _enclosing_block_bounds(text, best)
 
-    icls_region = text[icls_pos:icls_pos + 500]
-    ch_match = re.search(r'(\["channel"\]\s*=\s*)(\d+)', icls_region)
-    if ch_match:
-        abs_s = icls_pos + ch_match.start(2)
-        abs_e = icls_pos + ch_match.end(2)
-        text = text[:abs_s] + str(channel) + text[abs_e:]
+    bs, be = block
+    m = re.search(r'(\["channel"\]\s*=\s*)(\d+)', text[bs:be])
+    if m:
+        text = text[:bs + m.start(2)] + str(channel) + text[bs + m.end(2):]
 
     return text
 

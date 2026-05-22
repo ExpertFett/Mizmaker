@@ -1257,3 +1257,130 @@ class TestRepackCreatesMissingFiles:
         out = repack_miz(buf.getvalue(), mission, new_dictionary_text=new_dict)
         with _zf.ZipFile(_io.BytesIO(out)) as zf:
             assert zf.read("l10n/DEFAULT/dictionary").decode("utf-8") == new_dict
+
+
+# ---------------------------------------------------------------------------
+# Beacon / late-activation brace-bounding (pre-beta audit P1 #9)
+# ---------------------------------------------------------------------------
+
+def _two_group_mission() -> str:
+    """Two groups: group 100 already has lateActivation=false, group 200 has
+    none. Each has one unit (type precedes unitId so the locator anchors)."""
+    return (
+        '["groups"] = {\n'
+        '    [1] = {\n'
+        '        ["lateActivation"] = false,\n'
+        '        ["groupId"] = 100,\n'
+        '        ["units"] = {\n'
+        '            [1] = {\n'
+        '                ["type"] = "FA-18C_hornet",\n'
+        '                ["unitId"] = 11,\n'
+        '            },\n'
+        '        },\n'
+        '        ["name"] = "Alpha",\n'
+        '    },\n'
+        '    [2] = {\n'
+        '        ["groupId"] = 200,\n'
+        '        ["units"] = {\n'
+        '            [1] = {\n'
+        '                ["type"] = "FA-18C_hornet",\n'
+        '                ["unitId"] = 22,\n'
+        '            },\n'
+        '        },\n'
+        '        ["name"] = "Bravo",\n'
+        '    },\n'
+        '}\n'
+    )
+
+
+class TestBeaconWindowRobustness:
+    """ActivateBeacon / ActivateICLS edits brace-bound the enclosing action
+    block instead of a fixed +/-N-char window, so a large param block (long
+    callsign / extra fields) can't push the unitId out of match range or leave
+    ["callsign"] unedited (a silent partial edit). (Pre-beta audit P1 #9.)"""
+
+    def test_tacan_edits_all_fields_past_old_window_and_targets_right_beacon(self):
+        from services.unit_editor import _replace_tacan_beacon
+        filler = 'x' * 1100  # pushes ["callsign"] >1000 chars past ["id"]
+        mission = (
+            '["tasks"] = {\n'
+            '    [1] = {\n'
+            '        ["id"] = "ActivateBeacon",\n'
+            '        ["params"] = {\n'
+            '            ["type"] = 4,\n'
+            '            ["unitId"] = 99,\n'
+            '            ["modeChannel"] = "X",\n'
+            '            ["channel"] = 38,\n'
+            f'            ["comment"] = "{filler}",\n'
+            '            ["callsign"] = "OLDCS",\n'
+            '        },\n'
+            '    },\n'
+            '    [2] = {\n'
+            '        ["id"] = "ActivateBeacon",\n'
+            '        ["params"] = {\n'
+            '            ["unitId"] = 7,\n'
+            '            ["modeChannel"] = "Y",\n'
+            '            ["channel"] = 50,\n'
+            '            ["callsign"] = "DECOY",\n'
+            '        },\n'
+            '    },\n'
+            '}\n'
+        )
+        out = _replace_tacan_beacon(mission, 99, 100, 'Y', 'NEWCS')
+        # Target beacon fully updated — including the callsign past the old window.
+        assert '["channel"] = 100,' in out
+        assert '"NEWCS"' in out and '"OLDCS"' not in out
+        assert '["modeChannel"] = "X"' not in out   # target X->Y (decoy was already Y)
+        # Decoy beacon (unitId 7) untouched.
+        assert '["channel"] = 50,' in out
+        assert '"DECOY"' in out
+        assert '["channel"] = 38,' not in out        # target's old channel replaced
+
+    def test_icls_targets_right_beacon_past_old_window(self):
+        from services.unit_editor import _replace_icls
+        filler = 'y' * 600  # pushes ["unitId"] >500 chars past ["id"]
+        mission = (
+            '["tasks"] = {\n'
+            '    [1] = {\n'
+            '        ["id"] = "ActivateICLS",\n'
+            '        ["params"] = {\n'
+            '            ["type"] = 131584,\n'
+            f'            ["comment"] = "{filler}",\n'
+            '            ["unitId"] = 42,\n'
+            '            ["channel"] = 1,\n'
+            '        },\n'
+            '    },\n'
+            '    [2] = {\n'
+            '        ["id"] = "ActivateICLS",\n'
+            '        ["params"] = {\n'
+            '            ["unitId"] = 8,\n'
+            '            ["channel"] = 9,\n'
+            '        },\n'
+            '    },\n'
+            '}\n'
+        )
+        out = _replace_icls(mission, 42, 11)
+        assert '["channel"] = 11,' in out    # target updated
+        assert '["channel"] = 9,' in out     # decoy untouched
+        assert '["channel"] = 1,' not in out  # target's old channel replaced
+
+
+class TestLateActivationGroupScoping:
+    """lateActivation is set within the unit's enclosing GROUP block (found by
+    walking unit -> ["units"] -> group via brace matching), not via a fixed
+    backward window that could grab a neighbouring group. (P1 #9.)"""
+
+    def test_sets_existing_flag_on_correct_group(self):
+        from services.unit_editor import _replace_late_activation
+        out = _replace_late_activation(_two_group_mission(), 11, True)
+        assert '["lateActivation"] = true' in out
+        assert '["lateActivation"] = false' not in out  # the only flag flipped
+        assert out.count('["lateActivation"]') == 1      # group 2 still has none
+
+    def test_inserts_flag_into_correct_group_when_absent(self):
+        from services.unit_editor import _replace_late_activation
+        out = _replace_late_activation(_two_group_mission(), 22, True)
+        assert out.count('["lateActivation"]') == 2       # group1 false + new group2 true
+        assert '["lateActivation"] = false' in out         # group 1 untouched
+        # The inserted flag sits inside group 2's block (after "[2] = {").
+        assert '["lateActivation"] = true' in out.split('[2] = {')[1]
