@@ -44,6 +44,10 @@ export function LandingPage({ authError }: LandingPageProps) {
 
   const errMsg =
     authError === 'unconfigured' ? 'Discord login isn’t set up yet — continue as guest for now.'
+    : authError === 'nocode' ? 'Discord login was cancelled or returned no code. Try again.'
+    : authError === 'state' ? 'Login security check failed (state cookie missing/expired). Make sure cookies aren’t blocked, then try again.'
+    : authError === 'token' ? 'Discord rejected the login (token exchange) — usually a bad Client Secret or a redirect URI that doesn’t match the Discord app. (auth_error=token)'
+    : authError === 'user' ? 'Couldn’t fetch your Discord profile after login. Try again.'
     : authError === 'failed' ? 'Discord login failed or was cancelled. Try again, or continue as guest.'
     : null;
 

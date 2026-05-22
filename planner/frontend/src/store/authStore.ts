@@ -16,18 +16,15 @@ export interface DiscordUser {
   avatar: string | null;
 }
 
-const GUEST_KEY = 'dcsopt.enteredAsGuest.v1';
-
-function loadGuest(): boolean {
-  try { return localStorage.getItem(GUEST_KEY) === '1'; } catch { return false; }
-}
-
 interface AuthState {
   /** Logged-in Discord user, or null (guest / not logged in). */
   user: DiscordUser | null;
   /** True once /api/auth/me has resolved — gates the landing-page decision. */
   checked: boolean;
-  /** True if the user clicked "Continue as guest" (persisted). */
+  /** True if the user clicked "Continue as guest" THIS session. Intentionally
+   *  NOT persisted — the landing page is the front door and should reappear on
+   *  a fresh load for anyone who isn't logged in. Logged-in users skip it via
+   *  the auth cookie. */
   enteredAsGuest: boolean;
   checkMe: () => Promise<void>;
   enterGuest: () => void;
@@ -37,7 +34,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   checked: false,
-  enteredAsGuest: loadGuest(),
+  enteredAsGuest: false,
 
   checkMe: async () => {
     try {
@@ -49,14 +46,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  enterGuest: () => {
-    try { localStorage.setItem(GUEST_KEY, '1'); } catch { /* ignore */ }
-    set({ enteredAsGuest: true });
-  },
+  enterGuest: () => set({ enteredAsGuest: true }),
 
   logout: async () => {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
-    try { localStorage.removeItem(GUEST_KEY); } catch { /* ignore */ }
     set({ user: null, enteredAsGuest: false });
   },
 }));

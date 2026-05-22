@@ -70,11 +70,19 @@ class TestAuthRoutes:
         assert "scope=identify" in loc
         assert "client_id=cid" in loc
 
-    def test_callback_bad_state_redirects_failed(self, client, monkeypatch):
+    def test_callback_bad_state_redirects_state(self, client, monkeypatch):
         monkeypatch.setenv("DISCORD_CLIENT_ID", "cid")
         monkeypatch.setenv("DISCORD_CLIENT_SECRET", "csecret")
         monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://x/cb")
-        # No matching state cookie → CSRF check fails.
+        # code+state present but no matching state cookie → CSRF check fails.
         r = client.get("/api/auth/discord/callback?code=abc&state=nope")
         assert r.status_code == 302
-        assert "auth_error=failed" in r.headers["Location"]
+        assert "auth_error=state" in r.headers["Location"]
+
+    def test_callback_missing_code_redirects_nocode(self, client, monkeypatch):
+        monkeypatch.setenv("DISCORD_CLIENT_ID", "cid")
+        monkeypatch.setenv("DISCORD_CLIENT_SECRET", "csecret")
+        monkeypatch.setenv("DISCORD_REDIRECT_URI", "https://x/cb")
+        r = client.get("/api/auth/discord/callback")
+        assert r.status_code == 302
+        assert "auth_error=nocode" in r.headers["Location"]

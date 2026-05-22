@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMissionStore } from './store/missionStore';
 import { useAuthStore } from './store/authStore';
 import { UploadPanel } from './panels/UploadPanel';
@@ -13,9 +13,10 @@ export default function App() {
   const enteredAsGuest = useAuthStore((s) => s.enteredAsGuest);
   const checkMe = useAuthStore((s) => s.checkMe);
 
-  // Capture the OAuth result param BEFORE the effect cleans the URL, so the
-  // landing page can surface a login error on this render.
-  const authError = new URLSearchParams(window.location.search).get('auth_error');
+  // Capture the OAuth result param ONCE (before the effect cleans the URL, and
+  // stable across the re-render that checkMe triggers) so the landing page can
+  // reliably surface a login error.
+  const [authError] = useState(() => new URLSearchParams(window.location.search).get('auth_error'));
 
   useEffect(() => {
     checkMe();

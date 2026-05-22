@@ -152,19 +152,26 @@ def register_auth_routes(app) -> None:
             return redirect("/?auth_error=unconfigured")
         code = request.args.get("code")
         state = request.args.get("state")
+        if not code or not state:
+            return redirect("/?auth_error=nocode")
         # CSRF: the state echoed back by Discord must match our signed cookie.
         cookie_state = read_auth_token(
             request.cookies.get(STATE_COOKIE, ""), max_age=STATE_MAX_AGE,
         )
-        if not code or not state or cookie_state != state:
-            return redirect("/?auth_error=failed")
+        if cookie_state != state:
+            return redirect("/?auth_error=state")
         try:
             access_token = _exchange_code(client_id, client_secret, redirect_uri, code)
+        except Exception:
+            # Almost always a bad/rotated DISCORD_CLIENT_SECRET, or a redirect_uri
+            # that doesn't match the one registered in the Discord app.
+            return redirect("/?auth_error=token")
+        try:
             user = _fetch_user(access_token)
         except Exception:
-            return redirect("/?auth_error=failed")
+            return redirect("/?auth_error=user")
         if not user or not user.get("id"):
-            return redirect("/?auth_error=failed")
+            return redirect("/?auth_error=user")
         resp = make_response(redirect("/?auth=ok"))
         resp.set_cookie(
             AUTH_COOKIE, make_auth_token(user),
