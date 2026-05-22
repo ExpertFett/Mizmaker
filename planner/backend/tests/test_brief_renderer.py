@@ -626,3 +626,33 @@ class TestFlightBriefSchedule:
             sh.text_frame.text for s in prs.slides for sh in s.shapes if sh.has_text_frame
         )
         assert "SCHEDULE" in joined and "TOT" in joined
+
+
+class TestScenarioFleshOut:
+    """The auto-built scenario synthesises Situation / Friendly Forces /
+    Adversary from the mission, with the .miz's own text leading."""
+
+    def test_synthesises_situation_friendly_adversary(self):
+        from services.brief_builder import _build_scenario
+        groups = [
+            {"category": "plane", "coalition": "blue", "task": "strike",
+             "units": [{"type": "FA-18C_hornet", "skill": "Player"}]},
+            {"category": "plane", "coalition": "red", "task": "CAP",
+             "units": [{"type": "Su-27"}, {"type": "Su-27"}]},
+        ]
+        threats = [{"name": "SA-11"}, {"name": "SA-11"}]
+        out = _build_scenario(
+            {"date": "2026-07-09", "start_time": 28800, "description": "Retake the field."},
+            {}, groups=groups, threats=threats, theater="Caucasus",
+        )
+        assert "SITUATION" in out and "FRIENDLY FORCES" in out and "ADVERSARY" in out
+        assert "Retake the field." in out   # mission's own text leads
+        assert "F/A-18C" in out             # friendly package
+        assert "Su-27" in out               # enemy air
+        assert "SA-11" in out               # surface threat
+
+    def test_empty_mission_still_produces_sections(self):
+        from services.brief_builder import _build_scenario
+        out = _build_scenario({}, {}, groups=[], threats=[], theater="Caucasus")
+        assert "ADVERSARY" in out
+        assert "no enemy aircraft detected" in out.lower()

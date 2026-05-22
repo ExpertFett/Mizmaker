@@ -457,29 +457,109 @@ def _build_theatre_overview(theater: str) -> str:
     return THEATRE_BLURBS.get(theater, DEFAULT_THEATRE_BLURB)
 
 
-def _build_scenario(overview: dict, dictionary: Dict[str, str]) -> str:
-    """Combine the mission description + tasks into a coherent scenario blurb.
+# One-line framing per mission type for the scenario's SITUATION lead.
+_MISSION_FRAME: Dict[str, str] = {
+    "strike":   "a coordinated strike against fixed/known targets.",
+    "cas":      "close air support for friendly ground forces in contact.",
+    "dca":      "defensive counter-air protecting friendly airspace and assets.",
+    "sead":     "suppression of enemy air defences to open the ingress corridor.",
+    "antiship": "an anti-shipping strike against enemy surface vessels.",
+    "recon":    "a reconnaissance / AFAC tasking over the area of interest.",
+    "tanker":   "aerial-refuelling support for the package.",
+    "mixed":    "a mixed-role package running multiple simultaneous taskings.",
+}
 
-    Resolves DictKey_* references against the parsed dictionary so the user
-    sees the real localised text. Unresolved DictKey literals (lookup
-    failure or empty value) are dropped — better to omit a section than
-    leak internal keys into the brief.
+
+def _build_scenario(
+    overview: dict,
+    dictionary: Dict[str, str],
+    groups: Optional[List[dict]] = None,
+    threats: Optional[List[dict]] = None,
+    theater: Optional[str] = None,
+) -> str:
+    """Build the scenario blurb. The mission's OWN text (description + blue/red
+    tasks, resolved from the dictionary) always leads; around it we synthesise
+    an operational picture from the parsed mission — SITUATION (where/when +
+    the kind of fight), FRIENDLY FORCES (package composition + tasking), and
+    ADVERSARY (surface + air at a glance) — so the slide reads like a real
+    brief even when the .miz description is thin. The user edits afterwards,
+    and the AI "Generate Full Brief" replaces this wholesale when used.
     """
+    from collections import Counter
+    groups = groups or []
+    threats = threats or []
+
     def _resolve(key: str) -> str:
         v = str(resolve_dict_key(overview.get(key) or "", dictionary)).strip()
         # Drop literal DictKey_... fall-through (means the lookup failed)
         return "" if v.startswith("DictKey_") else v
 
-    parts: List[str] = []
     desc = _resolve("description")
     blue_task = _resolve("descriptionBlueTask")
     red_task = _resolve("descriptionRedTask")
+
+    parts: List[str] = []
+
+    # --- SITUATION: where / when + the kind of fight ---
+    mtype = _detect_mission_type(groups)
+    when_bits = [b for b in (
+        theater or "",
+        overview.get("date") or "",
+        _format_zulu(overview.get("start_time") or 0),
+    ) if b]
+    sit_text = " — ".join(b for b in (", ".join(when_bits), _MISSION_FRAME.get(mtype, "")) if b)
+    if sit_text:
+        parts.append("SITUATION\n" + sit_text)
+
+    # The mission's own description leads the narrative when present.
     if desc:
         parts.append(desc)
-    if blue_task:
-        parts.append(f"BLUE: {blue_task}")
+
+    # --- FRIENDLY FORCES: package composition + tasking ---
+    blue_flights = [g for g in groups if _is_player_group(g) and g.get("coalition") == "blue"]
+    if blue_flights or blue_task:
+        ff_lines: List[str] = []
+        if blue_flights:
+            ac: Counter = Counter()
+            for g in blue_flights:
+                for u in (g.get("units") or []):
+                    ac[u.get("type") or "?"] += 1
+            comp = ", ".join(f"{n}× {_airframe_profile(t)['name']}" for t, n in ac.most_common())
+            roles = sorted({
+                (_infer_role_from_task(g.get("task", "")) or (g.get("task") or "").strip())
+                for g in blue_flights
+            } - {""})
+            line = f"Package: {len(blue_flights)} player flight(s) — {comp}."
+            if roles:
+                line += f"  Tasking: {', '.join(roles)}."
+            ff_lines.append(line)
+        if blue_task:
+            ff_lines.append(blue_task)
+        parts.append("FRIENDLY FORCES\n" + "\n".join(ff_lines))
+
+    # --- ADVERSARY: surface + air at a glance ---
+    adv_lines: List[str] = []
+    if threats:
+        snames: Counter = Counter((t.get("name") or "?") for t in threats)
+        top = ", ".join(f"{n}× {nm}" for nm, n in snames.most_common(4))
+        extra = "" if len(snames) <= 4 else f" (+{len(snames) - 4} more)"
+        adv_lines.append(f"Surface: {top}{extra}.")
+    else:
+        adv_lines.append("Surface: no SAM/AAA threats detected.")
+    air: Counter = Counter()
+    for g in groups:
+        if g.get("category") in ("plane", "helicopter") and g.get("coalition") != "blue":
+            for u in (g.get("units") or []):
+                air[u.get("type") or "?"] += 1
+    if air:
+        adv_lines.append("Air: " + ", ".join(
+            f"{n}× {_airframe_profile(t)['name']}" for t, n in air.most_common(5)) + ".")
+    else:
+        adv_lines.append("Air: no enemy aircraft detected.")
     if red_task:
-        parts.append(f"RED: {red_task}")
+        adv_lines.append(red_task)
+    parts.append("ADVERSARY\n" + "\n".join(adv_lines))
+
     if not parts:
         return ("No scenario description in the mission file. Edit this "
                 "section to describe the operational situation, friendly "
@@ -1627,7 +1707,7 @@ def build_wing_brief(
         coalition="blue",
 
         theatre_overview=_build_theatre_overview(theater),
-        scenario=_build_scenario(overview, dictionary),
+        scenario=_build_scenario(overview, dictionary, groups=groups, threats=threats, theater=theater),
         commanders_intent=_build_commanders_intent_placeholder(groups),
         mission_flow=_build_mission_flow_placeholder(),
         notes="",
