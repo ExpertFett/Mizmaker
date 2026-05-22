@@ -122,6 +122,10 @@ export function BriefGenTab() {
   // base64, no data: prefix. Threaded into preview/render calls.
   const [templateB64, setTemplateB64] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState<string | null>(null);
+  // Content top-margin (inches) — pushes brief content below the
+  // template's branded header band so section titles don't collide with
+  // logos. Only relevant when a template is attached. (v0.9.81)
+  const [templateTopMargin, setTemplateTopMargin] = useState(1.2);
 
   const probeCapabilities = () => {
     fetch('/api/brief/capabilities')
@@ -171,7 +175,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/preview-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, dpi: 100, template: templateB64 }),
+        body: JSON.stringify({ brief, dpi: 100, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Preview failed' }));
@@ -200,7 +204,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, format, template: templateB64 }),
+        body: JSON.stringify({ brief, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -251,7 +255,7 @@ export function BriefGenTab() {
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat, template: templateB64 }),
+        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -526,6 +530,20 @@ export function BriefGenTab() {
                   — built on your template: cover + branding + theme. Text color
                   auto-adapts to your background.
                 </span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#aaaaaa' }}
+                       title="How far down content starts, in inches — raise it until section titles clear your template's header band / logos.">
+                  Content top
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="4"
+                    value={templateTopMargin}
+                    onChange={(e) => setTemplateTopMargin(Math.max(0, Math.min(4, Number(e.target.value) || 0)))}
+                    style={{ ...inputStyle, width: 56, fontSize: 12, padding: '4px 6px' }}
+                  />
+                  in
+                </label>
                 <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
                   Replace
                 </label>

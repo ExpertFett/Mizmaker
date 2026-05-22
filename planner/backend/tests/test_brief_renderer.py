@@ -369,6 +369,22 @@ class TestPaletteDetection:
         _set_master_bg(dk, '<a:solidFill><a:schemeClr val="dk1"/></a:solidFill>')
         assert _master_bg_is_dark(dk) is True
 
+    def test_top_margin_shifts_content_down(self):
+        """A larger content top-margin pushes the section header (and all
+        content) further down so it clears the template's header band."""
+        from services.brief_renderer import render_wing_brief
+        tpl = _make_base_template(1)
+
+        def topmost_text(margin):
+            prs = Presentation(io.BytesIO(render_wing_brief(
+                _minimal_wing_brief(), base_template_b64=tpl, top_margin_in=margin,
+            )))
+            slide = prs.slides[1]  # first content slide (template cover at 0)
+            tops = [sh.top for sh in slide.shapes if sh.has_text_frame and sh.top is not None]
+            return min(tops)
+
+        assert topmost_text(2.0) > topmost_text(0.0)
+
     def test_render_on_light_template_skips_black_rect(self):
         """On a light template the brief must NOT paint its dark rectangle —
         otherwise the master branding is hidden. Verify no full-slide dark

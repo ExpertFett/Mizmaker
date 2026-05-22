@@ -525,7 +525,8 @@ def _master_bg_is_dark(prs) -> bool:
         return False
 
 
-def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None) -> bytes:
+def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None,
+                      top_margin_in: Optional[float] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
 
     base_template_b64: optional base64 of a squadron .pptx. When given,
@@ -614,6 +615,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         TABLE_HEADER_BG = RGBColor(0xD8, 0xD8, 0xD8)
         CELL_BG = RGBColor(0xF3, 0xF3, 0xF3)
 
+    # Content top inset (v0.9.81) — only when building on a template, so
+    # section headers + content drop below the template's branded header
+    # band / logos instead of colliding with them. Caller-tunable (clamped
+    # 0-4"); default 1.2".
+    if use_template:
+        _top = 1.2 if top_margin_in is None else max(0.0, min(float(top_margin_in), 4.0))
+    else:
+        _top = 0.0
+    _MY = Inches(_top)
+
     # ---------- helpers ---------------------------------------------------
 
     def _apply_bg(slide):
@@ -629,7 +640,9 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
 
     def _txt(slide, x, y, w, h, text, *, size=18, bold=False, color=LIGHT,
              align_center=False, italic=False):
-        tx = slide.shapes.add_textbox(x, y, w, h)
+        # Shift content down by the template inset; trim height so a tall
+        # body box doesn't run off the bottom edge.
+        tx = slide.shapes.add_textbox(x, y + _MY, w, max(h - _MY, Inches(0.4)))
         tf = tx.text_frame
         tf.word_wrap = True
         # Multi-paragraph support — split body text on \n into separate paragraphs.
@@ -652,7 +665,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _txt(slide, Inches(0.6), Inches(0.4), Inches(12), Inches(0.6),
              label, size=24, bold=True, color=ACCENT)
         # Thin underline
-        line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.05),
+        line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.05) + _MY,
                                       Inches(12.1), Inches(0.04))
         line.fill.solid(); line.fill.fore_color.rgb = ACCENT
         line.line.fill.background()
@@ -660,7 +673,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     def _table(slide, x, y, w, h, headers, rows, col_widths=None):
         ncols = len(headers)
         nrows = len(rows) + 1  # +1 for header row
-        shape = slide.shapes.add_table(nrows, ncols, x, y, w, h)
+        shape = slide.shapes.add_table(nrows, ncols, x, y + _MY, w, h)
         table = shape.table
         # Column widths
         if col_widths:
