@@ -33,6 +33,7 @@ interface TimelineRow { phase: string; time_zulu: string; note: string }
 interface FlightRow { callsign: string; aircraft: string; count: number; role: string;
                       frequency: string; tacan: string; home_plate: string }
 interface ThreatRow { name: string; type: string; coalition: string; range_km: number; location: string }
+interface AirThreatRow { composition: string; role: string; location: string; altitude: string; coalition?: string }
 interface CommsRow  { label: string; value: string }
 
 interface WingBrief {
@@ -50,6 +51,7 @@ interface WingBrief {
   notes: string;
   timeline: TimelineRow[];
   threats: ThreatRow[];
+  air_threats: AirThreatRow[];
   flights: FlightRow[];
   comms: CommsRow[];
 }
@@ -378,7 +380,7 @@ export function BriefGenTab() {
   function set<K extends keyof WingBrief>(key: K, value: WingBrief[K]) {
     setBrief((b) => (b ? { ...b, [key]: value } : null));
   }
-  function setRow<F extends 'timeline' | 'threats' | 'flights' | 'comms'>(
+  function setRow<F extends 'timeline' | 'threats' | 'air_threats' | 'flights' | 'comms'>(
     field: F, idx: number, row: WingBrief[F][number],
   ) {
     setBrief((b) => {
@@ -388,10 +390,10 @@ export function BriefGenTab() {
       return { ...b, [field]: arr };
     });
   }
-  function addRow<F extends 'timeline' | 'threats' | 'flights' | 'comms'>(field: F, blank: WingBrief[F][number]) {
+  function addRow<F extends 'timeline' | 'threats' | 'air_threats' | 'flights' | 'comms'>(field: F, blank: WingBrief[F][number]) {
     setBrief((b) => (b ? { ...b, [field]: [...b[field], blank] as WingBrief[F] } : null));
   }
-  function removeRow<F extends 'timeline' | 'threats' | 'flights' | 'comms'>(field: F, idx: number) {
+  function removeRow<F extends 'timeline' | 'threats' | 'air_threats' | 'flights' | 'comms'>(field: F, idx: number) {
     setBrief((b) => (b ? { ...b, [field]: b[field].filter((_, i) => i !== idx) as WingBrief[F] } : null));
   }
 
@@ -904,6 +906,38 @@ export function BriefGenTab() {
                           onChange={(e) => setRow('threats', i, { ...t, location: e.target.value })} /></td>
                       <td style={td}><button style={btnIcon}
                           onClick={() => removeRow('threats', i)} title="Delete row">×</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+
+          <Card title="Air Threats" right={
+            <button onClick={() => addRow('air_threats', { composition: '', role: '', location: '', altitude: '', coalition: 'red' })}
+                    style={btnSmall}>+ Add</button>
+          }>
+            {brief.air_threats.length === 0 ? (
+              <p style={emptyStyle}>No enemy aircraft detected. Add manually if needed.</p>
+            ) : (
+              <table style={tableStyle}>
+                <thead>
+                  <tr><th style={th}>Composition</th><th style={th}>Role</th>
+                      <th style={th}>Position</th><th style={th}>Altitude</th><th style={th}></th></tr>
+                </thead>
+                <tbody>
+                  {brief.air_threats.map((a, i) => (
+                    <tr key={i}>
+                      <td style={td}><input style={cellInput} value={a.composition}
+                          onChange={(e) => setRow('air_threats', i, { ...a, composition: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.role}
+                          onChange={(e) => setRow('air_threats', i, { ...a, role: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.location}
+                          onChange={(e) => setRow('air_threats', i, { ...a, location: e.target.value })} /></td>
+                      <td style={td}><input style={cellInput} value={a.altitude}
+                          onChange={(e) => setRow('air_threats', i, { ...a, altitude: e.target.value })} /></td>
+                      <td style={td}><button style={btnIcon}
+                          onClick={() => removeRow('air_threats', i)} title="Delete row">×</button></td>
                     </tr>
                   ))}
                 </tbody>

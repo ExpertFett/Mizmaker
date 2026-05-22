@@ -498,3 +498,67 @@ class TestPaletteDetection:
                 if sh.width and sh.height
                 and sh.width >= prs.slide_width and sh.height >= prs.slide_height]
         assert full == []
+
+
+# --- Air threats analysis + slide -------------------------------------------
+
+class TestBuildAirThreats:
+    def test_enemy_air_analysed_friendly_and_ground_excluded(self):
+        from services.brief_builder import _build_air_threats
+        groups = [
+            {"category": "plane", "coalition": "red", "task": "CAP",
+             "groupName": "Vympel", "units": [{"type": "MiG-29S"}, {"type": "MiG-29S"}],
+             "waypoints": [{"lat": 43.0, "lon": 41.0, "altitude_m": 7620}]},
+            {"category": "plane", "coalition": "red", "task": "Ground Attack",
+             "units": [{"type": "Su-25T"}],
+             "waypoints": [{"lat": 42.5, "lon": 41.5, "altitude_m": 3000}]},
+            {"category": "plane", "coalition": "blue", "task": "CAP",
+             "units": [{"type": "FA-18C_hornet"}], "waypoints": []},
+            {"category": "vehicle", "coalition": "red", "units": [{"type": "Ural"}]},
+        ]
+        rows = _build_air_threats(groups, {"blue": {"lat": 43.2, "lon": 40.5}})
+        assert len(rows) == 2, "only the two enemy air groups should appear"
+        # CAP (air-to-air) sorts above ground attack.
+        assert rows[0]["role"] == "CAP"
+        assert rows[0]["composition"].startswith("2") and rows[0]["composition"].endswith("MiG-29S")
+        assert rows[0]["location"].startswith("BE ")
+        assert rows[0]["altitude"] == "FL250"
+        assert all("FA-18C" not in r["composition"] for r in rows), "friendly excluded"
+
+    def test_no_enemy_air_returns_empty(self):
+        from services.brief_builder import _build_air_threats
+        groups = [{"category": "plane", "coalition": "blue",
+                   "units": [{"type": "FA-18C_hornet"}], "waypoints": []}]
+        assert _build_air_threats(groups) == []
+
+    def test_no_bullseye_falls_back_to_latlon(self):
+        from services.brief_builder import _build_air_threats
+        rows = _build_air_threats([
+            {"category": "plane", "coalition": "red", "task": "CAP",
+             "units": [{"type": "MiG-29S"}], "waypoints": [{"lat": 43.0, "lon": 41.0}]},
+        ], None)
+        assert len(rows) == 1
+        assert "," in rows[0]["location"]   # lat,lon fallback (no bullseye)
+        assert rows[0]["altitude"] == "—"    # no altitude_m given
+
+
+class TestAirThreatsSlide:
+    def test_air_threats_slide_added_when_present(self):
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief()
+        brief["air_threats"] = [
+            {"composition": "2x MiG-29S", "role": "CAP", "location": "BE 119/25",
+             "altitude": "FL250", "coalition": "red"},
+        ]
+        prs = Presentation(io.BytesIO(render_wing_brief(brief)))
+        assert len(prs.slides._sldIdLst) == 11  # default 10 + 1 air-threats slide
+        joined = "\n".join(
+            sh.text_frame.text for s in prs.slides for sh in s.shapes if sh.has_text_frame
+        )
+        assert "AIR THREATS" in joined
+        assert "MiG-29S" in joined and "CAP" in joined
+
+    def test_no_air_threats_keeps_default_slide_count(self):
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(render_wing_brief(_minimal_wing_brief())))
+        assert len(prs.slides._sldIdLst) == 10

@@ -133,6 +133,17 @@ class ThreatRow:
 
 
 @dataclass
+class AirThreatRow:
+    """One row on the AIR THREATS section — an enemy aircraft group with a
+    simple tactical readout (what / role / where / how high)."""
+    composition: str  # "2× MiG-29S"
+    role: str         # "CAP" / "Intercept" / "Escort" / "Ground Attack" / "—"
+    location: str     # "BE 120/45" or "lat, lon" or "—"
+    altitude: str     # "FL250" / "12,000 ft" / "—"
+    coalition: str    # "red"
+
+
+@dataclass
 class WaypointRow:
     number: int       # steerpoint index, 1-based for pilot readability
     name: str         # waypoint name (e.g. "MARSHAL", "TGT", "RTB")
@@ -196,7 +207,8 @@ class WingBrief:
 
     # ---- Structured sections (rendered as tables) ----
     timeline: List[Dict[str, str]]    # serialised TimelineRow
-    threats: List[Dict[str, Any]]
+    threats: List[Dict[str, Any]]     # surface (SAM/AAA) clusters
+    air_threats: List[Dict[str, Any]] # enemy aircraft groups (serialised AirThreatRow)
     flights: List[Dict[str, Any]]
 
     # ---- Comms (key/value list — user adds GCI / tankers / divert freq) ----
@@ -1148,6 +1160,72 @@ def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List
     return [asdict(r) for r in rows]
 
 
+# Air-to-air roles that directly threaten the blue air picture — sorted to the
+# top of the AIR THREATS list.
+_AIR_TO_AIR_ROLES = {"CAP", "Intercept", "Escort"}
+
+
+def _build_air_threats(groups: List[dict], bullseye: Optional[dict] = None) -> List[Dict[str, Any]]:
+    """Analyse ENEMY aircraft groups into a simple per-group air-threat readout
+    for the brief: composition, role, position (bullseye bearing/range from the
+    group's first plotted waypoint), and altitude. Air-to-air roles
+    (CAP/Intercept/Escort) sort to the top, then larger formations first.
+    The brief audience is blue, so only non-blue air counts as a threat.
+    """
+    be_lat = be_lon = None
+    if bullseye and isinstance(bullseye, dict):
+        blue_be = bullseye.get("blue") or {}
+        be_lat = blue_be.get("lat")
+        be_lon = blue_be.get("lon")
+
+    from collections import Counter
+    scored: List[tuple] = []
+    for g in groups:
+        if g.get("category") not in ("plane", "helicopter"):
+            continue
+        if g.get("coalition") == "blue":
+            continue  # only enemy air is a threat to the blue audience
+        units = g.get("units") or []
+        if not units:
+            continue
+
+        type_counts = Counter(u.get("type") or "Unknown" for u in units)
+        composition = " + ".join(f"{cnt}× {name}" for name, cnt in type_counts.most_common())
+        task = (g.get("task") or "").strip()
+        role = _infer_role_from_task(task) or (task or "—")
+
+        # Representative point: first waypoint with coords (orbit / start).
+        location = "—"
+        altitude = "—"
+        for wp in (g.get("waypoints") or []):
+            lat = wp.get("lat"); lon = wp.get("lon")
+            if lat is None or lon is None:
+                continue
+            lat = float(lat); lon = float(lon)
+            if be_lat is not None and be_lon is not None:
+                bearing, dist = _bearing_distance_from_be(lat, lon, be_lat, be_lon)
+                location = f"BE {bearing:03d}/{dist}"
+            else:
+                location = f"{lat:.3f}, {lon:.3f}"
+            alt_m = wp.get("altitude_m")
+            if alt_m:
+                ft = int(round(float(alt_m) * 3.28084))
+                altitude = f"FL{int(round(ft / 100)):03d}" if ft >= 18000 else f"{ft:,} ft"
+            break
+
+        a2a = 1 if role in _AIR_TO_AIR_ROLES else 0
+        scored.append((a2a, len(units), AirThreatRow(
+            composition=composition,
+            role=role,
+            location=location,
+            altitude=altitude,
+            coalition=g.get("coalition", "red"),
+        )))
+
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [asdict(r) for _a2a, _n, r in scored]
+
+
 def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
     """Build the wing-brief comms slide.
 
@@ -1420,6 +1498,7 @@ def build_wing_brief(
 
         timeline=_build_timeline(start_seconds, groups, _detect_mission_type(groups)),
         threats=_build_threats(threats, overview.get("bullseye")),
+        air_threats=_build_air_threats(groups, overview.get("bullseye")),
         flights=_build_flights(groups, airbases),
 
         comms=_build_comms(groups),

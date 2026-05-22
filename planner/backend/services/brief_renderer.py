@@ -1003,9 +1003,57 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     else:
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
         _slide_header(s, "THREATS")
+        msg = "No surface (SAM/AAA) threats detected in this mission."
+        if brief.get("air_threats"):
+            msg += "  Enemy air picture follows on the AIR THREATS slide."
         _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
-             "No surface threats detected in this mission.",
-             size=18, color=DIM, italic=True)
+             msg, size=18, color=DIM, italic=True)
+
+    # ---------- Slide 5b: Air threats -----------------------------------
+    # Enemy aircraft groups, one row each: what / role / where (bullseye) /
+    # altitude. Air-to-air roles sort to the top in the builder. Paginated
+    # like the surface threats slide.
+    air_list = brief.get("air_threats") or []
+    if air_list:
+        AIR_COLS = (  # (label, x, w) — non-overlapping, total 12.1"
+            ("COMPOSITION", Inches(0.6),  Inches(4.5)),
+            ("ROLE",        Inches(5.2),  Inches(2.5)),
+            ("POSITION",    Inches(7.8),  Inches(2.1)),
+            ("ALT",         Inches(10.0), Inches(2.7)),
+        )
+        A_ROWS = _threats_per_slide
+        n_air = len(air_list)
+        air_pages = (n_air + A_ROWS - 1) // A_ROWS
+        for pidx in range(air_pages):
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            a_title = "AIR THREATS" if air_pages == 1 else f"AIR THREATS ({pidx + 1}/{air_pages})"
+            _slide_header(s, a_title)
+            if pidx == 0:
+                _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
+                     f"{n_air} enemy air group(s) — position is bearing/range (nm) "
+                     f"from bullseye; altitude at the group's first waypoint.",
+                     size=11, color=DIM, italic=True)
+            A_TOP = Inches(1.7) if pidx == 0 else Inches(1.3)
+            A_ROW_H = Inches(0.55)
+            for label, x, w in AIR_COLS:
+                _txt(s, x, A_TOP, w, A_ROW_H, label, size=12, bold=True, color=ACCENT)
+            a_underline = s.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, Inches(0.6), A_TOP + Inches(0.5) + _MY,
+                Inches(12.1), Inches(0.025),
+            )
+            a_underline.fill.solid(); a_underline.fill.fore_color.rgb = BORDER
+            a_underline.line.fill.background()
+            for i, a in enumerate(air_list[pidx * A_ROWS:(pidx + 1) * A_ROWS]):
+                y = A_TOP + Inches(0.7) + A_ROW_H * i
+                comp = a.get("composition") or "?"
+                _txt(s, AIR_COLS[0][1], y, AIR_COLS[0][2], A_ROW_H,
+                     comp, size=(13 if len(comp) <= 48 else 11), color=LIGHT)
+                _txt(s, AIR_COLS[1][1], y, AIR_COLS[1][2], A_ROW_H,
+                     a.get("role") or "—", size=13, bold=True, color=ACCENT)
+                _txt(s, AIR_COLS[2][1], y, AIR_COLS[2][2], A_ROW_H,
+                     a.get("location") or "—", size=13, bold=True, color=LIGHT)
+                _txt(s, AIR_COLS[3][1], y, AIR_COLS[3][2], A_ROW_H,
+                     a.get("altitude") or "—", size=12, color=LIGHT)
 
     # ---------- Slide 6: Force composition -------------------------------
     # Paginated when there are more flights than fit comfortably on one
