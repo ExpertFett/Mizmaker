@@ -68,7 +68,13 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
         textAlign: 'center',
       }}>
         <img src="/logo.png" alt="DCS:OPT"
-             style={{ width: 460, maxWidth: '90%', height: 'auto', margin: '0 auto 20px', display: 'block' }} />
+             style={{ width: 460, maxWidth: '90%', height: 'auto', margin: '0 auto 14px', display: 'block' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <span style={{
+            fontSize: 12, fontWeight: 800, letterSpacing: 3, color: '#141414',
+            background: ACCENT, padding: '4px 14px',
+          }}>BETA</span>
+        </div>
         <p style={{ fontSize: 20, color: TEXT, margin: '0 0 6px', fontWeight: 600 }}>
           Operational planning for DCS World, built by aircrew.
         </p>
