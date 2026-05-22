@@ -374,7 +374,7 @@ export function RouteCard({ group, weather, coordFormat = 'mgrs', speedRef = 'au
         textAlign: 'right',
         marginTop: 6,
       }}>
-        DCS Mission Planner | VMFA-224(AW)
+        DCS:OPT | VMFA-224(AW)
       </div>
     </div>
   );

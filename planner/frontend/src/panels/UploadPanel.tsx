@@ -112,7 +112,7 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <h1 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
-            DCS Mission Planner
+            DCS:OPT
           </h1>
           <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks

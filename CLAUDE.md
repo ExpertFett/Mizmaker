@@ -8,7 +8,15 @@ agreements with the user (Fett, callsign VMFA-224(AW)).
 
 **What**: a DCS World mission planning webapp that surgically edits `.miz`
 files without destroying user formatting. Flask backend, React/Vite
-frontend. Live at planner.v224.org (Railway-hosted).
+frontend.
+
+**Live URL**: `https://mizmaker-production.up.railway.app/` (Railway-hosted)
+— this is the canonical deploy that tracks `origin/main`; every push
+redeploys here. Verify deploys / probe the API against THIS host.
+Do NOT use `planner.v224.org` — that domain is intentionally frozen on
+an old (pre-brief-generator) build for a separate person's use; it is
+NOT attached to this Railway service and will not update. (Confirmed
+2026-05-21.)
 
 **Scale**: ~31k LOC frontend, ~8k LOC backend, ~2k LOC kneeboard cards.
 One-dev (Fett + Claude) codebase.
