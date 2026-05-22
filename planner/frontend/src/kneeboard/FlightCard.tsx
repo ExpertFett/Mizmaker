@@ -6,6 +6,7 @@
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox, MissionDateLine } from './cardStyles';
 import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
+import { getAircraftPerf } from './fuelModel';
 
 interface FlightCardProps {
   group: MissionGroup;
@@ -194,7 +195,9 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
             {(() => {
               const fuel = rep.fuel || 0;
               const storesEst = 2000;
-              const emptyWt = 25640;
+              // Per-type empty weight (was hardcoded to the Hornet's 25,640 lb,
+              // so an F-14/F-16 flight showed a Hornet gross weight). P2.
+              const emptyWt = getAircraftPerf(group.units[0]?.type || '').emptyLbs;
               const grossWt = emptyWt + fuel + storesEst;
               const joker = Math.round(fuel * 0.35);
               const bingo = Math.round(fuel * 0.20);

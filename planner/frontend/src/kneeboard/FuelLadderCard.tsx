@@ -10,7 +10,7 @@ import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, t
 import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet, msToKnots } from '../utils/conversions';
-import { estimateFuelFlow } from './fuelModel';
+import { estimateFuelFlow, getAircraftPerf } from './fuelModel';
 
 interface FuelLadderCardProps {
   group: MissionGroup;
@@ -27,7 +27,10 @@ export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadd
   const rep = clientUnits.find((cu) => cu.groupName === group.groupName);
   const startFuel = rep?.fuel || 0;
 
-  // Estimate empty weight from perf data + payload guess
+  // Per-type empty weight from the perf DB (falls back to a default for
+  // unknown airframes) — was hardcoded to the Hornet's 25,640 lb, which
+  // showed a Hornet gross weight for F-14/F-16/etc. (Pre-beta audit P2.)
+  const emptyLbs = getAircraftPerf(unitType).emptyLbs;
   // Gross weight = empty + fuel + stores (estimate stores at 2000 lbs)
   const storesEstLbs = 2000;
 
@@ -49,7 +52,7 @@ export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadd
     const spdKts = Math.round(msToKnots(wp.speed_ms || 0));
 
     // Gross weight estimate: empty + fuel + stores
-    const gwLbs = 25640 + fuel + storesEstLbs;
+    const gwLbs = emptyLbs + fuel + storesEstLbs;
 
     // Estimate fuel flow at this leg's conditions
     const flowRate = i === 0 ? 0 : estimateFuelFlow(altFt, wp.speed_ms || 100, gwLbs, unitType);

@@ -122,12 +122,18 @@ export function AiSettingsPanel({ open, onClose }: Props) {
 
   const handleSave = useCallback(() => {
     setProvider(draftProvider);
-    setKey('anthropic', draftAnthropicKey.trim());
-    setKey('gemini', draftGeminiKey.trim());
+    // Only call setKey when the value actually changed. setKey() zeroes that
+    // provider's test result, so an unconditional save would wrongly reset a
+    // previously-verified key — including the OTHER provider's key, which the
+    // user never touched — back to "UNTESTED". (Pre-beta audit P2.)
+    const aTrim = draftAnthropicKey.trim();
+    const gTrim = draftGeminiKey.trim();
+    if (aTrim !== anthropicKey) setKey('anthropic', aTrim);
+    if (gTrim !== geminiKey) setKey('gemini', gTrim);
     setModel('anthropic', draftAnthropicModel);
     setModel('gemini', draftGeminiModel);
     onClose();
-  }, [draftProvider, draftAnthropicKey, draftGeminiKey, draftAnthropicModel, draftGeminiModel, setProvider, setKey, setModel, onClose]);
+  }, [draftProvider, draftAnthropicKey, draftGeminiKey, draftAnthropicModel, draftGeminiModel, anthropicKey, geminiKey, setProvider, setKey, setModel, onClose]);
 
   const handleClear = useCallback(() => {
     if (!confirm(`Remove your ${info.short} API key from this browser?`)) return;
