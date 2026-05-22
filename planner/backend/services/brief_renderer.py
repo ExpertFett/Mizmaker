@@ -889,12 +889,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         for label, (x, w) in (("TIER", COL_TIER), ("COMPOSITION", COL_COMP),
                               ("POSITION", COL_POS), ("WEZ", COL_WEZ)):
             _txt(s, x, TOP, w, ROW_H, label, size=12, bold=True, color=ACCENT)
-        # Underline below header
+        # Underline below the column-header row. Must include the template
+        # top-margin (_MY) like the _txt/_table helpers — without it this
+        # rule floated up to the top of the slide and read as a stray grey
+        # line under a template's header band. Uses the palette BORDER so
+        # it adapts to light templates instead of a hardcoded dark grey.
         underline = s.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0.6), TOP + Inches(0.5),
+            MSO_SHAPE.RECTANGLE, Inches(0.6), TOP + Inches(0.5) + _MY,
             Inches(12.1), Inches(0.025),
         )
-        underline.fill.solid(); underline.fill.fore_color.rgb = RGBColor(0x55, 0x55, 0x55)
+        underline.fill.solid(); underline.fill.fore_color.rgb = BORDER
         underline.line.fill.background()
 
         for i, t in enumerate(rows_for_slide):

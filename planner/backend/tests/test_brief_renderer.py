@@ -385,6 +385,39 @@ class TestPaletteDetection:
 
         assert topmost_text(2.0) > topmost_text(0.0)
 
+    def test_threats_divider_respects_top_margin(self):
+        """Regression: the threats column-header divider used to skip the
+        template top-margin offset, so it floated up near the header band
+        as a stray grey line. It must now shift with the margin like the
+        rest of the content."""
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief()
+        brief["threats"] = [
+            {"name": f"S{i}", "type": "SAM", "coalition": "red",
+             "range_km": 35, "location": "X"} for i in range(8)
+        ]
+        tpl = _make_base_template(1)
+
+        def deepest_divider_top(margin):
+            prs = Presentation(io.BytesIO(render_wing_brief(
+                brief, base_template_b64=tpl, top_margin_in=margin)))
+            for idx in range(len(prs.slides._sldIdLst)):
+                s = prs.slides[idx]
+                t = next((sh.text_frame.text for sh in s.shapes
+                          if sh.has_text_frame and sh.text_frame.text), "")
+                if "THREAT" in t.upper():
+                    dividers = [sh.top for sh in s.shapes
+                                if sh.shape_type == 1 and sh.height
+                                and sh.height < Inches(0.1)
+                                and sh.width and sh.width > Inches(11)
+                                and sh.top is not None]
+                    return max(dividers) if dividers else None
+            return None
+
+        t0, t2 = deepest_divider_top(0.0), deepest_divider_top(2.0)
+        assert t0 is not None and t2 is not None
+        assert t2 > t0 + Inches(1.0)  # shifted down by ~the margin
+
     def test_render_on_light_template_skips_black_rect(self):
         """On a light template the brief must NOT paint its dark rectangle —
         otherwise the master branding is hidden. Verify no full-slide dark
