@@ -486,6 +486,82 @@ export function DtcTab() {
     [activeSop],
   );
 
+  /**
+   * One-click "Auto-Setup DTC" (v0.9.78). Fills everything we can derive
+   * for the loaded flight in a single action, so the pilot doesn't have
+   * to walk every subtab:
+   *   COMM  — from the active SOP (both radios) if one is loaded, else a
+   *           sensible default frequency pack on COMM1.
+   *   CMDS  — a balanced default chaff/flare program set, but only when
+   *           CMDS is still empty/all-zero (never clobbers tuned programs).
+   *   NAV   — flips TACAN/ICLS on when a channel is present but disabled
+   *           (the backend usually fills the channel from the carrier;
+   *           this just switches it on).
+   * Everything MERGES over existing values — it won't wipe pilot edits.
+   * Waypoints already come from the mission route, so they're untouched.
+   */
+  const handleAutoSetup = useCallback(() => {
+    if (!dtcData) return;
+    const did: string[] = [];
+    let next: DtcData = {
+      ...dtcData,
+      COMM: { ...dtcData.COMM },
+      CMDS: { ...(dtcData.CMDS ?? {}) },
+    };
+
+    // 1) COMM
+    if (activeSop) {
+      const built = buildSopComms(activeSop);
+      next.COMM = {
+        COMM1: { ...next.COMM.COMM1, ...built.COMM1 },
+        COMM2: { ...next.COMM.COMM2, ...built.COMM2 },
+      };
+      did.push(`COMM ← SOP "${activeSop.name}" (${built.filledCh1}+${built.filledCh2} ch)`);
+    } else {
+      const pack = FREQ_PRESET_PACKS[0]; // Carrier Strike — broad default
+      const radio = { ...next.COMM.COMM1 };
+      for (const ch of pack.channels) {
+        radio[`Channel_${ch.ch}`] = { frequency: ch.freq, modulation: ch.mod, name: ch.name };
+      }
+      next.COMM = { ...next.COMM, COMM1: radio };
+      did.push(`COMM1 ← "${pack.name}" pack (no SOP active)`);
+    }
+
+    // 2) CMDS — only fill when nothing meaningful is set yet
+    const cmds = next.CMDS ?? {};
+    const cmdsEmpty = Object.keys(cmds).length === 0
+      || Object.values(cmds).every((p) => !p || (p.chaffQty === 0 && p.flareQty === 0));
+    if (cmdsEmpty) {
+      const tpl = DTC_TEMPLATES[0]; // Carrier Day Strike — balanced
+      next.CMDS = { ...cmds, ...(tpl.data.CMDS as Record<string, CmdsProgram>) };
+      did.push(`CMDS ← "${tpl.name}"`);
+    } else {
+      did.push('CMDS kept (already set)');
+    }
+
+    // 3) NAV — switch on TACAN/ICLS that have a channel but are off
+    const nav = next.WYPT?.NAV_SETTINGS;
+    if (nav) {
+      const ns = { ...nav };
+      let navTouched = false;
+      if (ns.TACAN && ns.TACAN.channel > 0 && !ns.TACAN.enabled) {
+        ns.TACAN = { ...ns.TACAN, enabled: true }; navTouched = true;
+      }
+      if (ns.ICLS && ns.ICLS.channel > 0 && !ns.ICLS.enabled) {
+        ns.ICLS = { ...ns.ICLS, enabled: true }; navTouched = true;
+      }
+      if (navTouched) {
+        next = { ...next, WYPT: { ...next.WYPT, NAV_SETTINGS: ns } };
+        did.push('NAV TACAN/ICLS enabled');
+      }
+    }
+
+    setDtcData(next);
+    setSopApplyMsg(`⚡ Auto-Setup: ${did.join(' · ')}`);
+    setTemplateMsg('');
+    setTimeout(() => setSopApplyMsg(''), 6000);
+  }, [dtcData, activeSop]);
+
   const handleExport = useCallback(async () => {
     if (!sessionId || !selectedFlight || !dtcData) return;
     setExporting(true);
@@ -638,6 +714,30 @@ export function DtcTab() {
 
       {dtcData && (
         <>
+          {/* Auto-Setup — one click fills COMM + CMDS (+ enables nav) so
+              the pilot doesn't have to walk every subtab. Merges over
+              existing values; never wipes edits. (v0.9.78) */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+            padding: '8px 12px', background: '#2a2418',
+            border: '1px solid #4a3f1a', borderRadius: 6,
+          }}>
+            <button
+              onClick={handleAutoSetup}
+              style={{ ...btnStyle, background: '#3a3018', borderColor: '#fbb941', color: '#fbb941', fontWeight: 600 }}
+              title="Fill COMM (from the active SOP, or a default pack), a balanced CMDS program, and switch on TACAN/ICLS — in one click. Merges over existing values; doesn't wipe your edits."
+            >
+              ⚡ Auto-Setup DTC
+            </button>
+            <span style={{ fontSize: 12, color: '#cccccc', flex: 1 }}>
+              Fills COMM + CMDS and enables nav from{' '}
+              <strong style={{ color: '#fbb941' }}>
+                {activeSop ? `SOP "${activeSop.name}"` : 'sensible defaults'}
+              </strong>{' '}
+              in one click. Merges — won't overwrite channels/programs you've already set.
+            </span>
+          </div>
+
           {/* Sub-tab navigation */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid #3a3a3a', flexWrap: 'wrap' }}>
             {([
