@@ -177,15 +177,21 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
   //    talk about by BE)
   const enemyThreats = threats
     .filter((t) => t.coalition !== coalition && t.lat != null && t.lon != null)
-    .map((t) => ({
-      name: t.name,
-      type: 'THREAT' as const,
-      lat: t.lat!,
-      lon: t.lon!,
-      distNm: distFromBE(t.lat!, t.lon!),
-      threatRangeNm: metersToNm(t.range),
-    }))
-    .sort((a, b) => b.threatRangeNm - a.threatRangeNm)
+    .map((t) => {
+      // t.range can be undefined → metersToNm gives NaN, which poisons the
+      // sort (NaN comparisons are undefined) and renders "(NaN nm WEZ)".
+      // Coerce to undefined so the sort uses ?? 0 and the WEZ label is hidden.
+      const rngNm = t.range != null ? metersToNm(t.range) : undefined;
+      return {
+        name: t.name,
+        type: 'THREAT' as const,
+        lat: t.lat!,
+        lon: t.lon!,
+        distNm: distFromBE(t.lat!, t.lon!),
+        threatRangeNm: Number.isFinite(rngNm as number) ? rngNm : undefined,
+      };
+    })
+    .sort((a, b) => (b.threatRangeNm ?? 0) - (a.threatRangeNm ?? 0))
     .slice(0, 2);
   refs.push(...enemyThreats);
 

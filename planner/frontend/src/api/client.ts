@@ -2,11 +2,29 @@
 
 const BASE = '';
 
+/**
+ * Pull an { error } message out of a failed response, tolerating non-JSON
+ * bodies (e.g. a Railway cold-start 502 HTML page). Without this, calling
+ * res.json() on an HTML body throws a SyntaxError that masks the real
+ * failure with a confusing parse error. (Pre-beta audit P2.)
+ */
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.json();
+    if (data && typeof data === 'object' && typeof (data as { error?: unknown }).error === 'string') {
+      return (data as { error: string }).error;
+    }
+  } catch {
+    /* non-JSON body — fall through to fallback */
+  }
+  return fallback;
+}
+
 export async function uploadMission(file: File) {
   const form = new FormData();
   form.append('file', file);
   const res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Upload failed'));
   return res.json();
 }
 
@@ -82,7 +100,7 @@ export async function exportJson(sessionId: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId }),
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'Export failed');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Export failed'));
   return res.json();
 }
 
@@ -105,7 +123,7 @@ export async function dtcPreview(sessionId: string, groupName: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, groupName }),
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'DTC preview failed');
+  if (!res.ok) throw new Error(await errorMessage(res, 'DTC preview failed'));
   return res.json();
 }
 
@@ -125,7 +143,7 @@ import type { TriggerData, AudioFile, TriggerRule, PlannerDrawing } from '../typ
 
 export async function getTriggers(sessionId: string): Promise<TriggerData> {
   const res = await fetch(`${BASE}/api/triggers?sessionId=${sessionId}`);
-  if (!res.ok) throw new Error((await res.json()).error || 'Failed to load triggers');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Failed to load triggers'));
   return res.json();
 }
 
@@ -135,7 +153,7 @@ export async function saveTriggers(sessionId: string, triggers: { rules: Trigger
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, triggers }),
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'Failed to save triggers');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Failed to save triggers'));
 }
 
 export async function listAudio(sessionId: string): Promise<AudioFile[]> {
@@ -150,7 +168,7 @@ export async function uploadAudio(sessionId: string, file: File): Promise<AudioF
   form.append('sessionId', sessionId);
   form.append('file', file);
   const res = await fetch(`${BASE}/api/audio/upload`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Audio upload failed'));
   return res.json();
 }
 
@@ -158,7 +176,7 @@ export async function deleteAudio(sessionId: string, path: string): Promise<void
   const res = await fetch(`${BASE}/api/audio/${path}?sessionId=${sessionId}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+  if (!res.ok) throw new Error(await errorMessage(res, 'Delete failed'));
 }
 
 export function audioStreamUrl(sessionId: string, path: string): string {
