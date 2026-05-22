@@ -156,6 +156,32 @@ commits.
 - Restart the backend manually when you edit Python (no reloader).
   Frontend HMR handles itself.
 
+## Auth & environment variables (v0.11.0)
+
+DCS:OPT has an **optional Discord login** (identity gate only — `identify`
+scope, no email, no guild check, **no database**). The flow is: landing page →
+"Log in with Discord" *or* "Continue as guest" → the upload screen. Invite
+(`/join/...`) links bypass the gate. Code lives in `backend/services/auth.py`
+(signed-cookie session via `itsdangerous`; token exchange via stdlib `urllib`)
+and `frontend/src/store/authStore.ts` + `panels/LandingPage.tsx`.
+
+**It degrades gracefully**: when the env vars below are unset, the Discord
+button bounces back to `/?auth_error=unconfigured` and `/api/auth/me` returns
+`{user: null}` — guest mode still works. So the feature ships dark and lights
+up once Fett provisions the Discord app.
+
+Railway env vars (set in the service's Variables tab):
+- `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` — from discord.com/developers
+- `DISCORD_REDIRECT_URI` — `https://dcsopt.up.railway.app/api/auth/discord/callback`
+  (prod). Dev uses `http://localhost:5173/api/auth/discord/callback` via the
+  Vite proxy. Both must be registered under the Discord app's OAuth2 → Redirects.
+- `APP_SECRET_KEY` — long random string; signs the login cookie. **Rotating it
+  logs everyone out** (existing cookies fail to verify).
+
+Auth routes: `GET /api/auth/discord/login`, `GET /api/auth/discord/callback`,
+`GET /api/auth/me`, `POST /api/auth/logout`. Registered in `app.py` before the
+SPA catch-all. Tests in `backend/tests/test_auth.py`.
+
 ## Useful commands
 
 ```bash
