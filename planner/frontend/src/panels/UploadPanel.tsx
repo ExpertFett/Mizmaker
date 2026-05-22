@@ -111,9 +111,11 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       <div style={{ maxWidth: 700, width: '100%', padding: '0 20px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
-          <h1 style={{ color: '#e0e0e0', margin: '0 0 8px', fontSize: 28, fontWeight: 700 }}>
-            DCS:OPT
-          </h1>
+          <img
+            src="/logo.png"
+            alt="DCS:OPT — Digital Combat Simulator Operational Planning Team"
+            style={{ width: 320, maxWidth: '80%', height: 'auto', display: 'block', margin: '0 auto 12px' }}
+          />
           <p style={{ color: '#aaaaaa', fontSize: 14, margin: 0 }}>
             VMFA-224(AW) Skunkworks
             <span style={{
