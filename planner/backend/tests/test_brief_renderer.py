@@ -272,6 +272,21 @@ def _make_base_template(n_slides: int = 2) -> str:
     return base64.b64encode(out.getvalue()).decode("ascii")
 
 
+def _make_cover_template() -> str:
+    """A template with a 'Title'/'Sub Title' cover slide + a blank 2nd slide
+    — mirrors the squadron template shape that prompted the fixes."""
+    import base64
+    prs = Presentation()
+    prs.slide_width = Inches(13.333); prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+    s1 = prs.slides.add_slide(blank)
+    s1.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(1)).text_frame.text = "Title"
+    s1.shapes.add_textbox(Inches(1), Inches(2.2), Inches(8), Inches(1)).text_frame.text = "Sub Title"
+    prs.slides.add_slide(blank)  # blank 2nd slide (no text)
+    out = io.BytesIO(); prs.save(out)
+    return base64.b64encode(out.getvalue()).decode("ascii")
+
+
 class TestRenderWingBriefBaseTemplate:
     def test_default_render_has_ten_slides(self):
         from services.brief_renderer import render_wing_brief
@@ -439,6 +454,32 @@ class TestPaletteDetection:
             )
 
         assert friendly_pages(2.5) > friendly_pages(0.3)
+
+    def test_template_cover_title_filled(self):
+        """The template's literal 'Title'/'Sub Title' get replaced with the
+        mission name + theatre/date/time line."""
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64=_make_cover_template())
+        ))
+        cover_texts = [" ".join(sh.text_frame.text.split())
+                       for sh in prs.slides[0].shapes if sh.has_text_frame]
+        joined = " ".join(cover_texts)
+        assert "TEST OP" in joined            # mission name landed
+        assert "Title" not in cover_texts      # literal 'Title' replaced
+        assert "Sub Title" not in cover_texts  # literal 'Sub Title' replaced
+
+    def test_template_blank_second_slide_dropped(self):
+        """The template's blank 2nd slide must not survive as a blank page."""
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64=_make_cover_template())
+        ))
+        # cover + 9 content = 10 (blank dropped; would be 11 otherwise).
+        assert len(prs.slides._sldIdLst) == 10
+        # slide after the cover is real content, not an empty page.
+        s1 = " ".join(sh.text_frame.text for sh in prs.slides[1].shapes if sh.has_text_frame)
+        assert s1.strip() != ""
 
     def test_render_on_light_template_skips_black_rect(self):
         """On a light template the brief must NOT paint its dark rectangle —

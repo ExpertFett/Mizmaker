@@ -525,6 +525,57 @@ def _master_bg_is_dark(prs) -> bool:
         return False
 
 
+def _set_tf_text(tf, value: str) -> None:
+    """Replace a text-frame's text while keeping the first run's formatting
+    (font/size/color). Falls back to tf.text when there are no runs."""
+    paras = tf.paragraphs
+    if paras and paras[0].runs:
+        paras[0].runs[0].text = value
+        for r in paras[0].runs[1:]:
+            r.text = ""
+        for p in paras[1:]:
+            for r in p.runs:
+                r.text = ""
+    else:
+        tf.text = value
+
+
+def _fill_template_cover(slide, title: str, subtitle: str) -> None:
+    """Fill a template cover slide's title/subtitle. Handles both literal
+    'Title'/'Sub Title' placeholder TEXT (Google-Slides-style exports) and
+    real PowerPoint title/subtitle placeholders."""
+    title_done = sub_done = False
+    for sh in slide.shapes:
+        if not sh.has_text_frame:
+            continue
+        norm = " ".join(sh.text_frame.text.split()).lower()
+        if norm in ("title", "{{title}}", "[title]", "mission title") and title:
+            _set_tf_text(sh.text_frame, title); title_done = True
+        elif norm in ("sub title", "subtitle", "{{subtitle}}", "[subtitle]") and subtitle:
+            _set_tf_text(sh.text_frame, subtitle); sub_done = True
+    try:
+        from pptx.enum.shapes import PP_PLACEHOLDER
+        for ph in slide.placeholders:
+            t = ph.placeholder_format.type
+            if not title_done and t in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE) and title:
+                _set_tf_text(ph.text_frame, title); title_done = True
+            elif not sub_done and t == PP_PLACEHOLDER.SUBTITLE and subtitle:
+                _set_tf_text(ph.text_frame, subtitle); sub_done = True
+    except Exception:
+        pass
+
+
+def _slide_has_content(slide) -> bool:
+    """True if a slide carries its own text or picture (master-inherited
+    branding doesn't count — it's on every slide)."""
+    for sh in slide.shapes:
+        if sh.has_text_frame and sh.text_frame.text.strip():
+            return True
+        if getattr(sh, "shape_type", None) == 13:  # PICTURE
+            return True
+    return False
+
+
 def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None,
                       top_margin_in: Optional[float] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
@@ -1029,16 +1080,42 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
          notes_text, size=15, color=DIM if is_placeholder else LIGHT,
          italic=is_placeholder)
 
-    # When built on a base template, drop the built-in cover slide (the
-    # first slide WE added, sitting right after the template's own
-    # slides) so the template's branding serves as the cover and we
-    # don't double up.
+    # Template post-processing (v0.9.84):
+    #   1. Drop the built-in cover (the slide WE added right after the
+    #      template's own slides) — the template's slide(s) are the cover.
+    #   2. Fill the template's first slide ('Title' / 'Sub Title') with the
+    #      mission name + theatre/date/time.
+    #   3. Drop any blank template slides after the cover (e.g. an empty
+    #      second slide) so they don't show as blank pages.
     if use_template:
+        # 1) remove built-in cover
         try:
             sld_id_lst = prs.slides._sldIdLst
             ids = list(sld_id_lst)
             if len(ids) > n_template_slides:
                 sld_id_lst.remove(ids[n_template_slides])
+        except Exception:
+            pass
+        # 2) fill the cover (first template slide)
+        try:
+            cover_title = str(brief.get("mission_name") or "")
+            sub_parts = [
+                str(brief.get("theater") or "").upper(),
+                str(brief.get("date") or ""),
+                (f"TAKEOFF {brief.get('time_zulu')}" if brief.get("time_zulu") else ""),
+            ]
+            cover_sub = "   ·   ".join(p for p in sub_parts if p)
+            if len(prs.slides._sldIdLst) > 0:
+                _fill_template_cover(prs.slides[0], cover_title, cover_sub)
+        except Exception:
+            pass
+        # 3) drop blank template slides after the cover (keep slide 0)
+        try:
+            ids = list(prs.slides._sldIdLst)
+            limit = min(n_template_slides, len(ids))
+            for i in range(limit - 1, 0, -1):
+                if not _slide_has_content(prs.slides[i]):
+                    prs.slides._sldIdLst.remove(ids[i])
         except Exception:
             pass
 
