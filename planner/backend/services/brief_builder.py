@@ -372,7 +372,10 @@ def _add_minutes(seconds: Optional[float], minutes: int) -> str:
 
 
 def _format_freq(hz: Optional[float]) -> str:
-    if not hz:
+    # Floor at 1 MHz: a sub-MHz value is never a valid radio frequency, so a
+    # stray 0 / mis-scaled value won't render as a bogus "0.000" on the brief.
+    # Treat those as "no frequency" (empty) so callers can show a dash instead.
+    if not hz or hz < 1_000_000:
         return ""
     return f"{hz / 1_000_000:.3f}"
 
@@ -1154,21 +1157,24 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
     AAR, guard. Things every flight needs to know about.
     """
     out: List[Dict[str, str]] = []
-    seen_freqs = set()
+    seen_labels = set()
 
-    # Tankers — show real frequencies from the mission. Multiple tankers
-    # appear as separate rows.
+    # Tankers — list each friendly tanker by callsign. Show its real frequency
+    # when the .miz has one; otherwise a dash (was rendering "0.000 MHz" for a
+    # tanker with no/invalid freq). The planner can fill it in the editable
+    # Comms section. Dedup by callsign so the same tanker isn't listed twice.
     for g in groups:
         if (g.get("task") or "").lower() != "refueling":
             continue
         if g.get("coalition") != "blue":
             continue  # only friendly tankers on the brief
-        f = _format_freq(g.get("frequency"))
         cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
-        if not f or f in seen_freqs:
+        label = f"TANKER  {cs}"
+        if label in seen_labels:
             continue
-        out.append({"label": f"TANKER  {cs}", "value": f"{f} MHz"})
-        seen_freqs.add(f)
+        f = _format_freq(g.get("frequency"))
+        out.append({"label": label, "value": f"{f} MHz" if f else "—"})
+        seen_labels.add(label)
 
     # AWACS — same pattern
     for g in groups:
@@ -1176,12 +1182,13 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
             continue
         if g.get("coalition") != "blue":
             continue
-        f = _format_freq(g.get("frequency"))
         cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
-        if not f or f in seen_freqs:
+        label = f"AWACS   {cs}"
+        if label in seen_labels:
             continue
-        out.append({"label": f"AWACS   {cs}", "value": f"{f} MHz"})
-        seen_freqs.add(f)
+        f = _format_freq(g.get("frequency"))
+        out.append({"label": label, "value": f"{f} MHz" if f else "—"})
+        seen_labels.add(label)
 
     # Carriers — TACAN + ICLS where set; freq if available
     for g in groups:
