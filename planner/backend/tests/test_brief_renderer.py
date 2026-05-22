@@ -234,3 +234,79 @@ class TestConvertPptx:
             convert_pptx(_make_template("x"), "pdf")
         assert "LibreOffice" in str(exc.value)
         assert "PowerPoint download (.pptx) still works" in str(exc.value)
+
+
+# --- render_wing_brief: base-template support (v0.9.79) ----------------------
+
+def _minimal_wing_brief() -> dict:
+    """Smallest WingBrief dict render_wing_brief will accept."""
+    return {
+        "mission_name": "TEST OP", "theater": "Caucasus",
+        "date": "2026-05-21", "time_zulu": "0830Z", "coalition": "blue",
+        "logo_base64": "", "cover_image_base64": "",
+        "theatre_overview": "Overview.", "scenario": "Scenario.",
+        "commanders_intent": "Purpose: x\nMethod: y\nEnd State: z",
+        "mission_flow": "1. Push", "notes": "",
+        "timeline": [{"phase": "PUSH", "time_zulu": "0815Z", "note": "go"}],
+        "threats": [{"name": "SA-11", "type": "SAM", "coalition": "red",
+                     "range_km": 35, "location": "Kobuleti"}],
+        "flights": [{"callsign": "ENFIELD", "aircraft": "FA-18C", "count": 4,
+                     "role": "cas", "frequency": "305.000", "tacan": "",
+                     "home_plate": "Senaki"}],
+        "comms": [{"label": "STRIKE", "value": "270.800"}],
+    }
+
+
+def _make_base_template(n_slides: int = 2) -> str:
+    """A small styled 16:9 .pptx (n blank slides), returned base64 — stands
+    in for a squadron template upload."""
+    import base64
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+    for i in range(n_slides):
+        s = prs.slides.add_slide(blank)
+        s.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(1)).text_frame.text = f"COVER {i+1}"
+    out = io.BytesIO(); prs.save(out)
+    return base64.b64encode(out.getvalue()).decode("ascii")
+
+
+class TestRenderWingBriefBaseTemplate:
+    def test_default_render_has_ten_slides(self):
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(render_wing_brief(_minimal_wing_brief())))
+        assert len(prs.slides._sldIdLst) == 10  # built-in cover + 9 content
+
+    def test_base_template_keeps_its_cover_and_drops_builtin(self):
+        from services.brief_renderer import render_wing_brief
+        tpl = _make_base_template(2)
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64=tpl)
+        ))
+        # 2 template slides + 9 content (built-in cover dropped) = 11.
+        assert len(prs.slides._sldIdLst) == 11
+        # The deck still opens and the first slide is the template's cover.
+        first = prs.slides[0]
+        text = " ".join(
+            r.text for sh in first.shapes if sh.has_text_frame
+            for p in sh.text_frame.paragraphs for r in p.runs
+        )
+        assert "COVER 1" in text
+
+    def test_bad_template_falls_back_to_default(self):
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64="not-valid-base64!!")
+        ))
+        # Garbage template must not break the brief — falls back to default.
+        assert len(prs.slides._sldIdLst) == 10
+
+    def test_data_uri_prefixed_template_is_accepted(self):
+        from services.brief_renderer import render_wing_brief
+        tpl = "data:application/vnd.ms-powerpoint;base64," + _make_base_template(1)
+        prs = Presentation(io.BytesIO(
+            render_wing_brief(_minimal_wing_brief(), base_template_b64=tpl)
+        ))
+        # 1 template slide + 9 content = 10.
+        assert len(prs.slides._sldIdLst) == 10

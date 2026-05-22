@@ -116,6 +116,13 @@ export function BriefGenTab() {
   const [previewIdx, setPreviewIdx] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Base template (.pptx) for the MAIN brief (v0.9.79). When set, the
+  // auto-built brief renders ON this template — the template's own
+  // slide(s) + theme become the cover/branding, content slides follow.
+  // base64, no data: prefix. Threaded into preview/render calls.
+  const [templateB64, setTemplateB64] = useState<string | null>(null);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+
   const probeCapabilities = () => {
     fetch('/api/brief/capabilities')
       .then((r) => (r.ok ? r.json() : null))
@@ -164,7 +171,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/preview-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, dpi: 100 }),
+        body: JSON.stringify({ brief, dpi: 100, template: templateB64 }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Preview failed' }));
@@ -193,7 +200,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, format }),
+        body: JSON.stringify({ brief, format, template: templateB64 }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -244,7 +251,7 @@ export function BriefGenTab() {
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat }),
+        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat, template: templateB64 }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -466,6 +473,77 @@ export function BriefGenTab() {
             </button>
             <span style={{ flex: 1 }} />
             <button onClick={() => setBrief(null)} style={btnDanger}>Discard</button>
+          </div>
+
+          {/* Base-template row (v0.9.79) — attach your squadron .pptx and
+              the auto-built brief renders ON it: your template's slide(s)
+              + theme become the cover/branding, the auto content follows.
+              Affects Preview, Wing Brief, and Wing + Flights. */}
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+            padding: '8px 14px', marginBottom: 16,
+            background: templateB64 ? '#2a2418' : '#1a1a1a',
+            border: `1px solid ${templateB64 ? '#4a3f1a' : '#3a3a3a'}`,
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: templateB64 ? '#fbb941' : '#aaaaaa' }}>
+              Brief template
+            </span>
+            <input
+              type="file"
+              accept=".pptx"
+              id="brief-base-template-input"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (!file.name.toLowerCase().endsWith('.pptx')) {
+                  setError('Template must be a .pptx file');
+                  return;
+                }
+                try {
+                  const buf = await file.arrayBuffer();
+                  // ArrayBuffer → base64 (chunked to avoid call-stack limits)
+                  const bytes = new Uint8Array(buf);
+                  let bin = '';
+                  const CH = 0x8000;
+                  for (let i = 0; i < bytes.length; i += CH) {
+                    bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+                  }
+                  setTemplateB64(btoa(bin));
+                  setTemplateName(file.name);
+                  setError(null);
+                } catch {
+                  setError('Could not read template file');
+                }
+              }}
+            />
+            {templateB64 ? (
+              <>
+                <span style={{ fontSize: 12, color: '#e0e0e0', fontFamily: "'B612 Mono', monospace" }}>
+                  {templateName}
+                </span>
+                <span style={{ fontSize: 11, color: '#cccccc' }}>
+                  — your template's cover + theme; auto content follows.
+                </span>
+                <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
+                  Replace
+                </label>
+                <button onClick={() => { setTemplateB64(null); setTemplateName(null); }} style={btnDanger}>
+                  Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
+                  Upload .pptx
+                </label>
+                <span style={{ fontSize: 11, color: '#888888' }}>
+                  Optional — without one, the brief uses the built-in dark template.
+                  Your template's slide(s) become the cover; the auto sections (scenario,
+                  threats, flights, etc.) are appended after.
+                </span>
+              </>
+            )}
           </div>
 
           {/* Preview pane — inline slide viewer with prev/next nav */}

@@ -477,8 +477,14 @@ def generate_default_template() -> bytes:
 # aesthetic of the kneeboard cards. Mission makers can re-style after
 # download.
 
-def render_wing_brief(brief: Dict[str, Any]) -> bytes:
+def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
+
+    base_template_b64: optional base64 of a squadron .pptx. When given,
+    the brief is built ON that template — its own slide(s) + theme are
+    preserved as the cover/branding and the content slides are appended;
+    the built-in cover is dropped. Any failure falls back to the default
+    deck so the brief always renders.
 
     Slide order (Phase 1 — wing brief only):
       1. Cover
@@ -497,11 +503,41 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
     from pptx.enum.shapes import MSO_SHAPE
     from pptx.enum.text import PP_ALIGN
     from pptx.util import Inches, Pt
+    import base64 as _b64
 
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)   # 16:9
-    prs.slide_height = Inches(7.5)
-    BLANK = prs.slide_layouts[6]
+    # Optional base template (v0.9.79). Build ON the uploaded .pptx so its
+    # slides + theme survive; fall back to the default deck on any error.
+    use_template = False
+    if base_template_b64:
+        try:
+            _tb = _b64.b64decode(base_template_b64.split(",", 1)[-1])
+            prs = Presentation(io.BytesIO(_tb))
+            use_template = True
+        except Exception:
+            prs = Presentation()
+    else:
+        prs = Presentation()
+    if not use_template:
+        prs.slide_width = Inches(13.333)   # 16:9
+        prs.slide_height = Inches(7.5)
+
+    # How many slides the template already had — its branding cover(s).
+    n_template_slides = len(prs.slides._sldIdLst)
+
+    # Blank layout — custom templates may not have the standard 7-layout
+    # set, so prefer a placeholder-free layout and fall back gracefully.
+    def _pick_blank_layout():
+        for _lay in prs.slide_layouts:
+            try:
+                if len(_lay.placeholders) == 0:
+                    return _lay
+            except Exception:
+                continue
+        try:
+            return prs.slide_layouts[6]
+        except Exception:
+            return prs.slide_layouts[0]
+    BLANK = _pick_blank_layout()
 
     BG = RGBColor(0x1A, 0x1A, 0x1A)
     LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
@@ -892,6 +928,19 @@ def render_wing_brief(brief: Dict[str, Any]) -> bytes:
     _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
          notes_text, size=15, color=DIM if is_placeholder else LIGHT,
          italic=is_placeholder)
+
+    # When built on a base template, drop the built-in cover slide (the
+    # first slide WE added, sitting right after the template's own
+    # slides) so the template's branding serves as the cover and we
+    # don't double up.
+    if use_template:
+        try:
+            sld_id_lst = prs.slides._sldIdLst
+            ids = list(sld_id_lst)
+            if len(ids) > n_template_slides:
+                sld_id_lst.remove(ids[n_template_slides])
+        except Exception:
+            pass
 
     out = io.BytesIO()
     prs.save(out)
