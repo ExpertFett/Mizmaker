@@ -25,6 +25,7 @@ import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
 import { useVisibilityStore } from '../store/visibilityStore';
 import type { Weather } from '../utils/atmosphere';
+import { PLANNER_MODE } from '../plannerMode';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
 interface EditResult {
@@ -325,9 +326,14 @@ export function ExportPanel() {
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid #3a3a3a' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
-          {isDirty ? 'Download .miz *' : 'Download .miz'}
-        </button>
+        {/* Planner mode is planning-only: no writeback to the .miz. The
+            modified-.miz download is removed; planning artefacts (kneeboards,
+            brief, DTC, planning JSON) come from their own tabs. */}
+        {!PLANNER_MODE && (
+          <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
+            {isDirty ? 'Download .miz *' : 'Download .miz'}
+          </button>
+        )}
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={handleExportJson} style={{ ...btnStyle, flex: 1, background: '#1a3a2a' }}>
             JSON

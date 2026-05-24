@@ -35,6 +35,7 @@ import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
+import { PLANNER_MODE, PLANNER_TAB_IDS } from '../plannerMode';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
 // section headers ('SETUP', 'ENTITIES', etc.) act as visual dividers
@@ -123,6 +124,29 @@ const TABS = SIDEBAR.filter((s): s is TabDef & { kind: 'tab' } => s.kind === 'ta
 
 type TabId = (typeof TABS)[number]['id'];
 
+// Planner mode curates the sidebar down to the planning/reference/output
+// tabs (see plannerMode.ts). We keep only allow-listed tabs and drop any
+// section header that ends up with no tabs under it. Full-editor builds
+// (PLANNER_MODE === false) use SIDEBAR unchanged — zero behaviour change.
+function plannerSidebar(): SidebarItem[] {
+  const out: SidebarItem[] = [];
+  for (const item of SIDEBAR) {
+    if (item.kind === 'section') {
+      out.push(item); // provisional; pruned below if no tabs follow
+    } else if (PLANNER_TAB_IDS.has(item.id)) {
+      out.push(item);
+    }
+  }
+  // Drop section headers immediately followed by another section / end.
+  return out.filter((item, i) => {
+    if (item.kind !== 'section') return true;
+    const next = out[i + 1];
+    return next != null && next.kind === 'tab';
+  });
+}
+
+const VISIBLE_SIDEBAR: SidebarItem[] = PLANNER_MODE ? plannerSidebar() : SIDEBAR;
+
 export function MissionEditor() {
   const [activeTab, setActiveTab] = useState<TabId>('map');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -199,7 +223,22 @@ export function MissionEditor() {
         }}>
           {!isCollapsed && (
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
+                {PLANNER_MODE && (
+                  <span
+                    title="Planning-only mode — mission editing and .miz download are disabled"
+                    style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
+                      color: '#9cd0ff', background: 'rgba(74,143,212,0.15)',
+                      border: '1px solid #4a8fd4', borderRadius: 3,
+                      padding: '1px 5px', whiteSpace: 'nowrap', flexShrink: 0,
+                    }}
+                  >
+                    PLANNER
+                  </span>
+                )}
+              </div>
               {isMap && <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filename}</div>}
               {activeSop && (
                 <div
@@ -274,7 +313,7 @@ export function MissionEditor() {
           overflowX: 'hidden',
           overflowY: isCollapsed ? 'hidden' : 'auto',
         }}>
-          {SIDEBAR.map((item, idx) => {
+          {VISIBLE_SIDEBAR.map((item, idx) => {
             if (item.kind === 'section') {
               if (isCollapsed) {
                 // Collapsed sidebar: render a thin divider line instead of the label
@@ -421,7 +460,7 @@ export function MissionEditor() {
               <PlayerGroupsButton />
               <InviteManager />
             </div>
-            <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />
+            {!PLANNER_MODE && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
             <ExportPanel />
           </>
         )}
@@ -429,7 +468,7 @@ export function MissionEditor() {
         {/* Export at bottom for non-map tabs */}
         {!isMap && (
           <div style={{ marginTop: 'auto' }}>
-            <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />
+            {!PLANNER_MODE && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
             <ExportPanel />
           </div>
         )}
