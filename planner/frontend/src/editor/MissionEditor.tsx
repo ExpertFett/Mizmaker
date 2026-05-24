@@ -35,6 +35,7 @@ import { ScriptsTab } from './tabs/ScriptsTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
 import { MetarReadout } from '../panels/MetarReadout';
+import { LiveTerminal } from './live/LiveTerminal';
 import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode } from '../plannerMode';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
@@ -524,9 +525,9 @@ export function MissionEditor() {
 
       {/* Main content */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        {/* Live mode is a stub for now — it wires up to the Olympus bridge
-            after Phase 2. Render a placeholder instead of the editor surface. */}
-        {mode === 'live' && <LiveModePlaceholder />}
+        {/* Live mode — the multi-tenant DM terminal (login → group → server
+            profile → terminal). Self-contained; doesn't touch Editor/Plan. */}
+        {mode === 'live' && <LiveTerminal />}
         {mode !== 'live' && (
         <>
         {/* Map tab — map + floating panel */}
@@ -668,40 +669,6 @@ export function MissionEditor() {
         )}
         </>
         )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Live / Olympus mode placeholder. The Olympus bridge (connect + push the
- * planned ORBAT to a running DCS Olympus server) lives on the `olympus`
- * branch and gets merged in after Phase 2. Until then, Live mode shows this.
- */
-function LiveModePlaceholder() {
-  return (
-    <div style={{
-      height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
-    }}>
-      <div style={{
-        maxWidth: 460, textAlign: 'center', color: '#aaaaaa',
-        background: '#1c1c1c', border: '1px dashed #3a3a3a', borderRadius: 6,
-        padding: '28px 32px',
-      }}>
-        <div style={{ fontSize: 32, marginBottom: 10 }}>🛰</div>
-        <div style={{ fontSize: 17, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 }}>
-          Live Server — coming soon
-        </div>
-        <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-          Push this mission's planned forces into a <strong>live DCS Olympus</strong> session —
-          spawn the ORBAT, routes and tasking on a running server. This bridge is in
-          development and lights up in a future build.
-        </p>
-        <p style={{ fontSize: 11, color: '#777777', marginTop: 14, marginBottom: 0 }}>
-          For now, use <strong>Planning</strong> to build the brief and <strong>Editing</strong> to
-          modify the .miz.
-        </p>
       </div>
     </div>
   );
