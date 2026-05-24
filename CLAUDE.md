@@ -10,9 +10,12 @@ agreements with the user (Fett, callsign VMFA-224(AW)).
 files without destroying user formatting. Flask backend, React/Vite
 frontend.
 
-**Live URL**: `https://mizmaker-production.up.railway.app/` (Railway-hosted)
+**Live URL**: `https://dcsopt.up.railway.app/` (Railway-hosted)
 — this is the canonical deploy that tracks `origin/main`; every push
-redeploys here. Verify deploys / probe the API against THIS host.
+redeploys here. Verify deploys / probe the API against THIS host
+(healthcheck path `/api/sam-ranges`). The old `mizmaker-production.up.railway.app`
+host is dead (404) since the DCS:OPT rename — do NOT use it. (Confirmed
+live host 2026-05-24.)
 Do NOT use `planner.v224.org` — that domain is intentionally frozen on
 an old (pre-brief-generator) build for a separate person's use; it is
 NOT attached to this Railway service and will not update. (Confirmed
