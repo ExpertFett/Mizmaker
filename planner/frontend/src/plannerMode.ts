@@ -49,16 +49,17 @@ export const PLANNER_MODE: boolean = detectPlannerMode();
  * there only shape the planning artefacts, not the mission file.
  */
 export const PLANNER_TAB_IDS: ReadonlySet<string> = new Set([
-  // SETUP
-  'map', 'sop', 'sopCheck', 'goals', 'weather',
-  // PLANNING
-  'threats', 'dmpi', 'visibility', 'rangePlan', 'windCalc',
-  // FLIGHTS — kept as references (feed kneeboards / brief / DTC export)
-  'radio', 'datalink', 'dtc',
-  // OUTPUT
-  'kneeboard', 'briefGen',
+  // SETUP — map/routes + weather reference
+  'map', 'weather',
+  // PLANNING — threats, target points, range planning
+  'threats', 'dmpi', 'rangePlan',
+  // FLIGHTS — loadout + DTC
+  'weapons', 'dtc',
   // UTIL — let the planner load a different mission
   'upload',
+  // NOTE: SOP / SOP Check / Goals / Visibility / Datalink / Radio / Kneeboard /
+  // Brief are intentionally Editing-only — the mission editor handles those
+  // before (and after) planning. Bomb Wind was removed from the app entirely.
 ]);
 
 /* -------------------------------------------------------------------------

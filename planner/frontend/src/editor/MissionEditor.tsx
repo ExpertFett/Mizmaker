@@ -29,12 +29,12 @@ import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
 import { VisibilityTab } from './tabs/VisibilityTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
-import { WindCalcTab } from './tabs/WindCalcTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
 import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
+import { MetarReadout } from '../panels/MetarReadout';
 import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode } from '../plannerMode';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
@@ -93,11 +93,6 @@ const SIDEBAR: SidebarItem[] = [
   // (set square / ruler) was reading as "measure distance" and pilots
   // kept skipping past it expecting the map's measure tool.
   { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '🎯' },
-  // Bomb wind correction — CCIP wind-drift calculator. Lives in PLANNING
-  // alongside DMPI/Range because it's an employment-planning aid for the
-  // target run, not a per-flight loadout/avionics setting. Pure local
-  // state, no mission coupling.
-  { kind: 'tab', id: 'windCalc',    label: 'Bomb Wind',   icon: '💨' },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
@@ -311,9 +306,9 @@ export function MissionEditor() {
             locked to Planning (VITE_PLANNER_MODE) or the sidebar is collapsed. */}
         {!LOCK_TO_PLANNING && !isCollapsed && (
           <div style={{ display: 'flex', gap: 4, padding: '8px 10px', borderBottom: '1px solid #3a3a3a' }}>
-            {(['planning', 'editing', 'live'] as AppMode[]).map((m) => {
+            {(['editing', 'planning', 'live'] as AppMode[]).map((m) => {
               const active = mode === m;
-              const label = m === 'planning' ? 'Plan' : m === 'editing' ? 'Edit' : 'Live';
+              const label = m === 'planning' ? 'Plan' : m === 'editing' ? 'Editor' : 'Live';
               return (
                 <button
                   key={m}
@@ -401,12 +396,14 @@ export function MissionEditor() {
             // shows a number so you can see at a glance how many edits
             // are queued without switching tabs.
             const showEditsCount = item.id === 'edits' && pendingEditCount > 0;
+            // In Planning mode the Weather tab is a read-only METAR readout.
+            const displayLabel = (mode === 'planning' && item.id === 'weather') ? 'METAR' : item.label;
             return (
               <button
                 key={item.id}
                 onClick={() => selectTab(item.id as TabId)}
                 title={isCollapsed
-                  ? (showSopDot ? `${item.label} — SOP: ${activeSop!.name}` : item.label)
+                  ? (showSopDot ? `${displayLabel} — SOP: ${activeSop!.name}` : displayLabel)
                   : (showSopDot ? `Active SOP: ${activeSop!.name}` : undefined)}
                 style={{
                   background: isActive ? 'rgba(74, 143, 212, 0.08)' : 'transparent',
@@ -429,7 +426,7 @@ export function MissionEditor() {
                 }}
               >
                 <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
-                {!isCollapsed && item.label}
+                {!isCollapsed && displayLabel}
                 {showSopDot && (
                   <span
                     style={{
@@ -584,7 +581,7 @@ export function MissionEditor() {
             )}
             {visitedTabs.has('weather') && (
               <div style={{ display: activeTab === 'weather' ? 'block' : 'none' }}>
-                <WeatherTab />
+                {mode === 'planning' ? <MetarReadout /> : <WeatherTab />}
               </div>
             )}
             {visitedTabs.has('livery') && (
@@ -620,11 +617,6 @@ export function MissionEditor() {
             {visitedTabs.has('rangePlan') && (
               <div style={{ display: activeTab === 'rangePlan' ? 'block' : 'none' }}>
                 <RangePlanTab />
-              </div>
-            )}
-            {visitedTabs.has('windCalc') && (
-              <div style={{ display: activeTab === 'windCalc' ? 'block' : 'none' }}>
-                <WindCalcTab />
               </div>
             )}
             {visitedTabs.has('tools') && (
