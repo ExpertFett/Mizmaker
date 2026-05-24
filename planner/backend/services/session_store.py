@@ -42,7 +42,9 @@ from typing import Optional
 
 # Session lifecycle defaults. Match the values that lived in app.py
 # pre-refactor so behavior is identical post-merge.
-DEFAULT_SESSION_TTL = 7200      # 2 hours for collaborative planning
+DEFAULT_SESSION_TTL = 259200    # 72 hours — "plan over the week, fly this weekend"
+                                # (sliding window on last_activity; idle sessions
+                                #  expire after this. Was 2h pre-Supabase.)
 DEFAULT_MAX_SESSIONS = 20
 
 
