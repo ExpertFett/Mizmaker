@@ -83,7 +83,18 @@ from services.dtc_builder import (
 )
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
-from services.session_store import default_store as _store
+# Session store selection: when SUPABASE_URL is configured, sessions persist to
+# Supabase (survive Railway restarts); otherwise fall back to the in-memory
+# store (identical to prior behaviour). The Supabase module is imported lazily
+# so envs without creds never need the `supabase` package at import time.
+from services.session_store import default_store as _inmem_store
+if os.environ.get("SUPABASE_URL"):
+    from services.session_store_supabase import SupabaseSessionStore
+    _store = SupabaseSessionStore()
+    print("[session_store] using Supabase-backed persistence", flush=True)
+else:
+    _store = _inmem_store
+    print("[session_store] using in-memory store (set SUPABASE_URL to persist)", flush=True)
 from services.auth import register_auth_routes
 import srtm
 

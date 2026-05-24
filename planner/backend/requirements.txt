@@ -23,4 +23,11 @@ pydcs @ https://github.com/dcs-retribution/pydcs/archive/refs/heads/retribution.
 python-pptx>=1.0
 # PDF rasterization for PNG/JPG slide export (uses bundled libpdfium)
 pypdfium2>=4.0
+# Supabase client — backs services/session_store_supabase.py so editor
+# sessions survive Railway restarts. Only imported when SUPABASE_URL is set
+# (see app.py store selection); local/dev with no creds stays in-memory.
+# Upper-bounded: supabase 2.16+ pulls a heavy `pyiceberg` dep with no wheel on
+# newer Pythons. 2.11–2.15.x resolve clean (wheels-only) and expose the same
+# table/storage API this code uses (validated against 2.15.1).
+supabase>=2.11,<2.16
 
