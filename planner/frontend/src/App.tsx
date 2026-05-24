@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMissionStore } from './store/missionStore';
 import { useAuthStore } from './store/authStore';
 import { UploadPanel } from './panels/UploadPanel';
 import { LandingPage } from './panels/LandingPage';
 import { MissionEditor } from './editor/MissionEditor';
 import { JoinSession } from './session/JoinSession';
+import { DiscordButton } from './panels/DiscordButton';
 
 export default function App() {
   const sessionId = useMissionStore((s) => s.sessionId);
@@ -36,26 +37,29 @@ export default function App() {
   const joinMatch = path.match(/^\/join\/([a-f0-9-]+)/);
   const joinToken = new URLSearchParams(window.location.search).get('token');
 
-  // Invite links bypass the landing/login gate entirely — a flight lead's
-  // link should drop the recipient straight into the shared session.
+  // Pick the active view. The Discord button is rendered alongside ALL views
+  // (below) so it's visible everywhere in the program.
+  let view: ReactNode;
   if (joinMatch && joinToken && !sessionId) {
-    return <JoinSession sessionId={joinMatch[1]} token={joinToken} />;
+    // Invite links bypass the landing/login gate — straight into the session.
+    view = <JoinSession sessionId={joinMatch[1]} token={joinToken} />;
+  } else if (!checked && !enteredAsGuest) {
+    // Wait for the auth probe (avoids a landing-page flash for logged-in users
+    // on refresh). Returning guests skip the wait.
+    view = <div style={{ height: '100vh', background: '#141414' }} />;
+  } else if (!user && !enteredAsGuest) {
+    // Gate: landing/login page until the user logs in or chooses guest.
+    view = <LandingPage authError={authError} authDetail={authDetail} />;
+  } else if (!sessionId) {
+    view = <UploadPanel />;
+  } else {
+    view = <MissionEditor />;
   }
 
-  // Wait for the auth probe before deciding (avoids a landing-page flash for
-  // already-logged-in users on refresh). Returning guests skip the wait.
-  if (!checked && !enteredAsGuest) {
-    return <div style={{ height: '100vh', background: '#141414' }} />;
-  }
-
-  // Gate: landing/login page until the user logs in or chooses guest.
-  if (!user && !enteredAsGuest) {
-    return <LandingPage authError={authError} authDetail={authDetail} />;
-  }
-
-  if (!sessionId) {
-    return <UploadPanel />;
-  }
-
-  return <MissionEditor />;
+  return (
+    <>
+      {view}
+      <DiscordButton />
+    </>
+  );
 }
