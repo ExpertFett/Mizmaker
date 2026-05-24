@@ -85,6 +85,7 @@ from services.projection import THEATERS
 from services.waypoint_service import recompute_route
 from services.session_store import default_store as _store
 from services.auth import register_auth_routes
+from services.olympus_bridge import register_olympus_routes
 import srtm
 
 # Initialize SRTM elevation data (downloads HGT tiles on first use, caches locally)
@@ -104,6 +105,11 @@ app.secret_key = os.environ.get("APP_SECRET_KEY", "dev-insecure-secret-change-me
 # catch-all so /api/auth/* are matched as specific routes. Degrades to guest-
 # only when DISCORD_* env vars are unset (see services/auth.py).
 register_auth_routes(app)
+
+# Olympus Bridge — server-side relay to a LIVE DCS Olympus backend (:4512).
+# Registered before the SPA catch-all so /api/olympus/* match as API routes.
+# Inert until the frontend sends Olympus connection params per request.
+register_olympus_routes(app)
 
 # Session storage. The dict + lock + helpers that lived here moved to
 # services.session_store as part of Phase 2 (Supabase migration). Step 1
