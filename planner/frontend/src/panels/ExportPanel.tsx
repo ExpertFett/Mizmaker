@@ -25,7 +25,7 @@ import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
 import { useVisibilityStore } from '../store/visibilityStore';
 import type { Weather } from '../utils/atmosphere';
-import { PLANNER_MODE } from '../plannerMode';
+import type { AppMode } from '../plannerMode';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
 interface EditResult {
@@ -49,7 +49,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export function ExportPanel() {
+export function ExportPanel({ mode }: { mode: AppMode }) {
   const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
   const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, kneeboardSettings } = useEditStore();
   // Active SOP — needed if the user has the SOP Comms kneeboard card
@@ -326,10 +326,11 @@ export function ExportPanel() {
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid #3a3a3a' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Planner mode is planning-only: no writeback to the .miz. The
-            modified-.miz download is removed; planning artefacts (kneeboards,
-            brief, DTC, planning JSON) come from their own tabs. */}
-        {!PLANNER_MODE && (
+        {/* Only Editing mode writes back to the .miz. Planning / Live are
+            planning-only — the modified-.miz download is hidden; planning
+            artefacts (kneeboards, brief, DTC, planning JSON) come from their
+            own tabs. */}
+        {mode === 'editing' && (
           <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
             {isDirty ? 'Download .miz *' : 'Download .miz'}
           </button>

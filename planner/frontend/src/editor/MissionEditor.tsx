@@ -35,7 +35,7 @@ import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
-import { PLANNER_MODE, PLANNER_TAB_IDS } from '../plannerMode';
+import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode } from '../plannerMode';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
 // section headers ('SETUP', 'ENTITIES', etc.) act as visual dividers
@@ -124,20 +124,20 @@ const TABS = SIDEBAR.filter((s): s is TabDef & { kind: 'tab' } => s.kind === 'ta
 
 type TabId = (typeof TABS)[number]['id'];
 
-// Planner mode curates the sidebar down to the planning/reference/output
-// tabs (see plannerMode.ts). We keep only allow-listed tabs and drop any
-// section header that ends up with no tabs under it. Full-editor builds
-// (PLANNER_MODE === false) use SIDEBAR unchanged — zero behaviour change.
-function plannerSidebar(): SidebarItem[] {
+// The app runs in one of three modes (see plannerMode.ts): Editing (the full
+// editor — original behaviour), Planning (a curated planning/reference/output
+// subset), and Live (Olympus bridge — stub for now). The sidebar shows only
+// the tabs for the active mode; section headers left with no tabs are dropped.
+// Editing returns SIDEBAR unchanged — zero behaviour change.
+function sidebarForMode(mode: AppMode): SidebarItem[] {
+  const allow = tabsForMode(mode);
+  if (allow === 'all') return SIDEBAR;
   const out: SidebarItem[] = [];
   for (const item of SIDEBAR) {
-    if (item.kind === 'section') {
-      out.push(item); // provisional; pruned below if no tabs follow
-    } else if (PLANNER_TAB_IDS.has(item.id)) {
-      out.push(item);
-    }
+    if (item.kind === 'section') out.push(item); // provisional; pruned below
+    else if (allow.has(item.id)) out.push(item);
   }
-  // Drop section headers immediately followed by another section / end.
+  // Drop section headers not immediately followed by a tab.
   return out.filter((item, i) => {
     if (item.kind !== 'section') return true;
     const next = out[i + 1];
@@ -145,10 +145,12 @@ function plannerSidebar(): SidebarItem[] {
   });
 }
 
-const VISIBLE_SIDEBAR: SidebarItem[] = PLANNER_MODE ? plannerSidebar() : SIDEBAR;
-
 export function MissionEditor() {
   const [activeTab, setActiveTab] = useState<TabId>('map');
+  // App mode (Planning / Editing / Live) — drives which sidebar tabs show and
+  // whether the .miz download is offered. Remembered across reloads; locked to
+  // Planning when the build sets VITE_PLANNER_MODE.
+  const [mode, setModeState] = useState<AppMode>(loadInitialMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Track which editor tabs have been opened. Once mounted, we keep them in
   // the DOM (hidden with display:none) so local useState edits survive tab
@@ -180,10 +182,24 @@ export function MissionEditor() {
     setVisitedTabs((prev) => prev.has(tab) ? prev : new Set(prev).add(tab));
   };
 
+  // Sidebar tabs for the active mode (Editing = full SIDEBAR).
+  const visibleSidebar = useMemo(() => sidebarForMode(mode), [mode]);
+
+  const switchMode = (m: AppMode) => {
+    setModeState(m);
+    saveMode(m);
+    if (m === 'live') return; // Live renders its own placeholder, no tabs
+    // If the current tab isn't available in the new mode, fall back to Map.
+    const allow = tabsForMode(m);
+    if (allow !== 'all' && !allow.has(activeTab)) selectTab('map');
+  };
+
   // Connect SSE for real-time sync (heartbeat keepalives prevent Cloudflare 524)
   useSessionStream(sessionId, true);
 
-  const isMap = activeTab === 'map';
+  // Live mode shows a placeholder (not the map), so treat it as non-map for
+  // sidebar width / flight-picker / map-content gating.
+  const isMap = activeTab === 'map' && mode !== 'live';
   // Only allow collapse on map page
   const isCollapsed = isMap && sidebarCollapsed;
   const sidebarWidth = isCollapsed ? 44 : isMap ? 280 : 140;
@@ -225,7 +241,7 @@ export function MissionEditor() {
             <div style={{ overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: '#e0e0e0', whiteSpace: 'nowrap' }}>{theater}</div>
-                {PLANNER_MODE && (
+                {LOCK_TO_PLANNING && (
                   <span
                     title="Planning-only mode — mission editing and .miz download are disabled"
                     style={{
@@ -291,6 +307,41 @@ export function MissionEditor() {
           )}
         </div>
 
+        {/* Mode switcher (Planning / Editing / Live). Hidden when the build is
+            locked to Planning (VITE_PLANNER_MODE) or the sidebar is collapsed. */}
+        {!LOCK_TO_PLANNING && !isCollapsed && (
+          <div style={{ display: 'flex', gap: 4, padding: '8px 10px', borderBottom: '1px solid #3a3a3a' }}>
+            {(['planning', 'editing', 'live'] as AppMode[]).map((m) => {
+              const active = mode === m;
+              const label = m === 'planning' ? 'Plan' : m === 'editing' ? 'Edit' : 'Live';
+              return (
+                <button
+                  key={m}
+                  onClick={() => switchMode(m)}
+                  title={m === 'live'
+                    ? 'Live server / Olympus bridge — coming soon'
+                    : m === 'planning' ? 'Planning mode (no .miz editing)' : 'Editing mode (full editor)'}
+                  style={{
+                    flex: 1,
+                    background: active ? 'rgba(74,143,212,0.15)' : 'transparent',
+                    border: `1px solid ${active ? '#4a8fd4' : '#3a3a3a'}`,
+                    color: active ? '#9cd0ff' : '#aaaaaa',
+                    borderRadius: 4,
+                    padding: '5px 0',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 0.4,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Tab buttons + section dividers.
             v0.9.60 — tab list can scroll when the sidebar gets too tall
             for the viewport.
@@ -313,7 +364,7 @@ export function MissionEditor() {
           overflowX: 'hidden',
           overflowY: isCollapsed ? 'hidden' : 'auto',
         }}>
-          {VISIBLE_SIDEBAR.map((item, idx) => {
+          {visibleSidebar.map((item, idx) => {
             if (item.kind === 'section') {
               if (isCollapsed) {
                 // Collapsed sidebar: render a thin divider line instead of the label
@@ -460,22 +511,27 @@ export function MissionEditor() {
               <PlayerGroupsButton />
               <InviteManager />
             </div>
-            {!PLANNER_MODE && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
-            <ExportPanel />
+            {mode === 'editing' && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
+            <ExportPanel mode={mode} />
           </>
         )}
 
         {/* Export at bottom for non-map tabs */}
         {!isMap && (
           <div style={{ marginTop: 'auto' }}>
-            {!PLANNER_MODE && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
-            <ExportPanel />
+            {mode === 'editing' && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
+            <ExportPanel mode={mode} />
           </div>
         )}
       </div>
 
       {/* Main content */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        {/* Live mode is a stub for now — it wires up to the Olympus bridge
+            after Phase 2. Render a placeholder instead of the editor surface. */}
+        {mode === 'live' && <LiveModePlaceholder />}
+        {mode !== 'live' && (
+        <>
         {/* Map tab — map + floating panel */}
         {isMap && (
           <>
@@ -618,6 +674,42 @@ export function MissionEditor() {
             )}
           </div>
         )}
+        </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Live / Olympus mode placeholder. The Olympus bridge (connect + push the
+ * planned ORBAT to a running DCS Olympus server) lives on the `olympus`
+ * branch and gets merged in after Phase 2. Until then, Live mode shows this.
+ */
+function LiveModePlaceholder() {
+  return (
+    <div style={{
+      height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24,
+    }}>
+      <div style={{
+        maxWidth: 460, textAlign: 'center', color: '#aaaaaa',
+        background: '#1c1c1c', border: '1px dashed #3a3a3a', borderRadius: 6,
+        padding: '28px 32px',
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 10 }}>🛰</div>
+        <div style={{ fontSize: 17, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 }}>
+          Live Server — coming soon
+        </div>
+        <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+          Push this mission's planned forces into a <strong>live DCS Olympus</strong> session —
+          spawn the ORBAT, routes and tasking on a running server. This bridge is in
+          development and lights up in a future build.
+        </p>
+        <p style={{ fontSize: 11, color: '#777777', marginTop: 14, marginBottom: 0 }}>
+          For now, use <strong>Planning</strong> to build the brief and <strong>Editing</strong> to
+          modify the .miz.
+        </p>
       </div>
     </div>
   );

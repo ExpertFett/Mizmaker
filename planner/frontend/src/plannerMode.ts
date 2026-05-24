@@ -60,3 +60,56 @@ export const PLANNER_TAB_IDS: ReadonlySet<string> = new Set([
   // UTIL — let the planner load a different mission
   'upload',
 ]);
+
+/* -------------------------------------------------------------------------
+ * App modes
+ *
+ * After a mission is loaded, the user picks one of three modes from a
+ * switcher at the top of the sidebar:
+ *   - 'editing'  — the full editor (original behaviour, every tab + .miz download)
+ *   - 'planning' — the curated PLANNER_TAB_IDS subset, no .miz writeback
+ *   - 'live'     — Olympus / live-server bridge (STUB for now; wires up after
+ *                  Olympus Phase 2)
+ *
+ * The VITE_PLANNER_MODE flag (PLANNER_MODE above) locks the whole build to
+ * Planning and hides the switcher — for a dedicated planning-only deploy.
+ * Otherwise the default is Editing (so the full editor is unchanged) and the
+ * choice is remembered in localStorage.
+ * ----------------------------------------------------------------------- */
+
+export type AppMode = 'planning' | 'editing' | 'live';
+
+/** When true (VITE_PLANNER_MODE set), the app is locked to Planning and the
+ *  mode switcher is hidden. */
+export const LOCK_TO_PLANNING: boolean = PLANNER_MODE;
+
+const MODE_LS_KEY = 'dcsopt.appMode.v1';
+const EMPTY_TABS: ReadonlySet<string> = new Set();
+
+export function loadInitialMode(): AppMode {
+  if (LOCK_TO_PLANNING) return 'planning';
+  try {
+    const m = localStorage.getItem(MODE_LS_KEY);
+    if (m === 'planning' || m === 'editing' || m === 'live') return m;
+  } catch {
+    /* ignore */
+  }
+  return 'editing'; // default keeps the original full editor
+}
+
+export function saveMode(mode: AppMode): void {
+  if (LOCK_TO_PLANNING) return; // nothing to persist when locked
+  try {
+    localStorage.setItem(MODE_LS_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Editor tab ids visible in a given mode. 'all' means the full sidebar
+ *  (Editing). Live has no editor tabs yet — it renders its own placeholder. */
+export function tabsForMode(mode: AppMode): ReadonlySet<string> | 'all' {
+  if (mode === 'editing') return 'all';
+  if (mode === 'planning') return PLANNER_TAB_IDS;
+  return EMPTY_TABS; // 'live' (stub)
+}
