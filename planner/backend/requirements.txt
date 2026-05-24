@@ -30,4 +30,7 @@ pypdfium2>=4.0
 # newer Pythons. 2.11–2.15.x resolve clean (wheels-only) and expose the same
 # table/storage API this code uses (validated against 2.15.1).
 supabase>=2.11,<2.16
+# Fernet encryption for stored server credentials (Olympus role passwords) —
+# see services/profile_crypto.py. Key in PROFILE_ENC_KEY (Railway env).
+cryptography>=42
 

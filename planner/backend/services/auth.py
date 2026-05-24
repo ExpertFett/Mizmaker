@@ -89,6 +89,13 @@ def _current_user() -> Optional[dict]:
     return read_auth_token(request.cookies.get(AUTH_COOKIE, ""))
 
 
+def current_user() -> Optional[dict]:
+    """Public accessor for the logged-in Discord identity (signed cookie
+    payload {id, username, global_name, avatar}), or None. Used by the group /
+    Live-terminal routes to gate access and resolve the current user."""
+    return _current_user()
+
+
 class _TokenError(Exception):
     """Carries Discord's own error code so the callback can report exactly why
     the token exchange failed (invalid_client = bad ID/secret pair;

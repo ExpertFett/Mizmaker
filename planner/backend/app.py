@@ -116,6 +116,11 @@ app.secret_key = os.environ.get("APP_SECRET_KEY", "dev-insecure-secret-change-me
 # only when DISCORD_* env vars are unset (see services/auth.py).
 register_auth_routes(app)
 
+# Live "DM terminal" — multi-tenant groups + server profiles (/api/groups*).
+# Membership-gated; degrades to 503 when Supabase isn't configured.
+from services.groups import register_group_routes
+register_group_routes(app)
+
 # Session storage. The dict + lock + helpers that lived here moved to
 # services.session_store as part of Phase 2 (Supabase migration). Step 1
 # of that plan is keeping the in-memory backend; Step 2 will swap in a
