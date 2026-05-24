@@ -31,6 +31,7 @@ import { VisibilityTab } from './tabs/VisibilityTab';
 import { RangePlanTab } from './tabs/RangePlanTab';
 import { WindCalcTab } from './tabs/WindCalcTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
+import { OlympusTab } from './tabs/OlympusTab';
 import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
 import { TriggerTab } from './tabs/TriggerTab';
@@ -112,6 +113,9 @@ const SIDEBAR: SidebarItem[] = [
   // queued for the next download. Lives in OUTPUT because it's a
   // pre-download summary view, same as Kneeboard / Brief.
   { kind: 'tab', id: 'edits',       label: 'Edits',       icon: '✎' },
+
+  { kind: 'section', label: 'LIVE' },
+  { kind: 'tab', id: 'olympus',     label: 'Olympus',     icon: '🛰' },
 
   { kind: 'section', label: 'UTIL' },
   { kind: 'tab', id: 'debug',       label: 'Debug',       icon: '🔍' },
@@ -565,6 +569,11 @@ export function MissionEditor() {
             {visitedTabs.has('briefGen') && (
               <div style={{ display: activeTab === 'briefGen' ? 'block' : 'none', height: '100%' }}>
                 <BriefGenTab />
+              </div>
+            )}
+            {visitedTabs.has('olympus') && (
+              <div style={{ display: activeTab === 'olympus' ? 'block' : 'none' }}>
+                <OlympusTab />
               </div>
             )}
             {visitedTabs.has('edits') && (
