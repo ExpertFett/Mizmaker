@@ -14,12 +14,14 @@ backend/core/src/server.cpp + commands.cpp + commands.h):
     checked (vs gameMaster / blueCommander / redCommander). Username is free.
   - Telemetry: GET http://<host>:<port>/<resource> (units, mission, ...).
 
-⚠️ CONFIRM-AGAINST-LIVE — two values we could NOT pull from source; defaults are
-best-guesses, to be locked with a 30-second DevTools capture against a running
-Olympus (F12 -> Network, spawn one unit):
-  - REST_URI: the command-PUT base path (server.cpp PUTs to root -> "").
-  - TELEMETRY_URIS / COMMANDS: the exact GET resource strings + dispatcher key
-    casing (camelCase of the C++ command class names is the assumption).
+CONFIRMED AGAINST LIVE (2026-05-24, vs a public Olympus on :3000):
+  - The public API is served by the FRONTEND webserver on :3000 (the backend
+    :4512 is internal/not-forwarded in current Olympus). All API routes live
+    under the `/olympus/` prefix and require auth — GET /olympus/{mission,units,
+    airbases,bullseye,logs} all return 401 without credentials (404 elsewhere).
+  - TELEMETRY_URIS below are therefore prefixed `olympus/`.
+  - REST_URI (command PUT path) is assumed `olympus/` (proxy -> backend root);
+    still to be confirmed with a live command in Phase C.
 """
 
 from __future__ import annotations
@@ -34,15 +36,16 @@ from typing import Any, Optional, Tuple
 DEFAULT_PORT = 4512
 _TIMEOUT = 10
 
-# ⚠️ CONFIRM-AGAINST-LIVE (see module docstring) -----------------------------
-REST_URI = ""  # command PUT target path; server.cpp submits commands to root.
-TELEMETRY_URIS = {  # GET resource paths on the Olympus backend
-    "units": "units",
-    "mission": "mission",
-    "airbases": "airbases",
-    "bullseye": "bullseye",
-    "markers": "markers",
-    "drawings": "drawings",
+# Live-confirmed API base is the `/olympus/` prefix on the :3000 frontend. ------
+REST_URI = "olympus/"  # command PUT path (proxy -> backend root); confirm in Phase C.
+TELEMETRY_URIS = {  # GET resource paths under /olympus/ (confirmed 401-without-auth)
+    "units": "olympus/units",
+    "mission": "olympus/mission",
+    "airbases": "olympus/airbases",
+    "bullseye": "olympus/bullseye",
+    "logs": "olympus/logs",
+    "markers": "olympus/markers",
+    "drawings": "olympus/drawings",
 }
 # Friendly alias -> dispatcher key (camelCase of the C++ command classes).
 COMMANDS = {
