@@ -19,6 +19,7 @@ import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
+import Cluster from 'ol/source/Cluster';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import CircleGeom from 'ol/geom/Circle';
@@ -84,6 +85,19 @@ interface UnitT {
   position?: { lat: number; lng: number; alt?: number };
 }
 
+// Style for a cluster of N ground units: count badge colored by majority side.
+function clusterStyle(features: Feature[]): Style {
+  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u?.coalition, u?.category); }
+  let red = 0, blue = 0;
+  for (const f of features) { const c = (f.get('unit') as UnitT | undefined)?.coalition; if (c === 1) red++; else if (c === 2) blue++; }
+  const side = red > blue ? 1 : blue > red ? 2 : 0;
+  const color = SIDE_COLOR[side] ?? C.neutral;
+  return new Style({
+    image: new CircleStyle({ radius: 11, fill: new Fill({ color: hexA(color, 0.85) }), stroke: new Stroke({ color: 'rgba(0,0,0,0.6)', width: 1.5 }) }),
+    text: new Text({ text: String(features.length), font: 'bold 11px sans-serif', fill: new Fill({ color: '#0b0f16' }) }),
+  });
+}
+
 // Airbase coalition can be a number (0/1/2) or string ("neutral"/"red"/"blue").
 function airbaseColor(c: unknown): string {
   if (typeof c === 'number') return SIDE_COLOR[c] ?? C.neutral;
@@ -139,6 +153,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const abLayerRef = useRef<any>(null);                 // airbase layer (for show/hide)
   const ringSrcRef = useRef<VectorSource | null>(null); // engagement/acquisition rings
   const rangesRef = useRef<Map<string, { eng: number; acq: number }>>(new Map());  // unit type-name -> ranges (m)
+  const groundSrcRef = useRef<VectorSource | null>(null);  // ground units (fed into the cluster)
+  const clusterSrcRef = useRef<any>(null);                 // ol Cluster wrapping groundSrc
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -187,6 +203,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showDead, toggleDead] = usePersistedToggle('dcsopt.live.dead');
   const [showEng, toggleEng] = usePersistedToggle('dcsopt.live.engrings');
   const [showAcq, toggleAcq] = usePersistedToggle('dcsopt.live.acqrings');
+  const [clusterGround, toggleCluster] = usePersistedToggle('dcsopt.live.cluster');
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -195,6 +212,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const src = srcRef.current; if (!src) return;
     src.clear();
     const ringSrc = ringSrcRef.current; ringSrc?.clear();
+    const groundSrc = groundSrcRef.current; groundSrc?.clear();
     let red = 0, blue = 0, other = 0, plotted = 0; const pts: number[][] = [];
     for (const { u } of Object.values(unitsRef.current)) {
       const p = u.position;
@@ -218,7 +236,12 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
       const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
       const ft = new Feature({ geometry: new Point(coord) });
-      ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
+      ft.set('unit', u);
+      if (isGround && groundSrc) {
+        groundSrc.addFeature(ft);  // ground units are styled by the cluster layer
+      } else {
+        ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
+      }
       // Threat rings (live units only) from the unit's blueprint ranges.
       if (ringSrc && u.alive !== 0 && (showEng || showAcq)) {
         const r = rangesRef.current.get(u.name || '');
@@ -228,6 +251,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         }
       }
     }
+    clusterSrcRef.current?.refresh();  // re-cluster ground units after the rebuild
     setCounts({ red, blue, other });
     setDbg(`feed ${feedLenRef.current} · plotted ${plotted}`);
     if (!fittedRef.current && pts.length && mapRef.current) {
@@ -298,18 +322,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     abSrcRef.current = abSrc;
     const ringSrc = new VectorSource();
     ringSrcRef.current = ringSrc;
+    const groundSrc = new VectorSource();
+    groundSrcRef.current = groundSrc;
+    const clusterSrc = new Cluster({ distance: 42, minDistance: 24, source: groundSrc });
+    clusterSrcRef.current = clusterSrc;
     const unitsLayer = new VectorLayer({ source: src });
     const abLayer = new VectorLayer({ source: abSrc });
     const ringLayer = new VectorLayer({ source: ringSrc });
+    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[]) });
     abLayerRef.current = abLayer;
     const map = new Map({
       target: elRef.current,
       controls: [],  // hide default OL zoom/attribution; we float our own chrome
       layers: [
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
-        abLayer,      // airbases under units
-        ringLayer,    // threat rings under units
-        unitsLayer,
+        abLayer,        // airbases under units
+        ringLayer,      // threat rings under units
+        clusterLayer,   // ground units (clustered)
+        unitsLayer,     // air/navy units on top
       ],
       view: new View({ center: fromLonLat([35, 43]), zoom: 6 }),
     });
@@ -317,9 +347,21 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const c = ctrl.current;
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
-      // Only hit-test the units layer — airbase markers shouldn't be selectable.
-      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer });
-      const target = f ? (f.get('unit') as UnitT) : null;
+      // Hit-test only the unit + cluster layers (not airbases/rings).
+      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer || l === clusterLayer });
+      let target: UnitT | null = null;
+      if (f) {
+        const clustered = f.get('features') as Feature[] | undefined;
+        if (Array.isArray(clustered)) {
+          if (clustered.length > 1) {  // expand a multi-unit cluster instead of selecting
+            map.getView().fit(boundingExtent(clustered.map((cf) => (cf.getGeometry() as Point).getCoordinates())), { padding: [90, 90, 90, 90], maxZoom: 13, duration: 250 });
+            return;
+          }
+          target = (clustered[0]?.get('unit') as UnitT) ?? null;
+        } else {
+          target = (f.get('unit') as UnitT) ?? null;
+        }
+      }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
       c.onSelect(target);
@@ -422,6 +464,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   // Show/hide the airbase layer.
   useEffect(() => { abLayerRef.current?.setVisible(showAirbase); }, [showAirbase]);
+
+  // Enable/disable ground-unit clustering by setting the cluster distance.
+  useEffect(() => { clusterSrcRef.current?.setDistance(clusterGround ? 42 : 0); }, [clusterGround]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -557,6 +602,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <IconToggle icon="◌" active={showAcq} onClick={toggleAcq}
             helpTitle="Hide / show acquisition rings"
             helpBody={<>Detection / acquisition range rings (radar pickup) around units that have them. Currently <b style={{ color: showAcq ? C.green : C.red }}>{showAcq ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="❖" active={clusterGround} onClick={toggleCluster}
+            helpTitle="Ground unit clustering"
+            helpBody={<>Groups nearby ground units into a single counted marker when zoomed out, to declutter the map. Click a cluster to zoom in. Currently <b style={{ color: clusterGround ? C.green : C.red }}>{clusterGround ? 'ON' : 'OFF'}</b>.</>} />
         </div>
 
         <div style={{ flex: 1 }} />
