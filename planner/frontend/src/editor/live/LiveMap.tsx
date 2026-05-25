@@ -61,7 +61,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [err, setErr] = useState('');
   const [selected, setSelected] = useState<UnitT | null>(null);
   const [cmdMsg, setCmdMsg] = useState('');
-  const [moveArmedID, setMoveArmedID] = useState<number | null>(null);
+  // Armed map action: next map/unit click applies it to the unit `id`.
+  const [armed, setArmed] = useState<{ kind: 'move' | 'attack' | 'fireAtArea' | 'bombPoint'; id: number } | null>(null);
+  const [ctlAlt, setCtlAlt] = useState('');
+  const [ctlSpd, setCtlSpd] = useState('');
 
   // Spawn state
   const [mode, setMode] = useState<'select' | 'spawn'>('select');
@@ -85,11 +88,19 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Latest interaction state for the (once-registered) OL click handler.
   const ctrl = useRef<any>({});
   ctrl.current = {
-    mode, spawnType, spawnCoalition, spawnCat, moveArmedID,
+    mode, spawnType, spawnCoalition, spawnCat, armed,
     onSelect: (u: UnitT | null) => setSelected(u),
-    onMove: (id: number, lat: number, lng: number) => {
-      runCmd('setPath', { ID: id, path: [{ lat, lng }] }, 'Move');
-      setMoveArmedID(null);
+    onArmed: (lat: number, lng: number, target: UnitT | null) => {
+      const a = armed;
+      if (!a) return;
+      if (a.kind === 'move') runCmd('setPath', { ID: a.id, path: [{ lat, lng }] }, 'Move', true);
+      else if (a.kind === 'fireAtArea') runCmd('fireAtArea', { ID: a.id, location: { lat, lng } }, 'Fire at area');
+      else if (a.kind === 'bombPoint') runCmd('bombPoint', { ID: a.id, location: { lat, lng } }, 'Bomb point');
+      else if (a.kind === 'attack') {
+        if (target?.olympusID == null) { setCmdMsg('✗ click a target unit'); return; }  // stay armed
+        runCmd('attackUnit', { ID: a.id, targetID: target.olympusID }, 'Attack');
+      }
+      setArmed(null);
     },
     onSpawn: (type: string, lat: number, lng: number) => {
       const isAir = spawnCat === 'aircraft' || spawnCat === 'helicopter';
@@ -125,10 +136,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const c = ctrl.current;
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
-      if (c.moveArmedID != null) { c.onMove(c.moveArmedID, lat, lng); return; }
-      if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
       const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6 });
-      c.onSelect(f ? (f.get('unit') as UnitT) : null);
+      const target = f ? (f.get('unit') as UnitT) : null;
+      if (c.armed) { c.onArmed(lat, lng, target); return; }
+      if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
+      c.onSelect(target);
     });
     mapRef.current = map;
     return () => { map.setTarget(undefined); mapRef.current = null; };
@@ -201,11 +213,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         .slice(0, 80)
     : [];
 
-  const armed = moveArmedID != null || (mode === 'spawn' && spawnType);
+  const armedActive = armed != null || (mode === 'spawn' && !!spawnType);
 
   return (
     <div style={{ position: 'relative', height: 'min(70vh, 580px)', border: '1px solid #3a3a3a', borderRadius: 6, overflow: 'hidden' }}>
-      <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armed ? 'crosshair' : 'default' }} />
+      <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
 
       {/* Legend + mode toolbar */}
       <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -218,7 +230,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         {isAdmin && (
           <div style={{ ...panel, display: 'flex', gap: 6 }}>
             {(['select', 'spawn'] as const).map((m) => (
-              <button key={m} onClick={() => { setMode(m); setSpawnType(null); setMoveArmedID(null); }}
+              <button key={m} onClick={() => { setMode(m); setSpawnType(null); setArmed(null); }}
                       style={{ ...mbtn, ...(mode === m ? mbtnOn : {}) }}>{m === 'select' ? 'Select' : 'Spawn'}</button>
             ))}
           </div>
@@ -226,9 +238,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       </div>
 
       {/* Arm banner */}
-      {(moveArmedID != null || (mode === 'spawn' && spawnType)) && (
+      {(armed || (mode === 'spawn' && spawnType)) && (
         <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', ...panel, color: '#9cd0ff' }}>
-          {moveArmedID != null ? 'Click the map to MOVE the selected unit' : `Click the map to SPAWN ${spawnType}`}
+          {armed
+            ? (armed.kind === 'move' ? 'Click the map to MOVE the unit'
+              : armed.kind === 'attack' ? 'Click a TARGET unit to ATTACK'
+              : armed.kind === 'fireAtArea' ? 'Click the map: FIRE AT AREA'
+              : 'Click the map: BOMB POINT')
+            : `Click the map to SPAWN ${spawnType}`}
+          <button onClick={() => { setArmed(null); setSpawnType(null); }} style={{ ...mbtn, marginLeft: 10, padding: '1px 8px' }}>cancel</button>
           {cmdMsg && <span style={{ marginLeft: 10, color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</span>}
         </div>
       )}
@@ -272,7 +290,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
       {/* Selected unit card (select mode) */}
       {selected && mode === 'select' && (
-        <div style={{ position: 'absolute', top: 8, right: 8, width: 240, ...panel, border: '1px solid #4a8fd4' }}>
+        <div style={{ position: 'absolute', top: 8, right: 8, width: 252, maxHeight: '92%', overflowY: 'auto', ...panel, border: '1px solid #4a8fd4' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</strong>
             <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: 16 }}>×</button>
@@ -283,13 +301,42 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             <div>Pos: {selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</div>
           </div>
           {isAdmin && selected.olympusID != null && (
-            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-              <button style={cardBtn} onClick={() => setMoveArmedID(selected.olympusID!)}>📍 Move</button>
-              {selected.position && (
-                <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
-              )}
-              <button style={{ ...cardBtn, color: '#d95050', borderColor: '#5a2a2a' }}
-                      onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+            <div style={{ marginTop: 8 }}>
+              {/* Tasking — arms a map/target click */}
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                <button style={cardBtn} onClick={() => setArmed({ kind: 'move', id: selected.olympusID! })}>📍 Move</button>
+                <button style={cardBtn} onClick={() => setArmed({ kind: 'attack', id: selected.olympusID! })}>🎯 Attack</button>
+                <button style={cardBtn} onClick={() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! })}>🔥 Fire</button>
+                <button style={cardBtn} onClick={() => setArmed({ kind: 'bombPoint', id: selected.olympusID! })}>💣 Bomb</button>
+              </div>
+              {/* Behaviour */}
+              <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
+                <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE'); }}>
+                  <option value="">ROE…</option><option value="1">Free</option><option value="2">Designated</option><option value="3">Return fire</option><option value="4">Hold</option>
+                </select>
+                <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction'); }}>
+                  <option value="">React…</option><option value="0">None</option><option value="1">Manoeuvre</option><option value="2">Passive</option><option value="3">Evade</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
+                <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On')}>On</button>
+                <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off')}>Off</button>
+                <button style={cardBtn} onClick={() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on')}>Roads</button>
+              </div>
+              <div style={{ display: 'flex', gap: 5, marginTop: 5, alignItems: 'center' }}>
+                <input placeholder="alt ft" value={ctlAlt} onChange={(e) => setCtlAlt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
+                <button style={cardBtn} disabled={!ctlAlt} onClick={() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt')}>alt</button>
+                <input placeholder="spd kt" value={ctlSpd} onChange={(e) => setCtlSpd(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
+                <button style={cardBtn} disabled={!ctlSpd} onClick={() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd')}>spd</button>
+              </div>
+              {/* Mark / remove */}
+              <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                {selected.position && (
+                  <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
+                )}
+                <button style={{ ...cardBtn, color: '#d95050', borderColor: '#5a2a2a' }}
+                        onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+              </div>
             </div>
           )}
           {cmdMsg && <div style={{ marginTop: 6, fontSize: 12, color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</div>}
