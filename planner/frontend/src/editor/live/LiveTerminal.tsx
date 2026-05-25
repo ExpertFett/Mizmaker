@@ -14,7 +14,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, deleteProfile,
-  createInvite, listMembers, removeMember, ApiError,
+  createInvite, listMembers, removeMember, testProfile, ApiError,
   type GroupSummary, type ServerProfile, type GroupMember, type MeInfo,
 } from '../../api/groups';
 
@@ -214,6 +214,7 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
               {p.hasPassword ? ' · 🔒' : ''}
             </div>
           </div>
+          <TestButton gid={group.id} pid={p.id} />
           <button style={btnPrimary} onClick={() => setEntered(p)}>Enter terminal</button>
           {isAdmin && (
             <button style={{ ...btn, color: '#d95050', borderColor: '#5a2a2a' }}
@@ -335,6 +336,33 @@ function InvitePanel({ gid }: { gid: string }) {
       </div>
       {code && <p style={{ ...dim, fontSize: 11, margin: '8px 0 0' }}>Share this code — they enter it under "Join with a code".</p>}
       {err && <div style={errBox}>✗ {err}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+function TestButton({ gid, pid }: { gid: string; pid: string }) {
+  const [s, setS] = useState<{ kind: 'idle' | 'testing' | 'ok' | 'fail'; msg?: string }>({ kind: 'idle' });
+  const run = async () => {
+    setS({ kind: 'testing' });
+    try {
+      const r = await testProfile(gid, pid);
+      setS(r.ok ? { kind: 'ok' } : { kind: 'fail', msg: r.error || 'Failed' });
+    } catch (e) {
+      setS({ kind: 'fail', msg: e instanceof Error ? e.message : 'Failed' });
+    }
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button style={btn} onClick={run} disabled={s.kind === 'testing'}>
+        {s.kind === 'testing' ? 'Testing…' : 'Test'}
+      </button>
+      {s.kind === 'ok' && <span style={{ color: '#3fb950', fontSize: 12, whiteSpace: 'nowrap' }}>✓ ok</span>}
+      {s.kind === 'fail' && (
+        <span title={s.msg} style={{ color: '#d95050', fontSize: 12, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          ✗ {s.msg}
+        </span>
+      )}
     </div>
   );
 }

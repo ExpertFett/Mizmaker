@@ -248,3 +248,45 @@ class TestMembers:
         assert client.delete(f"/api/groups/{gid}/members/{op_uid}").status_code == 200
         login(monkeypatch, "admin1")
         assert len(client.get(f"/api/groups/{gid}/members").get_json()["members"]) == 1
+
+
+class TestProfileConnection:
+    """Test Connection endpoint — relays through the (mocked) Olympus probe."""
+
+    def _group_and_profile(self, client, monkeypatch, password=None):
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        body = {"name": "S", "olympusHost": "10.0.0.5", "olympusPort": 4512}
+        if password is not None:
+            body["olympusPassword"] = password
+        pid = client.post(f"/api/groups/{gid}/profiles", json=body).get_json()["id"]
+        return gid, pid
+
+    def test_ok(self, client, fake_sb, monkeypatch):
+        gid, pid = self._group_and_profile(client, monkeypatch)
+        monkeypatch.setattr("services.olympus_bridge.status_check",
+                            lambda h, p, pw: {"ok": True, "reachable": True, "authOk": True})
+        r = client.post(f"/api/groups/{gid}/profiles/{pid}/test")
+        assert r.status_code == 200 and r.get_json()["ok"] is True
+
+    def test_passes_decrypted_password(self, client, fake_sb, monkeypatch):
+        gid, pid = self._group_and_profile(client, monkeypatch, password="rolepw")
+        captured = {}
+
+        def fake(host, port, pw):
+            captured.update(host=host, port=port, pw=pw)
+            return {"ok": True}
+
+        monkeypatch.setattr("services.olympus_bridge.status_check", fake)
+        client.post(f"/api/groups/{gid}/profiles/{pid}/test")
+        assert captured["host"] == "10.0.0.5" and captured["pw"] == "rolepw"
+
+    def test_non_member_403(self, client, fake_sb, monkeypatch):
+        gid, pid = self._group_and_profile(client, monkeypatch)
+        login(monkeypatch, "stranger")
+        assert client.post(f"/api/groups/{gid}/profiles/{pid}/test").status_code == 403
+
+    def test_missing_profile_404(self, client, fake_sb, monkeypatch):
+        login(monkeypatch, "admin1")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        assert client.post(f"/api/groups/{gid}/profiles/nope/test").status_code == 404

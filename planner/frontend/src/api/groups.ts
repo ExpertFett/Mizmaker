@@ -126,3 +126,16 @@ export function updateProfile(gid: string, pid: string, data: Partial<ProfileInp
 export function deleteProfile(gid: string, pid: string) {
   return req<{ ok: true }>(`/api/groups/${gid}/profiles/${pid}`, { method: 'DELETE' });
 }
+
+export interface TestResult {
+  ok: boolean;
+  reachable?: boolean;
+  authOk?: boolean | null;
+  error?: string;
+}
+
+/** Probe a saved server profile (Olympus reachability + role-password auth).
+ *  The password is decrypted server-side; never travels to/from the browser. */
+export function testProfile(gid: string, pid: string) {
+  return req<TestResult>(`/api/groups/${gid}/profiles/${pid}/test`, { method: 'POST' });
+}

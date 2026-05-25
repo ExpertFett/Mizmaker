@@ -294,3 +294,27 @@ def register_group_routes(app) -> None:
             return jsonify({"error": "Admin only"}), 403
         sb.table("server_profiles").delete().eq("id", pid).eq("group_id", gid).execute()
         return jsonify({"ok": True})
+
+    @app.route("/api/groups/<gid>/profiles/<pid>/test", methods=["POST"])
+    def profile_test(gid, pid):
+        """Test Connection — any member can probe a saved server. The stored
+        password is decrypted server-side and used for the Olympus relay; it is
+        never sent to or from the browser. Returns reachability/auth booleans."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        from services.olympus_bridge import status_check
+        return jsonify(status_check(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or ""))
