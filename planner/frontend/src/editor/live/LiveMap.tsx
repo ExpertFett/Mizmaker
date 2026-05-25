@@ -83,6 +83,17 @@ interface UnitT {
   position?: { lat: number; lng: number; alt?: number };
 }
 
+// GroundUnit blueprint types Olympus treats as SAM / air-defense (the rest are
+// "ground"). Confirmed against a live Olympus unit database.
+const SAM_TYPES = new Set(['SAM Site', 'SAM Site Parts', 'Radar (EWR)', 'AAA', 'AirDefence']);
+
+// A boolean toggle persisted to localStorage (default ON unless stored '0').
+function usePersistedToggle(key: string): [boolean, () => void] {
+  const [v, setV] = useState<boolean>(() => { try { return localStorage.getItem(key) !== '0'; } catch { return true; } });
+  const toggle = () => setV((p) => { const n = !p; try { localStorage.setItem(key, n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  return [v, toggle];
+}
+
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const coordRef = useRef<HTMLSpanElement | null>(null);
@@ -94,6 +105,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const unitsRef = useRef<Record<string, { u: UnitT; miss: number }>>({});
   const feedLenRef = useRef(0);                  // last poll's raw feed length (for dbg)
   const renderRef = useRef<() => void>(() => {});  // rebuild features from store (filters applied)
+  const samNamesRef = useRef<Set<string>>(new Set());  // ground unit type-names classified as SAM/air-defense
   const isAdmin = group.role === 'admin';
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
@@ -110,14 +122,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // it's first commanded, after which it flips to 1 ("becomes an Olympus unit").
   // When protection is ON (default), commanding such a unit asks for confirmation
   // first; once commanded it unlocks. Persisted per-browser.
-  const [protectMode, setProtectMode] = useState<boolean>(() => {
-    try { return localStorage.getItem('dcsopt.live.protect') !== '0'; } catch { return true; }
-  });
+  const [protectMode, toggleProtect] = usePersistedToggle('dcsopt.live.protect');
   const [showLockHelp, setShowLockHelp] = useState(false);
-  const toggleProtect = () => setProtectMode((p) => {
-    const n = !p; try { localStorage.setItem('dcsopt.live.protect', n ? '1' : '0'); } catch { /* ignore */ }
-    return n;
-  });
   const selProtected = !!selected && protectMode && selected.controlled === 0 && selected.human !== 1;
   // Gate a command on the selected unit behind a confirm if it's protected.
   const guard = (run: () => void) => {
@@ -126,18 +132,18 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   };
 
   // Map-layer visibility filters (persisted per-browser).
-  const [showHuman, setShowHuman] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.human') !== '0'; } catch { return true; } });
-  const [showOlympus, setShowOlympus] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.olympus') !== '0'; } catch { return true; } });
-  const [showDcs, setShowDcs] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.dcs') !== '0'; } catch { return true; } });
-  const [showRed, setShowRed] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.red') !== '0'; } catch { return true; } });
-  const [showBlue, setShowBlue] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.blue') !== '0'; } catch { return true; } });
-  const [showNeutral, setShowNeutral] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.neutral') !== '0'; } catch { return true; } });
-  const toggleHuman = () => setShowHuman((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.human', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  const toggleOlympus = () => setShowOlympus((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.olympus', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  const toggleDcs = () => setShowDcs((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.dcs', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  const toggleRed = () => setShowRed((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.red', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  const toggleBlue = () => setShowBlue((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.blue', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  const toggleNeutral = () => setShowNeutral((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.neutral', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const [showHuman, toggleHuman] = usePersistedToggle('dcsopt.live.human');
+  const [showOlympus, toggleOlympus] = usePersistedToggle('dcsopt.live.olympus');
+  const [showDcs, toggleDcs] = usePersistedToggle('dcsopt.live.dcs');
+  const [showRed, toggleRed] = usePersistedToggle('dcsopt.live.red');
+  const [showBlue, toggleBlue] = usePersistedToggle('dcsopt.live.blue');
+  const [showNeutral, toggleNeutral] = usePersistedToggle('dcsopt.live.neutral');
+  const [showAircraft, toggleAircraft] = usePersistedToggle('dcsopt.live.aircraft');
+  const [showHelicopter, toggleHelicopter] = usePersistedToggle('dcsopt.live.helicopter');
+  const [showSam, toggleSam] = usePersistedToggle('dcsopt.live.sam');
+  const [showGround, toggleGround] = usePersistedToggle('dcsopt.live.ground');
+  const [showNavy, toggleNavy] = usePersistedToggle('dcsopt.live.navy');
+  const [showDead, toggleDead] = usePersistedToggle('dcsopt.live.dead');
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -155,6 +161,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!showRed && u.coalition === 1) continue;
       if (!showBlue && u.coalition === 2) continue;
       if (!showNeutral && u.coalition !== 1 && u.coalition !== 2) continue;
+      const cat = (u.category || '').toLowerCase();
+      const isGround = cat.includes('ground');
+      const isSam = isGround && samNamesRef.current.has(u.name || '');
+      if (!showAircraft && cat.includes('aircraft')) continue;
+      if (!showHelicopter && cat.includes('helicopter')) continue;
+      if (!showNavy && cat.includes('navy')) continue;
+      if (!showSam && isSam) continue;
+      if (!showGround && isGround && !isSam) continue;
+      if (!showDead && u.alive === 0) continue;
       plotted++;
       if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
       const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
@@ -290,7 +305,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead]);
+
+  // Load the ground unit DB once to classify which live units are SAM / air-
+  // defense (Olympus splits GroundUnit into SAM vs other ground by blueprint type).
+  useEffect(() => {
+    let cancelled = false;
+    getUnitDatabase(group.id, profile.id, 'groundunit').then((r) => {
+      if (cancelled || !r.ok || !r.data) return;
+      const s = new Set<string>();
+      for (const [k, v] of Object.entries(r.data)) {
+        if (v.type && SAM_TYPES.has(v.type)) { s.add(k); if (v.name) s.add(v.name); }
+      }
+      samNamesRef.current = s;
+      renderRef.current();  // re-classify now that SAMs are known
+    }).catch(() => { /* SAM split unavailable; all ground stays "ground" */ });
+    return () => { cancelled = true; };
+  }, [group.id, profile.id]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -361,29 +392,57 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           </div>
         )}
 
-        {/* Layer visibility filters */}
-        <IconToggle icon="👤" active={showHuman} onClick={toggleHuman}
-          helpTitle="Hide / show human units"
-          helpBody={<>Toggles map visibility of player-piloted (human) units. Currently <b style={{ color: showHuman ? C.green : C.red }}>{showHuman ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        <IconToggle icon="🛰" active={showOlympus} onClick={toggleOlympus}
-          helpTitle="Hide / show Olympus units"
-          helpBody={<>Toggles map visibility of Olympus-controlled units — those spawned or commanded through this terminal. Currently <b style={{ color: showOlympus ? C.green : C.red }}>{showOlympus ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        <IconToggle icon="🤖" active={showDcs} onClick={toggleDcs}
-          helpTitle="Hide / show DCS units"
-          helpBody={<>Toggles map visibility of DCS-controlled units — Mission Editor AI not (yet) under Olympus control. Currently <b style={{ color: showDcs ? C.green : C.red }}>{showDcs ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        {/* Controller filters */}
+        <div style={fGroup}>
+          <IconToggle icon="👤" active={showHuman} onClick={toggleHuman}
+            helpTitle="Hide / show human units"
+            helpBody={<>Toggles map visibility of player-piloted (human) units. Currently <b style={{ color: showHuman ? C.green : C.red }}>{showHuman ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🛰" active={showOlympus} onClick={toggleOlympus}
+            helpTitle="Hide / show Olympus units"
+            helpBody={<>Toggles map visibility of Olympus-controlled units — those spawned or commanded through this terminal. Currently <b style={{ color: showOlympus ? C.green : C.red }}>{showOlympus ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🤖" active={showDcs} onClick={toggleDcs}
+            helpTitle="Hide / show DCS units"
+            helpBody={<>Toggles map visibility of DCS-controlled units — Mission Editor AI not (yet) under Olympus control. Currently <b style={{ color: showDcs ? C.green : C.red }}>{showDcs ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        </div>
 
         <span style={{ width: 1, height: 22, background: C.border }} />
 
         {/* Coalition filters */}
-        <IconToggle icon="●" accent={C.red} active={showRed} onClick={toggleRed}
-          helpTitle="Hide / show RED units"
-          helpBody={<>Toggles map visibility of red-coalition units. Currently <b style={{ color: showRed ? C.green : C.red }}>{showRed ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        <IconToggle icon="●" accent={C.blue} active={showBlue} onClick={toggleBlue}
-          helpTitle="Hide / show BLUE units"
-          helpBody={<>Toggles map visibility of blue-coalition units. Currently <b style={{ color: showBlue ? C.green : C.red }}>{showBlue ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        <IconToggle icon="●" accent={C.neutral} active={showNeutral} onClick={toggleNeutral}
-          helpTitle="Hide / show NEUTRAL units"
-          helpBody={<>Toggles map visibility of neutral / unaligned units. Currently <b style={{ color: showNeutral ? C.green : C.red }}>{showNeutral ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        <div style={fGroup}>
+          <IconToggle icon="●" accent={C.red} active={showRed} onClick={toggleRed}
+            helpTitle="Hide / show RED units"
+            helpBody={<>Toggles map visibility of red-coalition units. Currently <b style={{ color: showRed ? C.green : C.red }}>{showRed ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="●" accent={C.blue} active={showBlue} onClick={toggleBlue}
+            helpTitle="Hide / show BLUE units"
+            helpBody={<>Toggles map visibility of blue-coalition units. Currently <b style={{ color: showBlue ? C.green : C.red }}>{showBlue ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="●" accent={C.neutral} active={showNeutral} onClick={toggleNeutral}
+            helpTitle="Hide / show NEUTRAL units"
+            helpBody={<>Toggles map visibility of neutral / unaligned units. Currently <b style={{ color: showNeutral ? C.green : C.red }}>{showNeutral ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        </div>
+
+        <span style={{ width: 1, height: 22, background: C.border }} />
+
+        {/* Type filters */}
+        <div style={fGroup}>
+          <IconToggle icon="✈" active={showAircraft} onClick={toggleAircraft}
+            helpTitle="Hide / show aircraft"
+            helpBody={<>Toggles map visibility of fixed-wing aircraft. Currently <b style={{ color: showAircraft ? C.green : C.red }}>{showAircraft ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🚁" active={showHelicopter} onClick={toggleHelicopter}
+            helpTitle="Hide / show helicopters"
+            helpBody={<>Toggles map visibility of helicopters. Currently <b style={{ color: showHelicopter ? C.green : C.red }}>{showHelicopter ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="📡" active={showSam} onClick={toggleSam}
+            helpTitle="Hide / show SAM units"
+            helpBody={<>Toggles map visibility of SAM / air-defense ground units — SAM sites, launchers, radars, AAA and MANPADS. Currently <b style={{ color: showSam ? C.green : C.red }}>{showSam ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🪖" active={showGround} onClick={toggleGround}
+            helpTitle="Hide / show ground units"
+            helpBody={<>Toggles map visibility of non-air-defense ground units — armor, vehicles, infantry, artillery. Currently <b style={{ color: showGround ? C.green : C.red }}>{showGround ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🚢" active={showNavy} onClick={toggleNavy}
+            helpTitle="Hide / show navy units"
+            helpBody={<>Toggles map visibility of naval units / ships. Currently <b style={{ color: showNavy ? C.green : C.red }}>{showNavy ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="💀" active={showDead} onClick={toggleDead}
+            helpTitle="Hide / show dead units"
+            helpBody={<>Toggles map visibility of destroyed / dead units. Currently <b style={{ color: showDead ? C.green : C.red }}>{showDead ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        </div>
 
         <div style={{ flex: 1 }} />
 
@@ -563,6 +622,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
 const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
+const fGroup: React.CSSProperties = { display: 'flex', gap: 5 };
 const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
 const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
