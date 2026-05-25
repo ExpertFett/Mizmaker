@@ -348,3 +348,33 @@ def register_group_routes(app) -> None:
         from services.olympus_bridge import fetch_telemetry
         result = fetch_telemetry(host, port, pw or "", resource)
         return jsonify(result), (200 if result.get("ok") else 502)
+
+    @app.route("/api/groups/<gid>/profiles/<pid>/command", methods=["POST"])
+    def profile_command(gid, pid):
+        """Send an Olympus command to the server. ADMIN ONLY — control (spawn/
+        delete/move/etc.) is powerful, so operators get read-only. Password
+        decrypted server-side; command validated against the relay whitelist."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) != "admin":
+            return jsonify({"error": "Admin only — control is restricted to group admins."}), 403
+        body = request.get_json(silent=True) or {}
+        command = body.get("command")
+        params = body.get("params") or {}
+        if not command:
+            return jsonify({"error": "command required"}), 400
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        from services.olympus_bridge import send_command
+        result = send_command(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", command, params)
+        return jsonify(result), (200 if result.get("ok") else 502)

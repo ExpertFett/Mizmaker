@@ -317,3 +317,33 @@ class TestTelemetry:
         monkeypatch.setattr("services.olympus_bridge.fetch_telemetry",
                             lambda h, p, pw, res: {"ok": False, "error": "unreachable"})
         assert client.get(f"/api/groups/{gid}/profiles/{pid}/telemetry/mission").status_code == 502
+
+
+class TestCommand:
+    def _gp(self, client, monkeypatch):
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        pid = client.post(f"/api/groups/{gid}/profiles",
+                          json={"name": "S", "olympusHost": "h", "olympusPort": 3000}).get_json()["id"]
+        return gid, pid
+
+    def test_admin_command_ok(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        monkeypatch.setattr("services.olympus_bridge.send_command",
+                            lambda h, p, pw, c, par: {"ok": True, "response": "ok"})
+        r = client.post(f"/api/groups/{gid}/profiles/{pid}/command",
+                        json={"command": "smoke", "params": {"color": "green"}})
+        assert r.status_code == 200 and r.get_json()["ok"] is True
+
+    def test_operator_cannot_command(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        code = client.post(f"/api/groups/{gid}/invites", json={}).get_json()["code"]
+        login(monkeypatch, "op1")
+        client.post("/api/groups/join", json={"code": code})
+        r = client.post(f"/api/groups/{gid}/profiles/{pid}/command",
+                        json={"command": "deleteUnit", "params": {}})
+        assert r.status_code == 403
+
+    def test_missing_command_400(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        assert client.post(f"/api/groups/{gid}/profiles/{pid}/command", json={}).status_code == 400

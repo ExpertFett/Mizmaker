@@ -14,7 +14,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
-  createInvite, listMembers, removeMember, testProfile, getTelemetry, getTelemetryHex, ApiError,
+  createInvite, listMembers, removeMember, testProfile, getTelemetry, getTelemetryHex,
+  sendCommand, ApiError,
   type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput,
 } from '../../api/groups';
 
@@ -465,6 +466,19 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
     }
   };
 
+  const isAdmin = group.role === 'admin';
+  const [cmdMsg, setCmdMsg] = useState('');
+  const runCmd = async (command: string, params: Record<string, unknown>, label: string, refresh = false) => {
+    setCmdMsg(`${label}…`);
+    try {
+      const r = await sendCommand(group.id, profile.id, command, params);
+      setCmdMsg(r.ok ? `✓ ${label} sent` : `✗ ${r.error}`);
+      if (r.ok && refresh) setTimeout(loadUnits, 800);
+    } catch (e) {
+      setCmdMsg(`✗ ${e instanceof Error ? e.message : 'Failed'}`);
+    }
+  };
+
   const [sample, setSample] = useState<{ loading: boolean; hex?: string; bytes?: number; err?: string } | null>(null);
   const grabSample = async () => {
     setSample({ loading: true });
@@ -515,7 +529,9 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
           {units?.loading ? 'Loading…' : 'Refresh units'}
         </button>
         {u?.count != null && <span style={{ ...dim, fontSize: 12 }}>{u.count} units</span>}
+        {cmdMsg && <span style={{ fontSize: 12, marginLeft: 'auto', color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</span>}
       </div>
+      {isAdmin && <p style={{ ...dim, fontSize: 11, margin: '4px 0 0' }}>Admin control: 💨 drops green smoke at a unit (safe), ✕ deletes it from the live mission.</p>}
       <div style={{ ...card, marginTop: 8 }}>
         {!units && <span style={dim}>Click "Refresh units" to pull the live unit picture.</span>}
         {units?.err && <span style={{ color: '#d95050', fontSize: 13 }}>✗ {units.err}</span>}
@@ -523,17 +539,35 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
         {u && u.rows.length > 0 && (
           <div style={{ fontSize: 12 }}>
             <div style={{ display: 'flex', color: '#888', borderBottom: '1px solid #3a3a3a', padding: '4px 0' }}>
-              <span style={{ flex: 1 }}>Name</span><span style={{ width: 60 }}>Side</span>
-              <span style={{ width: 150 }}>Type</span><span style={{ width: 150 }}>Position</span>
+              <span style={{ flex: 1 }}>Name</span><span style={{ width: 56 }}>Side</span>
+              <span style={{ width: 140 }}>Type</span><span style={{ width: 130 }}>Position</span>
+              {isAdmin && <span style={{ width: 78 }}>Actions</span>}
             </div>
-            {u.rows.map(unitRow).map((r, i) => (
-              <div key={i} style={{ display: 'flex', padding: '3px 0', borderBottom: '1px solid #2e2e2e' }}>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                <span style={{ width: 60, color: r.coal === 'RED' ? '#d95050' : r.coal === 'BLUE' ? '#5a9fd4' : '#aaa' }}>{r.coal}</span>
-                <span style={{ width: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.type}</span>
-                <span style={{ width: 150 }}>{r.pos}</span>
-              </div>
-            ))}
+            {u.rows.map((raw: any, i: number) => {
+              const r = unitRow(raw);
+              const pos = raw?.position;
+              const hasPos = pos && typeof pos.lat === 'number';
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '3px 0', borderBottom: '1px solid #2e2e2e' }}>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                  <span style={{ width: 56, color: r.coal === 'RED' ? '#d95050' : r.coal === 'BLUE' ? '#5a9fd4' : '#aaa' }}>{r.coal}</span>
+                  <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.type}</span>
+                  <span style={{ width: 130 }}>{r.pos}</span>
+                  {isAdmin && (
+                    <span style={{ width: 78, display: 'flex', gap: 4 }}>
+                      {hasPos && raw.olympusID != null && (
+                        <button title="Drop green smoke at this unit (safe test)" style={miniBtn}
+                                onClick={() => runCmd('smoke', { color: 'green', location: { lat: pos.lat, lng: pos.lng } }, 'Smoke')}>💨</button>
+                      )}
+                      {raw.olympusID != null && (
+                        <button title="Delete this unit from the live mission" style={{ ...miniBtn, color: '#d95050' }}
+                                onClick={() => { if (window.confirm(`Delete "${r.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: raw.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕</button>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             {u.count != null && u.count > u.rows.length && <div style={{ ...dim, paddingTop: 6 }}>…and {u.count - u.rows.length} more</div>}
           </div>
         )}
@@ -584,5 +618,6 @@ const h3: React.CSSProperties = { margin: '0 0 10px', fontSize: 13, fontWeight: 
 const lbl: React.CSSProperties = { fontSize: 13, color: '#aaaaaa' };
 const input: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #4a4a4a', color: '#e0e0e0', padding: '7px 10px', fontSize: 14, fontFamily: 'inherit', borderRadius: 4 };
 const btn: React.CSSProperties = { background: '#333333', border: '1px solid #4a4a4a', borderRadius: 4, color: '#e0e0e0', padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 500, fontFamily: 'inherit' };
+const miniBtn: React.CSSProperties = { background: '#2a2a2a', border: '1px solid #4a4a4a', borderRadius: 3, color: '#e0e0e0', padding: '1px 6px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const btnPrimary: React.CSSProperties = { background: '#2a3a4a', border: '1px solid #4a8fd4', borderRadius: 4, color: '#9cd0ff', padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' };
 const errBox: React.CSSProperties = { marginTop: 12, padding: '8px 12px', border: '1px solid #d95050', color: '#d95050', background: '#1c1c1c', fontSize: 13, borderRadius: 4 };

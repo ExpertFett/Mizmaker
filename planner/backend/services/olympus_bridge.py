@@ -42,7 +42,20 @@ DEFAULT_PORT = 4512
 _TIMEOUT = 10
 
 # Live-confirmed API base is the `/olympus/` prefix on the :3000 frontend. ------
-REST_URI = "olympus/"  # command PUT path (proxy -> backend root); confirm in Phase C.
+REST_URI = "olympus"  # command PUT path (client uses _REST_ADDRESS="./olympus").
+OLYMPUS_COMMAND_MODE = ""  # X-Command-Mode header (client default ""; role auth governs).
+# Commands the relay will forward (PUT /olympus body {<command>: params}).
+# Reverse-engineered from the live client's ServerManager.
+COMMAND_WHITELIST = frozenset({
+    "spawnAircrafts", "spawnHelicopters", "spawnGroundUnits", "spawnNavyUnits",
+    "deleteUnit", "cloneUnits", "setPath", "smoke", "explosion", "attackUnit",
+    "followUnit", "landAt", "landAtPoint", "refuel", "changeSpeed", "setSpeed",
+    "setSpeedType", "changeAltitude", "setAltitude", "setAltitudeType", "setROE",
+    "setAlarmState", "setReactionToThreat", "setEmissionsCountermeasures",
+    "setOnOff", "setFollowRoads", "setOperateAs", "bombPoint", "carpetBomb",
+    "bombBuilding", "fireAtArea", "setRacetrack", "setAdvancedOptions",
+    "setEngagementProperties", "setLaserCode",
+})
 TELEMETRY_URIS = {  # GET resource paths under /olympus/ (confirmed 401-without-auth)
     "units": "olympus/units",
     "mission": "olympus/mission",
@@ -257,6 +270,39 @@ def fetch_telemetry_hex(host: str, port: int, password: str, resource: str, limi
     raw = r["raw"]
     n = max(0, int(limit))
     return {"ok": True, "bytes": len(raw), "hex": raw[:n].hex()}
+
+
+def send_command(host: str, port: int, password: str, command: str, params: dict) -> dict:
+    """Send an Olympus command: PUT /olympus body {command: params}, with the
+    Basic auth + X-Command-Mode header the client uses. Returns {ok, response}
+    or {ok:False, error}. Command must be in COMMAND_WHITELIST."""
+    if command not in COMMAND_WHITELIST:
+        return {"ok": False, "error": f"Command '{command}' not allowed."}
+    if not host:
+        return {"ok": False, "error": "No Olympus host configured."}
+    base = f"http://{host}:{int(port or DEFAULT_PORT)}/"
+    url = urllib.parse.urljoin(base, REST_URI)
+    body = json.dumps({command: params or {}}).encode("utf-8")
+    headers = {
+        "Authorization": _basic_auth(password),
+        "Content-Type": "application/json",
+        "X-Command-Mode": OLYMPUS_COMMAND_MODE,
+    }
+    req = urllib.request.Request(url, data=body, headers=headers, method="PUT")
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            text = r.read().decode("utf-8", errors="replace")
+            try:
+                resp = json.loads(text)
+            except Exception:
+                resp = text
+            return {"ok": True, "status": r.status, "response": resp}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {"ok": False, "error": "Olympus rejected the password/role for this command."}
+        return {"ok": False, "error": f"Olympus returned HTTP {e.code}."}
+    except Exception as e:
+        return {"ok": False, "error": f"Can't reach Olympus at {host}:{port or DEFAULT_PORT} ({e})."}
 
 
 def status_check(host: str, port: int, password: str) -> dict:

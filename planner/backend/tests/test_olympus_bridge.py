@@ -112,3 +112,32 @@ class TestFetchTelemetryHex:
 
     def test_unknown_resource(self):
         assert olympus_bridge.fetch_telemetry_hex("h", 3000, "pw", "nope")["ok"] is False
+
+
+class TestSendCommand:
+    class _Resp:
+        def __init__(self, data, status=200): self._d = data; self.status = status
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return self._d
+
+    def test_rejects_non_whitelisted(self):
+        assert olympus_bridge.send_command("h", 3000, "pw", "rm-rf", {})["ok"] is False
+
+    def test_sends_put_to_olympus(self, monkeypatch):
+        import json as _json
+        cap = {}
+
+        def fake(req, timeout=None):
+            cap["url"] = req.full_url
+            cap["method"] = req.get_method()
+            cap["body"] = req.data
+            cap["mode"] = req.headers.get("X-command-mode")
+            return TestSendCommand._Resp(b'{"commandHash":"abc"}')
+
+        monkeypatch.setattr(olympus_bridge.urllib.request, "urlopen", fake)
+        r = olympus_bridge.send_command("10.0.0.5", 3000, "pw", "deleteUnit", {"ID": 123})
+        assert r["ok"] is True
+        assert cap["method"] == "PUT" and cap["url"].endswith("/olympus")
+        assert _json.loads(cap["body"]) == {"deleteUnit": {"ID": 123}}
+        assert cap["mode"] is not None  # X-Command-Mode header set

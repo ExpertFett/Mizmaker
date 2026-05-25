@@ -161,3 +161,13 @@ export interface TelemetryHex { ok: boolean; bytes?: number; hex?: string; error
 export function getTelemetryHex(gid: string, pid: string, resource: TelemetryResource) {
   return req<TelemetryHex>(`/api/groups/${gid}/profiles/${pid}/telemetry/${resource}?debug=hex`);
 }
+
+export interface CommandResult { ok: boolean; status?: number; response?: unknown; error?: string }
+
+/** Send an Olympus command (admin only) — PUT /olympus {command: params}. */
+export function sendCommand(gid: string, pid: string, command: string, params: Record<string, unknown>) {
+  return req<CommandResult>(`/api/groups/${gid}/profiles/${pid}/command`, {
+    method: 'POST',
+    body: JSON.stringify({ command, params }),
+  });
+}
