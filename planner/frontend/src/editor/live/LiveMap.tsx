@@ -1,9 +1,15 @@
 /**
  * LiveMap — tactical display + control for the Live terminal.
- * Plots decoded Olympus units (OpenLayers, CartoDB dark base) colored by side,
- * auto-refreshing. Admins can: click a unit to inspect/smoke/delete, arm "Move"
- * then click the map to reposition (setPath), and Spawn mode → pick a unit type
- * from the server's database → click the map to spawn it.
+ *
+ * Styled to mirror the DCS Olympus web client: a full-bleed dark map with
+ * floating glass panels — a top command/status bar, a left spawn dock, a
+ * right unit-control panel, an armed-action banner, and a live cursor
+ * coordinate readout along the bottom. Units render as NATO-ish, category-
+ * shaped markers colored by coalition.
+ *
+ * Admin controls (unchanged wiring): click a unit to inspect/task/smoke/
+ * delete; arm Move/Attack/Fire/Bomb then click the map/target; Spawn mode →
+ * pick a type from the server's unit DB → click the map to spawn it.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -16,7 +22,7 @@ import VectorSource from 'ol/source/Vector';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import { fromLonLat, toLonLat } from 'ol/proj';
-import { Style, Circle as CircleStyle, Fill, Stroke } from 'ol/style';
+import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke } from 'ol/style';
 import { boundingExtent } from 'ol/extent';
 import 'ol/ol.css';
 import {
@@ -24,7 +30,22 @@ import {
   type GroupSummary, type ServerProfile, type UnitCategory, type UnitDbEntry,
 } from '../../api/groups';
 
-const SIDE_COLOR: Record<number, string> = { 0: '#bbbbbb', 1: '#e0554f', 2: '#5a9fd4' };
+// ── Olympus-style palette ──────────────────────────────────────────────────
+const C = {
+  bg: 'rgba(13,19,29,0.92)',
+  bgSolid: '#0d131d',
+  border: '#243349',
+  borderHi: '#3a6ea5',
+  accent: '#4a9eff',
+  accentDim: 'rgba(74,158,255,0.18)',
+  text: '#dce6f2',
+  textDim: '#8aa0ba',
+  red: '#e0554f',
+  blue: '#5a9fd4',
+  neutral: '#bbbbbb',
+  green: '#3fb950',
+};
+const SIDE_COLOR: Record<number, string> = { 0: C.neutral, 1: C.red, 2: C.blue };
 const CAT_CMD: Record<UnitCategory, string> = {
   groundunit: 'spawnGroundUnits', aircraft: 'spawnAircrafts',
   helicopter: 'spawnHelicopters', navyunit: 'spawnNavyUnits',
@@ -34,11 +55,26 @@ const CATEGORIES: { id: UnitCategory; label: string }[] = [
   { id: 'helicopter', label: 'Helicopter' }, { id: 'navyunit', label: 'Navy' },
 ];
 
-function styleForUnit(coalition: number | undefined): Style {
-  const color = SIDE_COLOR[coalition ?? -1] ?? '#bbbbbb';
-  return new Style({
-    image: new CircleStyle({ radius: 4.5, fill: new Fill({ color }), stroke: new Stroke({ color: 'rgba(0,0,0,0.6)', width: 1 }) }),
-  });
+// Category-shaped, coalition-colored markers (cached so polls don't re-alloc).
+const _styleCache: Record<string, Style> = {};
+function styleForUnit(coalition: number | undefined, category?: string): Style {
+  const cat = (category || '').toLowerCase();
+  const bucket = cat.includes('heli') ? 'air'
+    : cat.includes('air') || cat.includes('plane') ? 'air'
+    : cat.includes('navy') || cat.includes('ship') ? 'navy'
+    : cat.includes('ground') ? 'ground' : 'dot';
+  const side = coalition ?? -1;
+  const key = `${side}|${bucket}`;
+  if (_styleCache[key]) return _styleCache[key];
+  const color = SIDE_COLOR[side] ?? C.neutral;
+  const fill = new Fill({ color });
+  const stroke = new Stroke({ color: 'rgba(0,0,0,0.65)', width: 1.25 });
+  let image;
+  if (bucket === 'air') image = new RegularShape({ points: 3, radius: 7, fill, stroke });        // triangle
+  else if (bucket === 'navy') image = new RegularShape({ points: 4, radius: 6, angle: 0, fill, stroke }); // diamond
+  else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke }); // square
+  else image = new CircleStyle({ radius: 4.5, fill, stroke });
+  return (_styleCache[key] = new Style({ image }));
 }
 
 interface UnitT {
@@ -48,6 +84,7 @@ interface UnitT {
 
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
   const elRef = useRef<HTMLDivElement | null>(null);
+  const coordRef = useRef<HTMLSpanElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const srcRef = useRef<VectorSource | null>(null);
   const fittedRef = useRef(false);
@@ -126,6 +163,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     srcRef.current = src;
     const map = new Map({
       target: elRef.current,
+      controls: [],  // hide default OL zoom/attribution; we float our own chrome
       layers: [
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
         new VectorLayer({ source: src }),
@@ -141,6 +179,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
       c.onSelect(target);
+    });
+    // Live cursor coordinate readout (write to DOM directly — no re-render).
+    map.on('pointermove', (e) => {
+      if (!coordRef.current || e.dragging) return;
+      const ll = toLonLat(e.coordinate);
+      const lat = ll[1], lng = ll[0];
+      const ns = lat >= 0 ? 'N' : 'S', ew = lng >= 0 ? 'E' : 'W';
+      coordRef.current.textContent = `${ns} ${Math.abs(lat).toFixed(4)}°   ${ew} ${Math.abs(lng).toFixed(4)}°`;
     });
     mapRef.current = map;
     const onResize = () => map.updateSize();
@@ -178,12 +224,12 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
           const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
           const ft = new Feature({ geometry: new Point(coord) });
-          ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition)); src.addFeature(ft);
+          ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
         }
         setCounts({ red, blue, other });
         setDbg(`feed ${units.length} · plotted ${plotted}`);
         if (!fittedRef.current && pts.length && mapRef.current) {
-          mapRef.current.getView().fit(boundingExtent(pts), { padding: [40, 40, 40, 40], maxZoom: 11 });
+          mapRef.current.getView().fit(boundingExtent(pts), { padding: [60, 60, 60, 60], maxZoom: 11 });
           fittedRef.current = true;
         }
       } catch (e) { if (!cancelled) setErr(e instanceof Error ? e.message : 'failed'); }
@@ -216,140 +262,180 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     : [];
 
   const armedActive = armed != null || (mode === 'spawn' && !!spawnType);
+  const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
 
   return (
-    <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: '1px solid #3a3a3a', borderRadius: 6, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
       <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
 
-      {/* Legend + mode toolbar */}
-      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={panel}>
-          <span style={{ color: '#e0554f' }}>● RED {counts.red}</span>{'   '}
-          <span style={{ color: '#5a9fd4' }}>● BLUE {counts.blue}</span>{counts.other ? `   ● ${counts.other}` : ''}
-          {dbg && <span style={{ color: '#888', marginLeft: 8 }}>({dbg})</span>}
-          {err && <span style={{ color: '#d95050', marginLeft: 8 }}>✗ {err}</span>}
+      {/* ── Top command / status bar ─────────────────────────────────────── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 44, display: 'flex', alignItems: 'center', gap: 14, padding: '0 12px', zIndex: 3, background: 'linear-gradient(180deg, rgba(9,13,20,0.96), rgba(9,13,20,0.72))', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: err ? C.red : C.green, boxShadow: `0 0 8px ${err ? C.red : C.green}` }} />
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, color: C.text }}>LIVE TACTICAL</span>
         </div>
+
         {isAdmin && (
-          <div style={{ ...panel, display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
             {(['select', 'spawn'] as const).map((m) => (
               <button key={m} onClick={() => { setMode(m); setSpawnType(null); setArmed(null); }}
-                      style={{ ...mbtn, ...(mode === m ? mbtnOn : {}) }}>{m === 'select' ? 'Select' : 'Spawn'}</button>
+                      style={{ ...seg, ...(mode === m ? segOn : {}) }}>{m === 'select' ? '⊹ Control' : '✛ Spawn'}</button>
             ))}
           </div>
         )}
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12 }}>
+          <span style={{ color: C.red, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={1} /> {counts.red}</span>
+          <span style={{ color: C.blue, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={2} /> {counts.blue}</span>
+          {counts.other ? <span style={{ color: C.neutral, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={0} /> {counts.other}</span> : null}
+          {dbg && <span style={{ color: C.textDim, fontSize: 11 }}>{dbg}</span>}
+          {err && <span style={{ color: C.red }}>✗ {err}</span>}
+        </div>
       </div>
 
-      {/* Arm banner */}
-      {(armed || (mode === 'spawn' && spawnType)) && (
-        <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', ...panel, color: '#9cd0ff' }}>
-          {armed
-            ? (armed.kind === 'move' ? 'Click the map to MOVE the unit'
-              : armed.kind === 'attack' ? 'Click a TARGET unit to ATTACK'
-              : armed.kind === 'fireAtArea' ? 'Click the map: FIRE AT AREA'
-              : 'Click the map: BOMB POINT')
-            : `Click the map to SPAWN ${spawnType}`}
-          <button onClick={() => { setArmed(null); setSpawnType(null); }} style={{ ...mbtn, marginLeft: 10, padding: '1px 8px' }}>cancel</button>
-          {cmdMsg && <span style={{ marginLeft: 10, color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</span>}
-        </div>
-      )}
-
-      {/* Spawn picker */}
+      {/* ── Left dock: Spawn ─────────────────────────────────────────────── */}
       {isAdmin && mode === 'spawn' && (
-        <div style={{ position: 'absolute', top: 8, right: 8, width: 270, ...panel, maxHeight: '88%', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <select value={spawnCat} onChange={(e) => setSpawnCat(e.target.value as UnitCategory)} style={inp}>
-              {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-            {(['blue', 'red'] as const).map((s) => (
-              <button key={s} onClick={() => setSpawnCoalition(s)}
-                      style={{ ...mbtn, ...(spawnCoalition === s ? { borderColor: s === 'red' ? '#e0554f' : '#5a9fd4', color: s === 'red' ? '#e0554f' : '#5a9fd4' } : {}) }}>{s.toUpperCase()}</button>
-            ))}
-          </div>
-          {(spawnCat === 'aircraft' || spawnCat === 'helicopter') && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12, color: '#aaa' }}>
-              <span>Air start alt (ft):</span>
-              <input value={spawnAltFt} onChange={(e) => setSpawnAltFt(e.target.value.replace(/[^0-9]/g, ''))}
-                     style={{ ...inp, width: 80 }} />
+        <div style={{ position: 'absolute', top: 56, left: 12, bottom: 44, width: 280, zIndex: 3, display: 'flex', flexDirection: 'column', ...glass }}>
+          <div style={panelHead}>SPAWN UNIT</div>
+          <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value={spawnCat} onChange={(e) => setSpawnCat(e.target.value as UnitCategory)} style={{ ...inp, flex: 1 }}>
+                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              {(['blue', 'red'] as const).map((s) => (
+                <button key={s} onClick={() => setSpawnCoalition(s)}
+                        style={{ ...mbtn, padding: '4px 10px', ...(spawnCoalition === s ? { borderColor: s === 'red' ? C.red : C.blue, color: s === 'red' ? C.red : C.blue, background: 'rgba(255,255,255,0.04)' } : {}) }}>{s.toUpperCase()}</button>
+              ))}
             </div>
-          )}
-          <input placeholder="Search unit type…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inp, width: 'auto', marginBottom: 6 }} />
-          <div style={{ overflowY: 'auto', flex: 1, minHeight: 80 }}>
-            {db.loading && <div style={{ color: '#aaa', fontSize: 12 }}>Loading database…</div>}
-            {db.err && <div style={{ color: '#d95050', fontSize: 12 }}>✗ {db.err}</div>}
-            {typeList.map(([k, v]) => (
-              <div key={k} onClick={() => setSpawnType(k)}
-                   style={{ padding: '4px 6px', fontSize: 12, cursor: 'pointer', borderRadius: 3,
-                            background: spawnType === k ? 'rgba(74,143,212,0.25)' : 'transparent',
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {v.label || k} <span style={{ color: '#777' }}>· {v.type || v.category}</span>
+            {(spawnCat === 'aircraft' || spawnCat === 'helicopter') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textDim }}>
+                <span>Air start alt (ft)</span>
+                <input value={spawnAltFt} onChange={(e) => setSpawnAltFt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 78 }} />
               </div>
-            ))}
-            {db.entries && typeList.length === 0 && !db.loading && <div style={{ color: '#777', fontSize: 12 }}>No matches.</div>}
+            )}
+            <input placeholder="Search unit type…" value={search} onChange={(e) => setSearch(e.target.value)} style={inp} />
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 80, border: `1px solid ${C.border}`, borderRadius: 5, background: 'rgba(0,0,0,0.25)' }}>
+              {db.loading && <div style={{ color: C.textDim, fontSize: 12, padding: 8 }}>Loading database…</div>}
+              {db.err && <div style={{ color: C.red, fontSize: 12, padding: 8 }}>✗ {db.err}</div>}
+              {typeList.map(([k, v]) => (
+                <div key={k} onClick={() => setSpawnType(k)}
+                     style={{ padding: '5px 8px', fontSize: 12, cursor: 'pointer',
+                              background: spawnType === k ? C.accentDim : 'transparent',
+                              color: spawnType === k ? '#cfe6ff' : C.text,
+                              borderLeft: spawnType === k ? `2px solid ${C.accent}` : '2px solid transparent',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {v.label || k} <span style={{ color: C.textDim }}>· {v.type || v.category}</span>
+                </div>
+              ))}
+              {db.entries && typeList.length === 0 && !db.loading && <div style={{ color: C.textDim, fontSize: 12, padding: 8 }}>No matches.</div>}
+            </div>
+            {spawnType && <div style={{ fontSize: 11, color: C.accent }}>Selected <b>{spawnType}</b> — click the map to place.</div>}
           </div>
-          {spawnType && <div style={{ marginTop: 6, fontSize: 11, color: '#9cd0ff' }}>Selected: {spawnType} — click the map.</div>}
         </div>
       )}
 
-      {/* Selected unit card (select mode) */}
+      {/* ── Right dock: selected unit control ────────────────────────────── */}
       {selected && mode === 'select' && (
-        <div style={{ position: 'absolute', top: 8, right: 8, width: 252, maxHeight: '92%', overflowY: 'auto', ...panel, border: '1px solid #4a8fd4' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</strong>
-            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: 16 }}>×</button>
+        <div style={{ position: 'absolute', top: 56, right: 12, width: 268, maxHeight: 'calc(100% - 110px)', display: 'flex', flexDirection: 'column', zIndex: 3, ...glass, borderColor: selSide }}>
+          <div style={{ ...panelHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}`, borderTop: `2px solid ${selSide}` }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</span>
+            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
           </div>
-          <div style={{ color: '#aaa', fontSize: 12, marginTop: 4, lineHeight: 1.6 }}>
-            <div>Type: {selected.name || '—'}</div>
-            <div>Side: <span style={{ color: SIDE_COLOR[selected.coalition ?? -1] ?? '#bbb' }}>{sideLabel(selected.coalition)}</span> · {selected.category || ''}</div>
-            <div>Pos: {selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</div>
-          </div>
-          {isAdmin && selected.olympusID != null && (
-            <div style={{ marginTop: 8 }}>
-              {/* Tasking — arms a map/target click */}
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                <button style={cardBtn} onClick={() => setArmed({ kind: 'move', id: selected.olympusID! })}>📍 Move</button>
-                <button style={cardBtn} onClick={() => setArmed({ kind: 'attack', id: selected.olympusID! })}>🎯 Attack</button>
-                <button style={cardBtn} onClick={() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! })}>🔥 Fire</button>
-                <button style={cardBtn} onClick={() => setArmed({ kind: 'bombPoint', id: selected.olympusID! })}>💣 Bomb</button>
-              </div>
-              {/* Behaviour */}
-              <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-                <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE'); }}>
-                  <option value="">ROE…</option><option value="1">Free</option><option value="2">Designated</option><option value="3">Return fire</option><option value="4">Hold</option>
-                </select>
-                <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction'); }}>
-                  <option value="">React…</option><option value="0">None</option><option value="1">Manoeuvre</option><option value="2">Passive</option><option value="3">Evade</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-                <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On')}>On</button>
-                <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off')}>Off</button>
-                <button style={cardBtn} onClick={() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on')}>Roads</button>
-              </div>
-              <div style={{ display: 'flex', gap: 5, marginTop: 5, alignItems: 'center' }}>
-                <input placeholder="alt ft" value={ctlAlt} onChange={(e) => setCtlAlt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                <button style={cardBtn} disabled={!ctlAlt} onClick={() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt')}>alt</button>
-                <input placeholder="spd kt" value={ctlSpd} onChange={(e) => setCtlSpd(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                <button style={cardBtn} disabled={!ctlSpd} onClick={() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd')}>spd</button>
-              </div>
-              {/* Mark / remove */}
-              <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
-                {selected.position && (
-                  <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
-                )}
-                <button style={{ ...cardBtn, color: '#d95050', borderColor: '#5a2a2a' }}
-                        onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
-              </div>
+          <div style={{ overflowY: 'auto', padding: 10 }}>
+            <div style={{ color: C.textDim, fontSize: 12, lineHeight: 1.7 }}>
+              <div>Type&nbsp; <span style={{ color: C.text }}>{selected.name || '—'}</span></div>
+              <div>Side&nbsp;&nbsp; <span style={{ color: selSide, fontWeight: 600 }}>{sideLabel(selected.coalition)}</span> · {selected.category || ''}</div>
+              <div>Pos&nbsp;&nbsp;&nbsp; <span style={{ color: C.text }}>{selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</span></div>
             </div>
-          )}
-          {cmdMsg && <div style={{ marginTop: 6, fontSize: 12, color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</div>}
+            {isAdmin && selected.olympusID != null && (
+              <div style={{ marginTop: 10 }}>
+                <SectionLabel>Tasking</SectionLabel>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'move', id: selected.olympusID! })}>📍 Move</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'attack', id: selected.olympusID! })}>🎯 Attack</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! })}>🔥 Fire</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'bombPoint', id: selected.olympusID! })}>💣 Bomb</button>
+                </div>
+
+                <SectionLabel>Behaviour</SectionLabel>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE'); }}>
+                    <option value="">ROE…</option><option value="1">Free</option><option value="2">Designated</option><option value="3">Return fire</option><option value="4">Hold</option>
+                  </select>
+                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction'); }}>
+                    <option value="">React…</option><option value="0">None</option><option value="1">Manoeuvre</option><option value="2">Passive</option><option value="3">Evade</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
+                  <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On')}>On</button>
+                  <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off')}>Off</button>
+                  <button style={cardBtn} onClick={() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on')}>Roads</button>
+                </div>
+
+                <SectionLabel>Altitude / Speed</SectionLabel>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  <input placeholder="alt ft" value={ctlAlt} onChange={(e) => setCtlAlt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
+                  <button style={cardBtn} disabled={!ctlAlt} onClick={() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt')}>set</button>
+                  <input placeholder="spd kt" value={ctlSpd} onChange={(e) => setCtlSpd(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
+                  <button style={cardBtn} disabled={!ctlSpd} onClick={() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd')}>set</button>
+                </div>
+
+                <SectionLabel>Mark / Remove</SectionLabel>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {selected.position && (
+                    <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
+                  )}
+                  <button style={{ ...cardBtn, color: C.red, borderColor: '#5a2a2a' }}
+                          onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+                </div>
+              </div>
+            )}
+            {cmdMsg && <div style={{ marginTop: 8, fontSize: 12, color: cmdMsg.startsWith('✗') ? C.red : C.green }}>{cmdMsg}</div>}
+          </div>
         </div>
       )}
+
+      {/* ── Armed-action banner ──────────────────────────────────────────── */}
+      {(armed || (mode === 'spawn' && spawnType)) && (
+        <div style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 4, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.accent}`, color: '#cfe6ff', fontSize: 12, boxShadow: `0 0 16px rgba(74,158,255,0.25)` }}>
+          <span style={{ fontWeight: 600 }}>
+            {armed
+              ? (armed.kind === 'move' ? '📍 Click the map to MOVE'
+                : armed.kind === 'attack' ? '🎯 Click a TARGET unit'
+                : armed.kind === 'fireAtArea' ? '🔥 Click the map: FIRE AT AREA'
+                : '💣 Click the map: BOMB POINT')
+              : `✛ Click the map to SPAWN ${spawnType}`}
+          </span>
+          <button onClick={() => { setArmed(null); setSpawnType(null); }} style={{ ...mbtn, padding: '2px 9px' }}>cancel</button>
+          {cmdMsg && <span style={{ color: cmdMsg.startsWith('✗') ? C.red : C.green }}>{cmdMsg}</span>}
+        </div>
+      )}
+
+      {/* ── Bottom status bar ────────────────────────────────────────────── */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
+        <span ref={coordRef}>—</span>
+        <div style={{ flex: 1 }} />
+        <span>{isAdmin ? 'GM · full control' : 'observer'}</span>
+        <span>{profile.name}</span>
+      </div>
     </div>
   );
 }
 
-const panel: React.CSSProperties = { background: 'rgba(20,20,20,0.88)', border: '1px solid #3a3a3a', borderRadius: 5, padding: '8px 10px', fontSize: 12, color: '#e0e0e0' };
-const mbtn: React.CSSProperties = { background: '#2a2a2a', border: '1px solid #4a4a4a', borderRadius: 3, color: '#e0e0e0', padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
-const mbtnOn: React.CSSProperties = { background: 'rgba(74,143,212,0.2)', borderColor: '#4a8fd4', color: '#9cd0ff' };
-const inp: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #4a4a4a', color: '#e0e0e0', padding: '4px 6px', fontSize: 12, fontFamily: 'inherit', borderRadius: 3 };
-const cardBtn: React.CSSProperties = { background: '#2a2a2a', border: '1px solid #4a4a4a', borderRadius: 3, color: '#e0e0e0', padding: '4px 8px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
+// Small NATO-ish coalition glyph for the status counts (▲ matches air markers).
+function Glyph({ side }: { side: number }) {
+  return <span style={{ color: SIDE_COLOR[side] ?? C.neutral, fontSize: 10 }}>◆</span>;
+}
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, textTransform: 'uppercase', margin: '10px 0 5px' }}>{children}</div>;
+}
+
+const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
+const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
+const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
+const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
+const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
+const inp: React.CSSProperties = { background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, padding: '5px 7px', fontSize: 12, fontFamily: 'inherit', borderRadius: 4, outline: 'none' };
+const cardBtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '5px 9px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
