@@ -43,7 +43,7 @@ function styleForUnit(coalition: number | undefined): Style {
 
 interface UnitT {
   olympusID?: number; name?: string; unitName?: string; category?: string;
-  coalition?: number; position?: { lat: number; lng: number; alt?: number };
+  coalition?: number; alive?: number; position?: { lat: number; lng: number; alt?: number };
 }
 
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
@@ -51,6 +51,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const mapRef = useRef<Map | null>(null);
   const srcRef = useRef<VectorSource | null>(null);
   const fittedRef = useRef(false);
+  // Persistent unit store (merge across polls so units don't blink out on a
+  // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
+  const unitsRef = useRef<Record<number, { u: UnitT; miss: number }>>({});
   const isAdmin = group.role === 'admin';
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
@@ -140,9 +143,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         if (!r.ok) { setErr(r.error || 'feed error'); return; }
         setErr('');
         const units = (Array.isArray(r.data) ? r.data : []) as UnitT[];
+        const store = unitsRef.current;
+        const seen = new Set<number>();
+        for (const u of units) {
+          const id = u.olympusID;
+          if (id == null) continue;
+          seen.add(id);
+          if (u.alive === 0) { delete store[id]; continue; }       // explicitly dead
+          store[id] = { u: { ...(store[id]?.u || {}), ...u }, miss: 0 };  // merge
+        }
+        // Age out units not present this poll; drop after ~3 consecutive misses.
+        for (const k of Object.keys(store)) {
+          const id = Number(k);
+          if (!seen.has(id)) { if (++store[id].miss >= 3) delete store[id]; }
+        }
         const src = srcRef.current; src.clear();
         let red = 0, blue = 0, other = 0; const pts: number[][] = [];
-        for (const u of units) {
+        for (const { u } of Object.values(store)) {
           const p = u.position;
           if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
           if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
