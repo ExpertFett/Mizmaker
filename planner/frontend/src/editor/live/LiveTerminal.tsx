@@ -13,9 +13,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import {
-  listGroups, createGroup, joinGroup, listProfiles, createProfile, deleteProfile,
+  listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
   createInvite, listMembers, removeMember, testProfile, ApiError,
-  type GroupSummary, type ServerProfile, type GroupMember, type MeInfo,
+  type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput,
 } from '../../api/groups';
 
 export function LiveTerminal() {
@@ -180,6 +180,7 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
   const [profiles, setProfiles] = useState<ServerProfile[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [entered, setEntered] = useState<ServerProfile | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [err, setErr] = useState('');
 
   const reload = useCallback(async () => {
@@ -205,25 +206,32 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
       </div>
       {profiles.length === 0 && <p style={dim}>No servers yet.{isAdmin ? ' Add one below.' : ''}</p>}
       {profiles.map((p) => (
-        <div key={p.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>{p.name}</div>
-            <div style={{ ...dim, fontSize: 12 }}>
-              Olympus {p.olympusHost || '—'}:{p.olympusPort ?? 4512}
-              {p.lotatcUrl ? ` · LotATC ${p.lotatcUrl}` : ''}
-              {p.hasPassword ? ' · 🔒' : ''}
+        editingId === p.id ? (
+          <ProfileForm key={p.id} gid={group.id} profile={p}
+                       onDone={() => { setEditingId(null); reload(); }}
+                       onCancel={() => setEditingId(null)} />
+        ) : (
+          <div key={p.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>{p.name}</div>
+              <div style={{ ...dim, fontSize: 12 }}>
+                Olympus {p.olympusHost || '—'}:{p.olympusPort ?? 3000}
+                {p.lotatcUrl ? ` · LotATC ${p.lotatcUrl}` : ''}
+                {p.hasPassword ? ' · 🔒' : ''}
+              </div>
             </div>
+            <TestButton gid={group.id} pid={p.id} />
+            <button style={btnPrimary} onClick={() => setEntered(p)}>Enter terminal</button>
+            {isAdmin && <button style={btn} onClick={() => setEditingId(p.id)}>Edit</button>}
+            {isAdmin && (
+              <button style={{ ...btn, color: '#d95050', borderColor: '#5a2a2a' }}
+                      onClick={async () => { await deleteProfile(group.id, p.id); reload(); }}>Delete</button>
+            )}
           </div>
-          <TestButton gid={group.id} pid={p.id} />
-          <button style={btnPrimary} onClick={() => setEntered(p)}>Enter terminal</button>
-          {isAdmin && (
-            <button style={{ ...btn, color: '#d95050', borderColor: '#5a2a2a' }}
-                    onClick={async () => { await deleteProfile(group.id, p.id); reload(); }}>Delete</button>
-          )}
-        </div>
+        )
       ))}
 
-      {isAdmin && <AddProfileForm gid={group.id} onAdded={reload} />}
+      {isAdmin && editingId === null && <AddServer gid={group.id} onAdded={reload} />}
 
       {/* Admin: invites + members */}
       {isAdmin && (
@@ -257,9 +265,26 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
 }
 
 // ---------------------------------------------------------------------------
-function AddProfileForm({ gid, onAdded }: { gid: string; onAdded: () => void }) {
+function AddServer({ gid, onAdded }: { gid: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: '', olympusHost: '', olympusPort: '4512', olympusPassword: '', lotatcUrl: '' });
+  if (!open) return <button style={{ ...btn, marginTop: 4 }} onClick={() => setOpen(true)}>+ Add server</button>;
+  return <ProfileForm gid={gid} onDone={() => { setOpen(false); onAdded(); }} onCancel={() => setOpen(false)} />;
+}
+
+/** Add OR edit a server profile. In edit mode the password field is left blank
+ *  and only sent if the admin types a new one (so editing other fields doesn't
+ *  wipe the stored password). */
+function ProfileForm({ gid, profile, onDone, onCancel }: {
+  gid: string; profile?: ServerProfile; onDone: () => void; onCancel: () => void;
+}) {
+  const isEdit = !!profile;
+  const [f, setF] = useState({
+    name: profile?.name ?? '',
+    olympusHost: profile?.olympusHost ?? '',
+    olympusPort: String(profile?.olympusPort ?? 3000),
+    olympusPassword: '',
+    lotatcUrl: profile?.lotatcUrl ?? '',
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const up = (patch: Partial<typeof f>) => setF((s) => ({ ...s, ...patch }));
@@ -268,40 +293,46 @@ function AddProfileForm({ gid, onAdded }: { gid: string; onAdded: () => void }) 
     if (!f.name.trim()) return;
     setBusy(true); setErr('');
     try {
-      await createProfile(gid, {
+      const data: ProfileInput = {
         name: f.name.trim(),
         olympusHost: f.olympusHost.trim() || undefined,
-        olympusPort: Number(f.olympusPort) || 4512,
-        olympusPassword: f.olympusPassword || undefined,
+        olympusPort: Number(f.olympusPort) || 3000,
         lotatcUrl: f.lotatcUrl.trim() || undefined,
-      });
-      setF({ name: '', olympusHost: '', olympusPort: '4512', olympusPassword: '', lotatcUrl: '' });
-      setOpen(false);
-      onAdded();
+      };
+      if (f.olympusPassword) data.olympusPassword = f.olympusPassword; // only if typed
+      if (isEdit) await updateProfile(gid, profile!.id, data);
+      else await createProfile(gid, data);
+      onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusy(false); }
   };
 
-  if (!open) return <button style={{ ...btn, marginTop: 4 }} onClick={() => setOpen(true)}>+ Add server</button>;
   return (
-    <div style={{ ...card, marginTop: 8 }}>
-      <h3 style={h3}>Add server</h3>
+    <div style={{ ...card, marginBottom: 8 }}>
+      <h3 style={h3}>{isEdit ? 'Edit server' : 'Add server'}</h3>
       <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8, alignItems: 'center' }}>
         <label style={lbl}>Name</label>
         <input style={input} value={f.name} placeholder="Main Server" onChange={(e) => up({ name: e.target.value })} />
         <label style={lbl}>Olympus host</label>
-        <input style={input} value={f.olympusHost} placeholder="IP or hostname" onChange={(e) => up({ olympusHost: e.target.value })} />
+        <input style={input} value={f.olympusHost} placeholder="IP or hostname (no http://)" onChange={(e) => up({ olympusHost: e.target.value })} />
         <label style={lbl}>Olympus port</label>
         <input style={{ ...input, width: 110 }} value={f.olympusPort} onChange={(e) => up({ olympusPort: e.target.value.replace(/[^0-9]/g, '') })} />
         <label style={lbl}>Role password</label>
-        <input style={input} type="password" value={f.olympusPassword} placeholder="Game Master password" onChange={(e) => up({ olympusPassword: e.target.value })} />
+        <input style={input} type="password" value={f.olympusPassword}
+               placeholder={isEdit ? '(unchanged — leave blank to keep)' : 'Game Master password'}
+               onChange={(e) => up({ olympusPassword: e.target.value })} />
         <label style={lbl}>LotATC URL</label>
         <input style={input} value={f.lotatcUrl} placeholder="(optional) JSON export URL" onChange={(e) => up({ lotatcUrl: e.target.value })} />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button style={btnPrimary} onClick={submit} disabled={busy || !f.name.trim()}>Save</button>
-        <button style={btn} onClick={() => setOpen(false)}>Cancel</button>
+        <button style={btnPrimary} onClick={submit} disabled={busy || !f.name.trim()}>
+          {isEdit ? 'Save changes' : 'Save'}
+        </button>
+        <button style={btn} onClick={onCancel}>Cancel</button>
       </div>
+      <p style={{ ...dim, fontSize: 11, margin: '8px 0 0' }}>
+        Olympus port is usually <strong>3000</strong> (the web port); host is just the IP/hostname.
+      </p>
       {err && <div style={errBox}>✗ {err}</div>}
     </div>
   );
