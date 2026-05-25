@@ -167,24 +167,44 @@ def fetch_telemetry(host: str, port: int, password: str, resource: str) -> dict:
 # --------------------------------------------------------------------------
 import struct  # noqa: E402
 
-_UNIT_FIELDS = {  # DataIndex -> (key, type)
-    1: ("category", "str"), 2: ("alive", "u8"), 3: ("alarmState", "u8"),
-    4: ("radarState", "u8"), 5: ("human", "u8"), 6: ("controlled", "u8"),
+# Full DataIndex -> (key, wire-type) table, reverse-engineered from the Olympus
+# client's Unit.setData switch + DataExtractor (github.com/Pax1601/DCSOlympus).
+# Types map 1:1 to the client's extractors so we consume EVERY field's exact
+# byte length and never lose sync (the old heuristic dropped units whenever a
+# complex field — ammo/contacts/activePath — appeared, which freshly spawned
+# units carry, so spawns at the tail of the feed silently vanished).
+_UNIT_FIELDS = {
+    1: ("category", "str"), 2: ("alive", "bool"), 3: ("alarmState", "u8"),
+    4: ("radarState", "bool"), 5: ("human", "bool"), 6: ("controlled", "bool"),
     7: ("coalition", "u8"), 8: ("country", "u8"), 9: ("name", "str"),
     10: ("unitName", "str"), 11: ("callsign", "str"), 12: ("unitID", "u32"),
-    13: ("groupID", "u32"), 14: ("groupName", "str"), 17: ("hasTask", "u8"),
-    18: ("position", "coords"), 19: ("speed", "f64"), 20: ("horizontalVelocity", "f64"),
-    21: ("verticalVelocity", "f64"), 22: ("heading", "f64"), 23: ("track", "f64"),
-    28: ("fuel", "u16"), 29: ("desiredSpeed", "f64"),
+    13: ("groupID", "u32"), 14: ("groupName", "str"), 15: ("state", "u8"),
+    16: ("task", "str"), 17: ("hasTask", "bool"), 18: ("position", "latlng"),
+    19: ("speed", "f64"), 20: ("horizontalVelocity", "f64"), 21: ("verticalVelocity", "f64"),
+    22: ("heading", "f64"), 23: ("track", "f64"), 24: ("isActiveTanker", "bool"),
+    25: ("isActiveAWACS", "bool"), 26: ("onOff", "bool"), 27: ("followRoads", "bool"),
+    28: ("fuel", "u16"), 29: ("desiredSpeed", "f64"), 30: ("desiredSpeedType", "bool"),
+    31: ("desiredAltitude", "f64"), 32: ("desiredAltitudeType", "bool"), 33: ("leaderID", "u32"),
+    34: ("formationOffset", "offset"), 35: ("targetID", "u32"), 36: ("targetPosition", "latlng"),
+    37: ("ROE", "u8"), 38: ("reactionToThreat", "u8"), 39: ("emissionsCountermeasures", "u8"),
+    40: ("TACAN", "tacan"), 41: ("radio", "radio"), 42: ("generalSettings", "gensettings"),
+    43: ("ammo", "ammo"), 44: ("contacts", "contacts"), 45: ("activePath", "activepath"),
+    46: ("isLeader", "bool"), 47: ("operateAs", "u8"), 48: ("shotsScatter", "u8"),
+    49: ("shotsIntensity", "u8"), 50: ("health", "u8"), 51: ("racetrackLength", "f64"),
+    52: ("racetrackAnchor", "latlng"), 53: ("racetrackBearing", "f64"), 54: ("timeToNextTasking", "f64"),
+    55: ("barrelHeight", "f64"), 56: ("muzzleVelocity", "f64"), 57: ("aimTime", "f64"),
+    58: ("shotsToFire", "u32"), 59: ("shotsBaseInterval", "f64"), 60: ("shotsBaseScatter", "f64"),
+    61: ("engagementRange", "f64"), 62: ("targetingRange", "f64"), 63: ("aimMethodRange", "f64"),
+    64: ("acquisitionRange", "f64"), 65: ("airborne", "bool"),
 }
 _END = 0xFF
 
 
 def _read_field(data: bytes, o: int, t: str):
-    if t == "str":
-        ln = struct.unpack_from("<H", data, o)[0]
-        return data[o + 2:o + 2 + ln].split(b"\x00")[0].decode("latin1"), o + 2 + ln
-    if t == "u8":
+    """Read one field value at offset o, returning (value_or_None, new_offset).
+    Complex aggregate fields (radio/ammo/...) are consumed exactly but return
+    None so they aren't shipped to the browser."""
+    if t in ("bool", "u8"):
         return data[o], o + 1
     if t == "u16":
         return struct.unpack_from("<H", data, o)[0], o + 2
@@ -192,14 +212,35 @@ def _read_field(data: bytes, o: int, t: str):
         return struct.unpack_from("<I", data, o)[0], o + 4
     if t == "f64":
         return struct.unpack_from("<d", data, o)[0], o + 8
-    if t == "coords":
+    if t == "str":  # uint16 length prefix + that many bytes (null-trimmed)
+        ln = struct.unpack_from("<H", data, o)[0]
+        return data[o + 2:o + 2 + ln].split(b"\x00")[0].decode("latin1"), o + 2 + ln
+    if t == "latlng":  # 3 x float64 (lat, lng, alt)
         lat, lng, alt = struct.unpack_from("<ddd", data, o)
         return {"lat": lat, "lng": lng, "alt": alt}, o + 24
+    if t == "offset":  # x, y, z float64 — consumed, not stored
+        return None, o + 24
+    if t == "tacan":  # bool + u8 + char(1) + str(4)
+        return None, o + 7
+    if t == "radio":  # u32 + u8 + u8
+        return None, o + 6
+    if t == "gensettings":  # 5 bools
+        return None, o + 5
+    if t == "ammo":  # u16 count, then count x {u16, str(33), u8, u8, u8} = 38 bytes
+        size = struct.unpack_from("<H", data, o)[0]
+        return None, o + 2 + size * 38
+    if t == "contacts":  # u16 count, then count x {u32, u8} = 5 bytes
+        size = struct.unpack_from("<H", data, o)[0]
+        return None, o + 2 + size * 5
+    if t == "activepath":  # u16 count, then count x latlng (24 bytes)
+        size = struct.unpack_from("<H", data, o)[0]
+        return None, o + 2 + size * 24
     raise ValueError(t)
 
 
 def _next_unit_boundary(data: bytes, o: int) -> int:
-    """Find the next 0xff that begins a fresh unit: 0xff [u32 id][0x01][u16 len][ascii]."""
+    """Fallback resync (only used if an unknown DataIndex appears): find the next
+    0xff that begins a fresh unit: 0xff [u32 id][0x01][u16 len][ascii]."""
     i = o
     n = len(data)
     while i < n - 9:
@@ -210,32 +251,32 @@ def _next_unit_boundary(data: bytes, o: int) -> int:
     return n
 
 
-def decode_units(raw: bytes, limit: int = 2000) -> list:
-    """Decode the Olympus units binary feed into a list of unit dicts. Best
-    effort + defensive: malformed/truncated tails are skipped, not fatal."""
+def decode_units(raw: bytes, limit: int = 5000) -> list:
+    """Decode the Olympus units binary feed into a list of unit dicts. Consumes
+    every field exactly (sync-safe); truncated tails are skipped, not fatal."""
     units = []
     n = len(raw)
     if n < 12:
         return units
     o = 8  # skip the uint64 update-time header
-    while o < n - 9 and len(units) < limit:
+    while o < n - 4 and len(units) < limit:
         try:
             oly_id = struct.unpack_from("<I", raw, o)[0]
             o += 4
             u = {"olympusID": oly_id}
             while o < n:
                 idx = raw[o]
+                o += 1  # consume the index byte
                 if idx == _END:
-                    o += 1
                     break
                 spec = _UNIT_FIELDS.get(idx)
                 if spec is None:
-                    o = _next_unit_boundary(raw, o)  # complex field -> skip unit tail
+                    o = _next_unit_boundary(raw, o - 1)  # unknown field -> resync
                     break
                 key, typ = spec
-                o += 1  # advance past the index byte to the value
                 val, o = _read_field(raw, o, typ)
-                u[key] = val
+                if val is not None:
+                    u[key] = val
             units.append(u)
         except Exception:
             o = _next_unit_boundary(raw, o)
