@@ -14,7 +14,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
-  createInvite, listMembers, removeMember, testProfile, ApiError,
+  createInvite, listMembers, removeMember, testProfile, getTelemetry, ApiError,
   type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput,
 } from '../../api/groups';
 
@@ -193,7 +193,7 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
 
   useEffect(() => { reload(); setEntered(null); }, [reload]);
 
-  if (entered) return <TerminalStub group={group} profile={entered} onExit={() => setEntered(null)} />;
+  if (entered) return <Terminal group={group} profile={entered} onExit={() => setEntered(null)} />;
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -399,23 +399,134 @@ function TestButton({ gid, pid }: { gid: string; pid: string }) {
 }
 
 // ---------------------------------------------------------------------------
-function TerminalStub({ group, profile, onExit }: { group: GroupSummary; profile: ServerProfile; onExit: () => void }) {
+type Feed<T> = { loading: boolean; data?: T; err?: string };
+
+function scalarEntries(obj: unknown): [string, string][] {
+  if (!obj || typeof obj !== 'object') return [];
+  return Object.entries(obj as Record<string, unknown>)
+    .filter(([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v))
+    .map(([k, v]) => [k, String(v)]);
+}
+
+function unitsInfo(data: any): { count: number | null; note?: string; rows: any[] } {
+  if (data && data._nonJson) return { count: null, note: `binary feed (${data.bytes} bytes) — decoder TBD`, rows: [] };
+  if (Array.isArray(data)) return { count: data.length, rows: data.slice(0, 50) };
+  if (data && typeof data === 'object') {
+    const vals = Object.values(data);
+    return { count: vals.length, rows: vals.slice(0, 50) };
+  }
+  return { count: null, note: 'no data', rows: [] };
+}
+
+function unitRow(u: any) {
+  const name = u?.unitName ?? u?.name ?? u?.ID ?? u?.id ?? '—';
+  const coal = u?.coalition ?? u?.coalitionID ?? '—';
+  const cat = u?.category ?? u?.categoryID ?? u?.type ?? '—';
+  const lat = u?.position?.lat ?? u?.latitude ?? u?.lat;
+  const lng = u?.position?.lng ?? u?.longitude ?? u?.lng ?? u?.lon;
+  const pos = (typeof lat === 'number' && typeof lng === 'number')
+    ? `${lat.toFixed(3)}, ${lng.toFixed(3)}` : '—';
+  return { name: String(name), coal: String(coal), cat: String(cat), pos };
+}
+
+function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: ServerProfile; onExit: () => void }) {
+  const [mission, setMission] = useState<Feed<unknown>>({ loading: true });
+  const [live, setLive] = useState(false);
+  const [units, setUnits] = useState<Feed<any> | null>(null);
+
+  // Heartbeat: poll the mission resource (small JSON) every 5s.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await getTelemetry(group.id, profile.id, 'mission');
+        if (cancelled) return;
+        if (r.ok) { setMission({ loading: false, data: r.data }); setLive(true); }
+        else { setMission({ loading: false, err: r.error }); setLive(false); }
+      } catch (e) {
+        if (!cancelled) { setMission({ loading: false, err: e instanceof Error ? e.message : 'Failed' }); setLive(false); }
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [group.id, profile.id]);
+
+  const loadUnits = async () => {
+    setUnits({ loading: true });
+    try {
+      const r = await getTelemetry(group.id, profile.id, 'units');
+      setUnits(r.ok ? { loading: false, data: r.data } : { loading: false, err: r.error });
+    } catch (e) {
+      setUnits({ loading: false, err: e instanceof Error ? e.message : 'Failed' });
+    }
+  };
+
+  const missionRows = scalarEntries(mission.data);
+  const u = units?.data !== undefined ? unitsInfo(units.data) : null;
+
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto' }}>
-      <button style={{ ...btn, marginBottom: 14 }} onClick={onExit}>← Back to {group.name}</button>
-      <div style={{ ...card, textAlign: 'center', padding: '28px 24px' }}>
-        <div style={{ fontSize: 28, marginBottom: 10 }}>🛰</div>
-        <h2 style={{ margin: '0 0 6px', fontSize: 18 }}>{profile.name}</h2>
-        <p style={{ ...dim, margin: '0 0 14px' }}>
-          Olympus {profile.olympusHost || '—'}:{profile.olympusPort ?? 4512}
-          {profile.lotatcUrl ? ` · LotATC ${profile.lotatcUrl}` : ''}
-        </p>
-        <p style={{ ...dim, lineHeight: 1.6, fontSize: 13 }}>
-          Connection profile selected. The live picture and unit control come next
-          (Olympus relay + map). The terminal will spawn/move/task units and overlay
-          the LotATC picture from here.
-        </p>
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <button style={btn} onClick={onExit}>← Back to {group.name}</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginLeft: 'auto' }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: live ? '#3fb950' : '#d95050', boxShadow: live ? '0 0 5px #3fb950' : 'none' }} />
+          <span style={{ fontSize: 12, color: live ? '#3fb950' : '#d95050' }}>{live ? 'Live' : 'No signal'}</span>
+        </div>
       </div>
+
+      <h2 style={{ margin: '0 0 2px', fontSize: 18 }}>{profile.name}</h2>
+      <p style={{ ...dim, margin: '0 0 16px', fontSize: 12 }}>
+        Olympus {profile.olympusHost || '—'}:{profile.olympusPort ?? 3000}
+      </p>
+
+      {/* Mission heartbeat */}
+      <h3 style={h3}>Mission</h3>
+      <div style={{ ...card, marginBottom: 14 }}>
+        {mission.loading && <span style={dim}>Connecting…</span>}
+        {mission.err && <span style={{ color: '#d95050', fontSize: 13 }}>✗ {mission.err}</span>}
+        {!mission.err && missionRows.length === 0 && !mission.loading && <span style={dim}>Connected (no mission fields).</span>}
+        {missionRows.map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', fontSize: 13, padding: '3px 0' }}>
+            <span style={{ width: 160, color: '#888', flexShrink: 0 }}>{k}</span>
+            <span style={{ color: '#e0e0e0' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Units */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <h3 style={{ ...h3, margin: 0 }}>Units</h3>
+        <button style={btn} onClick={loadUnits} disabled={units?.loading}>
+          {units?.loading ? 'Loading…' : 'Refresh units'}
+        </button>
+        {u?.count != null && <span style={{ ...dim, fontSize: 12 }}>{u.count} units</span>}
+      </div>
+      <div style={{ ...card, marginTop: 8 }}>
+        {!units && <span style={dim}>Click "Refresh units" to pull the live unit picture.</span>}
+        {units?.err && <span style={{ color: '#d95050', fontSize: 13 }}>✗ {units.err}</span>}
+        {u?.note && <span style={dim}>{u.note}</span>}
+        {u && u.rows.length > 0 && (
+          <div style={{ fontSize: 12 }}>
+            <div style={{ display: 'flex', color: '#888', borderBottom: '1px solid #3a3a3a', padding: '4px 0' }}>
+              <span style={{ flex: 1 }}>Name</span><span style={{ width: 70 }}>Coalition</span>
+              <span style={{ width: 90 }}>Category</span><span style={{ width: 150 }}>Position</span>
+            </div>
+            {u.rows.map(unitRow).map((r, i) => (
+              <div key={i} style={{ display: 'flex', padding: '3px 0', borderBottom: '1px solid #2e2e2e' }}>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                <span style={{ width: 70 }}>{r.coal}</span><span style={{ width: 90 }}>{r.cat}</span>
+                <span style={{ width: 150 }}>{r.pos}</span>
+              </div>
+            ))}
+            {u.count != null && u.count > u.rows.length && <div style={{ ...dim, paddingTop: 6 }}>…and {u.count - u.rows.length} more</div>}
+          </div>
+        )}
+      </div>
+
+      <p style={{ ...dim, fontSize: 11, marginTop: 14 }}>
+        Read-only live picture (auto-refreshing). Spawn/move/task control + a map view come next.
+      </p>
     </div>
   );
 }

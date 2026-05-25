@@ -318,3 +318,27 @@ def register_group_routes(app) -> None:
             return jsonify({"error": str(e)}), 503
         from services.olympus_bridge import status_check
         return jsonify(status_check(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or ""))
+
+    @app.route("/api/groups/<gid>/profiles/<pid>/telemetry/<resource>", methods=["GET"])
+    def profile_telemetry(gid, pid, resource):
+        """Live picture — any member pulls a telemetry resource for a profile
+        (mission/units/airbases/bullseye/...). Password decrypted server-side."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        from services.olympus_bridge import fetch_telemetry
+        result = fetch_telemetry(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", resource)
+        return jsonify(result), (200 if result.get("ok") else 502)

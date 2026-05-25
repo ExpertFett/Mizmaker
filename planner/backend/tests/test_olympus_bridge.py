@@ -64,3 +64,27 @@ class TestStatusCheck:
         monkeypatch.setattr(olympus_bridge, "olympus_request", boom)
         r = olympus_bridge.status_check("h", 4512, "pw")
         assert r["ok"] is False and r["reachable"] is True and r["authOk"] is None
+
+
+class TestFetchTelemetry:
+    def test_unknown_resource(self):
+        assert olympus_bridge.fetch_telemetry("h", 3000, "pw", "nope")["ok"] is False
+
+    def test_json_passthrough(self, monkeypatch):
+        monkeypatch.setattr(olympus_bridge, "olympus_request",
+                            lambda *a, **k: (200, {"theatre": "Caucasus"}))
+        r = olympus_bridge.fetch_telemetry("h", 3000, "pw", "mission")
+        assert r["ok"] is True and r["data"] == {"theatre": "Caucasus"}
+
+    def test_non_json_reports_bytes(self, monkeypatch):
+        monkeypatch.setattr(olympus_bridge, "olympus_request",
+                            lambda *a, **k: (200, "BINARYFEED"))
+        r = olympus_bridge.fetch_telemetry("h", 3000, "pw", "units")
+        assert r["ok"] is True and r["data"]["_nonJson"] is True
+        assert r["data"]["bytes"] == len("BINARYFEED")
+
+    def test_auth_error(self, monkeypatch):
+        def boom(*a, **k):
+            raise urllib.error.HTTPError("http://h", 401, "no", {}, None)
+        monkeypatch.setattr(olympus_bridge, "olympus_request", boom)
+        assert olympus_bridge.fetch_telemetry("h", 3000, "bad", "mission")["ok"] is False

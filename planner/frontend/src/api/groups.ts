@@ -139,3 +139,17 @@ export interface TestResult {
 export function testProfile(gid: string, pid: string) {
   return req<TestResult>(`/api/groups/${gid}/profiles/${pid}/test`, { method: 'POST' });
 }
+
+export interface TelemetryResult {
+  ok: boolean;
+  data?: unknown;   // parsed JSON (object/array) or { _nonJson: true, bytes }
+  error?: string;
+}
+
+export type TelemetryResource =
+  'mission' | 'units' | 'airbases' | 'bullseye' | 'logs' | 'markers' | 'drawings';
+
+/** Pull a live telemetry resource from the profile's Olympus server. */
+export function getTelemetry(gid: string, pid: string, resource: TelemetryResource) {
+  return req<TelemetryResult>(`/api/groups/${gid}/profiles/${pid}/telemetry/${resource}`);
+}

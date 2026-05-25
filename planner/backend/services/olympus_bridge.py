@@ -108,6 +108,30 @@ def olympus_request(
             return r.status, text
 
 
+def fetch_telemetry(host: str, port: int, password: str, resource: str) -> dict:
+    """GET a telemetry resource (mission/units/airbases/bullseye/...).
+    Returns {ok: True, data: <parsed JSON>} or {ok: False, error: str}. If the
+    body isn't JSON (e.g. Olympus's binary unit feed), reports its size instead
+    of dumping raw text, and caps very large text payloads."""
+    path = TELEMETRY_URIS.get(resource)
+    if not path:
+        return {"ok": False, "error": f"Unknown resource '{resource}'."}
+    if not host:
+        return {"ok": False, "error": "No Olympus host configured."}
+    try:
+        _status, payload = olympus_request(host, port or DEFAULT_PORT, password, "GET", path)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {"ok": False, "error": "Olympus rejected the password (role auth)."}
+        return {"ok": False, "error": f"Olympus returned HTTP {e.code}."}
+    except Exception as e:
+        return {"ok": False, "error": f"Can't reach Olympus at {host}:{port or DEFAULT_PORT} ({e})."}
+    if isinstance(payload, str):
+        # Non-JSON body (e.g. binary unit protocol) — don't ship raw text.
+        return {"ok": True, "data": {"_nonJson": True, "bytes": len(payload)}}
+    return {"ok": True, "data": payload}
+
+
 def status_check(host: str, port: int, password: str) -> dict:
     """Probe an Olympus backend for a profile "Test Connection": is it reachable,
     and does the password pass role auth? Returns booleans only (no payload echo,

@@ -290,3 +290,30 @@ class TestProfileConnection:
         login(monkeypatch, "admin1")
         gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
         assert client.post(f"/api/groups/{gid}/profiles/nope/test").status_code == 404
+
+
+class TestTelemetry:
+    def _gp(self, client, monkeypatch):
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        pid = client.post(f"/api/groups/{gid}/profiles",
+                          json={"name": "S", "olympusHost": "h", "olympusPort": 3000}).get_json()["id"]
+        return gid, pid
+
+    def test_member_gets_telemetry(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        monkeypatch.setattr("services.olympus_bridge.fetch_telemetry",
+                            lambda h, p, pw, res: {"ok": True, "data": {"theatre": "Caucasus"}})
+        r = client.get(f"/api/groups/{gid}/profiles/{pid}/telemetry/mission")
+        assert r.status_code == 200 and r.get_json()["data"]["theatre"] == "Caucasus"
+
+    def test_non_member_403(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        login(monkeypatch, "stranger")
+        assert client.get(f"/api/groups/{gid}/profiles/{pid}/telemetry/units").status_code == 403
+
+    def test_error_maps_502(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        monkeypatch.setattr("services.olympus_bridge.fetch_telemetry",
+                            lambda h, p, pw, res: {"ok": False, "error": "unreachable"})
+        assert client.get(f"/api/groups/{gid}/profiles/{pid}/telemetry/mission").status_code == 502
