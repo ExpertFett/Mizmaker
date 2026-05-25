@@ -64,7 +64,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
   const [dbState, setDbState] = useState<{ loading: boolean; err?: string }>({ loading: false });
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
-  const [, force] = useState(0);  // re-render when dbCache fills
+  const [dbVersion, setDbVersion] = useState(0);  // bumped when a DB finishes loading
 
   const [sel, setSel] = useState<Sel | null>(null);
   const [effect, setEffect] = useState<'smoke' | 'explosion' | null>(null);
@@ -105,7 +105,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
     setDbState({ loading: true });
     getUnitDatabase(group.id, profile.id, dbCat).then((r) => {
       if (cancelled) return;
-      if (r.ok && r.data) { dbCache.current[dbCat] = r.data; setDbState({ loading: false }); force((n) => n + 1); }
+      if (r.ok && r.data) { dbCache.current[dbCat] = r.data; setDbState({ loading: false }); setDbVersion((n) => n + 1); }
       else setDbState({ loading: false, err: r.error || 'failed to load database' });
     }).catch((e) => { if (!cancelled) setDbState({ loading: false, err: e instanceof Error ? e.message : 'failed' }); });
     return () => { cancelled = true; };
@@ -127,7 +127,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
       if (q && !(k.toLowerCase().includes(q) || (v.label || '').toLowerCase().includes(q))) return false;
       return true;
     }).sort((a, b) => (a[1].label || a[0]).localeCompare(b[1].label || b[0])).slice(0, 200);
-  }, [expanded, search, roleFilter]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, search, roleFilter, dbVersion]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Role chips (union across the air category's loadouts).
   const roleChips = useMemo(() => {
@@ -137,7 +137,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
     const s = new Set<string>();
     for (const v of Object.values(data)) for (const l of v.loadouts || []) for (const r of l.roles || []) if (r) s.add(r);
     return Array.from(s).sort();
-  }, [expanded]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, dbVersion]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Open the config page for a unit, seeding sensible defaults.
   const openUnit = (cat: Cat, key: string, entry: UnitDbEntry) => {
@@ -223,6 +223,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
                 </div>
                 {e.description && <div style={{ color: C.dim, fontSize: 12, marginTop: 3 }}>{e.description}</div>}
                 {tags.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>{tags.map((t) => <span key={t} style={chip}>{t}</span>)}</div>}
+                <div style={{ color: C.dim, fontSize: 10, marginTop: 4, opacity: 0.7 }}>blueprint: {(e.loadouts || []).length} loadouts · {Object.keys(e.liveries || {}).length} liveries</div>
               </div>
 
               <Row label="Coalition">
@@ -443,12 +444,19 @@ function HeadingDial({ value, onChange }: { value: number; onChange: (n: number)
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
-  const a = (value - 90) * Math.PI / 180;
+  const R = 16;  // bug orbit radius
+  const dx = Math.sin(value * Math.PI / 180) * R;
+  const dy = -Math.cos(value * Math.PI / 180) * R;
   return (
     <div ref={ref} onMouseDown={onDown} title="Drag to set heading"
-         style={{ width: 44, height: 44, borderRadius: '50%', border: `1px solid ${C.borderHi}`, position: 'relative', cursor: 'grab', background: 'rgba(0,0,0,0.3)', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', left: '50%', top: '50%', width: 2, height: 18, background: C.accent, transformOrigin: 'bottom center', transform: `translate(-50%,-100%) rotate(${value}deg)` }} />
-      <span style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(calc(-50% + ${18 * Math.cos(a)}px), calc(-50% + ${18 * Math.sin(a)}px))`, width: 3, height: 3 }} />
+         style={{ width: 46, height: 46, borderRadius: '50%', boxSizing: 'border-box', border: `1px solid ${C.borderHi}`, position: 'relative', cursor: 'grab', background: 'radial-gradient(circle, rgba(74,158,255,0.10), rgba(0,0,0,0.35))', flexShrink: 0 }}>
+      <span style={{ position: 'absolute', top: 1, left: '50%', transform: 'translateX(-50%)', fontSize: 7, color: C.dim }}>N</span>
+      {/* needle toward heading */}
+      <div style={{ position: 'absolute', left: '50%', top: '50%', width: 2, height: R, background: C.accent, borderRadius: 1, transformOrigin: 'bottom center', transform: `translate(-50%,-100%) rotate(${value}deg)` }} />
+      {/* centre hub */}
+      <div style={{ position: 'absolute', left: '50%', top: '50%', width: 4, height: 4, borderRadius: '50%', background: C.text, transform: 'translate(-50%,-50%)' }} />
+      {/* round heading bug on the rim */}
+      <div style={{ position: 'absolute', left: '50%', top: '50%', width: 7, height: 7, borderRadius: '50%', background: C.accent, border: '1px solid #0b0f16', transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))` }} />
     </div>
   );
 }
