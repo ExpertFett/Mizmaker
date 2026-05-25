@@ -88,3 +88,26 @@ class TestFetchTelemetry:
             raise urllib.error.HTTPError("http://h", 401, "no", {}, None)
         monkeypatch.setattr(olympus_bridge, "olympus_request", boom)
         assert olympus_bridge.fetch_telemetry("h", 3000, "bad", "mission")["ok"] is False
+
+
+class TestFetchTelemetryHex:
+    class _Resp:
+        def __init__(self, data): self._d = data
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return self._d
+
+    def test_returns_hex_and_size(self, monkeypatch):
+        monkeypatch.setattr(olympus_bridge.urllib.request, "urlopen",
+                            lambda req, timeout=None: self._Resp(b"\x01\x02\xff"))
+        r = olympus_bridge.fetch_telemetry_hex("h", 3000, "pw", "units")
+        assert r["ok"] is True and r["hex"] == "0102ff" and r["bytes"] == 3
+
+    def test_limit_truncates(self, monkeypatch):
+        monkeypatch.setattr(olympus_bridge.urllib.request, "urlopen",
+                            lambda req, timeout=None: self._Resp(b"\x00" * 10))
+        r = olympus_bridge.fetch_telemetry_hex("h", 3000, "pw", "units", limit=4)
+        assert r["bytes"] == 10 and r["hex"] == "00000000"
+
+    def test_unknown_resource(self):
+        assert olympus_bridge.fetch_telemetry_hex("h", 3000, "pw", "nope")["ok"] is False

@@ -153,3 +153,11 @@ export type TelemetryResource =
 export function getTelemetry(gid: string, pid: string, resource: TelemetryResource) {
   return req<TelemetryResult>(`/api/groups/${gid}/profiles/${pid}/telemetry/${resource}`);
 }
+
+export interface TelemetryHex { ok: boolean; bytes?: number; hex?: string; error?: string }
+
+/** DEBUG: grab the first few KB of a telemetry resource as raw hex (for
+ *  reverse-engineering Olympus's binary unit feed). */
+export function getTelemetryHex(gid: string, pid: string, resource: TelemetryResource) {
+  return req<TelemetryHex>(`/api/groups/${gid}/profiles/${pid}/telemetry/${resource}?debug=hex`);
+}

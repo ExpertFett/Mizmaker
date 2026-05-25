@@ -339,6 +339,12 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
+        host, port = p.get("olympus_host"), p.get("olympus_port") or 4512
+        # Debug: raw-bytes hex sample for reverse-engineering binary feeds.
+        if request.args.get("debug") == "hex":
+            from services.olympus_bridge import fetch_telemetry_hex
+            r = fetch_telemetry_hex(host, port, pw or "", resource)
+            return jsonify(r), (200 if r.get("ok") else 502)
         from services.olympus_bridge import fetch_telemetry
-        result = fetch_telemetry(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", resource)
+        result = fetch_telemetry(host, port, pw or "", resource)
         return jsonify(result), (200 if result.get("ok") else 502)

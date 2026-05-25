@@ -132,6 +132,31 @@ def fetch_telemetry(host: str, port: int, password: str, resource: str) -> dict:
     return {"ok": True, "data": payload}
 
 
+def fetch_telemetry_hex(host: str, port: int, password: str, resource: str, limit: int = 4096) -> dict:
+    """DEBUG: return the first `limit` RAW bytes (hex) of a telemetry resource +
+    total size, for reverse-engineering binary feeds (units). Reads raw bytes
+    (no utf-8 decode, unlike olympus_request) so the hex is faithful."""
+    path = TELEMETRY_URIS.get(resource)
+    if not path:
+        return {"ok": False, "error": f"Unknown resource '{resource}'."}
+    if not host:
+        return {"ok": False, "error": "No Olympus host configured."}
+    base = f"http://{host}:{int(port or DEFAULT_PORT)}/"
+    url = urllib.parse.urljoin(base, path)
+    req = urllib.request.Request(url, headers={"Authorization": _basic_auth(password)}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            raw = r.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {"ok": False, "error": "Olympus rejected the password (role auth)."}
+        return {"ok": False, "error": f"Olympus returned HTTP {e.code}."}
+    except Exception as e:
+        return {"ok": False, "error": f"Can't reach Olympus at {host}:{port or DEFAULT_PORT} ({e})."}
+    n = max(0, int(limit))
+    return {"ok": True, "bytes": len(raw), "hex": raw[:n].hex()}
+
+
 def status_check(host: str, port: int, password: str) -> dict:
     """Probe an Olympus backend for a profile "Test Connection": is it reachable,
     and does the password pass role auth? Returns booleans only (no payload echo,

@@ -14,7 +14,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
-  createInvite, listMembers, removeMember, testProfile, getTelemetry, ApiError,
+  createInvite, listMembers, removeMember, testProfile, getTelemetry, getTelemetryHex, ApiError,
   type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput,
 } from '../../api/groups';
 
@@ -462,6 +462,17 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
     }
   };
 
+  const [sample, setSample] = useState<{ loading: boolean; hex?: string; bytes?: number; err?: string } | null>(null);
+  const grabSample = async () => {
+    setSample({ loading: true });
+    try {
+      const r = await getTelemetryHex(group.id, profile.id, 'units');
+      setSample(r.ok ? { loading: false, hex: r.hex, bytes: r.bytes } : { loading: false, err: r.error });
+    } catch (e) {
+      setSample({ loading: false, err: e instanceof Error ? e.message : 'Failed' });
+    }
+  };
+
   const missionRows = scalarEntries(mission.data);
   const u = units?.data !== undefined ? unitsInfo(units.data) : null;
 
@@ -521,6 +532,29 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
             ))}
             {u.count != null && u.count > u.rows.length && <div style={{ ...dim, paddingTop: 6 }}>…and {u.count - u.rows.length} more</div>}
           </div>
+        )}
+      </div>
+
+      {/* Debug: capture a raw sample of the binary units feed for decoding. */}
+      <div style={{ marginTop: 18, borderTop: '1px dashed #3a3a3a', paddingTop: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ ...dim, fontSize: 12 }}>Decoder dev:</span>
+          <button style={btn} onClick={grabSample} disabled={sample?.loading}>
+            {sample?.loading ? 'Capturing…' : 'Capture raw units sample'}
+          </button>
+          {sample?.bytes != null && <span style={{ ...dim, fontSize: 12 }}>{sample.bytes} bytes total</span>}
+        </div>
+        {sample?.err && <div style={errBox}>✗ {sample.err}</div>}
+        {sample?.hex && (
+          <>
+            <p style={{ ...dim, fontSize: 11, margin: '8px 0 4px' }}>
+              Select all + copy this and paste it back to Claude:
+            </p>
+            <textarea readOnly value={sample.hex} onFocus={(e) => e.currentTarget.select()}
+                      style={{ width: '100%', height: 120, background: '#111', color: '#9cd0ff',
+                               border: '1px solid #3a3a3a', borderRadius: 4, fontFamily: 'monospace',
+                               fontSize: 11, padding: 8, resize: 'vertical' }} />
+          </>
         )}
       </div>
 
