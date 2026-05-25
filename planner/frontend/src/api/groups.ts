@@ -172,7 +172,11 @@ export function sendCommand(gid: string, pid: string, command: string, params: R
   });
 }
 
-export interface UnitDbEntry { name?: string; label?: string; category?: string; coalition?: string; era?: string; type?: string }
+export interface UnitLoadout { name?: string; code?: string; roles?: string[] }
+export interface UnitDbEntry {
+  name?: string; label?: string; category?: string; coalition?: string;
+  era?: string; type?: string; loadouts?: UnitLoadout[];
+}
 export type UnitCategory = 'aircraft' | 'helicopter' | 'groundunit' | 'navyunit';
 
 /** Fetch a unit-type database (for the spawn picker). */

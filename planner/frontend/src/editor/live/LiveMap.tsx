@@ -64,6 +64,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [spawnCat, setSpawnCat] = useState<UnitCategory>('groundunit');
   const [spawnCoalition, setSpawnCoalition] = useState<'red' | 'blue'>('blue');
   const [spawnType, setSpawnType] = useState<string | null>(null);
+  const [spawnAltFt, setSpawnAltFt] = useState('20000');
   const [search, setSearch] = useState('');
   const [db, setDb] = useState<{ loading: boolean; entries?: Record<string, UnitDbEntry>; err?: string }>({ loading: false });
   const dbCache = useRef<Record<string, Record<string, UnitDbEntry>>>({});
@@ -87,11 +88,18 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       setMoveArmedID(null);
     },
     onSpawn: (type: string, lat: number, lng: number) => {
+      const isAir = spawnCat === 'aircraft' || spawnCat === 'helicopter';
+      const unit: Record<string, unknown> = { unitType: type, location: { lat, lng }, liveryID: '', skill: 'High' };
+      if (isAir) {
+        // Air start needs altitude (meters) + a loadout code from the blueprint.
+        const ft = Number(spawnAltFt) || (spawnCat === 'aircraft' ? 20000 : 1000);
+        unit.altitude = Math.round(ft * 0.3048);
+        unit.loadout = db.entries?.[type]?.loadouts?.[0]?.code || '';
+      }
       const params: Record<string, unknown> = {
-        units: [{ unitType: type, location: { lat, lng }, liveryID: '', skill: 'High' }],
-        coalition: spawnCoalition, country: '', immediate: false, spawnPoints: 0,
+        units: [unit], coalition: spawnCoalition, country: '', immediate: false, spawnPoints: 0,
       };
-      if (spawnCat === 'aircraft' || spawnCat === 'helicopter') params.airbaseName = '';
+      if (isAir) params.airbaseName = '';
       runCmd(CAT_CMD[spawnCat], params, `Spawn ${type}`);
     },
   };
@@ -156,6 +164,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
     if (mode !== 'spawn') return;
+    setSpawnAltFt(spawnCat === 'helicopter' ? '1000' : '20000');
     if (dbCache.current[spawnCat]) { setDb({ loading: false, entries: dbCache.current[spawnCat] }); return; }
     let cancelled = false;
     setDb({ loading: true }); setSpawnType(null);
@@ -218,6 +227,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                       style={{ ...mbtn, ...(spawnCoalition === s ? { borderColor: s === 'red' ? '#e0554f' : '#5a9fd4', color: s === 'red' ? '#e0554f' : '#5a9fd4' } : {}) }}>{s.toUpperCase()}</button>
             ))}
           </div>
+          {(spawnCat === 'aircraft' || spawnCat === 'helicopter') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12, color: '#aaa' }}>
+              <span>Air start alt (ft):</span>
+              <input value={spawnAltFt} onChange={(e) => setSpawnAltFt(e.target.value.replace(/[^0-9]/g, ''))}
+                     style={{ ...inp, width: 80 }} />
+            </div>
+          )}
           <input placeholder="Search unit type…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inp, width: 'auto', marginBottom: 6 }} />
           <div style={{ overflowY: 'auto', flex: 1, minHeight: 80 }}>
             {db.loading && <div style={{ color: '#aaa', fontSize: 12 }}>Loading database…</div>}
