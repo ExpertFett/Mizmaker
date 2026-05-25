@@ -272,6 +272,26 @@ def fetch_telemetry_hex(host: str, port: int, password: str, resource: str, limi
     return {"ok": True, "bytes": len(raw), "hex": raw[:n].hex()}
 
 
+_DB_CATEGORIES = {"aircraft", "helicopter", "groundunit", "navyunit"}
+
+
+def fetch_unit_database(host: str, port: int, password: str, category: str) -> dict:
+    """Fetch an Olympus unit-type database (for the spawn picker). Served by the
+    :3000 frontend at /api/databases/units/<category>database (authed). Returns
+    {ok, data: {unitType: {label, category, coalition, type, ...}}}."""
+    if category not in _DB_CATEGORIES:
+        return {"ok": False, "error": f"Unknown category '{category}'."}
+    if not host:
+        return {"ok": False, "error": "No Olympus host configured."}
+    r = _raw_get(host, port, password, f"api/databases/units/{category}database")
+    if not r["ok"]:
+        return r
+    try:
+        return {"ok": True, "data": json.loads(r["raw"].decode("utf-8", errors="replace"))}
+    except Exception as e:
+        return {"ok": False, "error": f"Database parse failed: {e}"}
+
+
 def send_command(host: str, port: int, password: str, command: str, params: dict) -> dict:
     """Send an Olympus command: PUT /olympus body {command: params}, with the
     Basic auth + X-Command-Mode header the client uses. Returns {ok, response}

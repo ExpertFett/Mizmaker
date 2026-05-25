@@ -171,3 +171,13 @@ export function sendCommand(gid: string, pid: string, command: string, params: R
     body: JSON.stringify({ command, params }),
   });
 }
+
+export interface UnitDbEntry { name?: string; label?: string; category?: string; coalition?: string; era?: string; type?: string }
+export type UnitCategory = 'aircraft' | 'helicopter' | 'groundunit' | 'navyunit';
+
+/** Fetch a unit-type database (for the spawn picker). */
+export function getUnitDatabase(gid: string, pid: string, category: UnitCategory) {
+  return req<{ ok: boolean; data?: Record<string, UnitDbEntry>; error?: string }>(
+    `/api/groups/${gid}/profiles/${pid}/database/${category}`,
+  );
+}

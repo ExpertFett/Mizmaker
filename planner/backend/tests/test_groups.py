@@ -347,3 +347,24 @@ class TestCommand:
     def test_missing_command_400(self, client, fake_sb, monkeypatch):
         gid, pid = self._gp(client, monkeypatch)
         assert client.post(f"/api/groups/{gid}/profiles/{pid}/command", json={}).status_code == 400
+
+
+class TestDatabase:
+    def _gp(self, client, monkeypatch):
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        pid = client.post(f"/api/groups/{gid}/profiles",
+                          json={"name": "S", "olympusHost": "h", "olympusPort": 3000}).get_json()["id"]
+        return gid, pid
+
+    def test_member_gets_db(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        monkeypatch.setattr("services.olympus_bridge.fetch_unit_database",
+                            lambda h, p, pw, cat: {"ok": True, "data": {"M-1 Abrams": {"label": "M-1 Abrams"}}})
+        r = client.get(f"/api/groups/{gid}/profiles/{pid}/database/groundunit")
+        assert r.status_code == 200 and "M-1 Abrams" in r.get_json()["data"]
+
+    def test_non_member_403(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp(client, monkeypatch)
+        login(monkeypatch, "stranger")
+        assert client.get(f"/api/groups/{gid}/profiles/{pid}/database/aircraft").status_code == 403

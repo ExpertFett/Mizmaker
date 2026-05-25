@@ -124,6 +124,15 @@ class TestSendCommand:
     def test_rejects_non_whitelisted(self):
         assert olympus_bridge.send_command("h", 3000, "pw", "rm-rf", {})["ok"] is False
 
+    def test_db_unknown_category(self):
+        assert olympus_bridge.fetch_unit_database("h", 3000, "pw", "tanks")["ok"] is False
+
+    def test_db_parses_json(self, monkeypatch):
+        monkeypatch.setattr(olympus_bridge, "_raw_get",
+                            lambda *a: {"ok": True, "raw": b'{"M-1 Abrams":{"label":"M-1 Abrams","category":"groundunit"}}'})
+        r = olympus_bridge.fetch_unit_database("h", 3000, "pw", "groundunit")
+        assert r["ok"] is True and "M-1 Abrams" in r["data"]
+
     def test_sends_put_to_olympus(self, monkeypatch):
         import json as _json
         cap = {}

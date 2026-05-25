@@ -349,6 +349,30 @@ def register_group_routes(app) -> None:
         result = fetch_telemetry(host, port, pw or "", resource)
         return jsonify(result), (200 if result.get("ok") else 502)
 
+    @app.route("/api/groups/<gid>/profiles/<pid>/database/<category>", methods=["GET"])
+    def profile_database(gid, pid, category):
+        """Unit-type database for the spawn picker (member-gated; relayed +
+        authed server-side). category: aircraft|helicopter|groundunit|navyunit."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        from services.olympus_bridge import fetch_unit_database
+        result = fetch_unit_database(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", category)
+        return jsonify(result), (200 if result.get("ok") else 502)
+
     @app.route("/api/groups/<gid>/profiles/<pid>/command", methods=["POST"])
     def profile_command(gid, pid):
         """Send an Olympus command to the server. ADMIN ONLY — control (spawn/
