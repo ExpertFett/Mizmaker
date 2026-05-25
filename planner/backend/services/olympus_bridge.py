@@ -33,6 +33,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -292,6 +293,25 @@ def fetch_unit_database(host: str, port: int, password: str, category: str) -> d
         return {"ok": True, "data": json.loads(r["raw"].decode("utf-8", errors="replace"))}
     except Exception as e:
         return {"ok": False, "error": f"Database parse failed: {e}"}
+
+
+_IMG_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+_IMG_CT = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "svg": "image/svg+xml", "webp": "image/webp"}
+
+
+def fetch_unit_image(host: str, port: int, password: str, filename: str) -> dict:
+    """Fetch a unit photo from Olympus (served at images/units/<filename>).
+    Returns {ok, raw: bytes, content_type} or {ok:False, error}. Filename is
+    validated (no path traversal) before it touches the URL."""
+    if not _IMG_RE.match(filename or "") or "/" in filename or "\\" in filename:
+        return {"ok": False, "error": "Bad filename."}
+    if not host:
+        return {"ok": False, "error": "No Olympus host configured."}
+    r = _raw_get(host, port, password, f"images/units/{filename}")
+    if not r["ok"]:
+        return r
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return {"ok": True, "raw": r["raw"], "content_type": _IMG_CT.get(ext, "application/octet-stream")}
 
 
 def send_command(host: str, port: int, password: str, command: str, params: dict) -> dict:

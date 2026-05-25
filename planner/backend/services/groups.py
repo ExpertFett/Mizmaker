@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from flask import request, jsonify
+from flask import request, jsonify, Response
 
 from services.auth import current_user
 from services.supabase_client import get_supabase
@@ -372,6 +372,33 @@ def register_group_routes(app) -> None:
         from services.olympus_bridge import fetch_unit_database
         result = fetch_unit_database(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", category)
         return jsonify(result), (200 if result.get("ok") else 502)
+
+    @app.route("/api/groups/<gid>/profiles/<pid>/unit-image/<filename>", methods=["GET"])
+    def profile_unit_image(gid, pid, filename):
+        """Proxy a unit photo from Olympus (member-gated; authed server-side) so
+        the https browser can show it without mixed-content / CORS issues."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        from services.olympus_bridge import fetch_unit_image
+        result = fetch_unit_image(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", filename)
+        if not result.get("ok"):
+            return jsonify(result), 502
+        return Response(result["raw"], mimetype=result["content_type"],
+                        headers={"Cache-Control": "public, max-age=86400"})
 
     @app.route("/api/groups/<gid>/profiles/<pid>/command", methods=["POST"])
     def profile_command(gid, pid):

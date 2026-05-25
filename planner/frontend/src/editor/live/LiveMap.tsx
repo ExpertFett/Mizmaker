@@ -12,7 +12,7 @@
  * pick a type from the server's unit DB → click the map to spawn it.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import OlMap from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -33,6 +33,7 @@ import {
   getTelemetry, sendCommand, getUnitDatabase,
   type GroupSummary, type ServerProfile, type UnitCategory, type UnitDbEntry,
 } from '../../api/groups';
+import { SpawnPanel } from './SpawnPanel';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -50,14 +51,6 @@ const C = {
   green: '#3fb950',
 };
 const SIDE_COLOR: Record<number, string> = { 0: C.neutral, 1: C.red, 2: C.blue };
-const CAT_CMD: Record<UnitCategory, string> = {
-  groundunit: 'spawnGroundUnits', aircraft: 'spawnAircrafts',
-  helicopter: 'spawnHelicopters', navyunit: 'spawnNavyUnits',
-};
-const CATEGORIES: { id: UnitCategory; label: string }[] = [
-  { id: 'groundunit', label: 'Ground' }, { id: 'aircraft', label: 'Aircraft' },
-  { id: 'helicopter', label: 'Helicopter' }, { id: 'navyunit', label: 'Navy' },
-];
 
 // Category-shaped, coalition-colored markers (cached so polls don't re-alloc).
 const _styleCache: Record<string, Style> = {};
@@ -286,15 +279,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     }
   };
 
-  // Spawn state
+  // Spawn mode — the rich picker/config lives in <SpawnPanel>, which reports a
+  // "place function" up here so a map click spawns the configured unit/effect.
   const [mode, setMode] = useState<'select' | 'spawn'>('select');
-  const [spawnCat, setSpawnCat] = useState<UnitCategory>('groundunit');
-  const [spawnCoalition, setSpawnCoalition] = useState<'red' | 'blue'>('blue');
-  const [spawnType, setSpawnType] = useState<string | null>(null);
-  const [spawnAltFt, setSpawnAltFt] = useState('20000');
-  const [search, setSearch] = useState('');
-  const [db, setDb] = useState<{ loading: boolean; entries?: Record<string, UnitDbEntry>; err?: string }>({ loading: false });
-  const dbCache = useRef<Record<string, Record<string, UnitDbEntry>>>({});
+  const placeFnRef = useRef<((lat: number, lng: number) => void) | null>(null);
+  const [placeLabel, setPlaceLabel] = useState('');
+  const handlePlace = useCallback((fn: ((lat: number, lng: number) => void) | null, label: string) => {
+    placeFnRef.current = fn; setPlaceLabel(fn ? label : '');
+  }, []);
 
   const runCmd = async (command: string, params: Record<string, unknown>, label: string, refresh = false) => {
     setCmdMsg(`${label}…`);
@@ -337,7 +329,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Latest interaction state for the (once-registered) OL click handler.
   const ctrl = useRef<any>({});
   ctrl.current = {
-    mode, spawnType, spawnCoalition, spawnCat, armed, tool,
+    mode, armed, tool,
     onSelect: (u: UnitT | null) => setSelected(u),
     onMeasure: (lat: number, lng: number) => setMeasurePts((prev) => [...prev, [lng, lat]]),
     onArmed: (lat: number, lng: number, target: UnitT | null) => {
@@ -352,21 +344,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       }
       setArmed(null);
     },
-    onSpawn: (type: string, lat: number, lng: number) => {
-      const isAir = spawnCat === 'aircraft' || spawnCat === 'helicopter';
-      const unit: Record<string, unknown> = { unitType: type, location: { lat, lng }, liveryID: '', skill: 'High' };
-      if (isAir) {
-        // Air start needs altitude (meters) + a loadout code from the blueprint.
-        const ft = Number(spawnAltFt) || (spawnCat === 'aircraft' ? 20000 : 1000);
-        unit.altitude = Math.round(ft * 0.3048);
-        unit.loadout = db.entries?.[type]?.loadouts?.[0]?.code || '';
-      }
-      const params: Record<string, unknown> = {
-        units: [unit], coalition: spawnCoalition, country: '', immediate: false, spawnPoints: 0,
-      };
-      if (isAir) params.airbaseName = '';
-      runCmd(CAT_CMD[spawnCat], params, `Spawn ${type}`);
-    },
+    place: (lat: number, lng: number) => placeFnRef.current?.(lat, lng),
   };
 
   // Create the map once.
@@ -424,7 +402,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         }
       }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
-      if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
+      if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
       c.onSelect(target);
     });
     // Live cursor coordinate readout (write to DOM directly — no re-render).
@@ -529,30 +507,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Enable/disable ground-unit clustering by setting the cluster distance.
   useEffect(() => { clusterSrcRef.current?.setDistance(clusterGround ? 42 : 0); }, [clusterGround]);
 
-  // Load the unit DB when spawn mode opens / category changes (cached).
-  useEffect(() => {
-    if (mode !== 'spawn') return;
-    setSpawnAltFt(spawnCat === 'helicopter' ? '1000' : '20000');
-    if (dbCache.current[spawnCat]) { setDb({ loading: false, entries: dbCache.current[spawnCat] }); return; }
-    let cancelled = false;
-    setDb({ loading: true }); setSpawnType(null);
-    getUnitDatabase(group.id, profile.id, spawnCat).then((r) => {
-      if (cancelled) return;
-      if (r.ok && r.data) { dbCache.current[spawnCat] = r.data; setDb({ loading: false, entries: r.data }); }
-      else setDb({ loading: false, err: r.error || 'failed to load database' });
-    }).catch((e) => { if (!cancelled) setDb({ loading: false, err: e instanceof Error ? e.message : 'failed' }); });
-    return () => { cancelled = true; };
-  }, [mode, spawnCat, group.id, profile.id]);
-
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
-  const q = search.trim().toLowerCase();
-  const typeList = db.entries
-    ? Object.entries(db.entries)
-        .filter(([k, v]) => !q || k.toLowerCase().includes(q) || (v.label || '').toLowerCase().includes(q))
-        .slice(0, 80)
-    : [];
 
-  const armedActive = armed != null || (mode === 'spawn' && !!spawnType) || tool === 'measure';
+  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
 
   return (
@@ -580,7 +537,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         {isAdmin && (
           <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
             {(['select', 'spawn'] as const).map((m) => (
-              <button key={m} onClick={() => { setMode(m); setSpawnType(null); setArmed(null); }}
+              <button key={m} onClick={() => { setMode(m); setArmed(null); if (m === 'select') handlePlace(null, ''); }}
                       style={{ ...seg, ...(mode === m ? segOn : {}) }}>{m === 'select' ? '⊹ Control' : '✛ Spawn'}</button>
             ))}
           </div>
@@ -690,45 +647,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       </div>
 
-      {/* ── Left dock: Spawn ─────────────────────────────────────────────── */}
+      {/* ── Left dock: Spawn panel (Olympus-style browse + config) ───────── */}
       {isAdmin && mode === 'spawn' && (
-        <div style={{ position: 'absolute', top: 56, left: 56, bottom: 44, width: 280, zIndex: 3, display: 'flex', flexDirection: 'column', ...glass }}>
-          <div style={panelHead}>SPAWN UNIT</div>
-          <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <select value={spawnCat} onChange={(e) => setSpawnCat(e.target.value as UnitCategory)} style={{ ...inp, flex: 1 }}>
-                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
-              {(['blue', 'red'] as const).map((s) => (
-                <button key={s} onClick={() => setSpawnCoalition(s)}
-                        style={{ ...mbtn, padding: '4px 10px', ...(spawnCoalition === s ? { borderColor: s === 'red' ? C.red : C.blue, color: s === 'red' ? C.red : C.blue, background: 'rgba(255,255,255,0.04)' } : {}) }}>{s.toUpperCase()}</button>
-              ))}
-            </div>
-            {(spawnCat === 'aircraft' || spawnCat === 'helicopter') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textDim }}>
-                <span>Air start alt (ft)</span>
-                <input value={spawnAltFt} onChange={(e) => setSpawnAltFt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 78 }} />
-              </div>
-            )}
-            <input placeholder="Search unit type…" value={search} onChange={(e) => setSearch(e.target.value)} style={inp} />
-            <div style={{ overflowY: 'auto', flex: 1, minHeight: 80, border: `1px solid ${C.border}`, borderRadius: 5, background: 'rgba(0,0,0,0.25)' }}>
-              {db.loading && <div style={{ color: C.textDim, fontSize: 12, padding: 8 }}>Loading database…</div>}
-              {db.err && <div style={{ color: C.red, fontSize: 12, padding: 8 }}>✗ {db.err}</div>}
-              {typeList.map(([k, v]) => (
-                <div key={k} onClick={() => setSpawnType(k)}
-                     style={{ padding: '5px 8px', fontSize: 12, cursor: 'pointer',
-                              background: spawnType === k ? C.accentDim : 'transparent',
-                              color: spawnType === k ? '#cfe6ff' : C.text,
-                              borderLeft: spawnType === k ? `2px solid ${C.accent}` : '2px solid transparent',
-                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {v.label || k} <span style={{ color: C.textDim }}>· {v.type || v.category}</span>
-                </div>
-              ))}
-              {db.entries && typeList.length === 0 && !db.loading && <div style={{ color: C.textDim, fontSize: 12, padding: 8 }}>No matches.</div>}
-            </div>
-            {spawnType && <div style={{ fontSize: 11, color: C.accent }}>Selected <b>{spawnType}</b> — click the map to place.</div>}
-          </div>
-        </div>
+        <SpawnPanel group={group} profile={profile}
+                    onClose={() => { setMode('select'); handlePlace(null, ''); }}
+                    onPlace={handlePlace} />
       )}
 
       {/* ── Right dock: selected unit control ────────────────────────────── */}
@@ -796,17 +719,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       )}
 
       {/* ── Armed-action banner ──────────────────────────────────────────── */}
-      {(armed || (mode === 'spawn' && spawnType)) && (
+      {armed && (
         <div style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 4, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.accent}`, color: '#cfe6ff', fontSize: 12, boxShadow: `0 0 16px rgba(74,158,255,0.25)` }}>
           <span style={{ fontWeight: 600 }}>
-            {armed
-              ? (armed.kind === 'move' ? '📍 Click the map to MOVE'
-                : armed.kind === 'attack' ? '🎯 Click a TARGET unit'
-                : armed.kind === 'fireAtArea' ? '🔥 Click the map: FIRE AT AREA'
-                : '💣 Click the map: BOMB POINT')
-              : `✛ Click the map to SPAWN ${spawnType}`}
+            {armed.kind === 'move' ? '📍 Click the map to MOVE'
+              : armed.kind === 'attack' ? '🎯 Click a TARGET unit'
+              : armed.kind === 'fireAtArea' ? '🔥 Click the map: FIRE AT AREA'
+              : '💣 Click the map: BOMB POINT'}
           </span>
-          <button onClick={() => { setArmed(null); setSpawnType(null); }} style={{ ...mbtn, padding: '2px 9px' }}>cancel</button>
+          <button onClick={() => setArmed(null)} style={{ ...mbtn, padding: '2px 9px' }}>cancel</button>
           {cmdMsg && <span style={{ color: cmdMsg.startsWith('✗') ? C.red : C.green }}>{cmdMsg}</span>}
         </div>
       )}

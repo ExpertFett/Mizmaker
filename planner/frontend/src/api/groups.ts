@@ -172,10 +172,12 @@ export function sendCommand(gid: string, pid: string, command: string, params: R
   });
 }
 
-export interface UnitLoadout { name?: string; code?: string; roles?: string[] }
+export interface UnitLoadoutItem { name?: string; quantity?: number }
+export interface UnitLoadout { name?: string; code?: string; roles?: string[]; items?: UnitLoadoutItem[] }
 export interface UnitDbEntry {
-  name?: string; label?: string; category?: string; coalition?: string;
-  era?: string; type?: string; loadouts?: UnitLoadout[];
+  name?: string; label?: string; shortLabel?: string; category?: string; coalition?: string;
+  era?: string; type?: string; description?: string; abilities?: string; filename?: string;
+  loadouts?: UnitLoadout[]; liveries?: Record<string, { name?: string; countries?: string[] }>;
   engagementRange?: number; acquisitionRange?: number;  // metres (for threat rings)
 }
 export type UnitCategory = 'aircraft' | 'helicopter' | 'groundunit' | 'navyunit';
@@ -185,4 +187,9 @@ export function getUnitDatabase(gid: string, pid: string, category: UnitCategory
   return req<{ ok: boolean; data?: Record<string, UnitDbEntry>; error?: string }>(
     `/api/groups/${gid}/profiles/${pid}/database/${category}`,
   );
+}
+
+/** Same-origin URL for a unit photo (proxied + authed via the session cookie). */
+export function unitImageUrl(gid: string, pid: string, filename: string): string {
+  return `/api/groups/${gid}/profiles/${pid}/unit-image/${encodeURIComponent(filename)}`;
 }
