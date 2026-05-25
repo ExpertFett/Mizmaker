@@ -143,7 +143,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       c.onSelect(target);
     });
     mapRef.current = map;
-    return () => { map.setTarget(undefined); mapRef.current = null; };
+    const onResize = () => map.updateSize();
+    window.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); map.setTarget(undefined); mapRef.current = null; };
   }, []);
 
   // Poll units.
@@ -216,7 +218,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const armedActive = armed != null || (mode === 'spawn' && !!spawnType);
 
   return (
-    <div style={{ position: 'relative', height: 'min(70vh, 580px)', border: '1px solid #3a3a3a', borderRadius: 6, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: '1px solid #3a3a3a', borderRadius: 6, overflow: 'hidden' }}>
       <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
 
       {/* Legend + mode toolbar */}

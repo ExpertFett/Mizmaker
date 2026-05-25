@@ -496,7 +496,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
   const u = units?.data !== undefined ? unitsInfo(units.data) : null;
 
   return (
-    <div style={{ maxWidth: view === 'map' ? 1180 : 760, margin: '0 auto' }}>
+    <div style={{ maxWidth: view === 'map' ? 1700 : 760, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         <button style={btn} onClick={onExit}>← Back to {group.name}</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginLeft: 'auto' }}>
