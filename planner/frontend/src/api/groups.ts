@@ -176,6 +176,7 @@ export interface UnitLoadout { name?: string; code?: string; roles?: string[] }
 export interface UnitDbEntry {
   name?: string; label?: string; category?: string; coalition?: string;
   era?: string; type?: string; loadouts?: UnitLoadout[];
+  engagementRange?: number; acquisitionRange?: number;  // metres (for threat rings)
 }
 export type UnitCategory = 'aircraft' | 'helicopter' | 'groundunit' | 'navyunit';
 

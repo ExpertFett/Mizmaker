@@ -21,6 +21,7 @@ import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
+import CircleGeom from 'ol/geom/Circle';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke, Text } from 'ol/style';
 import { boundingExtent } from 'ol/extent';
@@ -89,6 +90,24 @@ function airbaseColor(c: unknown): string {
   const s = String(c ?? '').toLowerCase();
   return s === 'red' ? C.red : s === 'blue' ? C.blue : C.neutral;
 }
+// Threat-range rings (engagement = weapons, acquisition = detection). Web-
+// Mercator scales distance by 1/cos(lat), so a ground radius R metres needs a
+// projected radius R/cos(lat) to render true-to-scale at the unit's latitude.
+function ringFeature(lat: number, lng: number, rangeM: number, kind: 'eng' | 'acq', coalition?: number): Feature {
+  const color = SIDE_COLOR[coalition ?? -1] ?? C.neutral;
+  const radius = rangeM / Math.max(0.15, Math.cos(lat * Math.PI / 180));
+  const ft = new Feature({ geometry: new CircleGeom(fromLonLat([lng, lat]), radius) });
+  ft.setStyle(new Style(kind === 'eng'
+    ? { stroke: new Stroke({ color, width: 1.4 }), fill: new Fill({ color: hexA(color, 0.06) }) }
+    : { stroke: new Stroke({ color, width: 1, lineDash: [6, 6] }) }));
+  return ft;
+}
+// Append "AA" alpha to a #rrggbb color.
+function hexA(hex: string, alpha: number): string {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255).toString(16).padStart(2, '0');
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex + a : hex;
+}
+
 // Airbase marker: hollow coalition-ringed square + the field name underneath.
 function airbaseStyle(coalition: unknown, name: string): Style {
   const color = airbaseColor(coalition);
@@ -118,6 +137,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const srcRef = useRef<VectorSource | null>(null);
   const abSrcRef = useRef<VectorSource | null>(null);   // airbase markers
   const abLayerRef = useRef<any>(null);                 // airbase layer (for show/hide)
+  const ringSrcRef = useRef<VectorSource | null>(null); // engagement/acquisition rings
+  const rangesRef = useRef<Map<string, { eng: number; acq: number }>>(new Map());  // unit type-name -> ranges (m)
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -164,6 +185,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showNavy, toggleNavy] = usePersistedToggle('dcsopt.live.navy');
   const [showAirbase, toggleAirbase] = usePersistedToggle('dcsopt.live.airbase');
   const [showDead, toggleDead] = usePersistedToggle('dcsopt.live.dead');
+  const [showEng, toggleEng] = usePersistedToggle('dcsopt.live.engrings');
+  const [showAcq, toggleAcq] = usePersistedToggle('dcsopt.live.acqrings');
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -171,6 +194,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   renderRef.current = () => {
     const src = srcRef.current; if (!src) return;
     src.clear();
+    const ringSrc = ringSrcRef.current; ringSrc?.clear();
     let red = 0, blue = 0, other = 0, plotted = 0; const pts: number[][] = [];
     for (const { u } of Object.values(unitsRef.current)) {
       const p = u.position;
@@ -195,6 +219,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
       const ft = new Feature({ geometry: new Point(coord) });
       ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
+      // Threat rings (live units only) from the unit's blueprint ranges.
+      if (ringSrc && u.alive !== 0 && (showEng || showAcq)) {
+        const r = rangesRef.current.get(u.name || '');
+        if (r) {
+          if (showAcq && r.acq > 0) ringSrc.addFeature(ringFeature(p.lat, p.lng, r.acq, 'acq', u.coalition));
+          if (showEng && r.eng > 0) ringSrc.addFeature(ringFeature(p.lat, p.lng, r.eng, 'eng', u.coalition));
+        }
+      }
     }
     setCounts({ red, blue, other });
     setDbg(`feed ${feedLenRef.current} · plotted ${plotted}`);
@@ -264,8 +296,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     srcRef.current = src;
     const abSrc = new VectorSource();
     abSrcRef.current = abSrc;
+    const ringSrc = new VectorSource();
+    ringSrcRef.current = ringSrc;
     const unitsLayer = new VectorLayer({ source: src });
     const abLayer = new VectorLayer({ source: abSrc });
+    const ringLayer = new VectorLayer({ source: ringSrc });
     abLayerRef.current = abLayer;
     const map = new Map({
       target: elRef.current,
@@ -273,6 +308,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       layers: [
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
         abLayer,      // airbases under units
+        ringLayer,    // threat rings under units
         unitsLayer,
       ],
       view: new View({ center: fromLonLat([35, 43]), zoom: 6 }),
@@ -332,21 +368,31 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq]);
 
-  // Load the ground unit DB once to classify which live units are SAM / air-
-  // defense (Olympus splits GroundUnit into SAM vs other ground by blueprint type).
+  // Load the unit databases once: classify SAM/air-defense ground units (Olympus
+  // splits GroundUnit into SAM vs other ground by blueprint type) and build the
+  // engagement/acquisition range lookup (metres) used for threat rings.
   useEffect(() => {
     let cancelled = false;
-    getUnitDatabase(group.id, profile.id, 'groundunit').then((r) => {
-      if (cancelled || !r.ok || !r.data) return;
-      const s = new Set<string>();
-      for (const [k, v] of Object.entries(r.data)) {
-        if (v.type && SAM_TYPES.has(v.type)) { s.add(k); if (v.name) s.add(v.name); }
-      }
-      samNamesRef.current = s;
-      renderRef.current();  // re-classify now that SAMs are known
-    }).catch(() => { /* SAM split unavailable; all ground stays "ground" */ });
+    const cats: UnitCategory[] = ['groundunit', 'aircraft', 'helicopter', 'navyunit'];
+    Promise.all(cats.map((c) => getUnitDatabase(group.id, profile.id, c).then((r) => ({ c, r })).catch(() => ({ c, r: null as any }))))
+      .then((results) => {
+        if (cancelled) return;
+        const sam = new Set<string>();
+        const ranges = new Map<string, { eng: number; acq: number }>();
+        for (const { c, r } of results) {
+          if (!r?.ok || !r.data) continue;
+          for (const [k, v] of Object.entries(r.data) as [string, UnitDbEntry][]) {
+            const eng = Number(v.engagementRange) || 0, acq = Number(v.acquisitionRange) || 0;
+            if (eng > 0 || acq > 0) { ranges.set(k, { eng, acq }); if (v.name) ranges.set(v.name, { eng, acq }); }
+            if (c === 'groundunit' && v.type && SAM_TYPES.has(v.type)) { sam.add(k); if (v.name) sam.add(v.name); }
+          }
+        }
+        samNamesRef.current = sam;
+        rangesRef.current = ranges;
+        renderRef.current();  // re-classify + draw rings now that blueprints are known
+      });
     return () => { cancelled = true; };
   }, [group.id, profile.id]);
 
@@ -499,6 +545,18 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <IconToggle icon="💀" active={showDead} onClick={toggleDead}
             helpTitle="Hide / show dead units"
             helpBody={<>Toggles map visibility of destroyed / dead units. Currently <b style={{ color: showDead ? C.green : C.red }}>{showDead ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        </div>
+
+        <span style={{ width: 1, height: 22, background: C.border }} />
+
+        {/* Overlay filters */}
+        <div style={fGroup}>
+          <IconToggle icon="◎" active={showEng} onClick={toggleEng}
+            helpTitle="Hide / show engagement rings"
+            helpBody={<>Weapons-engagement range rings around units that have them (SAMs, AAA, etc.), from the unit blueprint. Currently <b style={{ color: showEng ? C.green : C.red }}>{showEng ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="◌" active={showAcq} onClick={toggleAcq}
+            helpTitle="Hide / show acquisition rings"
+            helpBody={<>Detection / acquisition range rings (radar pickup) around units that have them. Currently <b style={{ color: showAcq ? C.green : C.red }}>{showAcq ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
         </div>
 
         <div style={{ flex: 1 }} />
