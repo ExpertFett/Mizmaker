@@ -12,6 +12,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore, discordDisplayName } from '../../store/authStore';
+import { LiveMap } from './LiveMap';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
   createInvite, listMembers, removeMember, testProfile, getTelemetry, getTelemetryHex,
@@ -437,6 +438,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
   const [mission, setMission] = useState<Feed<unknown>>({ loading: true });
   const [live, setLive] = useState(false);
   const [units, setUnits] = useState<Feed<any> | null>(null);
+  const [view, setView] = useState<'table' | 'map'>('table');
 
   // Heartbeat: poll the mission resource (small JSON) every 5s.
   useEffect(() => {
@@ -494,7 +496,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
   const u = units?.data !== undefined ? unitsInfo(units.data) : null;
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+    <div style={{ maxWidth: view === 'map' ? 1180 : 760, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         <button style={btn} onClick={onExit}>← Back to {group.name}</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginLeft: 'auto' }}>
@@ -504,10 +506,23 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
       </div>
 
       <h2 style={{ margin: '0 0 2px', fontSize: 18 }}>{profile.name}</h2>
-      <p style={{ ...dim, margin: '0 0 16px', fontSize: 12 }}>
+      <p style={{ ...dim, margin: '0 0 12px', fontSize: 12 }}>
         Olympus {profile.olympusHost || '—'}:{profile.olympusPort ?? 3000}
       </p>
 
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {(['table', 'map'] as const).map((v) => (
+          <button key={v} onClick={() => setView(v)} style={{
+            ...btn, background: view === v ? 'rgba(74,143,212,0.15)' : '#333',
+            borderColor: view === v ? '#4a8fd4' : '#4a4a4a', color: view === v ? '#9cd0ff' : '#e0e0e0',
+          }}>{v === 'table' ? 'Table' : 'Map'}</button>
+        ))}
+      </div>
+
+      {view === 'map' ? (
+        <LiveMap group={group} profile={profile} />
+      ) : (
+      <>
       {/* Mission heartbeat */}
       <h3 style={h3}>Mission</h3>
       <div style={{ ...card, marginBottom: 14 }}>
@@ -597,8 +612,10 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
       </div>
 
       <p style={{ ...dim, fontSize: 11, marginTop: 14 }}>
-        Read-only live picture (auto-refreshing). Spawn/move/task control + a map view come next.
+        Auto-refreshing live picture. Switch to <strong>Map</strong> for the tactical view; admin actions drop smoke / delete a unit.
       </p>
+      </>
+      )}
     </div>
   );
 }
