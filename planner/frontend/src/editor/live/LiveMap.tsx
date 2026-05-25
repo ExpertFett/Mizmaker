@@ -129,9 +129,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showHuman, setShowHuman] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.human') !== '0'; } catch { return true; } });
   const [showOlympus, setShowOlympus] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.olympus') !== '0'; } catch { return true; } });
   const [showDcs, setShowDcs] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.dcs') !== '0'; } catch { return true; } });
+  const [showRed, setShowRed] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.red') !== '0'; } catch { return true; } });
+  const [showBlue, setShowBlue] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.blue') !== '0'; } catch { return true; } });
+  const [showNeutral, setShowNeutral] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.neutral') !== '0'; } catch { return true; } });
   const toggleHuman = () => setShowHuman((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.human', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   const toggleOlympus = () => setShowOlympus((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.olympus', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   const toggleDcs = () => setShowDcs((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.dcs', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const toggleRed = () => setShowRed((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.red', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const toggleBlue = () => setShowBlue((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.blue', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const toggleNeutral = () => setShowNeutral((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.neutral', n ? '1' : '0'); } catch { /* ignore */ } return n; });
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -146,6 +152,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!showHuman && u.human === 1) continue;
       if (!showOlympus && u.controlled === 1 && u.human !== 1) continue;
       if (!showDcs && u.controlled !== 1 && u.human !== 1) continue;
+      if (!showRed && u.coalition === 1) continue;
+      if (!showBlue && u.coalition === 2) continue;
+      if (!showNeutral && u.coalition !== 1 && u.coalition !== 2) continue;
       plotted++;
       if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
       const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
@@ -281,7 +290,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -362,6 +371,19 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <IconToggle icon="🤖" active={showDcs} onClick={toggleDcs}
           helpTitle="Hide / show DCS units"
           helpBody={<>Toggles map visibility of DCS-controlled units — Mission Editor AI not (yet) under Olympus control. Currently <b style={{ color: showDcs ? C.green : C.red }}>{showDcs ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+
+        <span style={{ width: 1, height: 22, background: C.border }} />
+
+        {/* Coalition filters */}
+        <IconToggle icon="●" accent={C.red} active={showRed} onClick={toggleRed}
+          helpTitle="Hide / show RED units"
+          helpBody={<>Toggles map visibility of red-coalition units. Currently <b style={{ color: showRed ? C.green : C.red }}>{showRed ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        <IconToggle icon="●" accent={C.blue} active={showBlue} onClick={toggleBlue}
+          helpTitle="Hide / show BLUE units"
+          helpBody={<>Toggles map visibility of blue-coalition units. Currently <b style={{ color: showBlue ? C.green : C.red }}>{showBlue ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        <IconToggle icon="●" accent={C.neutral} active={showNeutral} onClick={toggleNeutral}
+          helpTitle="Hide / show NEUTRAL units"
+          helpBody={<>Toggles map visibility of neutral / unaligned units. Currently <b style={{ color: showNeutral ? C.green : C.red }}>{showNeutral ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
 
         <div style={{ flex: 1 }} />
 
@@ -512,17 +534,18 @@ function Glyph({ side }: { side: number }) {
 }
 
 // Round top-bar toggle (visibility filters) with an Olympus-style hover-help.
-function IconToggle({ icon, active, onClick, helpTitle, helpBody }: {
-  icon: string; active: boolean; onClick: () => void; helpTitle: string; helpBody: React.ReactNode;
+// `accent` (optional) tints the active state to a coalition color.
+function IconToggle({ icon, active, onClick, helpTitle, helpBody, accent }: {
+  icon: string; active: boolean; onClick: () => void; helpTitle: string; helpBody: React.ReactNode; accent?: string;
 }) {
   const [hover, setHover] = useState(false);
   return (
     <div style={{ position: 'relative' }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <button onClick={onClick} aria-label={helpTitle}
               style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                       border: `1px solid ${active ? C.borderHi : C.border}`,
-                       background: active ? C.accentDim : 'rgba(255,255,255,0.04)',
-                       color: active ? C.text : C.textDim, opacity: active ? 1 : 0.5 }}>
+                       border: `1px solid ${active ? (accent || C.borderHi) : C.border}`,
+                       background: active ? (accent ? `${accent}22` : C.accentDim) : 'rgba(255,255,255,0.04)',
+                       color: active ? (accent || C.text) : C.textDim, opacity: active ? 1 : 0.5 }}>
         {icon}
       </button>
       {hover && (
