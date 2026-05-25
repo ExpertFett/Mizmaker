@@ -23,7 +23,9 @@ import Cluster from 'ol/source/Cluster';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import CircleGeom from 'ol/geom/Circle';
+import LineString from 'ol/geom/LineString';
 import { fromLonLat, toLonLat } from 'ol/proj';
+import { getDistance } from 'ol/sphere';
 import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke, Text } from 'ol/style';
 import { boundingExtent } from 'ol/extent';
 import 'ol/ol.css';
@@ -98,6 +100,20 @@ function clusterStyle(features: Feature[]): Style {
   });
 }
 
+// Measure-tool feature styling: dashed line, white vertices, range/bearing labels.
+function measureFeatureStyle(feature: Feature): Style {
+  const label = feature.get('_label') as string | undefined;
+  if (label) return new Style({
+    text: new Text({ text: label, font: feature.get('_total') ? 'bold 12px sans-serif' : '11px sans-serif', offsetY: -12,
+      fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.85)', width: 3 }),
+      backgroundFill: new Fill({ color: 'rgba(10,15,22,0.7)' }), padding: [2, 4, 1, 4] }),
+  });
+  if (feature.get('_vertex')) return new Style({
+    image: new CircleStyle({ radius: 3.5, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.7)', width: 1 }) }),
+  });
+  return new Style({ stroke: new Stroke({ color: '#ffd24a', width: 2, lineDash: [6, 4] }) });
+}
+
 // Airbase coalition can be a number (0/1/2) or string ("neutral"/"red"/"blue").
 function airbaseColor(c: unknown): string {
   if (typeof c === 'number') return SIDE_COLOR[c] ?? C.neutral;
@@ -116,6 +132,15 @@ function ringFeature(lat: number, lng: number, rangeM: number, kind: 'eng' | 'ac
     : { stroke: new Stroke({ color, width: 1, lineDash: [6, 6] }) }));
   return ft;
 }
+// Initial true bearing (deg) from lon/lat a to b.
+function bearingDeg(a: number[], b: number[]): number {
+  const f1 = a[1] * Math.PI / 180, f2 = b[1] * Math.PI / 180;
+  const dl = (b[0] - a[0]) * Math.PI / 180;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
 // Append "AA" alpha to a #rrggbb color.
 function hexA(hex: string, alpha: number): string {
   const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255).toString(16).padStart(2, '0');
@@ -155,6 +180,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const rangesRef = useRef<Map<string, { eng: number; acq: number }>>(new Map());  // unit type-name -> ranges (m)
   const groundSrcRef = useRef<VectorSource | null>(null);  // ground units (fed into the cluster)
   const clusterSrcRef = useRef<any>(null);                 // ol Cluster wrapping groundSrc
+  const measureSrcRef = useRef<VectorSource | null>(null); // measure-tool line + labels
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -279,11 +305,41 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     } catch (e) { setCmdMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`); }
   };
 
+  // Map tools (zoom / select / measure / erase). Tool 'measure' makes clicks
+  // drop range+bearing points; 'select' is normal unit selection.
+  const [tool, setTool] = useState<'select' | 'measure'>('select');
+  const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
+  const zoomBy = (d: number) => { const v = mapRef.current?.getView(); if (v) v.animate({ zoom: (v.getZoom() ?? 6) + d, duration: 180 }); };
+  // Rebuild the measure line + per-segment range/bearing labels from the vertices.
+  useEffect(() => {
+    const src = measureSrcRef.current; if (!src) return;
+    src.clear();
+    if (measurePts.length === 0) return;
+    const coords = measurePts.map((ll) => fromLonLat(ll));
+    if (coords.length >= 2) src.addFeature(new Feature({ geometry: new LineString(coords) }));
+    coords.forEach((c) => { const f = new Feature({ geometry: new Point(c) }); f.set('_vertex', true); src.addFeature(f); });
+    let total = 0;
+    for (let i = 1; i < measurePts.length; i++) {
+      const m = getDistance(measurePts[i - 1], measurePts[i]); total += m;
+      const brg = bearingDeg(measurePts[i - 1], measurePts[i]);
+      const mid = [(coords[i - 1][0] + coords[i][0]) / 2, (coords[i - 1][1] + coords[i][1]) / 2];
+      const lf = new Feature({ geometry: new Point(mid) });
+      lf.set('_label', `${(m / 1852).toFixed(1)} NM  ${String(Math.round(brg)).padStart(3, '0')}°`);
+      src.addFeature(lf);
+    }
+    if (measurePts.length > 2) {
+      const tf = new Feature({ geometry: new Point(coords[coords.length - 1]) });
+      tf.set('_label', `Σ ${(total / 1852).toFixed(1)} NM`); tf.set('_total', true);
+      src.addFeature(tf);
+    }
+  }, [measurePts]);
+
   // Latest interaction state for the (once-registered) OL click handler.
   const ctrl = useRef<any>({});
   ctrl.current = {
-    mode, spawnType, spawnCoalition, spawnCat, armed,
+    mode, spawnType, spawnCoalition, spawnCat, armed, tool,
     onSelect: (u: UnitT | null) => setSelected(u),
+    onMeasure: (lat: number, lng: number) => setMeasurePts((prev) => [...prev, [lng, lat]]),
     onArmed: (lat: number, lng: number, target: UnitT | null) => {
       const a = armed;
       if (!a) return;
@@ -330,6 +386,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const abLayer = new VectorLayer({ source: abSrc });
     const ringLayer = new VectorLayer({ source: ringSrc });
     const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[]) });
+    const measureSrc = new VectorSource();
+    measureSrcRef.current = measureSrc;
+    const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
     abLayerRef.current = abLayer;
     const map = new OlMap({
       target: elRef.current,
@@ -340,6 +399,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         ringLayer,      // threat rings under units
         clusterLayer,   // ground units (clustered)
         unitsLayer,     // air/navy units on top
+        measureLayer,   // measure tool overlay (topmost)
       ],
       view: new View({ center: fromLonLat([35, 43]), zoom: 6 }),
     });
@@ -347,6 +407,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const c = ctrl.current;
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
+      if (c.tool === 'measure') { c.onMeasure(lat, lng); return; }  // measure tool owns clicks
       // Hit-test only the unit + cluster layers (not airbases/rings).
       const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer || l === clusterLayer });
       let target: UnitT | null = null;
@@ -491,12 +552,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         .slice(0, 80)
     : [];
 
-  const armedActive = armed != null || (mode === 'spawn' && !!spawnType);
+  const armedActive = armed != null || (mode === 'spawn' && !!spawnType) || tool === 'measure';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
 
   return (
     <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
       <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
+
+      {/* ── Map tools rail (left edge) ───────────────────────────────────── */}
+      <div style={{ position: 'absolute', top: 56, left: 12, zIndex: 4, display: 'flex', flexDirection: 'column', gap: 5, padding: 5, ...glass }}>
+        <button onClick={() => zoomBy(1)} title="Zoom in" style={toolBtn}>＋</button>
+        <button onClick={() => zoomBy(-1)} title="Zoom out" style={toolBtn}>－</button>
+        <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
+        <button onClick={() => setTool('select')} title="Selection tool" style={{ ...toolBtn, ...(tool === 'select' ? toolOn : {}) }}>⊹</button>
+        <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
+        <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
+                style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
+      </div>
 
       {/* ── Top command / status bar ─────────────────────────────────────── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 44, display: 'flex', alignItems: 'center', gap: 14, padding: '0 12px', zIndex: 3, background: 'linear-gradient(180deg, rgba(9,13,20,0.96), rgba(9,13,20,0.72))', borderBottom: `1px solid ${C.border}` }}>
@@ -620,7 +692,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
       {/* ── Left dock: Spawn ─────────────────────────────────────────────── */}
       {isAdmin && mode === 'spawn' && (
-        <div style={{ position: 'absolute', top: 56, left: 12, bottom: 44, width: 280, zIndex: 3, display: 'flex', flexDirection: 'column', ...glass }}>
+        <div style={{ position: 'absolute', top: 56, left: 56, bottom: 44, width: 280, zIndex: 3, display: 'flex', flexDirection: 'column', ...glass }}>
           <div style={panelHead}>SPAWN UNIT</div>
           <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -786,6 +858,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
 const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
 const fGroup: React.CSSProperties = { display: 'flex', gap: 5 };
+const toolBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 5, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.text, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', lineHeight: 1 };
+const toolOn: React.CSSProperties = { borderColor: C.accent, background: C.accentDim, color: '#cfe6ff' };
 const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
 const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
