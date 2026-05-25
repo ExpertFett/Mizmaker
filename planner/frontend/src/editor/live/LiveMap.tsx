@@ -92,6 +92,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
   const unitsRef = useRef<Record<string, { u: UnitT; miss: number }>>({});
+  const feedLenRef = useRef(0);                  // last poll's raw feed length (for dbg)
+  const renderRef = useRef<() => void>(() => {});  // rebuild features from store (filters applied)
   const isAdmin = group.role === 'admin';
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
@@ -121,6 +123,38 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const guard = (run: () => void) => {
     if (selProtected && !window.confirm(`"${selected!.unitName || selected!.name || 'This unit'}" is a protected Mission Editor unit.\n\nCommanding it unlocks it and abandons its scripted mission. Continue?`)) return;
     run();
+  };
+
+  // Map-layer visibility filters (persisted per-browser).
+  const [showHuman, setShowHuman] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.human') !== '0'; } catch { return true; } });
+  const [showOlympus, setShowOlympus] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.olympus') !== '0'; } catch { return true; } });
+  const toggleHuman = () => setShowHuman((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.human', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const toggleOlympus = () => setShowOlympus((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.olympus', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+
+  // Rebuild the vector layer from the persistent unit store, applying the
+  // human / Olympus visibility filters + counts. Reassigned each render so it
+  // captures current filter state; called after every poll and on each toggle.
+  renderRef.current = () => {
+    const src = srcRef.current; if (!src) return;
+    src.clear();
+    let red = 0, blue = 0, other = 0, plotted = 0; const pts: number[][] = [];
+    for (const { u } of Object.values(unitsRef.current)) {
+      const p = u.position;
+      if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
+      if (!showHuman && u.human === 1) continue;
+      if (!showOlympus && u.controlled === 1 && u.human !== 1) continue;
+      plotted++;
+      if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
+      const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
+      const ft = new Feature({ geometry: new Point(coord) });
+      ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
+    }
+    setCounts({ red, blue, other });
+    setDbg(`feed ${feedLenRef.current} · plotted ${plotted}`);
+    if (!fittedRef.current && pts.length && mapRef.current) {
+      mapRef.current.getView().fit(boundingExtent(pts), { padding: [60, 60, 60, 60], maxZoom: 11 });
+      fittedRef.current = true;
+    }
   };
 
   // Spawn state
@@ -235,28 +269,16 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         for (const k of Object.keys(store)) {
           if (!seen.has(k)) { if (++store[k].miss >= 3) delete store[k]; }
         }
-        const src = srcRef.current; src.clear();
-        let red = 0, blue = 0, other = 0, plotted = 0; const pts: number[][] = [];
-        for (const { u } of Object.values(store)) {
-          const p = u.position;
-          if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
-          plotted++;
-          if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
-          const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
-          const ft = new Feature({ geometry: new Point(coord) });
-          ft.set('unit', u); ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
-        }
-        setCounts({ red, blue, other });
-        setDbg(`feed ${units.length} · plotted ${plotted}`);
-        if (!fittedRef.current && pts.length && mapRef.current) {
-          mapRef.current.getView().fit(boundingExtent(pts), { padding: [60, 60, 60, 60], maxZoom: 11 });
-          fittedRef.current = true;
-        }
+        feedLenRef.current = units.length;
+        renderRef.current();  // rebuild features + counts (applies visibility filters)
       } catch (e) { if (!cancelled) setErr(e instanceof Error ? e.message : 'failed'); }
     };
     poll(); const id = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(id); };
   }, [group.id, profile.id]);
+
+  // Re-render instantly when a visibility filter toggles (don't wait for poll).
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -326,6 +348,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             )}
           </div>
         )}
+
+        {/* Layer visibility filters */}
+        <IconToggle icon="👤" active={showHuman} onClick={toggleHuman}
+          helpTitle="Hide / show human units"
+          helpBody={<>Toggles map visibility of player-piloted (human) units. Currently <b style={{ color: showHuman ? C.green : C.red }}>{showHuman ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        <IconToggle icon="🛰" active={showOlympus} onClick={toggleOlympus}
+          helpTitle="Hide / show Olympus units"
+          helpBody={<>Toggles map visibility of Olympus-controlled units — those spawned or commanded through this terminal. Currently <b style={{ color: showOlympus ? C.green : C.red }}>{showOlympus ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
 
         <div style={{ flex: 1 }} />
 
@@ -473,6 +503,30 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 // Small NATO-ish coalition glyph for the status counts (▲ matches air markers).
 function Glyph({ side }: { side: number }) {
   return <span style={{ color: SIDE_COLOR[side] ?? C.neutral, fontSize: 10 }}>◆</span>;
+}
+
+// Round top-bar toggle (visibility filters) with an Olympus-style hover-help.
+function IconToggle({ icon, active, onClick, helpTitle, helpBody }: {
+  icon: string; active: boolean; onClick: () => void; helpTitle: string; helpBody: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div style={{ position: 'relative' }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button onClick={onClick} aria-label={helpTitle}
+              style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                       border: `1px solid ${active ? C.borderHi : C.border}`,
+                       background: active ? C.accentDim : 'rgba(255,255,255,0.04)',
+                       color: active ? C.text : C.textDim, opacity: active ? 1 : 0.5 }}>
+        {icon}
+      </button>
+      {hover && (
+        <div style={{ position: 'absolute', top: 38, left: 0, width: 300, zIndex: 6, padding: 12, ...glass, fontSize: 12, lineHeight: 1.55, color: C.textDim }}>
+          <div style={{ color: C.text, fontWeight: 700, marginBottom: 6 }}>{helpTitle}</div>
+          {helpBody}
+        </div>
+      )}
+    </div>
+  );
 }
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, textTransform: 'uppercase', margin: '10px 0 5px' }}>{children}</div>;
