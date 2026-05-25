@@ -70,7 +70,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
   const [effect, setEffect] = useState<'smoke' | 'explosion' | null>(null);
 
   // Config (units)
-  const [coalition, setCoalition] = useState<'blue' | 'red'>('blue');
+  const [coalition, setCoalition] = useState<'blue' | 'red' | 'neutral'>('blue');
   const [count, setCount] = useState(1);
   const [altFt, setAltFt] = useState(20000);
   const [altType, setAltType] = useState<'AGL' | 'ASL'>('AGL');
@@ -175,7 +175,8 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
       const fn: PlaceFn = (lat, lng) => {
         const air = isAir(cat);
         const one = (): Record<string, unknown> => {
-          const u: Record<string, unknown> = { unitType: entry.name || sel.key, location: { lat, lng }, liveryID, skill, heading: heading * Math.PI / 180 };
+          const u: Record<string, unknown> = { unitType: sel.key, location: { lat, lng }, liveryID, skill };
+          if (heading) u.heading = heading * Math.PI / 180;
           if (air) { u.altitude = Math.round(altFt * 0.3048); u.loadout = currentLoadout?.code || ''; }
           return u;
         };
@@ -226,7 +227,18 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
               </div>
 
               <Row label="Coalition">
-                <CoalitionSwitch value={coalition} onChange={setCoalition} />
+                <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' }}>
+                  {(['blue', 'neutral', 'red'] as const).map((c) => {
+                    const on = coalition === c;
+                    const col = c === 'red' ? C.red : c === 'blue' ? C.blue : '#bbbbbb';
+                    return (
+                      <button key={c} onClick={() => setCoalition(c)}
+                              style={{ background: on ? `${col}22` : 'transparent', color: on ? col : C.dim, border: 'none', padding: '4px 11px', cursor: 'pointer', fontSize: 12, fontWeight: on ? 700 : 400, fontFamily: 'inherit' }}>
+                        {c === 'neutral' ? 'NEU' : c.toUpperCase()}
+                      </button>
+                    );
+                  })}
+                </div>
               </Row>
               <Row label="Units">
                 <Stepper value={count} min={1} max={20} onChange={setCount} />
@@ -411,19 +423,6 @@ function UnitRow({ label, icon, badge, onClick }: { label: string; icon: string;
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {badge && <span style={chip}>{badge}</span>}
       <span style={{ color: C.dim }}>›</span>
-    </button>
-  );
-}
-function CoalitionSwitch({ value, onChange }: { value: 'blue' | 'red'; onChange: (v: 'blue' | 'red') => void }) {
-  const red = value === 'red';
-  const col = red ? C.red : C.blue;
-  return (
-    <button onClick={() => onChange(red ? 'blue' : 'red')} title="Toggle spawn coalition"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
-      <span style={{ width: 46, height: 22, borderRadius: 11, position: 'relative', border: `1px solid ${col}`, background: red ? 'rgba(224,85,79,0.25)' : 'rgba(90,159,212,0.25)', transition: 'background .15s' }}>
-        <span style={{ position: 'absolute', top: 2, left: red ? 25 : 2, width: 16, height: 16, borderRadius: '50%', background: col, transition: 'left .15s' }} />
-      </span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: col }}>{value.toUpperCase()}</span>
     </button>
   );
 }
