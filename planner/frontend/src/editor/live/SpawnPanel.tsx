@@ -80,7 +80,6 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
   const [skill, setSkill] = useState('High');
   const [heading, setHeading] = useState(0);
   const [imgFail, setImgFail] = useState(false);
-  const [loadoutOpen, setLoadoutOpen] = useState(false);
 
   // Effects config
   const [smokeColor, setSmokeColor] = useState('green');
@@ -141,7 +140,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
 
   // Open the config page for a unit, seeding sensible defaults.
   const openUnit = (cat: Cat, key: string, entry: UnitDbEntry) => {
-    setImgFail(false); setLoadoutOpen(false); setEffect(null);
+    setImgFail(false); setEffect(null);
     setCount(1); setSkill('High'); setLiveryID(''); setHeading(0); setAltType('AGL');
     setAltFt(cat === 'helicopter' ? 1000 : 20000);
     const roles = Array.from(new Set((entry.loadouts || []).flatMap((l) => l.roles || []).filter(Boolean)));
@@ -227,10 +226,7 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
               </div>
 
               <Row label="Coalition">
-                <button onClick={() => setCoalition((c) => c === 'blue' ? 'red' : 'blue')}
-                        style={{ ...inp, cursor: 'pointer', width: 70, color: coalition === 'red' ? C.red : C.blue, borderColor: coalition === 'red' ? C.red : C.blue, fontWeight: 600 }}>
-                  {coalition.toUpperCase()}
-                </button>
+                <CoalitionSwitch value={coalition} onChange={setCoalition} />
               </Row>
               <Row label="Units">
                 <Stepper value={count} min={1} max={20} onChange={setCount} />
@@ -281,22 +277,21 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
                 </Row>
               )}
 
-              {air && currentLoadout && (currentLoadout.items || []).length > 0 && (
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 5 }}>
-                  <button onClick={() => setLoadoutOpen((o) => !o)}
-                          style={{ width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: 'none', color: C.text, padding: '7px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', borderRadius: 5 }}>
-                    {loadoutOpen ? '▾' : '▸'} Loadout ({(currentLoadout.items || []).length})
-                  </button>
-                  {loadoutOpen && (
-                    <div style={{ padding: '4px 9px 8px', fontSize: 12, color: C.dim }}>
-                      {(currentLoadout.items || []).map((it, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</span>
-                          <span style={{ color: C.text }}>×{it.quantity}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+              {air && currentLoadout && (
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 9px', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: C.text, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>LOADOUT</span><span style={{ color: C.dim, fontWeight: 400 }}>{(currentLoadout.items || []).length} stores</span>
+                  </div>
+                  <div style={{ padding: '4px 0' }}>
+                    {(currentLoadout.items || []).length === 0 && <div style={{ color: C.dim, fontSize: 12, padding: '4px 10px' }}>Clean / no stores.</div>}
+                    {(currentLoadout.items || []).map((it, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 10px', fontSize: 12, borderTop: i ? `1px solid rgba(255,255,255,0.04)` : 'none' }}>
+                        <span style={{ width: 20, flexShrink: 0, color: C.accent, fontVariantNumeric: 'tabular-nums', fontSize: 11 }}>{i + 1}</span>
+                        <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.name}>{it.name}</span>
+                        <span style={{ color: C.dim }}>×{it.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </>;
@@ -416,6 +411,19 @@ function UnitRow({ label, icon, badge, onClick }: { label: string; icon: string;
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       {badge && <span style={chip}>{badge}</span>}
       <span style={{ color: C.dim }}>›</span>
+    </button>
+  );
+}
+function CoalitionSwitch({ value, onChange }: { value: 'blue' | 'red'; onChange: (v: 'blue' | 'red') => void }) {
+  const red = value === 'red';
+  const col = red ? C.red : C.blue;
+  return (
+    <button onClick={() => onChange(red ? 'blue' : 'red')} title="Toggle spawn coalition"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+      <span style={{ width: 46, height: 22, borderRadius: 11, position: 'relative', border: `1px solid ${col}`, background: red ? 'rgba(224,85,79,0.25)' : 'rgba(90,159,212,0.25)', transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: red ? 25 : 2, width: 16, height: 16, borderRadius: '50%', background: col, transition: 'left .15s' }} />
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: col }}>{value.toUpperCase()}</span>
     </button>
   );
 }
