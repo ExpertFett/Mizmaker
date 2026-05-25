@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import Map from 'ol/Map';
+import OlMap from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
@@ -147,7 +147,7 @@ function usePersistedToggle(key: string): [boolean, () => void] {
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const coordRef = useRef<HTMLSpanElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
+  const mapRef = useRef<OlMap | null>(null);
   const srcRef = useRef<VectorSource | null>(null);
   const abSrcRef = useRef<VectorSource | null>(null);   // airbase markers
   const abLayerRef = useRef<any>(null);                 // airbase layer (for show/hide)
@@ -331,7 +331,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const ringLayer = new VectorLayer({ source: ringSrc });
     const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[]) });
     abLayerRef.current = abLayer;
-    const map = new Map({
+    const map = new OlMap({
       target: elRef.current,
       controls: [],  // hide default OL zoom/attribution; we float our own chrome
       layers: [
