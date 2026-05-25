@@ -22,7 +22,7 @@ import VectorSource from 'ol/source/Vector';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import { fromLonLat, toLonLat } from 'ol/proj';
-import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke } from 'ol/style';
+import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke, Text } from 'ol/style';
 import { boundingExtent } from 'ol/extent';
 import 'ol/ol.css';
 import {
@@ -83,6 +83,23 @@ interface UnitT {
   position?: { lat: number; lng: number; alt?: number };
 }
 
+// Airbase coalition can be a number (0/1/2) or string ("neutral"/"red"/"blue").
+function airbaseColor(c: unknown): string {
+  if (typeof c === 'number') return SIDE_COLOR[c] ?? C.neutral;
+  const s = String(c ?? '').toLowerCase();
+  return s === 'red' ? C.red : s === 'blue' ? C.blue : C.neutral;
+}
+// Airbase marker: hollow coalition-ringed square + the field name underneath.
+function airbaseStyle(coalition: unknown, name: string): Style {
+  const color = airbaseColor(coalition);
+  return new Style({
+    image: new RegularShape({ points: 4, radius: 7, angle: Math.PI / 4,
+      fill: new Fill({ color: 'rgba(0,0,0,0.4)' }), stroke: new Stroke({ color, width: 2 }) }),
+    text: new Text({ text: name, offsetY: 15, font: '11px sans-serif',
+      fill: new Fill({ color: '#cfe0f0' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.85)', width: 3 }) }),
+  });
+}
+
 // GroundUnit blueprint types Olympus treats as SAM / air-defense (the rest are
 // "ground"). Confirmed against a live Olympus unit database.
 const SAM_TYPES = new Set(['SAM Site', 'SAM Site Parts', 'Radar (EWR)', 'AAA', 'AirDefence']);
@@ -99,6 +116,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const coordRef = useRef<HTMLSpanElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const srcRef = useRef<VectorSource | null>(null);
+  const abSrcRef = useRef<VectorSource | null>(null);   // airbase markers
+  const abLayerRef = useRef<any>(null);                 // airbase layer (for show/hide)
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -143,6 +162,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showSam, toggleSam] = usePersistedToggle('dcsopt.live.sam');
   const [showGround, toggleGround] = usePersistedToggle('dcsopt.live.ground');
   const [showNavy, toggleNavy] = usePersistedToggle('dcsopt.live.navy');
+  const [showAirbase, toggleAirbase] = usePersistedToggle('dcsopt.live.airbase');
   const [showDead, toggleDead] = usePersistedToggle('dcsopt.live.dead');
 
   // Rebuild the vector layer from the persistent unit store, applying the
@@ -242,12 +262,18 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     if (!elRef.current || mapRef.current) return;
     const src = new VectorSource();
     srcRef.current = src;
+    const abSrc = new VectorSource();
+    abSrcRef.current = abSrc;
+    const unitsLayer = new VectorLayer({ source: src });
+    const abLayer = new VectorLayer({ source: abSrc });
+    abLayerRef.current = abLayer;
     const map = new Map({
       target: elRef.current,
       controls: [],  // hide default OL zoom/attribution; we float our own chrome
       layers: [
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
-        new VectorLayer({ source: src }),
+        abLayer,      // airbases under units
+        unitsLayer,
       ],
       view: new View({ center: fromLonLat([35, 43]), zoom: 6 }),
     });
@@ -255,7 +281,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const c = ctrl.current;
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
-      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6 });
+      // Only hit-test the units layer — airbase markers shouldn't be selectable.
+      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer });
       const target = f ? (f.get('unit') as UnitT) : null;
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && c.spawnType) { c.onSpawn(c.spawnType, lat, lng); return; }
@@ -322,6 +349,33 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     }).catch(() => { /* SAM split unavailable; all ground stays "ground" */ });
     return () => { cancelled = true; };
   }, [group.id, profile.id]);
+
+  // Poll the airbases feed (separate JSON resource) and plot field markers.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await getTelemetry(group.id, profile.id, 'airbases');
+        if (cancelled || !abSrcRef.current) return;
+        if (!r.ok || !r.data) return;
+        const obj = ((r.data as Record<string, unknown>).airbases || {}) as Record<string, any>;
+        const src = abSrcRef.current; src.clear();
+        for (const a of Object.values(obj)) {
+          const lat = Number(a?.latitude), lng = Number(a?.longitude);
+          if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) continue;
+          const name = a.callsign && a.callsign !== '' ? a.callsign : `carrier-${a.unitId ?? ''}`;
+          const ft = new Feature({ geometry: new Point(fromLonLat([lng, lat])) });
+          ft.setStyle(airbaseStyle(a.coalition, name));
+          src.addFeature(ft);
+        }
+      } catch { /* airbases unavailable — leave layer empty */ }
+    };
+    poll(); const id = setInterval(poll, 15000);  // airfields are mostly static
+    return () => { cancelled = true; clearInterval(id); };
+  }, [group.id, profile.id]);
+
+  // Show/hide the airbase layer.
+  useEffect(() => { abLayerRef.current?.setVisible(showAirbase); }, [showAirbase]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -439,6 +493,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <IconToggle icon="🚢" active={showNavy} onClick={toggleNavy}
             helpTitle="Hide / show navy units"
             helpBody={<>Toggles map visibility of naval units / ships. Currently <b style={{ color: showNavy ? C.green : C.red }}>{showNavy ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+          <IconToggle icon="🛬" active={showAirbase} onClick={toggleAirbase}
+            helpTitle="Hide / show airbases"
+            helpBody={<>Toggles map markers for airbases and carriers (name + coalition ring). Currently <b style={{ color: showAirbase ? C.green : C.red }}>{showAirbase ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
           <IconToggle icon="💀" active={showDead} onClick={toggleDead}
             helpTitle="Hide / show dead units"
             helpBody={<>Toggles map visibility of destroyed / dead units. Currently <b style={{ color: showDead ? C.green : C.red }}>{showDead ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
