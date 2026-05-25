@@ -79,7 +79,8 @@ function styleForUnit(coalition: number | undefined, category?: string): Style {
 
 interface UnitT {
   olympusID?: number; name?: string; unitName?: string; category?: string;
-  coalition?: number; alive?: number; position?: { lat: number; lng: number; alt?: number };
+  coalition?: number; alive?: number; controlled?: number; human?: number;
+  position?: { lat: number; lng: number; alt?: number };
 }
 
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
@@ -102,6 +103,25 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [armed, setArmed] = useState<{ kind: 'move' | 'attack' | 'fireAtArea' | 'bombPoint'; id: number } | null>(null);
   const [ctlAlt, setCtlAlt] = useState('');
   const [ctlSpd, setCtlSpd] = useState('');
+
+  // Protected (Mission Editor) units: Olympus marks a unit `controlled:0` until
+  // it's first commanded, after which it flips to 1 ("becomes an Olympus unit").
+  // When protection is ON (default), commanding such a unit asks for confirmation
+  // first; once commanded it unlocks. Persisted per-browser.
+  const [protectMode, setProtectMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.protect') !== '0'; } catch { return true; }
+  });
+  const [showLockHelp, setShowLockHelp] = useState(false);
+  const toggleProtect = () => setProtectMode((p) => {
+    const n = !p; try { localStorage.setItem('dcsopt.live.protect', n ? '1' : '0'); } catch { /* ignore */ }
+    return n;
+  });
+  const selProtected = !!selected && protectMode && selected.controlled === 0 && selected.human !== 1;
+  // Gate a command on the selected unit behind a confirm if it's protected.
+  const guard = (run: () => void) => {
+    if (selProtected && !window.confirm(`"${selected!.unitName || selected!.name || 'This unit'}" is a protected Mission Editor unit.\n\nCommanding it unlocks it and abandons its scripted mission. Continue?`)) return;
+    run();
+  };
 
   // Spawn state
   const [mode, setMode] = useState<'select' | 'spawn'>('select');
@@ -284,6 +304,29 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           </div>
         )}
 
+        {/* Lock/unlock protected (Mission Editor) units */}
+        {isAdmin && (
+          <div style={{ position: 'relative' }} onMouseEnter={() => setShowLockHelp(true)} onMouseLeave={() => setShowLockHelp(false)}>
+            <button onClick={toggleProtect} aria-label="Lock/unlock protected units"
+                    style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                             border: `1px solid ${protectMode ? C.red : C.border}`,
+                             background: protectMode ? 'rgba(224,85,79,0.2)' : 'rgba(255,255,255,0.04)',
+                             color: protectMode ? C.red : C.textDim }}>
+              {protectMode ? '🔒' : '🔓'}
+            </button>
+            {showLockHelp && (
+              <div style={{ position: 'absolute', top: 38, left: 0, width: 308, zIndex: 6, padding: 12, ...glass, fontSize: 12, lineHeight: 1.55, color: C.textDim }}>
+                <div style={{ color: C.text, fontWeight: 700, marginBottom: 6 }}>Lock / unlock protected units</div>
+                Mission Editor units are protected from being commanded or deleted by default.
+                Protection is <b style={{ color: protectMode ? C.red : C.green }}>{protectMode ? 'ON' : 'OFF'}</b> — {protectMode
+                  ? 'commanding a protected unit asks for confirmation first.'
+                  : 'protected units can be commanded with no prompt.'}
+                <div style={{ marginTop: 6 }}>Once a unit is commanded it unlocks and becomes an Olympus unit, abandoning its scripted mission.</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ flex: 1 }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12 }}>
@@ -339,8 +382,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {/* ── Right dock: selected unit control ────────────────────────────── */}
       {selected && mode === 'select' && (
         <div style={{ position: 'absolute', top: 56, right: 12, width: 268, maxHeight: 'calc(100% - 110px)', display: 'flex', flexDirection: 'column', zIndex: 3, ...glass, borderColor: selSide }}>
-          <div style={{ ...panelHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}`, borderTop: `2px solid ${selSide}` }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</span>
+          <div style={{ ...panelHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, borderBottom: `1px solid ${C.border}`, borderTop: `2px solid ${selSide}` }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
+              {selProtected && <span title="Protected Mission Editor unit" style={{ color: C.red }}>🔒</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</span>
+            </span>
             <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
           </div>
           <div style={{ overflowY: 'auto', padding: 10 }}>
@@ -353,33 +399,33 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
               <div style={{ marginTop: 10 }}>
                 <SectionLabel>Tasking</SectionLabel>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  <button style={cardBtn} onClick={() => setArmed({ kind: 'move', id: selected.olympusID! })}>📍 Move</button>
-                  <button style={cardBtn} onClick={() => setArmed({ kind: 'attack', id: selected.olympusID! })}>🎯 Attack</button>
-                  <button style={cardBtn} onClick={() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! })}>🔥 Fire</button>
-                  <button style={cardBtn} onClick={() => setArmed({ kind: 'bombPoint', id: selected.olympusID! })}>💣 Bomb</button>
+                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'move', id: selected.olympusID! }))}>📍 Move</button>
+                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'attack', id: selected.olympusID! }))}>🎯 Attack</button>
+                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! }))}>🔥 Fire</button>
+                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'bombPoint', id: selected.olympusID! }))}>💣 Bomb</button>
                 </div>
 
                 <SectionLabel>Behaviour</SectionLabel>
                 <div style={{ display: 'flex', gap: 5 }}>
-                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE'); }}>
+                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) guard(() => runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE')); }}>
                     <option value="">ROE…</option><option value="1">Free</option><option value="2">Designated</option><option value="3">Return fire</option><option value="4">Hold</option>
                   </select>
-                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction'); }}>
+                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') guard(() => runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction')); }}>
                     <option value="">React…</option><option value="0">None</option><option value="1">Manoeuvre</option><option value="2">Passive</option><option value="3">Evade</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-                  <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On')}>On</button>
-                  <button style={cardBtn} onClick={() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off')}>Off</button>
-                  <button style={cardBtn} onClick={() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on')}>Roads</button>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On'))}>On</button>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off'))}>Off</button>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on'))}>Roads</button>
                 </div>
 
                 <SectionLabel>Altitude / Speed</SectionLabel>
                 <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                   <input placeholder="alt ft" value={ctlAlt} onChange={(e) => setCtlAlt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                  <button style={cardBtn} disabled={!ctlAlt} onClick={() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt')}>set</button>
+                  <button style={cardBtn} disabled={!ctlAlt} onClick={() => guard(() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt'))}>set</button>
                   <input placeholder="spd kt" value={ctlSpd} onChange={(e) => setCtlSpd(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                  <button style={cardBtn} disabled={!ctlSpd} onClick={() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd')}>set</button>
+                  <button style={cardBtn} disabled={!ctlSpd} onClick={() => guard(() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd'))}>set</button>
                 </div>
 
                 <SectionLabel>Mark / Remove</SectionLabel>
