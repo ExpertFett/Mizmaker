@@ -57,7 +57,9 @@ COMMAND_WHITELIST = frozenset({
     "setEngagementProperties", "setLaserCode",
 })
 TELEMETRY_URIS = {  # GET resource paths under /olympus/ (confirmed 401-without-auth)
-    "units": "olympus/units",
+    # units is a DELTA feed keyed by ?time=<ms>; time=0 forces the FULL snapshot
+    # every poll (so the map shows the complete picture, not just what changed).
+    "units": "olympus/units?time=0",
     "mission": "olympus/mission",
     "airbases": "olympus/airbases",
     "bullseye": "olympus/bullseye",
