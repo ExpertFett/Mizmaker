@@ -10,8 +10,7 @@ services/groups.py — there is intentionally NO open/anonymous relay route.
 Protocol (reverse-engineered from github.com/Pax1601/DCSOlympus —
 backend/core/src/server.cpp + commands.cpp + commands.h):
   - Commands: PUT http://<host>:<port>/<REST_URI> with body {"<command>": {params}}.
-  - Auth: HTTP Basic, base64("<user>:<rolePassword>"); only the password is
-    checked (vs gameMaster / blueCommander / redCommander). Username is free.
+  - Auth: HTTP Basic, base64("<roleUsername>:<rolePassword>").
   - Telemetry: GET http://<host>:<port>/<resource> (units, mission, ...).
 
 CONFIRMED AGAINST LIVE (2026-05-24, vs a public Olympus on :3000):
@@ -22,6 +21,10 @@ CONFIRMED AGAINST LIVE (2026-05-24, vs a public Olympus on :3000):
   - TELEMETRY_URIS below are therefore prefixed `olympus/`.
   - REST_URI (command PUT path) is assumed `olympus/` (proxy -> backend root);
     still to be confirmed with a live command in Phase C.
+  - AUTH: the Basic *username* selects the ROLE and must be exactly
+    "Game master" / "Blue commander" / "Red commander" (a free username 401s).
+    Password is plaintext (no client-side hashing). We default to "Game master"
+    (full control — the DM-terminal role).
 """
 
 from __future__ import annotations
@@ -63,10 +66,16 @@ COMMANDS = {
 # ---------------------------------------------------------------------------
 
 
-def _basic_auth(password: str) -> str:
-    """HTTP Basic Authorization header value. Olympus checks only the password
-    (against the role passwords); the username is recorded but free."""
-    raw = f"olympus:{password or ''}".encode("utf-8")
+# Olympus maps the HTTP Basic *username* to a role; the supplied password is
+# checked against that role's password. "Game master" = full control (the
+# DM-terminal role). Others: "Blue commander", "Red commander". (Live-confirmed.)
+OLYMPUS_ROLE_USER = "Game master"
+
+
+def _basic_auth(password: str, username: str = OLYMPUS_ROLE_USER) -> str:
+    """HTTP Basic Authorization header value. The username selects the Olympus
+    role (default "Game master"); the password is sent plaintext."""
+    raw = f"{username}:{password or ''}".encode("utf-8")
     return "Basic " + base64.b64encode(raw).decode("ascii")
 
 

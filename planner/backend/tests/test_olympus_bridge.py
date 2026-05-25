@@ -13,14 +13,19 @@ from services import olympus_bridge
 
 
 class TestBasicAuth:
-    def test_encodes_password(self):
+    def test_encodes_role_username_and_password(self):
         v = olympus_bridge._basic_auth("secret")
         assert v.startswith("Basic ")
-        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "olympus:secret"
+        # username defaults to the Game Master role
+        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Game master:secret"
+
+    def test_custom_role_username(self):
+        v = olympus_bridge._basic_auth("pw", username="Blue commander")
+        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Blue commander:pw"
 
     def test_empty_password(self):
         v = olympus_bridge._basic_auth("")
-        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "olympus:"
+        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Game master:"
 
 
 class TestStatusCheck:
