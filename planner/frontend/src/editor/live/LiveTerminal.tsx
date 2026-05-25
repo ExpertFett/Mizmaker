@@ -418,15 +418,18 @@ function unitsInfo(data: any): { count: number | null; note?: string; rows: any[
   return { count: null, note: 'no data', rows: [] };
 }
 
+const COALITION: Record<number, string> = { 0: 'NEU', 1: 'RED', 2: 'BLUE' };
+
 function unitRow(u: any) {
   const name = u?.unitName ?? u?.name ?? u?.ID ?? u?.id ?? '—';
-  const coal = u?.coalition ?? u?.coalitionID ?? '—';
-  const cat = u?.category ?? u?.categoryID ?? u?.type ?? '—';
+  const type = u?.name ?? u?.type ?? '—';                       // DCS type, e.g. FA-18C_hornet
+  const cn = u?.coalition ?? u?.coalitionID;
+  const coal = typeof cn === 'number' ? (COALITION[cn] ?? String(cn)) : '—';
   const lat = u?.position?.lat ?? u?.latitude ?? u?.lat;
   const lng = u?.position?.lng ?? u?.longitude ?? u?.lng ?? u?.lon;
   const pos = (typeof lat === 'number' && typeof lng === 'number')
     ? `${lat.toFixed(3)}, ${lng.toFixed(3)}` : '—';
-  return { name: String(name), coal: String(coal), cat: String(cat), pos };
+  return { name: String(name), type: String(type), coal, pos };
 }
 
 function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: ServerProfile; onExit: () => void }) {
@@ -520,13 +523,14 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
         {u && u.rows.length > 0 && (
           <div style={{ fontSize: 12 }}>
             <div style={{ display: 'flex', color: '#888', borderBottom: '1px solid #3a3a3a', padding: '4px 0' }}>
-              <span style={{ flex: 1 }}>Name</span><span style={{ width: 70 }}>Coalition</span>
-              <span style={{ width: 90 }}>Category</span><span style={{ width: 150 }}>Position</span>
+              <span style={{ flex: 1 }}>Name</span><span style={{ width: 60 }}>Side</span>
+              <span style={{ width: 150 }}>Type</span><span style={{ width: 150 }}>Position</span>
             </div>
             {u.rows.map(unitRow).map((r, i) => (
               <div key={i} style={{ display: 'flex', padding: '3px 0', borderBottom: '1px solid #2e2e2e' }}>
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                <span style={{ width: 70 }}>{r.coal}</span><span style={{ width: 90 }}>{r.cat}</span>
+                <span style={{ width: 60, color: r.coal === 'RED' ? '#d95050' : r.coal === 'BLUE' ? '#5a9fd4' : '#aaa' }}>{r.coal}</span>
+                <span style={{ width: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.type}</span>
                 <span style={{ width: 150 }}>{r.pos}</span>
               </div>
             ))}

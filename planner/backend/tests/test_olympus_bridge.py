@@ -77,11 +77,12 @@ class TestFetchTelemetry:
         assert r["ok"] is True and r["data"] == {"theatre": "Caucasus"}
 
     def test_non_json_reports_bytes(self, monkeypatch):
+        # a non-units resource whose body isn't JSON -> reported as _nonJson
         monkeypatch.setattr(olympus_bridge, "olympus_request",
-                            lambda *a, **k: (200, "BINARYFEED"))
-        r = olympus_bridge.fetch_telemetry("h", 3000, "pw", "units")
+                            lambda *a, **k: (200, "NOTJSON"))
+        r = olympus_bridge.fetch_telemetry("h", 3000, "pw", "markers")
         assert r["ok"] is True and r["data"]["_nonJson"] is True
-        assert r["data"]["bytes"] == len("BINARYFEED")
+        assert r["data"]["bytes"] == len("NOTJSON")
 
     def test_auth_error(self, monkeypatch):
         def boom(*a, **k):

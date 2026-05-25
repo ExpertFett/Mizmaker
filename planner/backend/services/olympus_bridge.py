@@ -118,6 +118,12 @@ def fetch_telemetry(host: str, port: int, password: str, resource: str) -> dict:
         return {"ok": False, "error": f"Unknown resource '{resource}'."}
     if not host:
         return {"ok": False, "error": "No Olympus host configured."}
+    if resource == "units":
+        # Binary delta feed — fetch raw bytes and decode to a list of units.
+        r = _raw_get(host, port, password, path)
+        if not r["ok"]:
+            return r
+        return {"ok": True, "data": decode_units(r["raw"])}
     try:
         _status, payload = olympus_request(host, port or DEFAULT_PORT, password, "GET", path)
     except urllib.error.HTTPError as e:
@@ -132,6 +138,110 @@ def fetch_telemetry(host: str, port: int, password: str, resource: str) -> dict:
     return {"ok": True, "data": payload}
 
 
+# --------------------------------------------------------------------------
+# Units binary decoder
+#
+# The /olympus/units feed is a packed DELTA protocol (validated against a live
+# server). Layout: [uint64 LE update time] then per unit:
+#   [uint32 LE olympusID] then repeating (1-byte DataIndex)(value) until 0xff.
+# We decode the leading scalar/string fields (enough for a map/list); when a
+# complex list field (ammo/contacts/path/...) appears we skip to the next unit
+# boundary — a 0xff followed by a fresh [uint32 id][0x01 category][u16 len][ascii]
+# signature — instead of fully parsing the variable-length structures.
+# --------------------------------------------------------------------------
+import struct  # noqa: E402
+
+_UNIT_FIELDS = {  # DataIndex -> (key, type)
+    1: ("category", "str"), 2: ("alive", "u8"), 3: ("alarmState", "u8"),
+    4: ("radarState", "u8"), 5: ("human", "u8"), 6: ("controlled", "u8"),
+    7: ("coalition", "u8"), 8: ("country", "u8"), 9: ("name", "str"),
+    10: ("unitName", "str"), 11: ("callsign", "str"), 12: ("unitID", "u32"),
+    13: ("groupID", "u32"), 14: ("groupName", "str"), 17: ("hasTask", "u8"),
+    18: ("position", "coords"), 19: ("speed", "f64"), 20: ("horizontalVelocity", "f64"),
+    21: ("verticalVelocity", "f64"), 22: ("heading", "f64"), 23: ("track", "f64"),
+    28: ("fuel", "u16"), 29: ("desiredSpeed", "f64"),
+}
+_END = 0xFF
+
+
+def _read_field(data: bytes, o: int, t: str):
+    if t == "str":
+        ln = struct.unpack_from("<H", data, o)[0]
+        return data[o + 2:o + 2 + ln].split(b"\x00")[0].decode("latin1"), o + 2 + ln
+    if t == "u8":
+        return data[o], o + 1
+    if t == "u16":
+        return struct.unpack_from("<H", data, o)[0], o + 2
+    if t == "u32":
+        return struct.unpack_from("<I", data, o)[0], o + 4
+    if t == "f64":
+        return struct.unpack_from("<d", data, o)[0], o + 8
+    if t == "coords":
+        lat, lng, alt = struct.unpack_from("<ddd", data, o)
+        return {"lat": lat, "lng": lng, "alt": alt}, o + 24
+    raise ValueError(t)
+
+
+def _next_unit_boundary(data: bytes, o: int) -> int:
+    """Find the next 0xff that begins a fresh unit: 0xff [u32 id][0x01][u16 len][ascii]."""
+    i = o
+    n = len(data)
+    while i < n - 9:
+        if (data[i] == _END and data[i + 5] == 0x01 and data[i + 7] == 0x00
+                and 0 < data[i + 6] < 64 and 32 <= data[i + 8] < 127):
+            return i + 1
+        i += 1
+    return n
+
+
+def decode_units(raw: bytes, limit: int = 2000) -> list:
+    """Decode the Olympus units binary feed into a list of unit dicts. Best
+    effort + defensive: malformed/truncated tails are skipped, not fatal."""
+    units = []
+    n = len(raw)
+    if n < 12:
+        return units
+    o = 8  # skip the uint64 update-time header
+    while o < n - 9 and len(units) < limit:
+        try:
+            oly_id = struct.unpack_from("<I", raw, o)[0]
+            o += 4
+            u = {"olympusID": oly_id}
+            while o < n:
+                idx = raw[o]
+                if idx == _END:
+                    o += 1
+                    break
+                spec = _UNIT_FIELDS.get(idx)
+                if spec is None:
+                    o = _next_unit_boundary(raw, o)  # complex field -> skip unit tail
+                    break
+                key, typ = spec
+                o += 1  # advance past the index byte to the value
+                val, o = _read_field(raw, o, typ)
+                u[key] = val
+            units.append(u)
+        except Exception:
+            o = _next_unit_boundary(raw, o)
+    return units
+
+
+def _raw_get(host: str, port: int, password: str, path: str) -> dict:
+    """GET raw bytes from Olympus. Returns {ok, raw} or {ok:False, error}."""
+    base = f"http://{host}:{int(port or DEFAULT_PORT)}/"
+    url = urllib.parse.urljoin(base, path)
+    req = urllib.request.Request(url, headers={"Authorization": _basic_auth(password)}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            return {"ok": True, "raw": r.read()}
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return {"ok": False, "error": "Olympus rejected the password (role auth)."}
+        return {"ok": False, "error": f"Olympus returned HTTP {e.code}."}
+    except Exception as e:
+        return {"ok": False, "error": f"Can't reach Olympus at {host}:{port or DEFAULT_PORT} ({e})."}
+
+
 def fetch_telemetry_hex(host: str, port: int, password: str, resource: str, limit: int = 4096) -> dict:
     """DEBUG: return the first `limit` RAW bytes (hex) of a telemetry resource +
     total size, for reverse-engineering binary feeds (units). Reads raw bytes
@@ -141,18 +251,10 @@ def fetch_telemetry_hex(host: str, port: int, password: str, resource: str, limi
         return {"ok": False, "error": f"Unknown resource '{resource}'."}
     if not host:
         return {"ok": False, "error": "No Olympus host configured."}
-    base = f"http://{host}:{int(port or DEFAULT_PORT)}/"
-    url = urllib.parse.urljoin(base, path)
-    req = urllib.request.Request(url, headers={"Authorization": _basic_auth(password)}, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-            raw = r.read()
-    except urllib.error.HTTPError as e:
-        if e.code in (401, 403):
-            return {"ok": False, "error": "Olympus rejected the password (role auth)."}
-        return {"ok": False, "error": f"Olympus returned HTTP {e.code}."}
-    except Exception as e:
-        return {"ok": False, "error": f"Can't reach Olympus at {host}:{port or DEFAULT_PORT} ({e})."}
+    r = _raw_get(host, port, password, path)
+    if not r["ok"]:
+        return r
+    raw = r["raw"]
     n = max(0, int(limit))
     return {"ok": True, "bytes": len(raw), "hex": raw[:n].hex()}
 
