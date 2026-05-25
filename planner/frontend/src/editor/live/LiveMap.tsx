@@ -128,8 +128,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Map-layer visibility filters (persisted per-browser).
   const [showHuman, setShowHuman] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.human') !== '0'; } catch { return true; } });
   const [showOlympus, setShowOlympus] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.olympus') !== '0'; } catch { return true; } });
+  const [showDcs, setShowDcs] = useState<boolean>(() => { try { return localStorage.getItem('dcsopt.live.dcs') !== '0'; } catch { return true; } });
   const toggleHuman = () => setShowHuman((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.human', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   const toggleOlympus = () => setShowOlympus((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.olympus', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const toggleDcs = () => setShowDcs((v) => { const n = !v; try { localStorage.setItem('dcsopt.live.dcs', n ? '1' : '0'); } catch { /* ignore */ } return n; });
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -143,6 +145,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
       if (!showHuman && u.human === 1) continue;
       if (!showOlympus && u.controlled === 1 && u.human !== 1) continue;
+      if (!showDcs && u.controlled !== 1 && u.human !== 1) continue;
       plotted++;
       if (u.coalition === 1) red++; else if (u.coalition === 2) blue++; else other++;
       const coord = fromLonLat([p.lng, p.lat]); pts.push(coord);
@@ -278,7 +281,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs]);
 
   // Load the unit DB when spawn mode opens / category changes (cached).
   useEffect(() => {
@@ -356,6 +359,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <IconToggle icon="🛰" active={showOlympus} onClick={toggleOlympus}
           helpTitle="Hide / show Olympus units"
           helpBody={<>Toggles map visibility of Olympus-controlled units — those spawned or commanded through this terminal. Currently <b style={{ color: showOlympus ? C.green : C.red }}>{showOlympus ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
+        <IconToggle icon="🤖" active={showDcs} onClick={toggleDcs}
+          helpTitle="Hide / show DCS units"
+          helpBody={<>Toggles map visibility of DCS-controlled units — Mission Editor AI not (yet) under Olympus control. Currently <b style={{ color: showDcs ? C.green : C.red }}>{showDcs ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
 
         <div style={{ flex: 1 }} />
 
