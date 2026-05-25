@@ -23,13 +23,15 @@ CONFIRMED AGAINST LIVE (2026-05-24, vs a public Olympus on :3000):
     still to be confirmed with a live command in Phase C.
   - AUTH: the Basic *username* selects the ROLE and must be exactly
     "Game master" / "Blue commander" / "Red commander" (a free username 401s).
-    Password is plaintext (no client-side hashing). We default to "Game master"
-    (full control — the DM-terminal role).
+    olympus.json stores SHA256-hashed role passwords and the client sends the
+    HASH, so the relay sends sha256-hex of the (plaintext) role password. We
+    default the role to "Game master" (full control — the DM-terminal role).
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import urllib.error
 import urllib.parse
@@ -74,8 +76,13 @@ OLYMPUS_ROLE_USER = "Game master"
 
 def _basic_auth(password: str, username: str = OLYMPUS_ROLE_USER) -> str:
     """HTTP Basic Authorization header value. The username selects the Olympus
-    role (default "Game master"); the password is sent plaintext."""
-    raw = f"{username}:{password or ''}".encode("utf-8")
+    role (default "Game master"). olympus.json stores SHA256-hashed role
+    passwords and the client sends the HASH, so we hash the (plaintext) role
+    password to sha256 hex before sending. An empty password stays empty (an
+    unconfigured/open role is stored as "" — hashing that would never match)."""
+    pw = password or ""
+    sent = hashlib.sha256(pw.encode("utf-8")).hexdigest() if pw else ""
+    raw = f"{username}:{sent}".encode("utf-8")
     return "Basic " + base64.b64encode(raw).decode("ascii")
 
 

@@ -7,25 +7,30 @@ CI) — we monkeypatch olympus_request to cover status_check's branch mapping
 from __future__ import annotations
 
 import base64
+import hashlib
 import urllib.error
 
 from services import olympus_bridge
 
 
+def _decode(v: str) -> str:
+    return base64.b64decode(v[len("Basic "):]).decode("utf-8")
+
+
 class TestBasicAuth:
-    def test_encodes_role_username_and_password(self):
+    def test_username_role_and_sha256_password(self):
         v = olympus_bridge._basic_auth("secret")
         assert v.startswith("Basic ")
-        # username defaults to the Game Master role
-        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Game master:secret"
+        # default role username + sha256-hex of the password (olympus.json format)
+        assert _decode(v) == "Game master:" + hashlib.sha256(b"secret").hexdigest()
 
     def test_custom_role_username(self):
         v = olympus_bridge._basic_auth("pw", username="Blue commander")
-        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Blue commander:pw"
+        assert _decode(v) == "Blue commander:" + hashlib.sha256(b"pw").hexdigest()
 
-    def test_empty_password(self):
-        v = olympus_bridge._basic_auth("")
-        assert base64.b64decode(v[len("Basic "):]).decode("utf-8") == "Game master:"
+    def test_empty_password_stays_empty(self):
+        # an unconfigured/open role is stored as "" — never hash that
+        assert _decode(olympus_bridge._basic_auth("")) == "Game master:"
 
 
 class TestStatusCheck:
