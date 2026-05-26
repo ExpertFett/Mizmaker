@@ -530,6 +530,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
         <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
                 style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
+        <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
+        <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
+                style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
       </div>
 
       {/* ── Top command / status bar ─────────────────────────────────────── */}
