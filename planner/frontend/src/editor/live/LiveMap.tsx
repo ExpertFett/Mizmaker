@@ -77,6 +77,8 @@ function styleForUnit(coalition: number | undefined, category?: string): Style {
 interface UnitT {
   olympusID?: number; name?: string; unitName?: string; category?: string;
   coalition?: number; alive?: number; controlled?: number; human?: number;
+  ROE?: number; reactionToThreat?: number; alarmState?: number; emissionsCountermeasures?: number;
+  desiredAltitudeType?: number; desiredSpeedType?: number;  // 1=AGL/1=GS ; 0=ASL/0=CAS
   position?: { lat: number; lng: number; alt?: number };
 }
 
@@ -191,8 +193,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [cmdMsg, setCmdMsg] = useState('');
   // Armed map action: next map/unit click applies it to the unit `id`.
   const [armed, setArmed] = useState<{ kind: 'move' | 'attack' | 'fireAtArea' | 'bombPoint'; id: number } | null>(null);
-  const [ctlAlt, setCtlAlt] = useState('');
-  const [ctlSpd, setCtlSpd] = useState('');
+  const [ctlAlt, setCtlAlt] = useState(20000);  // ft (altitude slider)
+  const [ctlSpd, setCtlSpd] = useState(300);     // kt (speed slider)
 
   // Protected (Mission Editor) units: Olympus marks a unit `controlled:0` until
   // it's first commanded, after which it flips to 1 ("becomes an Olympus unit").
@@ -512,6 +514,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
+  // Live copy of the selected unit (refreshed each poll) for current-state highlights.
+  const sUnit = selected ? (unitsRef.current[String(selected.olympusID)]?.u ?? selected) : null;
 
   return (
     <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
@@ -711,27 +715,44 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                   <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'bombPoint', id: selected.olympusID! }))}>💣 Bomb</button>
                 </div>
 
-                <SectionLabel>Behaviour</SectionLabel>
-                <div style={{ display: 'flex', gap: 5 }}>
-                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const i = Number(e.target.value); if (i) guard(() => runCmd('setROE', { ID: selected.olympusID, ROE: i }, 'ROE')); }}>
-                    <option value="">ROE…</option><option value="1">Free</option><option value="2">Designated</option><option value="3">Return fire</option><option value="4">Hold</option>
-                  </select>
-                  <select style={{ ...inp, flex: 1 }} value="" onChange={(e) => { const v = e.target.value; if (v !== '') guard(() => runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: Number(v) }, 'Reaction')); }}>
-                    <option value="">React…</option><option value="0">None</option><option value="1">Manoeuvre</option><option value="2">Passive</option><option value="3">Evade</option>
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On'))}>On</button>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off'))}>Off</button>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads on'))}>Roads</button>
+                <SectionLabel>Altitude</SectionLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: C.accent, fontWeight: 700, fontSize: 13, width: 64, fontVariantNumeric: 'tabular-nums' }}>{ctlAlt.toLocaleString()} ft</span>
+                  <input type="range" min={0} max={45000} step={500} value={ctlAlt} onChange={(e) => setCtlAlt(Number(e.target.value))}
+                         onMouseUp={() => guard(() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(ctlAlt * 0.3048) }, 'Set alt'))} style={{ flex: 1 }} />
+                  {(['ASL', 'AGL'] as const).map((t) => (
+                    <button key={t} onClick={() => guard(() => runCmd('setAltitudeType', { ID: selected.olympusID, altitudeType: t }, t))}
+                            style={{ ...segBtn, ...((sUnit?.desiredAltitudeType === 1 ? 'AGL' : 'ASL') === t ? segBtnOn : {}) }}>{t}</button>
+                  ))}
                 </div>
 
-                <SectionLabel>Altitude / Speed</SectionLabel>
-                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                  <input placeholder="alt ft" value={ctlAlt} onChange={(e) => setCtlAlt(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                  <button style={cardBtn} disabled={!ctlAlt} onClick={() => guard(() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(Number(ctlAlt) * 0.3048) }, 'Set alt'))}>set</button>
-                  <input placeholder="spd kt" value={ctlSpd} onChange={(e) => setCtlSpd(e.target.value.replace(/[^0-9]/g, ''))} style={{ ...inp, width: 54 }} />
-                  <button style={cardBtn} disabled={!ctlSpd} onClick={() => guard(() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(Number(ctlSpd) * 0.514444) }, 'Set spd'))}>set</button>
+                <SectionLabel>Speed</SectionLabel>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: C.accent, fontWeight: 700, fontSize: 13, width: 64, fontVariantNumeric: 'tabular-nums' }}>{ctlSpd} kt</span>
+                  <input type="range" min={0} max={600} step={10} value={ctlSpd} onChange={(e) => setCtlSpd(Number(e.target.value))}
+                         onMouseUp={() => guard(() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(ctlSpd * 0.514444) }, 'Set spd'))} style={{ flex: 1 }} />
+                  {(['CAS', 'GS'] as const).map((t) => (
+                    <button key={t} onClick={() => guard(() => runCmd('setSpeedType', { ID: selected.olympusID, speedType: t }, t))}
+                            style={{ ...segBtn, ...((sUnit?.desiredSpeedType === 1 ? 'GS' : 'CAS') === t ? segBtnOn : {}) }}>{t}</button>
+                  ))}
+                </div>
+
+                <SectionLabel>ROE</SectionLabel>
+                <Seg options={['Free', 'Desig', 'Return', 'Hold']} active={(sUnit?.ROE ?? 0) - 1}
+                     onPick={(i) => guard(() => runCmd('setROE', { ID: selected.olympusID, ROE: i + 1 }, 'ROE'))} />
+                <SectionLabel>Alarm state</SectionLabel>
+                <Seg options={['Auto', 'Green', 'Red']} active={sUnit?.alarmState}
+                     onPick={(i) => guard(() => runCmd('setAlarmState', { ID: selected.olympusID, alarmState: i }, 'Alarm state'))} />
+                <SectionLabel>Threat reaction</SectionLabel>
+                <Seg options={['None', 'Manvr', 'Passive', 'Evade']} active={sUnit?.reactionToThreat}
+                     onPick={(i) => guard(() => runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: i }, 'Reaction'))} />
+                <SectionLabel>Radar / ECM</SectionLabel>
+                <Seg options={['Silent', 'Attack', 'Defend', 'Free']} active={sUnit?.emissionsCountermeasures}
+                     onPick={(i) => guard(() => runCmd('setEmissionsCountermeasures', { ID: selected.olympusID, emissionsCountermeasures: i }, 'Radar/ECM'))} />
+                <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On'))}>On</button>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off'))}>Off</button>
+                  <button style={cardBtn} onClick={() => guard(() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads'))}>Roads</button>
                 </div>
 
                 <SectionLabel>Mark / Remove</SectionLabel>
@@ -806,6 +827,16 @@ function IconToggle({ icon, active, onClick, helpTitle, helpBody, accent }: {
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, textTransform: 'uppercase', margin: '10px 0 5px' }}>{children}</div>;
 }
+// Segmented button row — tap to send a command; highlights the unit's current value.
+function Seg({ options, active, onPick }: { options: string[]; active?: number; onPick: (i: number) => void }) {
+  return (
+    <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
+      {options.map((o, i) => (
+        <button key={i} onClick={() => onPick(i)} style={{ flex: 1, ...segBtn, ...(active === i ? segBtnOn : {}), borderLeft: i ? `1px solid ${C.border}` : 'none' }}>{o}</button>
+      ))}
+    </div>
+  );
+}
 
 const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
 const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
@@ -815,5 +846,6 @@ const toolOn: React.CSSProperties = { borderColor: C.accent, background: C.accen
 const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
 const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
-const inp: React.CSSProperties = { background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, padding: '5px 7px', fontSize: 12, fontFamily: 'inherit', borderRadius: 4, outline: 'none' };
 const cardBtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '5px 9px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
+const segBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '4px 6px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' };
+const segBtnOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff', fontWeight: 700 };
