@@ -46,6 +46,7 @@ export class ApiError extends Error {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
+    cache: 'no-store',  // never serve a stale live feed from browser cache
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
     ...init,
   });

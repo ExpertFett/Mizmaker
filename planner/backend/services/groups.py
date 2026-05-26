@@ -347,7 +347,9 @@ def register_group_routes(app) -> None:
             return jsonify(r), (200 if r.get("ok") else 502)
         from services.olympus_bridge import fetch_telemetry
         result = fetch_telemetry(host, port, pw or "", resource)
-        return jsonify(result), (200 if result.get("ok") else 502)
+        resp = jsonify(result)
+        resp.headers["Cache-Control"] = "no-store"  # live feed — never cache
+        return resp, (200 if result.get("ok") else 502)
 
     @app.route("/api/groups/<gid>/profiles/<pid>/database/<category>", methods=["GET"])
     def profile_database(gid, pid, category):
