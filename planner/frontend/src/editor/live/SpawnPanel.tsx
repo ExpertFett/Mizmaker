@@ -426,7 +426,7 @@ function UnitRow({ label, icon, badge, onClick }: { label: string; icon: string;
             onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}>
       <span style={{ width: 18, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-      {badge && <span style={chip}>{badge}</span>}
+      {badge && <span style={badge === 'AI' ? chipAi : chip}>{badge}</span>}
       <span style={{ color: C.dim }}>›</span>
     </button>
   );
@@ -476,13 +476,19 @@ function HeadingDial({ value, onChange }: { value: number; onChange: (n: number)
 function catIcon(c: Cat): string {
   return c === 'aircraft' ? '✈' : c === 'helicopter' ? '🚁' : c === 'sam' ? '📡' : c === 'aaa' ? '🎯' : c === 'navyunit' ? '🚢' : '🪖';
 }
+// Row badge: AI-only airframes (no loadouts) → "AI"; multi-role → "Multirole";
+// single-role → that role. Lets you tell e.g. the player Hornet ("Multirole")
+// from the identically-named AI F/A-18C ("AI").
 function badgeFor(e: UnitDbEntry): string | undefined {
-  const roles = Array.from(new Set((e.loadouts || []).flatMap((l) => l.roles || []).filter((r) => r && r !== 'No task')));
-  return roles[0];
+  const los = e.loadouts || [];
+  if (los.length === 0) return 'AI';
+  const roles = Array.from(new Set(los.flatMap((l) => l.roles || []).filter((r) => r && r !== 'No task')));
+  return roles.length > 1 ? 'Multirole' : roles[0];
 }
 
 const inp: React.CSSProperties = { background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, padding: '5px 7px', fontSize: 12, fontFamily: 'inherit', borderRadius: 4, outline: 'none' };
 const chip: React.CSSProperties = { background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '1px 8px', fontSize: 11, color: C.dim, whiteSpace: 'nowrap' };
+const chipAi: React.CSSProperties = { ...chip, color: '#7a8aa0', opacity: 0.7, fontSize: 10, letterSpacing: 0.5 };
 const iconBtn: React.CSSProperties = { background: 'none', border: 'none', color: C.dim, cursor: 'pointer', fontSize: 16, lineHeight: 1, fontFamily: 'inherit' };
 const stepBtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: 'none', color: C.text, cursor: 'pointer', fontSize: 14, width: 26, height: 24, fontFamily: 'inherit' };
 const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.dim, padding: '3px 9px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' };
