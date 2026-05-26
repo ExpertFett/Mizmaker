@@ -82,6 +82,9 @@ interface UnitT {
   position?: { lat: number; lng: number; alt?: number };
 }
 
+// Highlight ring drawn around each selected unit.
+const SEL_STYLE = new Style({ image: new CircleStyle({ radius: 11, stroke: new Stroke({ color: '#ffd24a', width: 2 }), fill: undefined }) });
+
 // Style for a cluster of N ground units: count badge colored by majority side.
 function clusterStyle(features: Feature[]): Style {
   if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u?.coalition, u?.category); }
@@ -176,6 +179,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const groundSrcRef = useRef<VectorSource | null>(null);  // ground units (fed into the cluster)
   const clusterSrcRef = useRef<any>(null);                 // ol Cluster wrapping groundSrc
   const measureSrcRef = useRef<VectorSource | null>(null); // measure-tool line + labels
+  const selSrcRef = useRef<VectorSource | null>(null);     // selection highlight rings
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -193,24 +197,72 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [dbg, setDbg] = useState('');
   const [dbgOpen, setDbgOpen] = useState(false);  // click the feed counter to inspect decoded units
   const [err, setErr] = useState('');
-  const [selected, setSelected] = useState<UnitT | null>(null);
+  // Multi-unit selection (batch). Set of olympusIDs; primary = first, for detail.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selIdsRef = useRef<Set<number>>(selectedIds);
+  selIdsRef.current = selectedIds;  // latest, for the OL click/box handlers
   const [cmdMsg, setCmdMsg] = useState('');
-  // Armed map action: next map/unit click applies it to the unit `id`.
-  const [armed, setArmed] = useState<{ kind: 'move' | 'attack' | 'fireAtArea' | 'bombPoint'; id: number } | null>(null);
+  // Armed map action: next map click applies it to the WHOLE selection.
+  const [armed, setArmed] = useState<{ kind: 'move' | 'attack' | 'fireAtArea' | 'bombPoint' } | null>(null);
   const [ctlAlt, setCtlAlt] = useState(20000);  // ft (altitude slider)
   const [ctlSpd, setCtlSpd] = useState(300);     // kt (speed slider)
 
   // Protected (Mission Editor) units: Olympus marks a unit `controlled:0` until
   // it's first commanded, after which it flips to 1 ("becomes an Olympus unit").
-  // When protection is ON (default), commanding such a unit asks for confirmation
-  // first; once commanded it unlocks. Persisted per-browser.
+  // When protection is ON (default), commanding such a unit asks for confirmation.
   const [protectMode, toggleProtect] = usePersistedToggle('dcsopt.live.protect');
   const [showLockHelp, setShowLockHelp] = useState(false);
-  const selProtected = !!selected && protectMode && selected.controlled === 0 && selected.human !== 1;
-  // Gate a command on the selected unit behind a confirm if it's protected.
-  const guard = (run: () => void) => {
-    if (selProtected && !window.confirm(`"${selected!.unitName || selected!.name || 'This unit'}" is a protected Mission Editor unit.\n\nCommanding it unlocks it and abandons its scripted mission. Continue?`)) return;
-    run();
+
+  // Selection derived from the live unit store (refreshes each poll).
+  const selUnits = Array.from(selectedIds).map((id) => unitsRef.current[String(id)]?.u).filter(Boolean) as UnitT[];
+  const selected = selUnits[0] ?? null;          // primary (drives the detail card + highlights)
+  const selCount = selectedIds.size;
+  const anyProtected = protectMode && selUnits.some((u) => u.controlled === 0 && u.human !== 1);
+
+  // Send a command to EVERY selected unit (one Olympus call each), with a single
+  // protected-units confirm and one summary result.
+  const cmdSel = (command: string, paramsFor: (id: number) => Record<string, unknown>, label: string) => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (anyProtected && !window.confirm(`Selection includes protected Mission Editor unit(s).\n\nCommanding unlocks them and abandons their scripted mission. Continue?`)) return;
+    setCmdMsg(`${label}…`);
+    Promise.all(ids.map((id) => sendCommand(group.id, profile.id, command, paramsFor(id)).then((r) => r.ok).catch(() => false)))
+      .then((oks) => {
+        const ok = oks.filter(Boolean).length, n = oks.length;
+        setCmdMsg(ok < n ? `✗ ${label}: ${ok}/${n} ok` : `✓ ${label}${n > 1 ? ` ×${n}` : ''} sent`);
+      });
+  };
+
+  // Selection tool (filter-based batch select). Criteria default to "everything".
+  const [selToolOpen, setSelToolOpen] = useState(false);
+  const [selFilter, setSelFilter] = useState<Record<string, boolean>>({
+    human: true, olympus: true, dcs: true,
+    aircraft: true, helicopter: true, sam: true, ground: true, navy: true,
+    blue: true, red: true, neutral: true,
+  });
+  const [selSearch, setSelSearch] = useState('');
+  const toggleSelFilter = (k: string) => setSelFilter((f) => ({ ...f, [k]: !f[k] }));
+  // Select every unit matching the current criteria.
+  const runSelectByFilter = () => {
+    const q = selSearch.trim().toLowerCase();
+    const ids = new Set<number>();
+    for (const { u } of Object.values(unitsRef.current)) {
+      if (u.olympusID == null) continue;
+      const ctl = u.human === 1 ? 'human' : u.controlled === 1 ? 'olympus' : 'dcs';
+      if (!selFilter[ctl]) continue;
+      const coal = u.coalition === 1 ? 'red' : u.coalition === 2 ? 'blue' : 'neutral';
+      if (!selFilter[coal]) continue;
+      const cat = (u.category || '').toLowerCase();
+      const isGround = cat.includes('ground');
+      const type = cat.includes('aircraft') ? 'aircraft' : cat.includes('helicopter') ? 'helicopter'
+        : cat.includes('navy') ? 'navy' : isGround && samNamesRef.current.has(u.name || '') ? 'sam'
+        : isGround ? 'ground' : '';
+      if (type && !selFilter[type]) continue;
+      if (q && !((u.name || '').toLowerCase().includes(q) || (u.unitName || '').toLowerCase().includes(q))) continue;
+      ids.add(u.olympusID);
+    }
+    setSelectedIds(ids);
+    setCmdMsg(`Selected ${ids.size} unit${ids.size === 1 ? '' : 's'}`);
   };
 
   // Map-layer visibility filters (persisted per-browser).
@@ -239,6 +291,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     src.clear();
     const ringSrc = ringSrcRef.current; ringSrc?.clear();
     const groundSrc = groundSrcRef.current; groundSrc?.clear();
+    const selSrc = selSrcRef.current; selSrc?.clear();
+    const selSet = selIdsRef.current;
     let red = 0, blue = 0, other = 0, plotted = 0; const pts: number[][] = [];
     for (const { u } of Object.values(unitsRef.current)) {
       const p = u.position;
@@ -268,6 +322,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       } else {
         ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
       }
+      if (selSrc && u.olympusID != null && selSet.has(u.olympusID)) selSrc.addFeature(new Feature({ geometry: new Point(coord) }));
       // Threat rings (live units only) from the unit's blueprint ranges.
       if (ringSrc && u.alive !== 0 && (showEng || showAcq)) {
         const r = rangesRef.current.get(u.name || '');
@@ -294,15 +349,6 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const handlePlace = useCallback((fn: ((lat: number, lng: number) => void) | null, label: string) => {
     placeFnRef.current = fn; setPlaceLabel(fn ? label : '');
   }, []);
-
-  const runCmd = async (command: string, params: Record<string, unknown>, label: string, refresh = false) => {
-    setCmdMsg(`${label}…`);
-    try {
-      const r = await sendCommand(group.id, profile.id, command, params);
-      setCmdMsg(r.ok ? `✓ ${label} sent` : `✗ ${r.error}`);
-      if (r.ok && refresh) setTimeout(() => { fittedRef.current = true; }, 0);
-    } catch (e) { setCmdMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`); }
-  };
 
   // Map tools (zoom / select / measure / erase). Tool 'measure' makes clicks
   // drop range+bearing points; 'select' is normal unit selection.
@@ -337,17 +383,26 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const ctrl = useRef<any>({});
   ctrl.current = {
     mode, armed, tool,
-    onSelect: (u: UnitT | null) => setSelected(u),
+    // Plain click = select that one (or clear). Shift-click = toggle in/out.
+    onClickSelect: (u: UnitT | null, shift: boolean) => {
+      const id = u?.olympusID;
+      setSelectedIds((prev) => {
+        if (id == null) return shift ? prev : new Set<number>();
+        const next = new Set(prev);
+        if (shift) { next.has(id) ? next.delete(id) : next.add(id); } else { next.clear(); next.add(id); }
+        return next;
+      });
+    },
     onMeasure: (lat: number, lng: number) => setMeasurePts((prev) => [...prev, [lng, lat]]),
     onArmed: (lat: number, lng: number, target: UnitT | null) => {
       const a = armed;
       if (!a) return;
-      if (a.kind === 'move') runCmd('setPath', { ID: a.id, path: [{ lat, lng }] }, 'Move', true);
-      else if (a.kind === 'fireAtArea') runCmd('fireAtArea', { ID: a.id, location: { lat, lng } }, 'Fire at area');
-      else if (a.kind === 'bombPoint') runCmd('bombPoint', { ID: a.id, location: { lat, lng } }, 'Bomb point');
+      if (a.kind === 'move') cmdSel('setPath', (id) => ({ ID: id, path: [{ lat, lng }] }), 'Move');
+      else if (a.kind === 'fireAtArea') cmdSel('fireAtArea', (id) => ({ ID: id, location: { lat, lng } }), 'Fire at area');
+      else if (a.kind === 'bombPoint') cmdSel('bombPoint', (id) => ({ ID: id, location: { lat, lng } }), 'Bomb point');
       else if (a.kind === 'attack') {
         if (target?.olympusID == null) { setCmdMsg('✗ click a target unit'); return; }  // stay armed
-        runCmd('attackUnit', { ID: a.id, targetID: target.olympusID }, 'Attack');
+        cmdSel('attackUnit', (id) => ({ ID: id, targetID: target.olympusID }), 'Attack');
       }
       setArmed(null);
     },
@@ -374,6 +429,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const measureSrc = new VectorSource();
     measureSrcRef.current = measureSrc;
     const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
+    const selSrc = new VectorSource();
+    selSrcRef.current = selSrc;
+    const selLayer = new VectorLayer({ source: selSrc, style: SEL_STYLE });
     abLayerRef.current = abLayer;
     const map = new OlMap({
       target: elRef.current,
@@ -382,6 +440,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
         abLayer,        // airbases under units
         ringLayer,      // threat rings under units
+        selLayer,       // selection highlight rings (under markers)
         clusterLayer,   // ground units (clustered)
         unitsLayer,     // air/navy units on top
         measureLayer,   // measure tool overlay (topmost)
@@ -410,7 +469,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
-      c.onSelect(target);
+      c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
     });
     // Live cursor coordinate readout (write to DOM directly — no re-render).
     map.on('pointermove', (e) => {
@@ -456,7 +515,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, selectedIds]);
 
   // Load the unit databases once: classify SAM/air-defense ground units (Olympus
   // splits GroundUnit into SAM vs other ground by blueprint type) and build the
@@ -530,7 +589,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => zoomBy(1)} title="Zoom in" style={toolBtn}>＋</button>
         <button onClick={() => zoomBy(-1)} title="Zoom out" style={toolBtn}>－</button>
         <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
-        <button onClick={() => setTool('select')} title="Selection tool" style={{ ...toolBtn, ...(tool === 'select' ? toolOn : {}) }}>⊹</button>
+        <button onClick={() => setTool('select')} title="Pointer — click a unit (shift-click to multi-select)" style={{ ...toolBtn, ...(tool === 'select' ? toolOn : {}) }}>⊹</button>
+        {canControl && (
+          <button onClick={() => setSelToolOpen((o) => !o)} title="Selection tool — batch-select by type / coalition / control" style={{ ...toolBtn, ...(selToolOpen ? toolOn : {}) }}>▦</button>
+        )}
         <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
         <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
                 style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
@@ -538,6 +600,41 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
                 style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
       </div>
+
+      {/* ── Selection tool (filter-based batch select) ───────────────────── */}
+      {canControl && selToolOpen && (
+        <div style={{ position: 'absolute', top: 56, left: 56, bottom: 44, width: 262, zIndex: 4, display: 'flex', flexDirection: 'column', ...glass }}>
+          <div style={{ ...panelHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>SELECTION TOOL</span>
+            <span onClick={() => setSelToolOpen(false)} style={{ cursor: 'pointer', color: C.textDim }}>×</span>
+          </div>
+          <div style={{ overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5 }}>Pick criteria, then <b>Select units</b> to grab every match. On the map, shift-click adds/removes one unit.</div>
+            <div>
+              <SectionLabel>Control mode</SectionLabel>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {(['human', 'olympus', 'dcs'] as const).map((k) => <Chip key={k} on={selFilter[k]} onClick={() => toggleSelFilter(k)}>{k === 'dcs' ? 'DCS' : k[0].toUpperCase() + k.slice(1)}</Chip>)}
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Type</SectionLabel>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {([['aircraft', 'Aircraft'], ['helicopter', 'Heli'], ['sam', 'SAM'], ['ground', 'Ground'], ['navy', 'Navy']] as const).map(([k, l]) => <Chip key={k} on={selFilter[k]} onClick={() => toggleSelFilter(k)}>{l}</Chip>)}
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Coalition</SectionLabel>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {([['blue', 'Blue', C.blue], ['neutral', 'Neutral', C.neutral], ['red', 'Red', C.red]] as const).map(([k, l, c]) => <Chip key={k} on={selFilter[k]} accent={c} onClick={() => toggleSelFilter(k)}>{l}</Chip>)}
+              </div>
+            </div>
+            <input placeholder="Search name…" value={selSearch} onChange={(e) => setSelSearch(e.target.value)}
+                   style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', borderRadius: 4, outline: 'none' }} />
+            <button onClick={runSelectByFilter} style={{ ...mbtn, background: C.accentDim, borderColor: C.accent, color: '#cfe6ff', padding: '8px', fontWeight: 700 }}>Select units</button>
+            {selCount > 0 && <button onClick={() => setSelectedIds(new Set())} style={{ ...mbtn, padding: '6px' }}>Clear selection ({selCount})</button>}
+          </div>
+        </div>
+      )}
 
       {/* ── Top command / status bar ─────────────────────────────────────── */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 44, display: 'flex', alignItems: 'center', gap: 14, padding: '0 12px', zIndex: 3, background: 'linear-gradient(180deg, rgba(9,13,20,0.96), rgba(9,13,20,0.72))', borderBottom: `1px solid ${C.border}` }}>
@@ -720,39 +817,44 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       )}
 
       {/* ── Right dock: selected unit control ────────────────────────────── */}
-      {selected && mode === 'select' && (
+      {selCount > 0 && mode === 'select' && (
         <div style={{ position: 'absolute', top: 56, right: 12, width: 268, maxHeight: 'calc(100% - 110px)', display: 'flex', flexDirection: 'column', zIndex: 3, ...glass, borderColor: selSide }}>
           <div style={{ ...panelHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, borderBottom: `1px solid ${C.border}`, borderTop: `2px solid ${selSide}` }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
-              {selProtected && <span title="Protected Mission Editor unit" style={{ color: C.red }}>🔒</span>}
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.unitName || selected.name || '—'}</span>
+              {anyProtected && <span title="Selection includes protected Mission Editor unit(s)" style={{ color: C.red }}>🔒</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selCount === 1 ? (selected?.unitName || selected?.name || '—') : `${selCount} units selected`}
+              </span>
             </span>
-            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            <button onClick={() => setSelectedIds(new Set())} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
           </div>
           <div style={{ overflowY: 'auto', padding: 10 }}>
-            <div style={{ color: C.textDim, fontSize: 12, lineHeight: 1.7 }}>
-              <div>Type&nbsp; <span style={{ color: C.text }}>{selected.name || '—'}</span></div>
-              <div>Side&nbsp;&nbsp; <span style={{ color: selSide, fontWeight: 600 }}>{sideLabel(selected.coalition)}</span> · {selected.category || ''}</div>
-              <div>Pos&nbsp;&nbsp;&nbsp; <span style={{ color: C.text }}>{selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</span></div>
-            </div>
-            {canControl && selected.olympusID != null && (
+            {selCount === 1 && selected && (
+              <div style={{ color: C.textDim, fontSize: 12, lineHeight: 1.7 }}>
+                <div>Type&nbsp; <span style={{ color: C.text }}>{selected.name || '—'}</span></div>
+                <div>Side&nbsp;&nbsp; <span style={{ color: selSide, fontWeight: 600 }}>{sideLabel(selected.coalition)}</span> · {selected.category || ''}</div>
+                <div>Pos&nbsp;&nbsp;&nbsp; <span style={{ color: C.text }}>{selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</span></div>
+              </div>
+            )}
+            {selCount > 1 && <div style={{ color: C.textDim, fontSize: 12 }}>Commands below apply to all {selCount} selected units.</div>}
+            {canControl && selCount > 0 && (
               <div style={{ marginTop: 10 }}>
                 {canCommand && <>
-                <SectionLabel>Tasking</SectionLabel>
+                <SectionLabel>Tasking{selCount > 1 ? ` (×${selCount})` : ''}</SectionLabel>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'move', id: selected.olympusID! }))}>📍 Move</button>
-                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'attack', id: selected.olympusID! }))}>🎯 Attack</button>
-                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'fireAtArea', id: selected.olympusID! }))}>🔥 Fire</button>
-                  <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'bombPoint', id: selected.olympusID! }))}>💣 Bomb</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'move' })}>📍 Move</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'attack' })}>🎯 Attack</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'fireAtArea' })}>🔥 Fire</button>
+                  <button style={cardBtn} onClick={() => setArmed({ kind: 'bombPoint' })}>💣 Bomb</button>
                 </div>
 
                 <SectionLabel>Altitude</SectionLabel>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: C.accent, fontWeight: 700, fontSize: 13, width: 64, fontVariantNumeric: 'tabular-nums' }}>{ctlAlt.toLocaleString()} ft</span>
                   <input type="range" min={0} max={45000} step={500} value={ctlAlt} onChange={(e) => setCtlAlt(Number(e.target.value))}
-                         onMouseUp={() => guard(() => runCmd('setAltitude', { ID: selected.olympusID, altitude: Math.round(ctlAlt * 0.3048) }, 'Set alt'))} style={{ flex: 1 }} />
+                         onMouseUp={() => cmdSel('setAltitude', (id) => ({ ID: id, altitude: Math.round(ctlAlt * 0.3048) }), 'Set alt')} style={{ flex: 1 }} />
                   {(['ASL', 'AGL'] as const).map((t) => (
-                    <button key={t} onClick={() => guard(() => runCmd('setAltitudeType', { ID: selected.olympusID, altitudeType: t }, t))}
+                    <button key={t} onClick={() => cmdSel('setAltitudeType', (id) => ({ ID: id, altitudeType: t }), t)}
                             style={{ ...segBtn, ...((sUnit?.desiredAltitudeType === 1 ? 'AGL' : 'ASL') === t ? segBtnOn : {}) }}>{t}</button>
                   ))}
                 </div>
@@ -761,40 +863,43 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: C.accent, fontWeight: 700, fontSize: 13, width: 64, fontVariantNumeric: 'tabular-nums' }}>{ctlSpd} kt</span>
                   <input type="range" min={0} max={600} step={10} value={ctlSpd} onChange={(e) => setCtlSpd(Number(e.target.value))}
-                         onMouseUp={() => guard(() => runCmd('setSpeed', { ID: selected.olympusID, speed: Math.round(ctlSpd * 0.514444) }, 'Set spd'))} style={{ flex: 1 }} />
+                         onMouseUp={() => cmdSel('setSpeed', (id) => ({ ID: id, speed: Math.round(ctlSpd * 0.514444) }), 'Set spd')} style={{ flex: 1 }} />
                   {(['CAS', 'GS'] as const).map((t) => (
-                    <button key={t} onClick={() => guard(() => runCmd('setSpeedType', { ID: selected.olympusID, speedType: t }, t))}
+                    <button key={t} onClick={() => cmdSel('setSpeedType', (id) => ({ ID: id, speedType: t }), t)}
                             style={{ ...segBtn, ...((sUnit?.desiredSpeedType === 1 ? 'GS' : 'CAS') === t ? segBtnOn : {}) }}>{t}</button>
                   ))}
                 </div>
 
                 <SectionLabel>ROE</SectionLabel>
-                <Seg options={['Free', 'Desig', 'Return', 'Hold']} active={(sUnit?.ROE ?? 0) - 1}
-                     onPick={(i) => guard(() => runCmd('setROE', { ID: selected.olympusID, ROE: i + 1 }, 'ROE'))} />
+                <Seg options={['Free', 'Desig', 'Return', 'Hold']} active={selCount === 1 ? (sUnit?.ROE ?? 0) - 1 : undefined}
+                     onPick={(i) => cmdSel('setROE', (id) => ({ ID: id, ROE: i + 1 }), 'ROE')} />
                 <SectionLabel>Alarm state</SectionLabel>
-                <Seg options={['Auto', 'Green', 'Red']} active={sUnit?.alarmState}
-                     onPick={(i) => guard(() => runCmd('setAlarmState', { ID: selected.olympusID, alarmState: i }, 'Alarm state'))} />
+                <Seg options={['Auto', 'Green', 'Red']} active={selCount === 1 ? sUnit?.alarmState : undefined}
+                     onPick={(i) => cmdSel('setAlarmState', (id) => ({ ID: id, alarmState: i }), 'Alarm state')} />
                 <SectionLabel>Threat reaction</SectionLabel>
-                <Seg options={['None', 'Manvr', 'Passive', 'Evade']} active={sUnit?.reactionToThreat}
-                     onPick={(i) => guard(() => runCmd('setReactionToThreat', { ID: selected.olympusID, reactionToThreat: i }, 'Reaction'))} />
+                <Seg options={['None', 'Manvr', 'Passive', 'Evade']} active={selCount === 1 ? sUnit?.reactionToThreat : undefined}
+                     onPick={(i) => cmdSel('setReactionToThreat', (id) => ({ ID: id, reactionToThreat: i }), 'Reaction')} />
                 <SectionLabel>Radar / ECM</SectionLabel>
-                <Seg options={['Silent', 'Attack', 'Defend', 'Free']} active={sUnit?.emissionsCountermeasures}
-                     onPick={(i) => guard(() => runCmd('setEmissionsCountermeasures', { ID: selected.olympusID, emissionsCountermeasures: i }, 'Radar/ECM'))} />
+                <Seg options={['Silent', 'Attack', 'Defend', 'Free']} active={selCount === 1 ? sUnit?.emissionsCountermeasures : undefined}
+                     onPick={(i) => cmdSel('setEmissionsCountermeasures', (id) => ({ ID: id, emissionsCountermeasures: i }), 'Radar/ECM')} />
                 <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: true }, 'On'))}>On</button>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off'))}>Off</button>
-                  <button style={cardBtn} onClick={() => guard(() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads'))}>Roads</button>
+                  <button style={cardBtn} onClick={() => cmdSel('setOnOff', (id) => ({ ID: id, onOff: true }), 'On')}>On</button>
+                  <button style={cardBtn} onClick={() => cmdSel('setOnOff', (id) => ({ ID: id, onOff: false }), 'Off')}>Off</button>
+                  <button style={cardBtn} onClick={() => cmdSel('setFollowRoads', (id) => ({ ID: id, followRoads: true }), 'Roads')}>Roads</button>
                 </div>
                 </>}
 
                 {(canEffects || canDelete) && <SectionLabel>Mark / Remove</SectionLabel>}
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  {canEffects && selected.position && (
-                    <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
+                  {canEffects && (
+                    <button style={cardBtn} onClick={() => cmdSel('smoke', (id) => {
+                      const pos = unitsRef.current[String(id)]?.u?.position;
+                      return { color: 'green', location: { lat: pos?.lat ?? 0, lng: pos?.lng ?? 0 } };
+                    }, 'Smoke')}>💨 Smoke</button>
                   )}
                   {canDelete && (
                     <button style={{ ...cardBtn, color: C.red, borderColor: '#5a2a2a' }}
-                            onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+                            onClick={() => { if (window.confirm(`Delete ${selCount === 1 ? `"${selected?.unitName || selected?.name}"` : `${selCount} units`} from the LIVE mission?`)) cmdSel('deleteUnit', (id) => ({ ID: id, explosion: false, explosionType: '', immediate: true }), 'Delete'); }}>✕ Delete</button>
                   )}
                 </div>
               </div>
@@ -808,10 +913,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {armed && (
         <div style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 4, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.accent}`, color: '#cfe6ff', fontSize: 12, boxShadow: `0 0 16px rgba(74,158,255,0.25)` }}>
           <span style={{ fontWeight: 600 }}>
-            {armed.kind === 'move' ? '📍 Click the map to MOVE'
+            {(armed.kind === 'move' ? '📍 Click the map to MOVE'
               : armed.kind === 'attack' ? '🎯 Click a TARGET unit'
               : armed.kind === 'fireAtArea' ? '🔥 Click the map: FIRE AT AREA'
-              : '💣 Click the map: BOMB POINT'}
+              : '💣 Click the map: BOMB POINT') + (selCount > 1 ? ` (${selCount} units)` : '')}
           </span>
           <button onClick={() => setArmed(null)} style={{ ...mbtn, padding: '2px 9px' }}>cancel</button>
           {cmdMsg && <span style={{ color: cmdMsg.startsWith('✗') ? C.red : C.green }}>{cmdMsg}</span>}
@@ -860,6 +965,15 @@ function IconToggle({ icon, active, onClick, helpTitle, helpBody, accent }: {
 }
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, textTransform: 'uppercase', margin: '10px 0 5px' }}>{children}</div>;
+}
+// Toggle chip for the Selection tool criteria.
+function Chip({ on, accent, onClick, children }: { on: boolean; accent?: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+            style={{ border: `1px solid ${on ? (accent || C.accent) : C.border}`, background: on ? (accent ? `${accent}22` : C.accentDim) : 'transparent', color: on ? (accent || '#cfe6ff') : C.textDim, borderRadius: 12, padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+      {children}
+    </button>
+  );
 }
 // Segmented button row — tap to send a command; highlights the unit's current value.
 function Seg({ options, active, onPick }: { options: string[]; active?: number; onPick: (i: number) => void }) {
