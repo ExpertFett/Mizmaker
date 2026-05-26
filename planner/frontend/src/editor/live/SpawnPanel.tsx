@@ -223,7 +223,6 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
                 </div>
                 {e.description && <div style={{ color: C.dim, fontSize: 12, marginTop: 3 }}>{e.description}</div>}
                 {tags.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>{tags.map((t) => <span key={t} style={chip}>{t}</span>)}</div>}
-                <div style={{ color: C.dim, fontSize: 10, marginTop: 4, opacity: 0.7 }}>blueprint: {(e.loadouts || []).length} loadouts · {Object.keys(e.liveries || {}).length} liveries</div>
               </div>
 
               <Row label="Coalition">
@@ -258,16 +257,22 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
                   <input type="range" min={0} max={sel.cat === 'helicopter' ? 15000 : 45000} step={500} value={altFt}
                          onChange={(ev) => setAltFt(Number(ev.target.value))} style={{ width: '100%' }} />
                 </div>
-                <Row label="Role">
-                  <select value={role} onChange={(ev) => onRoleChange(ev.target.value)} style={{ ...inp, flex: 1 }}>
-                    {Array.from(new Set((e.loadouts || []).flatMap((l) => l.roles || []).filter(Boolean))).map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </Row>
-                <Row label="Weapons">
-                  <select value={loadoutName} onChange={(ev) => setLoadoutName(ev.target.value)} style={{ ...inp, flex: 1 }}>
-                    {loadoutsForRole.map((l) => <option key={l.name} value={l.name}>{l.name}</option>)}
-                  </select>
-                </Row>
+                {(e.loadouts || []).length > 0 ? <>
+                  <Row label="Role">
+                    <select value={role} onChange={(ev) => onRoleChange(ev.target.value)} style={{ ...inp, flex: 1 }}>
+                      {Array.from(new Set((e.loadouts || []).flatMap((l) => l.roles || []).filter(Boolean))).map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </Row>
+                  <Row label="Weapons">
+                    <select value={loadoutName} onChange={(ev) => setLoadoutName(ev.target.value)} style={{ ...inp, flex: 1 }}>
+                      {loadoutsForRole.map((l) => <option key={l.name} value={l.name}>{l.name}</option>)}
+                    </select>
+                  </Row>
+                </> : (
+                  <div style={{ fontSize: 11, color: C.dim, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 5, padding: '7px 9px' }}>
+                    AI-only airframe — Olympus defines no selectable loadouts or liveries for it, so it spawns with default stores. (Use the player-module variant, e.g. "F-16C Viper", for loadout options.)
+                  </div>
+                )}
               </>}
 
               <Row label="Livery">
