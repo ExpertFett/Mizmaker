@@ -44,7 +44,9 @@ _TIMEOUT = 10
 
 # Live-confirmed API base is the `/olympus/` prefix on the :3000 frontend. ------
 REST_URI = "olympus"  # command PUT path (client uses _REST_ADDRESS="./olympus").
-OLYMPUS_COMMAND_MODE = ""  # X-Command-Mode header (client default ""; role auth governs).
+OLYMPUS_COMMAND_MODE = "Game master"  # X-Command-Mode header — must equal the active
+# command mode. We auth as the Game Master role, and gated ops (esp. spawn) are denied
+# unless this matches; the client sends its active mode here ("" = NONE/observer = no spawn).
 # Commands the relay will forward (PUT /olympus body {<command>: params}).
 # Reverse-engineered from the live client's ServerManager.
 COMMAND_WHITELIST = frozenset({
