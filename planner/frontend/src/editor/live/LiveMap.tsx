@@ -185,6 +185,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
   const [dbg, setDbg] = useState('');
+  const [dbgOpen, setDbgOpen] = useState(false);  // click the feed counter to inspect decoded units
   const [err, setErr] = useState('');
   const [selected, setSelected] = useState<UnitT | null>(null);
   const [cmdMsg, setCmdMsg] = useState('');
@@ -642,10 +643,40 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <span style={{ color: C.red, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={1} /> {counts.red}</span>
           <span style={{ color: C.blue, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={2} /> {counts.blue}</span>
           {counts.other ? <span style={{ color: C.neutral, display: 'flex', alignItems: 'center', gap: 5 }}><Glyph side={0} /> {counts.other}</span> : null}
-          {dbg && <span style={{ color: C.textDim, fontSize: 11 }}>{dbg}</span>}
+          {dbg && <span onClick={() => setDbgOpen((o) => !o)} title="Click: inspect decoded units"
+                        style={{ color: dbgOpen ? C.accent : C.textDim, fontSize: 11, cursor: 'pointer', textDecoration: 'underline dotted' }}>{dbg}</span>}
           {err && <span style={{ color: C.red }}>✗ {err}</span>}
         </div>
       </div>
+
+      {/* Decoded-feed inspector (click the feed counter). Shows what the browser
+          actually received — newest olympusID first — to diagnose missing units. */}
+      {dbgOpen && (
+        <div style={{ position: 'absolute', top: 50, right: 12, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 6, display: 'flex', flexDirection: 'column', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+          <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
+            <span>DECODED FEED ({dbg})</span>
+            <span onClick={() => setDbgOpen(false)} style={{ cursor: 'pointer', color: C.textDim }}>×</span>
+          </div>
+          <div style={{ overflowY: 'auto', fontSize: 11, fontFamily: 'monospace' }}>
+            {Object.values(unitsRef.current)
+              .map((x) => x.u)
+              .sort((a, b) => (b.olympusID ?? 0) - (a.olympusID ?? 0))
+              .slice(0, 60)
+              .map((u) => {
+                const pos = u.position && typeof u.position.lat === 'number';
+                return (
+                  <div key={u.olympusID ?? Math.random()} style={{ display: 'flex', gap: 6, padding: '2px 10px', borderBottom: '1px solid rgba(255,255,255,0.03)', color: pos ? C.text : C.red }}>
+                    <span style={{ width: 70, color: C.textDim }}>{u.olympusID}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || '—'}</span>
+                    <span style={{ color: u.coalition === 1 ? C.red : u.coalition === 2 ? C.blue : C.neutral }}>{u.coalition === 1 ? 'R' : u.coalition === 2 ? 'B' : 'N'}</span>
+                    <span title="controlled" style={{ color: C.textDim }}>{u.controlled === 1 ? 'oly' : 'dcs'}</span>
+                    <span style={{ width: 30, textAlign: 'right' }}>{pos ? 'pos' : 'NOPOS'}</span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* ── Left dock: Spawn panel (Olympus-style browse + config) ───────── */}
       {isAdmin && mode === 'spawn' && (
