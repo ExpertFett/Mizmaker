@@ -7,10 +7,28 @@
  * message so the UI can show why.
  */
 
+/** Mission roles. Stored as: admin=Game Master, operator=Observer, plus the
+ *  named tiers. 'admin' is also the only role that manages the group. */
+export type LiveRole = 'admin' | 'commander' | 'jtac' | 'atc' | 'operator';
+export const ROLE_LABEL: Record<string, string> = {
+  admin: 'Game Master', commander: 'Commander', jtac: 'JTAC', atc: 'ATC', operator: 'Observer',
+};
+const ROLE_CAPS: Record<string, ReadonlySet<string>> = {
+  admin: new Set(['manage', 'spawn', 'command', 'delete', 'effects', 'markers']),
+  commander: new Set(['spawn', 'command', 'delete', 'effects', 'markers']),
+  jtac: new Set(['effects', 'markers']),
+  atc: new Set(['effects', 'markers']),
+  operator: new Set(),
+};
+/** Does a role grant a capability? (mirrors the backend; backend still enforces) */
+export function can(role: string | undefined, cap: string): boolean {
+  return ROLE_CAPS[role || '']?.has(cap) ?? false;
+}
+
 export interface GroupSummary {
   id: string;
   name: string;
-  role: 'admin' | 'operator';
+  role: LiveRole | string;
 }
 
 export interface ServerProfile {
@@ -82,7 +100,7 @@ export function joinGroup(code: string) {
 
 export function createInvite(
   gid: string,
-  opts: { role?: 'admin' | 'operator'; expiresInHours?: number; maxUses?: number } = {},
+  opts: { role?: LiveRole; expiresInHours?: number; maxUses?: number } = {},
 ) {
   return req<{ code: string; role: string; expiresAt: string | null; maxUses: number | null }>(
     `/api/groups/${gid}/invites`,
@@ -96,6 +114,13 @@ export function listMembers(gid: string) {
 
 export function removeMember(gid: string, userId: string) {
   return req<{ ok: true }>(`/api/groups/${gid}/members/${userId}`, { method: 'DELETE' });
+}
+
+/** Game Master assigns a member's mission role. */
+export function setMemberRole(gid: string, userId: string, role: LiveRole) {
+  return req<{ ok: true; role: string }>(`/api/groups/${gid}/members/${userId}`, {
+    method: 'PATCH', body: JSON.stringify({ role }),
+  });
 }
 
 export function listProfiles(gid: string) {

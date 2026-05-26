@@ -70,6 +70,35 @@ def role_in_group(sb, user_id: str, group_id: str) -> Optional[str]:
     return rows[0]["role"] if rows else None
 
 
+# --- Live-terminal access levels -------------------------------------------
+# Mission roles → capabilities. 'admin' = Game Master (also the only role that
+# manages the group); 'operator' = Observer (view only). Stored in
+# group_members.role (free text column — no DB migration needed).
+ROLE_CAPS: dict[str, set[str]] = {
+    "admin":     {"manage", "spawn", "command", "delete", "effects", "markers"},
+    "commander": {"spawn", "command", "delete", "effects", "markers"},
+    "jtac":      {"effects", "markers"},
+    "atc":       {"effects", "markers"},
+    "operator":  set(),
+}
+VALID_ROLES = set(ROLE_CAPS)
+
+
+def command_capability(command: str) -> str:
+    """Which capability an Olympus command requires."""
+    if command in ("spawnAircrafts", "spawnGroundUnits", "spawnHelicopters", "spawnNavyUnits"):
+        return "spawn"
+    if command == "deleteUnit":
+        return "delete"
+    if command in ("smoke", "explosion"):
+        return "effects"
+    return "command"  # everything else = controlling existing units
+
+
+def role_has(role: Optional[str], cap: str) -> bool:
+    return cap in ROLE_CAPS.get(role or "", set())
+
+
 def _serialize_profile(p: dict) -> dict:
     """Public profile shape — NEVER includes the encrypted password."""
     return {
@@ -146,7 +175,7 @@ def register_group_routes(app) -> None:
         if role_in_group(sb, user["id"], gid) != "admin":
             return jsonify({"error": "Admin only"}), 403
         body = request.get_json(silent=True) or {}
-        role = body.get("role") if body.get("role") in ("admin", "operator") else "operator"
+        role = body.get("role") if body.get("role") in VALID_ROLES else "operator"
         expires_at = None
         if body.get("expiresInHours"):
             try:
@@ -221,6 +250,25 @@ def register_group_routes(app) -> None:
             return jsonify({"error": "Admin only"}), 403
         sb.table("group_members").delete().eq("group_id", gid).eq("user_id", target_uid).execute()
         return jsonify({"ok": True})
+
+    @app.route("/api/groups/<gid>/members/<target_uid>", methods=["PATCH"])
+    def member_set_role(gid, target_uid):
+        """Game Master assigns a member's mission role (gamemaster/commander/
+        jtac/atc/observer → stored as admin/commander/jtac/atc/operator)."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) != "admin":
+            return jsonify({"error": "Game Master only"}), 403
+        new_role = (request.get_json(silent=True) or {}).get("role")
+        if new_role not in VALID_ROLES:
+            return jsonify({"error": "Invalid role"}), 400
+        if target_uid == user["id"] and new_role != "admin":
+            return jsonify({"error": "Can't demote yourself — assign another Game Master first."}), 400
+        if role_in_group(sb, target_uid, gid) is None:
+            return jsonify({"error": "Not a member"}), 404
+        sb.table("group_members").update({"role": new_role}).eq("group_id", gid).eq("user_id", target_uid).execute()
+        return jsonify({"ok": True, "role": new_role})
 
     # ---- Server profiles -------------------------------------------------
     @app.route("/api/groups/<gid>/profiles", methods=["GET"])
@@ -404,19 +452,24 @@ def register_group_routes(app) -> None:
 
     @app.route("/api/groups/<gid>/profiles/<pid>/command", methods=["POST"])
     def profile_command(gid, pid):
-        """Send an Olympus command to the server. ADMIN ONLY — control (spawn/
-        delete/move/etc.) is powerful, so operators get read-only. Password
-        decrypted server-side; command validated against the relay whitelist."""
+        """Send an Olympus command — gated by the member's role CAPABILITY, not a
+        flat admin check. spawn*/deleteUnit/smoke/explosion need spawn/delete/
+        effects; everything else needs 'command'. Observers (no caps) are
+        read-only. Password decrypted server-side; command in the relay whitelist."""
         sb, user, err = _ctx()
         if err:
             return err
-        if role_in_group(sb, user["id"], gid) != "admin":
-            return jsonify({"error": "Admin only — control is restricted to group admins."}), 403
+        member_role = role_in_group(sb, user["id"], gid)
+        if member_role is None:
+            return jsonify({"error": "Not a member"}), 403
         body = request.get_json(silent=True) or {}
         command = body.get("command")
         params = body.get("params") or {}
         if not command:
             return jsonify({"error": "command required"}), 400
+        cap = command_capability(command)
+        if not role_has(member_role, cap):
+            return jsonify({"error": f"Your role ({member_role}) is not allowed to {cap}."}), 403
         rows = (
             sb.table("server_profiles").select("*")
             .eq("id", pid).eq("group_id", gid).execute().data

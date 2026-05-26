@@ -15,10 +15,12 @@ import { useAuthStore, discordDisplayName } from '../../store/authStore';
 import { LiveMap } from './LiveMap';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
-  createInvite, listMembers, removeMember, testProfile, getTelemetry, getTelemetryHex,
-  sendCommand, ApiError,
-  type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput,
+  createInvite, listMembers, removeMember, setMemberRole, testProfile, getTelemetry, getTelemetryHex,
+  sendCommand, ApiError, ROLE_LABEL, can,
+  type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput, type LiveRole,
 } from '../../api/groups';
+
+const ROLE_OPTS: LiveRole[] = ['admin', 'commander', 'jtac', 'atc', 'operator'];
 
 export function LiveTerminal() {
   const user = useAuthStore((s) => s.user);
@@ -107,7 +109,7 @@ function GroupsView() {
             style={{ ...input, width: 'auto', minWidth: 180 }}
           >
             {groups.map((g) => (
-              <option key={g.id} value={g.id}>{g.name} ({g.role})</option>
+              <option key={g.id} value={g.id}>{g.name} ({ROLE_LABEL[g.role] || g.role})</option>
             ))}
           </select>
         )}
@@ -200,7 +202,7 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
   return (
     <div style={{ maxWidth: 720, margin: '0 auto' }}>
       <h2 style={{ margin: '0 0 2px', fontSize: 18 }}>{group.name}</h2>
-      <p style={{ ...dim, margin: '0 0 16px', fontSize: 12 }}>You are {group.role}.</p>
+      <p style={{ ...dim, margin: '0 0 16px', fontSize: 12 }}>You are {ROLE_LABEL[group.role] || group.role}.</p>
 
       {/* Server profiles */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -242,8 +244,13 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
           <h3 style={{ ...h3, marginTop: 22 }}>Members</h3>
           {members.map((m) => (
             <div key={m.userId} style={{ ...card, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, padding: '8px 14px' }}>
-              <span style={{ flex: 1 }}>{m.username || m.userId.slice(0, 8)}</span>
-              <span style={{ ...dim, fontSize: 12 }}>{m.role}</span>
+              <span style={{ flex: 1 }}>{m.username || m.userId.slice(0, 8)}{m.userId === me.id ? ' (you)' : ''}</span>
+              <select value={ROLE_OPTS.includes(m.role as LiveRole) ? m.role : 'operator'}
+                      title="Mission role"
+                      onChange={async (e) => { try { await setMemberRole(group.id, m.userId, e.target.value as LiveRole); } catch (err) { alert(err instanceof Error ? err.message : 'failed'); } reload(); }}
+                      style={{ background: '#1a1a1a', border: '1px solid #4a4a4a', color: '#e0e0e0', borderRadius: 4, padding: '3px 6px', fontSize: 12, fontFamily: 'inherit' }}>
+                {ROLE_OPTS.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              </select>
               {m.userId !== me.id && (
                 <button style={{ ...btn, padding: '4px 10px', color: '#d95050', borderColor: '#5a2a2a' }}
                         onClick={async () => { await removeMember(group.id, m.userId); reload(); }}>Remove</button>
@@ -343,7 +350,7 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
 // ---------------------------------------------------------------------------
 function InvitePanel({ gid }: { gid: string }) {
   const [code, setCode] = useState('');
-  const [role, setRole] = useState<'admin' | 'operator'>('operator');
+  const [role, setRole] = useState<LiveRole>('operator');
   const [err, setErr] = useState('');
 
   const gen = async () => {
@@ -354,11 +361,10 @@ function InvitePanel({ gid }: { gid: string }) {
 
   return (
     <div style={{ ...card, marginTop: 14 }}>
-      <h3 style={h3}>Invite operators</h3>
+      <h3 style={h3}>Invite members</h3>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <select style={{ ...input, width: 'auto' }} value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'operator')}>
-          <option value="operator">operator</option>
-          <option value="admin">admin</option>
+        <select style={{ ...input, width: 'auto' }} value={role} onChange={(e) => setRole(e.target.value as LiveRole)}>
+          {ROLE_OPTS.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
         </select>
         <button style={btn} onClick={gen}>Generate code</button>
         {code && (
@@ -468,7 +474,9 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
     }
   };
 
-  const isAdmin = group.role === 'admin';
+  const canEffects = can(group.role, 'effects');
+  const canDelete = can(group.role, 'delete');
+  const canAct = canEffects || canDelete;
   const [cmdMsg, setCmdMsg] = useState('');
   const runCmd = async (command: string, params: Record<string, unknown>, label: string, refresh = false) => {
     setCmdMsg(`${label}…`);
@@ -546,7 +554,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
         {u?.count != null && <span style={{ ...dim, fontSize: 12 }}>{u.count} units</span>}
         {cmdMsg && <span style={{ fontSize: 12, marginLeft: 'auto', color: cmdMsg.startsWith('✗') ? '#d95050' : '#3fb950' }}>{cmdMsg}</span>}
       </div>
-      {isAdmin && <p style={{ ...dim, fontSize: 11, margin: '4px 0 0' }}>Admin control: 💨 drops green smoke at a unit (safe), ✕ deletes it from the live mission.</p>}
+      {canAct && <p style={{ ...dim, fontSize: 11, margin: '4px 0 0' }}>{canEffects && '💨 drops green smoke at a unit (safe). '}{canDelete && '✕ deletes it from the live mission.'}</p>}
       <div style={{ ...card, marginTop: 8 }}>
         {!units && <span style={dim}>Click "Refresh units" to pull the live unit picture.</span>}
         {units?.err && <span style={{ color: '#d95050', fontSize: 13 }}>✗ {units.err}</span>}
@@ -556,7 +564,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
             <div style={{ display: 'flex', color: '#888', borderBottom: '1px solid #3a3a3a', padding: '4px 0' }}>
               <span style={{ flex: 1 }}>Name</span><span style={{ width: 56 }}>Side</span>
               <span style={{ width: 140 }}>Type</span><span style={{ width: 130 }}>Position</span>
-              {isAdmin && <span style={{ width: 78 }}>Actions</span>}
+              {canAct && <span style={{ width: 78 }}>Actions</span>}
             </div>
             {u.rows.map((raw: any, i: number) => {
               const r = unitRow(raw);
@@ -568,13 +576,13 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
                   <span style={{ width: 56, color: r.coal === 'RED' ? '#d95050' : r.coal === 'BLUE' ? '#5a9fd4' : '#aaa' }}>{r.coal}</span>
                   <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.type}</span>
                   <span style={{ width: 130 }}>{r.pos}</span>
-                  {isAdmin && (
+                  {canAct && (
                     <span style={{ width: 78, display: 'flex', gap: 4 }}>
-                      {hasPos && raw.olympusID != null && (
+                      {canEffects && hasPos && raw.olympusID != null && (
                         <button title="Drop green smoke at this unit (safe test)" style={miniBtn}
                                 onClick={() => runCmd('smoke', { color: 'green', location: { lat: pos.lat, lng: pos.lng } }, 'Smoke')}>💨</button>
                       )}
-                      {raw.olympusID != null && (
+                      {canDelete && raw.olympusID != null && (
                         <button title="Delete this unit from the live mission" style={{ ...miniBtn, color: '#d95050' }}
                                 onClick={() => { if (window.confirm(`Delete "${r.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: raw.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕</button>
                       )}

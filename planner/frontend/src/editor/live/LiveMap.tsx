@@ -30,7 +30,7 @@ import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke, Text } from '
 import { boundingExtent } from 'ol/extent';
 import 'ol/ol.css';
 import {
-  getTelemetry, sendCommand, getUnitDatabase,
+  getTelemetry, sendCommand, getUnitDatabase, can, ROLE_LABEL,
   type GroupSummary, type ServerProfile, type UnitCategory, type UnitDbEntry,
 } from '../../api/groups';
 import { SpawnPanel } from './SpawnPanel';
@@ -183,7 +183,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const feedLenRef = useRef(0);                  // last poll's raw feed length (for dbg)
   const renderRef = useRef<() => void>(() => {});  // rebuild features from store (filters applied)
   const samNamesRef = useRef<Set<string>>(new Set());  // ground unit type-names classified as SAM/air-defense
-  const isAdmin = group.role === 'admin';
+  const canSpawn = can(group.role, 'spawn');
+  const canCommand = can(group.role, 'command');
+  const canDelete = can(group.role, 'delete');
+  const canEffects = can(group.role, 'effects');
+  const canControl = canSpawn || canCommand || canDelete || canEffects;
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
   const [dbg, setDbg] = useState('');
@@ -542,7 +546,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, color: C.text }}>LIVE TACTICAL</span>
         </div>
 
-        {isAdmin && (
+        {canSpawn && (
           <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
             {(['select', 'spawn'] as const).map((m) => (
               <button key={m} onClick={() => { setMode(m); setArmed(null); if (m === 'select') handlePlace(null, ''); }}
@@ -552,7 +556,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         )}
 
         {/* Lock/unlock protected (Mission Editor) units */}
-        {isAdmin && (
+        {canCommand && (
           <div style={{ position: 'relative' }} onMouseEnter={() => setShowLockHelp(true)} onMouseLeave={() => setShowLockHelp(false)}>
             <button onClick={toggleProtect} aria-label="Lock/unlock protected units"
                     style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -709,7 +713,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       )}
 
       {/* ── Left dock: Spawn panel (Olympus-style browse + config) ───────── */}
-      {isAdmin && mode === 'spawn' && (
+      {canSpawn && mode === 'spawn' && (
         <SpawnPanel group={group} profile={profile}
                     onClose={() => { setMode('select'); handlePlace(null, ''); }}
                     onPlace={handlePlace} />
@@ -731,8 +735,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
               <div>Side&nbsp;&nbsp; <span style={{ color: selSide, fontWeight: 600 }}>{sideLabel(selected.coalition)}</span> · {selected.category || ''}</div>
               <div>Pos&nbsp;&nbsp;&nbsp; <span style={{ color: C.text }}>{selected.position ? `${selected.position.lat.toFixed(3)}, ${selected.position.lng.toFixed(3)}` : '—'}</span></div>
             </div>
-            {isAdmin && selected.olympusID != null && (
+            {canControl && selected.olympusID != null && (
               <div style={{ marginTop: 10 }}>
+                {canCommand && <>
                 <SectionLabel>Tasking</SectionLabel>
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   <button style={cardBtn} onClick={() => guard(() => setArmed({ kind: 'move', id: selected.olympusID! }))}>📍 Move</button>
@@ -780,14 +785,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                   <button style={cardBtn} onClick={() => guard(() => runCmd('setOnOff', { ID: selected.olympusID, onOff: false }, 'Off'))}>Off</button>
                   <button style={cardBtn} onClick={() => guard(() => runCmd('setFollowRoads', { ID: selected.olympusID, followRoads: true }, 'Roads'))}>Roads</button>
                 </div>
+                </>}
 
-                <SectionLabel>Mark / Remove</SectionLabel>
+                {(canEffects || canDelete) && <SectionLabel>Mark / Remove</SectionLabel>}
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  {selected.position && (
+                  {canEffects && selected.position && (
                     <button style={cardBtn} onClick={() => runCmd('smoke', { color: 'green', location: { lat: selected.position!.lat, lng: selected.position!.lng } }, 'Smoke')}>💨 Smoke</button>
                   )}
-                  <button style={{ ...cardBtn, color: C.red, borderColor: '#5a2a2a' }}
-                          onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+                  {canDelete && (
+                    <button style={{ ...cardBtn, color: C.red, borderColor: '#5a2a2a' }}
+                            onClick={() => { if (window.confirm(`Delete "${selected.unitName || selected.name}" from the LIVE mission?`)) runCmd('deleteUnit', { ID: selected.olympusID, explosion: false, explosionType: '', immediate: true }, 'Delete', true); }}>✕ Delete</button>
+                  )}
                 </div>
               </div>
             )}
@@ -814,7 +822,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
         <span ref={coordRef}>—</span>
         <div style={{ flex: 1 }} />
-        <span>{isAdmin ? 'GM · full control' : 'observer'}</span>
+        <span>{ROLE_LABEL[group.role] || group.role}</span>
         <span>{profile.name}</span>
       </div>
     </div>
