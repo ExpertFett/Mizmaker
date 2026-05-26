@@ -175,8 +175,10 @@ export function SpawnPanel({ group, profile, onClose, onPlace }: {
       const fn: PlaceFn = (lat, lng) => {
         const air = isAir(cat);
         const one = (): Record<string, unknown> => {
-          const u: Record<string, unknown> = { unitType: sel.key, location: { lat, lng }, liveryID, skill };
-          if (heading) u.heading = heading * Math.PI / 180;
+          // Match the Olympus client EXACTLY: {unitType, location, skill, liveryID,
+          // altitude, loadout}. Any extra field (we used to add `heading`) makes
+          // Olympus silently drop the unit — the request still 200s, but nothing spawns.
+          const u: Record<string, unknown> = { unitType: sel.key, location: { lat, lng }, skill, liveryID };
           if (air) { u.altitude = Math.round(altFt * 0.3048); u.loadout = currentLoadout?.code || ''; }
           return u;
         };
