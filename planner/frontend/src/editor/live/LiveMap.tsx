@@ -664,6 +664,29 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             <span>DECODED FEED ({dbg})</span>
             <span onClick={() => setDbgOpen(false)} style={{ cursor: 'pointer', color: C.textDim }}>×</span>
           </div>
+          {(() => {
+            const off = [
+              !showHuman && 'human', !showOlympus && 'OLYMPUS', !showDcs && 'dcs',
+              !showRed && 'red', !showBlue && 'blue', !showNeutral && 'neutral',
+              !showAircraft && 'aircraft', !showHelicopter && 'heli', !showSam && 'sam',
+              !showGround && 'ground', !showNavy && 'navy', !showDead && 'dead',
+            ].filter(Boolean) as string[];
+            return (
+              <div style={{ padding: '6px 10px', fontSize: 10, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                {off.length
+                  ? <span style={{ color: C.red }}>Hidden by filter: {off.join(', ')}</span>
+                  : <span style={{ color: C.green }}>All filters ON</span>}
+                {off.length > 0 && (
+                  <button onClick={() => {
+                    if (!showHuman) toggleHuman(); if (!showOlympus) toggleOlympus(); if (!showDcs) toggleDcs();
+                    if (!showRed) toggleRed(); if (!showBlue) toggleBlue(); if (!showNeutral) toggleNeutral();
+                    if (!showAircraft) toggleAircraft(); if (!showHelicopter) toggleHelicopter(); if (!showSam) toggleSam();
+                    if (!showGround) toggleGround(); if (!showNavy) toggleNavy(); if (!showDead) toggleDead();
+                  }} style={{ ...mbtn, padding: '2px 8px', flexShrink: 0 }}>Show all</button>
+                )}
+              </div>
+            );
+          })()}
           <div style={{ overflowY: 'auto', fontSize: 11, fontFamily: 'monospace' }}>
             {Object.values(unitsRef.current)
               .map((x) => x.u)
