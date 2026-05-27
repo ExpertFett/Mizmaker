@@ -1,23 +1,23 @@
 /**
  * IadsPanel — Live "Draw tool" IADS generator.
  *
- * Flow: pick the IADS mode → click the map to drop the area CENTRE → set a
- * RADIUS → build a composition (how many of each SAM/EWR site) → Generate.
- * For each site the generator distributes a centre inside the circle and spawns
- * that recipe's component group via Olympus `spawnGroundUnits` (one call/site,
- * so DCS links it into a functional group). The Dynamic AEGIS engine then
- * auto-adopts every spawned site as an autonomous EMCON air-defence node.
+ * Flow: pick IADS mode → choose a CIRCLE (click centre + radius) or POLYGON
+ * (click vertices) area → either pick a threat TIER (auto-composes a layered
+ * net scaled to the area) or hand-build a composition → Generate. For each site
+ * the generator distributes a centre inside the area and spawns that recipe's
+ * component group via Olympus `spawnGroundUnits` (one call/site, so DCS links it
+ * into a functional group). The Dynamic AEGIS engine then auto-adopts each site.
  *
  * Recipes are resolved against the LIVE ground database so only sites this
- * server actually supports are offered (mods / version differences degrade
- * gracefully). See iadsRecipes.ts.
+ * server supports are offered (mods/version differences degrade gracefully).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getUnitDatabase, sendCommand, type GroupSummary, type ServerProfile } from '../../api/groups';
 import {
   IADS_RECIPES, type IadsRecipe, type IadsKind,
-  distributeSites, offsetLatLng,
+  IADS_TIERS, applyTier, areaEffectiveRadiusNm,
+  distributeInArea, offsetLatLng, type IadsArea,
 } from './iadsRecipes';
 
 const C = {
@@ -29,12 +29,13 @@ const C = {
 const KIND_LABEL: Record<IadsKind, string> = { ewr: 'Early Warning', area: 'Area SAM', shorad: 'SHORAD / AAA' };
 const KIND_ORDER: IadsKind[] = ['ewr', 'area', 'shorad'];
 
-export interface IadsArea { lat: number; lng: number; radiusNm: number; }
-
-export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: {
+export function IadsPanel({ group, profile, area, shape, onShape, onRadius, onUndoVertex, onClear, onClose }: {
   group: GroupSummary; profile: ServerProfile;
   area: IadsArea | null;
+  shape: 'circle' | 'polygon';
+  onShape: (s: 'circle' | 'polygon') => void;
   onRadius: (nm: number) => void;
+  onUndoVertex: () => void;
   onClear: () => void;
   onClose: () => void;
 }) {
@@ -71,23 +72,31 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
     return m;
   }, [supported]);
 
+  // An area is "ready" to generate into: circle centre placed, or polygon ≥3 verts.
+  const ready = !!area && (area.shape === 'circle' || (area.shape === 'polygon' && area.verts.length >= 3));
+  const polyVerts = area && area.shape === 'polygon' ? area.verts.length : 0;
+  const effR = ready && area ? Math.round(areaEffectiveRadiusNm(area)) : 0;
+
   const totalSites = Object.values(counts).reduce((a, b) => a + b, 0);
   const setCount = (code: string, n: number) => setCounts((p) => ({ ...p, [code]: Math.max(0, n) }));
+  const applyPreset = (tierCode: string) => {
+    const tier = IADS_TIERS.find((t) => t.code === tierCode);
+    if (!tier || !ready || !area) return;
+    setCounts(applyTier(tier, area, supported));
+  };
 
   const generate = useCallback(async () => {
-    if (!area || totalSites === 0) return;
-    // Flatten composition into a list of recipes to place, then distribute
-    // every site centre together so different types don't overlap.
+    if (!ready || !area || totalSites === 0) return;
     const queue: IadsRecipe[] = [];
     for (const r of supported) for (let i = 0; i < (counts[r.code] || 0); i++) queue.push(r);
-    const centres = distributeSites(area.lat, area.lng, area.radiusNm, queue.length, spacing);
+    const centres = distributeInArea(area, queue.length, spacing);
 
     setBusy(true); cancelRef.current = false;
     let ok = 0, fail = 0;
     for (let i = 0; i < queue.length; i++) {
       if (cancelRef.current) break;
       const recipe = queue[i];
-      const c = centres[i] || { lat: area.lat, lng: area.lng };
+      const c = centres[i] || (area.shape === 'circle' ? { lat: area.lat, lng: area.lng } : area.verts[0]);
       const units = recipe.components.map((comp) => {
         const p = offsetLatLng(c.lat, c.lng, comp.dx, comp.dy);
         return { unitType: comp.type, location: { lat: p.lat, lng: p.lng }, skill: 'High', liveryID: '' };
@@ -104,7 +113,7 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
     setStatus(cancelRef.current
       ? `Stopped — ${ok} site${ok === 1 ? '' : 's'} spawned.`
       : `Done: ${ok} site${ok === 1 ? '' : 's'} spawned${fail ? `, ${fail} failed` : ''}. Dynamic AEGIS will adopt them.`);
-  }, [area, totalSites, supported, counts, spacing, coalition, group.id, profile.id]);
+  }, [ready, area, totalSites, supported, counts, spacing, coalition, group.id, profile.id]);
 
   return (
     <div style={{ position: 'absolute', top: 56, left: 56, bottom: 44, width: 300, zIndex: 4, display: 'flex', flexDirection: 'column', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' }}>
@@ -114,30 +123,62 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
       </div>
 
       <div style={{ overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-        {/* Area */}
-        {!area ? (
+        {/* Shape toggle */}
+        <Row label="Area">
+          <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' }}>
+            {(['circle', 'polygon'] as const).map((s) => (
+              <button key={s} onClick={() => onShape(s)}
+                      style={{ background: shape === s ? C.accentDim : 'transparent', color: shape === s ? '#cfe6ff' : C.dim, border: 'none', padding: '4px 14px', cursor: 'pointer', fontSize: 12, fontWeight: shape === s ? 700 : 400, fontFamily: 'inherit' }}>
+                {s === 'circle' ? '◎ Circle' : '⬡ Polygon'}
+              </button>
+            ))}
+          </div>
+        </Row>
+
+        {/* Area state / controls */}
+        {!ready ? (
           <div style={{ fontSize: 12, color: C.accent, lineHeight: 1.5, background: C.accentDim, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px' }}>
-            Click the map to drop the IADS <b>centre</b>. Then set a radius and build the composition below.
+            {shape === 'circle'
+              ? 'Click the map to drop the IADS centre, then set a radius.'
+              : `Click the map to add polygon vertices (${polyVerts}/3 min).`}
+            {shape === 'polygon' && polyVerts > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <button onClick={onUndoVertex} style={{ ...mbtn, flex: 1, padding: '4px' }}>Undo</button>
+                <button onClick={onClear} style={{ ...mbtn, flex: 1, padding: '4px' }}>Clear</button>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
-              <span style={{ color: C.dim }}>Centre</span>
-              <span style={{ fontFamily: 'monospace' }}>{area.lat.toFixed(3)}, {area.lng.toFixed(3)}</span>
-            </div>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                <span style={{ color: C.dim }}>Radius</span>
-                <span style={{ color: C.accent, fontWeight: 700 }}>{area.radiusNm} NM</span>
+            {area && area.shape === 'circle' ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                  <span style={{ color: C.dim }}>Centre</span>
+                  <span style={{ fontFamily: 'monospace' }}>{area.lat.toFixed(3)}, {area.lng.toFixed(3)}</span>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                    <span style={{ color: C.dim }}>Radius</span>
+                    <span style={{ color: C.accent, fontWeight: 700 }}>{area.radiusNm} NM</span>
+                  </div>
+                  <input type="range" min={3} max={120} step={1} value={area.radiusNm}
+                         onChange={(e) => onRadius(Number(e.target.value))} style={{ width: '100%' }} />
+                </div>
+              </>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                <span style={{ color: C.dim }}>Polygon</span>
+                <span>{polyVerts} vertices · ~{effR} NM</span>
               </div>
-              <input type="range" min={3} max={120} step={1} value={area.radiusNm}
-                     onChange={(e) => onRadius(Number(e.target.value))} style={{ width: '100%' }} />
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {shape === 'polygon' && <button onClick={onUndoVertex} style={{ ...mbtn, flex: 1, padding: '5px' }}>Undo vertex</button>}
+              <button onClick={onClear} style={{ ...mbtn, flex: 1, padding: '5px' }}>Clear area</button>
             </div>
-            <button onClick={onClear} style={{ ...mbtn, padding: '5px' }}>Clear area</button>
           </div>
         )}
 
-        {/* Coalition */}
+        {/* Coalition + spacing */}
         <Row label="Side">
           <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' }}>
             {(['blue', 'neutral', 'red'] as const).map((c) => {
@@ -151,8 +192,6 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
             })}
           </div>
         </Row>
-
-        {/* Min spacing */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
             <span style={{ color: C.dim }}>Min spacing</span>
@@ -160,6 +199,20 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
           </div>
           <input type="range" min={0} max={30} step={1} value={spacing}
                  onChange={(e) => setSpacing(Number(e.target.value))} style={{ width: '100%' }} />
+        </div>
+
+        {/* Threat tiers */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: C.dim, margin: '2px 0 5px' }}>THREAT TIER</div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {IADS_TIERS.map((t) => (
+              <button key={t.code} onClick={() => applyPreset(t.code)} disabled={!ready || supported.length === 0} title={t.desc}
+                      style={{ ...mbtn, flex: 1, padding: '6px 4px', opacity: (!ready || supported.length === 0) ? 0.45 : 1 }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>Auto-fills the composition, scaled to the area. Tweak below, then Generate.</div>
         </div>
 
         {/* Composition */}
@@ -192,10 +245,10 @@ export function IadsPanel({ group, profile, area, onRadius, onClear, onClose }: 
         {status && <div style={{ fontSize: 11, color: status.startsWith('Done') || status.startsWith('Stopped') ? C.green : C.accent }}>{status}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
           {!busy ? (
-            <button onClick={generate} disabled={!area || totalSites === 0}
-                    style={{ ...mbtn, flex: 1, padding: '9px', fontWeight: 700, opacity: (!area || totalSites === 0) ? 0.45 : 1,
-                             background: (!area || totalSites === 0) ? 'rgba(255,255,255,0.04)' : C.accentDim,
-                             borderColor: (!area || totalSites === 0) ? C.border : C.accent, color: (!area || totalSites === 0) ? C.dim : '#cfe6ff' }}>
+            <button onClick={generate} disabled={!ready || totalSites === 0}
+                    style={{ ...mbtn, flex: 1, padding: '9px', fontWeight: 700, opacity: (!ready || totalSites === 0) ? 0.45 : 1,
+                             background: (!ready || totalSites === 0) ? 'rgba(255,255,255,0.04)' : C.accentDim,
+                             borderColor: (!ready || totalSites === 0) ? C.border : C.accent, color: (!ready || totalSites === 0) ? C.dim : '#cfe6ff' }}>
               Generate IADS{totalSites > 0 ? ` (${totalSites} site${totalSites === 1 ? '' : 's'})` : ''}
             </button>
           ) : (

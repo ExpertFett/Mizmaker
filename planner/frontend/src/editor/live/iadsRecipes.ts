@@ -93,6 +93,66 @@ export const IADS_RECIPES: IadsRecipe[] = [
     components: [{ type: 'ZSU-23-4 Shilka', dx: 0, dy: 0 }] },
 ];
 
+/* ── IADS area (circle or polygon) ───────────────────────────────────────── */
+
+export type LL = { lat: number; lng: number };
+export type IadsArea =
+  | { shape: 'circle'; lat: number; lng: number; radiusNm: number }
+  | { shape: 'polygon'; verts: LL[] };
+
+/* ── Threat tiers (auto-compose a layered net for the drawn area) ──────────── */
+
+export interface IadsTier {
+  code: string;
+  label: string;
+  desc: string;
+  ewr: number;       // fixed EWR sites
+  longPer: number;   // long-range area-SAM sites per NM of effective radius
+  medPer: number;    // medium area-SAM sites per NM
+  shortPer: number;  // SHORAD/AAA sites per NM
+}
+
+export const IADS_TIERS: IadsTier[] = [
+  { code: 'light',  label: 'Light',  desc: 'SHORAD screen + EWR',                 ewr: 1, longPer: 0,     medPer: 0,      shortPer: 1 / 12 },
+  { code: 'medium', label: 'Medium', desc: 'EWR + medium SAMs + point defence',   ewr: 1, longPer: 0,     medPer: 1 / 35, shortPer: 1 / 22 },
+  { code: 'heavy',  label: 'Heavy',  desc: 'Layered: long + medium + SHORAD',     ewr: 1, longPer: 1 / 60, medPer: 1 / 40, shortPer: 1 / 26 },
+];
+
+type Band = 'ewr' | 'long' | 'med' | 'short';
+function recipeBand(r: IadsRecipe): Band {
+  if (r.kind === 'ewr') return 'ewr';
+  if (r.kind === 'shorad') return 'short';
+  return r.threat >= 40 ? 'long' : 'med';  // area SAM split by reach
+}
+
+/**
+ * Turn a tier + the drawn area + the recipes this server supports into a
+ * per-recipe count map. Band totals scale with the area's effective radius and
+ * are spread round-robin across the supported recipes in each band, so the mix
+ * adapts to whatever systems exist on the server. Capped to keep counts sane.
+ */
+export function applyTier(tier: IadsTier, area: IadsArea, supported: IadsRecipe[]): Record<string, number> {
+  const r = areaEffectiveRadiusNm(area);
+  const want: Record<Band, number> = {
+    ewr: tier.ewr,
+    long: Math.min(8, Math.ceil(r * tier.longPer)),
+    med: Math.min(10, Math.ceil(r * tier.medPer)),
+    short: Math.min(16, Math.ceil(r * tier.shortPer)),
+  };
+  const counts: Record<string, number> = {};
+  for (const band of ['ewr', 'long', 'med', 'short'] as Band[]) {
+    const total = want[band];
+    if (total <= 0) continue;
+    const inBand = supported.filter((rec) => recipeBand(rec) === band);
+    if (inBand.length === 0) continue;
+    for (let i = 0; i < total; i++) {
+      const rec = inBand[i % inBand.length];
+      counts[rec.code] = (counts[rec.code] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
 /* ── Geo helpers ─────────────────────────────────────────────────────────── */
 
 const R_EARTH = 6371000; // m
@@ -151,4 +211,71 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number) {
   const dp = ((lat2 - lat1) * Math.PI) / 180, dl = ((lng2 - lng1) * Math.PI) / 180;
   const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
   return 2 * R_EARTH * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/* ── Polygon helpers ─────────────────────────────────────────────────────── */
+
+/** Ray-casting point-in-polygon (lat/lng space; fine for tactical-scale areas). */
+export function pointInPolygon(lat: number, lng: number, verts: LL[]): boolean {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const xi = verts[i].lng, yi = verts[i].lat, xj = verts[j].lng, yj = verts[j].lat;
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export function polygonCentroid(verts: LL[]): LL {
+  let lat = 0, lng = 0;
+  for (const v of verts) { lat += v.lat; lng += v.lng; }
+  return { lat: lat / verts.length, lng: lng / verts.length };
+}
+
+/** Polygon area (m²) via shoelace in a local equirectangular projection. */
+function polygonAreaM2(verts: LL[]): number {
+  if (verts.length < 3) return 0;
+  const lat0 = polygonCentroid(verts).lat;
+  const kx = (Math.PI / 180) * R_EARTH * Math.cos((lat0 * Math.PI) / 180);
+  const ky = (Math.PI / 180) * R_EARTH;
+  let a = 0;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const xi = verts[i].lng * kx, yi = verts[i].lat * ky;
+    const xj = verts[j].lng * kx, yj = verts[j].lat * ky;
+    a += xj * yi - xi * yj;
+  }
+  return Math.abs(a) / 2;
+}
+
+/** Effective radius (NM) of an area — drives tier scaling for both shapes. */
+export function areaEffectiveRadiusNm(area: IadsArea): number {
+  if (area.shape === 'circle') return area.radiusNm;
+  const a = polygonAreaM2(area.verts);
+  return Math.sqrt(a / Math.PI) / NM_M;
+}
+
+/** Unified site distribution for either area shape. */
+export function distributeInArea(area: IadsArea, n: number, minSpacingNm = 0): LL[] {
+  if (area.shape === 'circle') return distributeSites(area.lat, area.lng, area.radiusNm, n, minSpacingNm);
+  const verts = area.verts;
+  if (verts.length < 3) return [];
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const v of verts) {
+    minLat = Math.min(minLat, v.lat); maxLat = Math.max(maxLat, v.lat);
+    minLng = Math.min(minLng, v.lng); maxLng = Math.max(maxLng, v.lng);
+  }
+  const minSpM = minSpacingNm * NM_M;
+  const pts: LL[] = [];
+  const centroid = polygonCentroid(verts);
+  for (let i = 0; i < n; i++) {
+    let best: LL | null = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const lat = minLat + Math.random() * (maxLat - minLat);
+      const lng = minLng + Math.random() * (maxLng - minLng);
+      if (!pointInPolygon(lat, lng, verts)) continue;
+      if (minSpM <= 0 || pts.every((q) => haversineM(lat, lng, q.lat, q.lng) >= minSpM)) { best = { lat, lng }; break; }
+      best = { lat, lng };
+    }
+    pts.push(best || centroid);
+  }
+  return pts;
 }

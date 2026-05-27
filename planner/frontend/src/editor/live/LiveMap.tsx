@@ -23,6 +23,7 @@ import Cluster from 'ol/source/Cluster';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import CircleGeom from 'ol/geom/Circle';
+import PolygonGeom from 'ol/geom/Polygon';
 import LineString from 'ol/geom/LineString';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import { getDistance } from 'ol/sphere';
@@ -34,7 +35,8 @@ import {
   type GroupSummary, type ServerProfile, type UnitCategory, type UnitDbEntry,
 } from '../../api/groups';
 import { SpawnPanel } from './SpawnPanel';
-import { IadsPanel, type IadsArea } from './IadsPanel';
+import { IadsPanel } from './IadsPanel';
+import type { IadsArea } from './iadsRecipes';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -355,8 +357,16 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Spawn mode — the rich picker/config lives in <SpawnPanel>, which reports a
   // "place function" up here so a map click spawns the configured unit/effect.
   const [mode, setMode] = useState<'select' | 'spawn' | 'iads'>('select');
-  // IADS generator drawn area (centre set by map click in 'iads' mode).
-  const [iadsArea, setIadsArea] = useState<IadsArea | null>(null);
+  // IADS generator drawn area. Circle: centre + radius. Polygon: vertex list.
+  // Clicks in 'iads' mode set the centre (circle) or append a vertex (polygon).
+  const [iadsShape, setIadsShape] = useState<'circle' | 'polygon'>('circle');
+  const [iadsCircle, setIadsCircle] = useState<{ lat: number; lng: number; radiusNm: number } | null>(null);
+  const [iadsPoly, setIadsPoly] = useState<{ lat: number; lng: number }[]>([]);
+  // Unified area for the panel/generator (null until something is drawn).
+  const iadsArea: IadsArea | null = iadsShape === 'circle'
+    ? (iadsCircle ? { shape: 'circle', ...iadsCircle } : null)
+    : (iadsPoly.length > 0 ? { shape: 'polygon', verts: iadsPoly } : null);
+  const clearIads = () => { setIadsCircle(null); setIadsPoly([]); };
   const placeFnRef = useRef<((lat: number, lng: number) => void) | null>(null);
   const [placeLabel, setPlaceLabel] = useState('');
   const handlePlace = useCallback((fn: ((lat: number, lng: number) => void) | null, label: string) => {
@@ -420,20 +430,29 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       setArmed(null);
     },
     place: (lat: number, lng: number) => placeFnRef.current?.(lat, lng),
-    onIads: (lat: number, lng: number) => setIadsArea((prev) => ({ lat, lng, radiusNm: prev?.radiusNm ?? 30 })),
+    onIads: (lat: number, lng: number) => {
+      if (iadsShape === 'circle') setIadsCircle((prev) => ({ lat, lng, radiusNm: prev?.radiusNm ?? 30 }));
+      else setIadsPoly((prev) => [...prev, { lat, lng }]);
+    },
   };
 
-  // Draw the IADS generator area circle (lat-corrected so the projected radius
-  // matches the real ground radius used to distribute sites).
+  // Draw the IADS generator area overlay. Circle radius is lat-corrected so the
+  // projected circle matches the real ground radius used to distribute sites.
   useEffect(() => {
     const src = iadsSrcRef.current; if (!src) return;
     src.clear();
-    if (!iadsArea) return;
-    const center = fromLonLat([iadsArea.lng, iadsArea.lat]);
-    const projR = (iadsArea.radiusNm * 1852) / Math.cos((iadsArea.lat * Math.PI) / 180);
-    src.addFeature(new Feature({ geometry: new CircleGeom(center, projR) }));
-    src.addFeature(new Feature({ geometry: new Point(center) }));
-  }, [iadsArea]);
+    if (iadsShape === 'circle' && iadsCircle) {
+      const center = fromLonLat([iadsCircle.lng, iadsCircle.lat]);
+      const projR = (iadsCircle.radiusNm * 1852) / Math.cos((iadsCircle.lat * Math.PI) / 180);
+      src.addFeature(new Feature({ geometry: new CircleGeom(center, projR) }));
+      src.addFeature(new Feature({ geometry: new Point(center) }));
+    } else if (iadsShape === 'polygon' && iadsPoly.length > 0) {
+      const ring = iadsPoly.map((v) => fromLonLat([v.lng, v.lat]));
+      if (ring.length >= 3) src.addFeature(new Feature({ geometry: new PolygonGeom([[...ring, ring[0]]]) }));
+      else if (ring.length === 2) src.addFeature(new Feature({ geometry: new LineString(ring) }));
+      ring.forEach((c) => src.addFeature(new Feature({ geometry: new Point(c) })));
+    }
+  }, [iadsShape, iadsCircle, iadsPoly]);
 
   // Create the map once.
   useEffect(() => {
@@ -849,10 +868,12 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
       {/* ── Left dock: IADS generator (draw an area → spawn an air-defence net) */}
       {canSpawn && mode === 'iads' && (
-        <IadsPanel group={group} profile={profile} area={iadsArea}
-                   onRadius={(nm) => setIadsArea((prev) => (prev ? { ...prev, radiusNm: nm } : prev))}
-                   onClear={() => setIadsArea(null)}
-                   onClose={() => { setMode('select'); setIadsArea(null); }} />
+        <IadsPanel group={group} profile={profile} area={iadsArea} shape={iadsShape}
+                   onShape={(s) => { setIadsShape(s); clearIads(); }}
+                   onRadius={(nm) => setIadsCircle((prev) => (prev ? { ...prev, radiusNm: nm } : prev))}
+                   onUndoVertex={() => setIadsPoly((prev) => prev.slice(0, -1))}
+                   onClear={clearIads}
+                   onClose={() => { setMode('select'); clearIads(); }} />
       )}
 
       {/* ── Right dock: selected unit control ────────────────────────────── */}
