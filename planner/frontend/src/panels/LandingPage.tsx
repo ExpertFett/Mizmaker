@@ -6,6 +6,7 @@
  * Invite (/join/...) links bypass this entirely.
  */
 
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { VERSION } from '../version';
 
@@ -43,6 +44,19 @@ const DISCORD = '#5865F2';
 
 export function LandingPage({ authError, authDetail }: LandingPageProps) {
   const enterGuest = useAuthStore((s) => s.enterGuest);
+
+  // Homepage "missions edited" counter — cumulative, all-time. Best-effort:
+  // stays hidden until the backend returns a positive count (so it never shows
+  // an empty "0" or a broken state if the stats endpoint is unavailable).
+  const [missionsEdited, setMissionsEdited] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d && typeof d.missions_edited === 'number') setMissionsEdited(d.missions_edited); })
+      .catch(() => { /* counter is non-essential; ignore */ });
+    return () => { cancelled = true; };
+  }, []);
 
   let errMsg =
     authError === 'unconfigured' ? 'Discord login isn’t set up yet — continue as guest for now.'
@@ -162,6 +176,12 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
           marginLeft: 10, padding: '2px 6px', border: `1px solid ${BORDER}`,
           fontFamily: "'B612 Mono', monospace", fontSize: 11, letterSpacing: 0.5,
         }}>{VERSION}</span>
+        {missionsEdited != null && missionsEdited > 0 && (
+          <span style={{
+            marginLeft: 10, padding: '2px 8px', border: `1px solid ${BORDER}`,
+            borderRadius: 3, fontSize: 11.5, color: ACCENT, letterSpacing: 0.3,
+          }}>🎯 {missionsEdited.toLocaleString()} missions edited</span>
+        )}
       </div>
     </div>
   );

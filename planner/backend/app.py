@@ -83,6 +83,7 @@ from services.dtc_builder import (
 )
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
+from services.stats import bump_missions_edited, get_missions_edited
 # Session store selection: when SUPABASE_URL is configured, sessions persist to
 # Supabase (survive Railway restarts); otherwise fall back to the in-memory
 # store (identical to prior behaviour). The Supabase module is imported lazily
@@ -151,6 +152,12 @@ def health():
         "sessions": n_sessions,
         "sessions_max": MAX_SESSIONS,
     })
+
+
+@app.route("/api/stats", methods=["GET"])
+def stats():
+    """Public app stats for the homepage (e.g. cumulative missions edited)."""
+    return jsonify({"missions_edited": get_missions_edited()})
 
 
 # --------------------------------------------------------------------------
@@ -880,6 +887,11 @@ def download():
             as_attachment=True,
             download_name=session["filename"],
         )
+
+        # Homepage "missions edited" counter: a successful repack/download is
+        # one completed edit. Best-effort — never lets a stats hiccup break the
+        # download (bump_missions_edited swallows its own errors).
+        bump_missions_edited()
 
         # Surface edit results to the client so they can see when an edit
         # they queued was silently dropped. Base64-encoded JSON in a custom
