@@ -34,6 +34,7 @@ import {
   type GroupSummary, type ServerProfile, type UnitCategory, type UnitDbEntry,
 } from '../../api/groups';
 import { SpawnPanel } from './SpawnPanel';
+import { IadsPanel, type IadsArea } from './IadsPanel';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -112,6 +113,15 @@ function measureFeatureStyle(feature: Feature): Style {
   return new Style({ stroke: new Stroke({ color: '#ffd24a', width: 2, lineDash: [6, 4] }) });
 }
 
+// IADS generator area: dashed accent circle + centre dot.
+function iadsFeatureStyle(feature: Feature): Style {
+  const geom = feature.getGeometry();
+  if (geom && geom.getType() === 'Point') return new Style({
+    image: new CircleStyle({ radius: 4, fill: new Fill({ color: C.accent }), stroke: new Stroke({ color: '#0b0f16', width: 1 }) }),
+  });
+  return new Style({ stroke: new Stroke({ color: C.accent, width: 1.6, lineDash: [8, 5] }), fill: new Fill({ color: 'rgba(74,158,255,0.07)' }) });
+}
+
 // Airbase coalition can be a number (0/1/2) or string ("neutral"/"red"/"blue").
 function airbaseColor(c: unknown): string {
   if (typeof c === 'number') return SIDE_COLOR[c] ?? C.neutral;
@@ -179,6 +189,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const groundSrcRef = useRef<VectorSource | null>(null);  // ground units (fed into the cluster)
   const clusterSrcRef = useRef<any>(null);                 // ol Cluster wrapping groundSrc
   const measureSrcRef = useRef<VectorSource | null>(null); // measure-tool line + labels
+  const iadsSrcRef = useRef<VectorSource | null>(null);    // IADS generator area circle
   const selSrcRef = useRef<VectorSource | null>(null);     // selection highlight rings
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
@@ -343,7 +354,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   // Spawn mode — the rich picker/config lives in <SpawnPanel>, which reports a
   // "place function" up here so a map click spawns the configured unit/effect.
-  const [mode, setMode] = useState<'select' | 'spawn'>('select');
+  const [mode, setMode] = useState<'select' | 'spawn' | 'iads'>('select');
+  // IADS generator drawn area (centre set by map click in 'iads' mode).
+  const [iadsArea, setIadsArea] = useState<IadsArea | null>(null);
   const placeFnRef = useRef<((lat: number, lng: number) => void) | null>(null);
   const [placeLabel, setPlaceLabel] = useState('');
   const handlePlace = useCallback((fn: ((lat: number, lng: number) => void) | null, label: string) => {
@@ -407,7 +420,20 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       setArmed(null);
     },
     place: (lat: number, lng: number) => placeFnRef.current?.(lat, lng),
+    onIads: (lat: number, lng: number) => setIadsArea((prev) => ({ lat, lng, radiusNm: prev?.radiusNm ?? 30 })),
   };
+
+  // Draw the IADS generator area circle (lat-corrected so the projected radius
+  // matches the real ground radius used to distribute sites).
+  useEffect(() => {
+    const src = iadsSrcRef.current; if (!src) return;
+    src.clear();
+    if (!iadsArea) return;
+    const center = fromLonLat([iadsArea.lng, iadsArea.lat]);
+    const projR = (iadsArea.radiusNm * 1852) / Math.cos((iadsArea.lat * Math.PI) / 180);
+    src.addFeature(new Feature({ geometry: new CircleGeom(center, projR) }));
+    src.addFeature(new Feature({ geometry: new Point(center) }));
+  }, [iadsArea]);
 
   // Create the map once.
   useEffect(() => {
@@ -429,6 +455,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const measureSrc = new VectorSource();
     measureSrcRef.current = measureSrc;
     const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
+    const iadsSrc = new VectorSource();
+    iadsSrcRef.current = iadsSrc;
+    const iadsLayer = new VectorLayer({ source: iadsSrc, style: (f) => iadsFeatureStyle(f as Feature) });
     const selSrc = new VectorSource();
     selSrcRef.current = selSrc;
     const selLayer = new VectorLayer({ source: selSrc, style: SEL_STYLE });
@@ -440,6 +469,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
         abLayer,        // airbases under units
         ringLayer,      // threat rings under units
+        iadsLayer,      // IADS generator area circle (under markers)
         selLayer,       // selection highlight rings (under markers)
         clusterLayer,   // ground units (clustered)
         unitsLayer,     // air/navy units on top
@@ -452,6 +482,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
       if (c.tool === 'measure') { c.onMeasure(lat, lng); return; }  // measure tool owns clicks
+      if (c.mode === 'iads') { c.onIads(lat, lng); return; }        // IADS mode: click sets area centre
       // Hit-test only the unit + cluster layers (not airbases/rings).
       const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer || l === clusterLayer });
       let target: UnitT | null = null;
@@ -575,7 +606,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
 
-  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure';
+  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || mode === 'iads';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
   // Live copy of the selected unit (refreshed each poll) for current-state highlights.
   const sUnit = selected ? (unitsRef.current[String(selected.olympusID)]?.u ?? selected) : null;
@@ -645,9 +676,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
         {canSpawn && (
           <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
-            {(['select', 'spawn'] as const).map((m) => (
-              <button key={m} onClick={() => { setMode(m); setArmed(null); if (m === 'select') handlePlace(null, ''); }}
-                      style={{ ...seg, ...(mode === m ? segOn : {}) }}>{m === 'select' ? '⊹ Control' : '✛ Spawn'}</button>
+            {(['select', 'spawn', 'iads'] as const).map((m) => (
+              <button key={m} onClick={() => { setMode(m); setArmed(null); setTool('select'); if (m !== 'spawn') handlePlace(null, ''); }}
+                      style={{ ...seg, ...(mode === m ? segOn : {}) }}>{m === 'select' ? '⊹ Control' : m === 'spawn' ? '✛ Spawn' : '◎ IADS'}</button>
             ))}
           </div>
         )}
@@ -814,6 +845,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <SpawnPanel group={group} profile={profile}
                     onClose={() => { setMode('select'); handlePlace(null, ''); }}
                     onPlace={handlePlace} />
+      )}
+
+      {/* ── Left dock: IADS generator (draw an area → spawn an air-defence net) */}
+      {canSpawn && mode === 'iads' && (
+        <IadsPanel group={group} profile={profile} area={iadsArea}
+                   onRadius={(nm) => setIadsArea((prev) => (prev ? { ...prev, radiusNm: nm } : prev))}
+                   onClear={() => setIadsArea(null)}
+                   onClose={() => { setMode('select'); setIadsArea(null); }} />
       )}
 
       {/* ── Right dock: selected unit control ────────────────────────────── */}
