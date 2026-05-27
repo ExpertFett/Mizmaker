@@ -12,7 +12,8 @@ frontend.
 
 **Live URL**: `https://dcsopt.up.railway.app/` (Railway-hosted)
 — this is the canonical deploy that tracks `origin/main`; every push
-redeploys here. Verify deploys / probe the API against THIS host
+**to main** redeploys here (work lands on `dev` first — see Push rule).
+Verify deploys / probe the API against THIS host
 (healthcheck path `/api/sam-ranges`). The old `mizmaker-production.up.railway.app`
 host is dead (404) since the DCS:OPT rename — do NOT use it. (Confirmed
 live host 2026-05-24.)
@@ -29,20 +30,36 @@ One-dev (Fett + Claude) codebase.
 in-memory on the backend (2hr TTL, 20 max). Mission edits are
 regex-based surgical text replacements on the original Lua.
 
-**Repository + branch**:
+**Repository + branches** (changed 2026-05-26 — site went PUBLIC, real users live):
 - Single remote: `origin` → `https://github.com/ExpertFett/Mizmaker.git`
-- Single branch: `main` — Railway deploys from here, every push triggers
-  a redeploy. There is no "feature branch" workflow right now; commits
-  go straight to `main`.
+- **`main` = PRODUCTION.** Railway deploys from here; every push to `main`
+  triggers a redeploy (~2 min build + container swap). Real users are on the
+  live site now — **do NOT push to `main` casually.**
+- **`dev` = integration/work branch.** Day-to-day commits land here. `dev`
+  does NOT deploy anywhere (no staging service), so verify locally:
+  `tsc -b` + `vite build`, Vite HMR, pytest.
+- **Promotion to prod is DELIBERATE.** Only when Fett says "ship it" / "deploy"
+  / "go live" / "push to prod": fast-forward `main` to `dev` and push `main`
+  (the one intentional redeploy), ideally at low traffic.
+- Other long-lived branches (`olympus`, `planner-mode`, `supabase-sessions`,
+  `live-terminal`) are historical/parked — leave them alone unless asked.
 - The old `personal` (ExpertFett/mizmaker856) and `origin`
   (vmfa224-skunkworks/mizresearch) remotes were retired on 2026-04-25 to
   consolidate the scattered branch state. The squadron handoff happens
   later by Fett pushing this repo's history to the squadron repo himself
   — don't add that remote back unless he asks.
 
-**Push rule**: when Fett says "commit it to github", "push it", "deploy",
-etc., the target is always `origin/main`. Never push to any other branch
-or remote unless he explicitly names one.
+**Push rule** (changed 2026-05-26 — was "always main"):
+- "commit it" / "push it" / "save it" → commit to **`dev`**, push `origin/dev`.
+  This does NOT deploy to prod.
+- "ship it" / "deploy" / "go live" / "promote" / "push to prod" → fast-forward
+  **`main`** to `dev` and push `origin/main` (triggers the Railway redeploy).
+  Prefer low-traffic windows; check `/api/health` `sessions` count first.
+- Never push to other branches/remotes unless Fett names one.
+- Why this is safe-but-cautious: prod deploys are already near-seamless
+  (healthcheck overlap = no hard outage; `SUPABASE_URL` is set so sessions
+  persist across restarts; single JS bundle = no forced refresh for open
+  tabs). But with users live, prod should still only redeploy on purpose.
 
 **Version bumping**: `planner/frontend/src/version.ts` exports a `VERSION`
 string displayed on the upload page header. **Bump the patch number on
