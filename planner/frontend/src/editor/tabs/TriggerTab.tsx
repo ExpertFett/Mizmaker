@@ -2351,6 +2351,14 @@ const SCRIPT_LIBRARY: ScriptEntry[] = [
     lua: '-- Adds a DO_SCRIPT_FILE trigger that loads aegis-iads-v0.8.4-beta.lua\n-- (auto-bundled into the .miz on download).',
   },
   {
+    id: 'aegis-iads-dynamic',
+    name: 'AEGIS IADS (Dynamic)',
+    category: 'framework',
+    description: 'AEGIS v0.9.0-beta-dynamic — same as v0.8.4 PLUS runtime spawn discovery: SAM/EWR groups spawned mid-mission (e.g. DCS Olympus / Live "Draw tool") are auto-detected by UNIT TYPE and adopted as autonomous EMCON sites. Set dynamicDiscovery=true in the setup. UNTESTED — validate in DCS. Use INSTEAD of the standard AEGIS file, not alongside it.',
+    bundledFile: 'aegis-iads-v0.9.0-beta-dynamic.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads aegis-iads-v0.9.0-beta-dynamic.lua\n-- (auto-bundled into the .miz on download). Dynamic variant of AEGIS:\n-- adopts SAM/EWR groups spawned at runtime (type-based discovery).\n-- Load order: TIME MORE > 1, AFTER MOOSE, BEFORE aegis-setup.\n-- Do NOT also load aegis-iads-v0.8.4-beta.lua — this file supersedes it.',
+  },
+  {
     id: 'aegis-setup',
     name: 'AEGIS Setup Example',
     category: 'framework',
@@ -2407,6 +2415,12 @@ local iads = AEGIS:New("red", {
   pbHarmWarnRadius     = 5,
   pbHarmCooldownMargin = 30,
   ecmEnabled           = true,
+  -- Dynamic spawn discovery (ONLY effective with aegis-iads-v0.9.0-beta-dynamic.lua):
+  -- adopts SAM/EWR groups spawned mid-mission (Olympus / Live Draw tool) as
+  -- autonomous EMCON sites, detected by unit type. Defaults ON in that file.
+  -- dynamicDiscovery         = true,
+  -- dynamicDiscoveryDebounce = 3,   -- s to wait for a spawned group to fully populate
+  -- dynamicStartupGrace      = 8,   -- s after Activate() to ignore births (skip pre-placed units)
   debug              = true,
 })
 
