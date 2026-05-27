@@ -55,26 +55,47 @@ const C = {
 };
 const SIDE_COLOR: Record<number, string> = { 0: C.neutral, 1: C.red, 2: C.blue };
 
-// Category-shaped, coalition-colored markers (cached so polls don't re-alloc).
-const _styleCache: Record<string, Style> = {};
-function styleForUnit(coalition: number | undefined, category?: string): Style {
-  const cat = (category || '').toLowerCase();
+// Olympus heading/track arrive in radians (0 = north, clockwise). Guard against
+// a feed that sends degrees (would be a huge "radian" value) by converting.
+function headingRad(u: UnitT): number {
+  let h = typeof u.heading === 'number' ? u.heading
+    : typeof u.track === 'number' ? u.track : NaN;
+  if (!isFinite(h)) return 0;
+  if (Math.abs(h) > Math.PI * 2 + 0.5) h = (h * Math.PI) / 180;  // looks like degrees
+  return h;
+}
+
+// Category-shaped, coalition-colored marker, rotated to the unit's heading
+// (air = a triangle that points where it's flying). Dead units render dimmed +
+// hollow. When `showLabels`, the unit name is drawn beneath the marker. Styles
+// are cheap and built per-unit (heading is continuous, so caching doesn't help).
+function styleForUnit(u: UnitT, showLabels = false): Style {
+  const cat = (u.category || '').toLowerCase();
   const bucket = cat.includes('heli') ? 'air'
     : cat.includes('air') || cat.includes('plane') ? 'air'
     : cat.includes('navy') || cat.includes('ship') ? 'navy'
     : cat.includes('ground') ? 'ground' : 'dot';
-  const side = coalition ?? -1;
-  const key = `${side}|${bucket}`;
-  if (_styleCache[key]) return _styleCache[key];
-  const color = SIDE_COLOR[side] ?? C.neutral;
-  const fill = new Fill({ color });
-  const stroke = new Stroke({ color: 'rgba(0,0,0,0.65)', width: 1.25 });
+  const side = u.coalition ?? -1;
+  const dead = u.alive === 0;
+  const color = dead ? '#6b7280' : (SIDE_COLOR[side] ?? C.neutral);
+  const fill = new Fill({ color: dead ? 'rgba(107,114,128,0.35)' : color });
+  const stroke = new Stroke({ color: dead ? 'rgba(107,114,128,0.9)' : 'rgba(0,0,0,0.65)', width: dead ? 1 : 1.25 });
+  const rot = headingRad(u);
   let image;
-  if (bucket === 'air') image = new RegularShape({ points: 3, radius: 7, fill, stroke });        // triangle
-  else if (bucket === 'navy') image = new RegularShape({ points: 4, radius: 6, angle: 0, fill, stroke }); // diamond
-  else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke }); // square
+  if (bucket === 'air') image = new RegularShape({ points: 3, radius: 8, fill, stroke, rotation: rot });            // triangle → heading
+  else if (bucket === 'navy') image = new RegularShape({ points: 4, radius: 6.5, fill, stroke, rotation: rot });   // diamond → heading
+  else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke, rotation: rot }); // square
   else image = new CircleStyle({ radius: 4.5, fill, stroke });
-  return (_styleCache[key] = new Style({ image }));
+  const style = new Style({ image });
+  if (showLabels) {
+    const label = u.unitName || u.name || '';
+    if (label) style.setText(new Text({
+      text: label, font: '10px sans-serif', offsetY: 15,
+      fill: new Fill({ color: dead ? '#8a93a0' : '#cfe0f0' }),
+      stroke: new Stroke({ color: 'rgba(8,12,18,0.9)', width: 2.5 }),
+    }));
+  }
+  return style;
 }
 
 interface UnitT {
@@ -82,6 +103,7 @@ interface UnitT {
   coalition?: number; alive?: number; controlled?: number; human?: number;
   ROE?: number; reactionToThreat?: number; alarmState?: number; emissionsCountermeasures?: number;
   desiredAltitudeType?: number; desiredSpeedType?: number;  // 1=AGL/1=GS ; 0=ASL/0=CAS
+  heading?: number; track?: number;  // radians (0=N, CW) — for the heading arrow
   position?: { lat: number; lng: number; alt?: number };
 }
 
@@ -89,8 +111,8 @@ interface UnitT {
 const SEL_STYLE = new Style({ image: new CircleStyle({ radius: 11, stroke: new Stroke({ color: '#ffd24a', width: 2 }), fill: undefined }) });
 
 // Style for a cluster of N ground units: count badge colored by majority side.
-function clusterStyle(features: Feature[]): Style {
-  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u?.coalition, u?.category); }
+function clusterStyle(features: Feature[], showLabels = false): Style {
+  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u || {}, showLabels); }
   let red = 0, blue = 0;
   for (const f of features) { const c = (f.get('unit') as UnitT | undefined)?.coalition; if (c === 1) red++; else if (c === 2) blue++; }
   const side = red > blue ? 1 : blue > red ? 2 : 0;
@@ -295,6 +317,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showEng, toggleEng] = usePersistedToggle('dcsopt.live.engrings');
   const [showAcq, toggleAcq] = usePersistedToggle('dcsopt.live.acqrings');
   const [clusterGround, toggleCluster] = usePersistedToggle('dcsopt.live.cluster');
+  const [showLabels, toggleLabels] = usePersistedToggle('dcsopt.live.labels');
+  const showLabelsRef = useRef(false);
+  showLabelsRef.current = showLabels;  // read by the (once-registered) cluster layer style
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -333,7 +358,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (isGround && groundSrc) {
         groundSrc.addFeature(ft);  // ground units are styled by the cluster layer
       } else {
-        ft.setStyle(styleForUnit(u.coalition, u.category)); src.addFeature(ft);
+        ft.setStyle(styleForUnit(u, showLabels)); src.addFeature(ft);
       }
       if (selSrc && u.olympusID != null && selSet.has(u.olympusID)) selSrc.addFeature(new Feature({ geometry: new Point(coord) }));
       // Threat rings (live units only) from the unit's blueprint ranges.
@@ -470,7 +495,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const unitsLayer = new VectorLayer({ source: src });
     const abLayer = new VectorLayer({ source: abSrc });
     const ringLayer = new VectorLayer({ source: ringSrc });
-    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[]) });
+    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[], showLabelsRef.current) });
     const measureSrc = new VectorSource();
     measureSrcRef.current = measureSrc;
     const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
@@ -565,7 +590,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, selectedIds]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, showLabels, selectedIds]);
 
   // Load the unit databases once: classify SAM/air-defense ground units (Olympus
   // splits GroundUnit into SAM vs other ground by blueprint type) and build the
@@ -646,6 +671,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
         <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
                 style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
+        <button onClick={toggleLabels} title="Toggle unit name labels" style={{ ...toolBtn, ...(showLabels ? toolOn : {}) }}>🏷</button>
         <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
         <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
                 style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>

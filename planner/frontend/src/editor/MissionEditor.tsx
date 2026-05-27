@@ -32,6 +32,7 @@ import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
 import { CarriersTab } from './tabs/CarriersTab';
 import { ScriptsTab } from './tabs/ScriptsTab';
+import { RosterTab } from './tabs/RosterTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
 import { MetarReadout } from '../panels/MetarReadout';
@@ -96,6 +97,7 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '🎯' },
 
   { kind: 'section', label: 'FLIGHTS' },
+  { kind: 'tab', id: 'roster',      label: 'Roster',      icon: '👥' },
   { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
   { kind: 'tab', id: 'datalink',    label: 'Datalink',    icon: '📡' },
   { kind: 'tab', id: 'radio',       label: 'Radio',       icon: '📻' },
@@ -563,6 +565,11 @@ export function MissionEditor() {
             {visitedTabs.has('dtc') && (
               <div style={{ display: activeTab === 'dtc' ? 'block' : 'none' }}>
                 <DtcTab />
+              </div>
+            )}
+            {visitedTabs.has('roster') && (
+              <div style={{ display: activeTab === 'roster' ? 'block' : 'none' }}>
+                <RosterTab />
               </div>
             )}
             {visitedTabs.has('weapons') && (

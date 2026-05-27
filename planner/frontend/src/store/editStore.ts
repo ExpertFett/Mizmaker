@@ -32,6 +32,10 @@ export interface KneeboardCards {
    *  Kneeboard tab. Renders the planner's notesText verbatim as a
    *  printable card. Empty-state placeholder when no text. (v0.9.69) */
   notesCard: boolean;
+  /** Weapon-employment reference card(s) — one page per selected store
+   *  (envelope, profile, switchology, mistakes). Which stores appear is
+   *  driven by KneeboardSettings.weaponIds. Defaults OFF. */
+  weaponsRef: boolean;
 }
 
 export interface KneeboardSettings {
@@ -69,6 +73,9 @@ export interface KneeboardSettings {
    *  Lets the planner write a different note per card type rather
    *  than only the standalone Notes card. (v0.9.70) */
   cardNotes: Record<string, string>;
+  /** Selected weapon ids for the Weapon Reference card (see weaponData.ts).
+   *  Empty = card produces nothing even when cards.weaponsRef is on. */
+  weaponIds: string[];
   /** Kneeboard color scheme. 'night' = dark background (default,
    *  cockpit-at-night), 'day' = white background (daylight / printing).
    *  Drives the --kb-* CSS variables the cards resolve. (v0.9.74) */
@@ -113,14 +120,15 @@ export const useEditStore = create<EditState>((set) => ({
     notesText: '',
     notesTitle: '',
     cardNotes: {},
+    weaponIds: [],
     theme: 'night',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
-      // Notes card defaults OFF — only emit it when the planner has
-      // actually written notes, so an empty card doesn't ride along
-      // in every download.
-      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false,
+      // Notes + weapon-reference cards default OFF — only emit them when the
+      // planner has opted in (notes written / weapons picked), so an empty
+      // card doesn't ride along in every download.
+      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false,
     },
   },
 

@@ -25,6 +25,8 @@ import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
+import { WeaponCard, weaponCardPageCount } from '../../kneeboard/WeaponCard';
+import { WEAPONS } from '../../kneeboard/weaponData';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { kbThemeStyle, type KneeboardTheme } from '../../kneeboard/cardStyles';
 import { useSopStore } from '../../sop/sopStore';
@@ -53,6 +55,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
+  { key: 'weaponsRef', label: 'Weapon Reference', desc: 'Per-store employment, switchology, mistakes — pick stores below' },
 ];
 
 // Cards that have a NOTES box the planner can fill with typed notes.
@@ -121,6 +124,7 @@ export function KneeboardTab() {
   // Per-card notes map (v0.9.70) — keyed by card type. Each card's
   // NOTES box renders cardNotes[key] when set.
   const cardNotes = kneeboardSettings.cardNotes ?? {};
+  const weaponIds = kneeboardSettings.weaponIds ?? [];
   // Day/night color scheme (v0.9.74). Default 'night' for settings
   // objects that pre-date the field.
   const theme: KneeboardTheme = kneeboardSettings.theme ?? 'night';
@@ -267,6 +271,13 @@ export function KneeboardTab() {
         overview: overview || undefined,
       });
       results.push({ name: 'Mission_Notes.png', blob: await renderCardToBlob(el, theme) });
+    }
+    if (cards.weaponsRef && weaponIds.length > 0) {
+      const pageCount = weaponCardPageCount(weaponIds);
+      for (let p = 0; p < pageCount; p++) {
+        const el = createElement(WeaponCard, { weaponIds, page: p, overview: overview || undefined });
+        results.push({ name: `Weapon_${p + 1}.png`, blob: await renderCardToBlob(el, theme) });
+      }
     }
     return results;
   };
@@ -739,6 +750,36 @@ export function KneeboardTab() {
         </div>
       )}
 
+      {/* Weapon Reference — pick which stores get a card. Shown when the
+          Weapon Reference card type is enabled. */}
+      {cards.weaponsRef && (
+        <div style={{ margin: '10px 0', padding: '10px 14px', background: '#222', border: '1px solid #3a3a3a', borderRadius: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 }}>
+            Weapon cards <span style={{ color: '#888', fontWeight: 400 }}>— {weaponIds.length} selected (one card each)</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {WEAPONS.map((w) => {
+              const on = weaponIds.includes(w.id);
+              return (
+                <button key={w.id}
+                  onClick={() => setKneeboardSettings({ weaponIds: on ? weaponIds.filter((x) => x !== w.id) : [...weaponIds, w.id] })}
+                  style={{
+                    background: on ? 'rgba(74,158,255,0.18)' : 'transparent',
+                    border: `1px solid ${on ? '#4a9eff' : '#3a3a3a'}`,
+                    color: on ? '#cfe6ff' : '#aaaaaa', borderRadius: 14, padding: '3px 10px',
+                    fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  {w.name}
+                </button>
+              );
+            })}
+          </div>
+          {weaponIds.length === 0 && (
+            <div style={{ fontSize: 11, color: '#d29922', marginTop: 6 }}>Pick at least one store, or the card produces nothing.</div>
+          )}
+        </div>
+      )}
+
       {/* Rebuild bar — sits between the settings panel and the
           carousel. Bumps `rebuildAt` which both re-mounts the
           carousel (key prop) and refreshes the timestamp the user
@@ -809,6 +850,7 @@ export function KneeboardTab() {
         notesText={notesText}
         notesTitle={notesTitle}
         cardNotes={cardNotes}
+        weaponIds={weaponIds}
         theme={theme}
       />
     </div>
@@ -842,6 +884,7 @@ interface CarouselProps {
   notesText: string;
   notesTitle: string;
   cardNotes: Record<string, string>;
+  weaponIds: string[];
   theme: KneeboardTheme;
 }
 
@@ -862,6 +905,7 @@ function CardCarousel({
   notesText,
   notesTitle,
   cardNotes,
+  weaponIds,
   theme,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
@@ -1005,9 +1049,18 @@ function CardCarousel({
         }),
       });
     }
+    if (cards.weaponsRef && weaponIds.length > 0) {
+      const pageCount = weaponCardPageCount(weaponIds);
+      for (let p = 0; p < pageCount; p++) {
+        list.push({
+          key: `weaponsRef-${p}`, label: `Weapon Reference${pageCount > 1 ? ` (${p + 1}/${pageCount})` : ''}`,
+          element: createElement(WeaponCard, { weaponIds, page: p, overview: overview || undefined }),
+        });
+      }
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, weaponIds]);
 
   // Clamp index when list changes
   useEffect(() => {
