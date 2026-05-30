@@ -85,9 +85,9 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
         <div style={{ position: 'relative', width: 460, maxWidth: '90%', margin: '0 auto 14px' }}>
           <div aria-hidden style={{
             position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
-            width: '88%', height: '160%', zIndex: 0, pointerEvents: 'none',
-            background: 'radial-gradient(ellipse at center, rgba(232,131,58,0.38) 0%, rgba(232,131,58,0.13) 38%, rgba(232,131,58,0) 70%)',
-            filter: 'blur(20px)',
+            width: '95%', height: '180%', zIndex: 0, pointerEvents: 'none',
+            background: 'radial-gradient(ellipse at center, rgba(232,131,58,0.58) 0%, rgba(232,131,58,0.22) 40%, rgba(232,131,58,0) 75%)',
+            filter: 'blur(26px)',
           }} />
           <img src="/logo.png" alt="DCS:OPT"
                style={{ position: 'relative', zIndex: 1, width: '100%', height: 'auto', display: 'block' }} />
