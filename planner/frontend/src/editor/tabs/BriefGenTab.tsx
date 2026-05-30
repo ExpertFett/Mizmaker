@@ -374,6 +374,10 @@ export function BriefGenTab() {
         missionStory,
         threats: brief.threats,
         flights: brief.flights,
+        // v1.16.x — "smarter intent": surface air picture + theatre overview so
+        // the model has CAP/DCA context and the geographic framing.
+        air_threats: brief.air_threats,
+        theatre_overview: brief.theatre_overview,
         userSteer: aiSteer,
       });
       setBrief((b) => (b ? { ...b, commanders_intent: result.text } : null));

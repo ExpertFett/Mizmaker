@@ -61,6 +61,14 @@ export interface CommandersIntentInput {
   missionStory?: string;
   threats: CIThreat[];
   flights: CIFlight[];
+  /** Enemy aircraft groups — surfaced to the model so it can mention
+   *  CAP / DCA considerations in the Method paragraph. Optional, empty
+   *  array = no air threat dimension. (v1.16.x — "smarter intent".) */
+  air_threats?: { composition?: string; airframe_class?: string; weapons?: string; notes?: string }[];
+  /** Mission theatre overview prose (the THEATRE OVERVIEW slide blurb).
+   *  Gives the model geographic context without leaning on it as
+   *  strategy. (v1.16.x.) */
+  theatre_overview?: string;
   /** Optional free-form steer from the user (e.g. "emphasise SEAD
    *  flow", "make it sound urgent"). Empty string = no steer. */
   userSteer?: string;
@@ -220,6 +228,30 @@ export function buildCommandersIntentUserMessage(input: CommandersIntentInput): 
     if (reds.length > 12) {
       lines.push(`  - …and ${reds.length - 12} more`);
     }
+    lines.push('');
+  }
+
+  // Enemy air picture — adds CAP/DCA context for the Method paragraph.
+  const air = (input.air_threats || []).filter((a) => (a.composition || a.airframe_class));
+  if (air.length > 0) {
+    lines.push('Red air picture:');
+    for (const a of air.slice(0, 6)) {
+      const parts: string[] = [a.composition || a.airframe_class || '(unnamed)'];
+      if (a.weapons) parts.push(a.weapons);
+      if (a.notes) parts.push(`(${a.notes})`);
+      lines.push(`  - ${parts.join(' · ')}`);
+    }
+    if (air.length > 6) lines.push(`  - …and ${air.length - 6} more`);
+    lines.push('');
+  }
+
+  // Theatre overview — geographic prose framing. Trimmed to a reasonable
+  // length so a chatty default doesn't dominate the context window.
+  const overview = (input.theatre_overview || '').trim();
+  if (overview) {
+    const trimmed = overview.length > 600 ? overview.slice(0, 600) + '…' : overview;
+    lines.push('Theatre framing (geography/terrain only — do not use as strategy):');
+    lines.push(trimmed);
     lines.push('');
   }
 
