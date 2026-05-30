@@ -189,6 +189,11 @@ class FlightBrief:
     fuel_rtb_lbs: int    # placeholder
     notes: str           # special instructions for this flight, default empty
     timeline: List[Dict[str, str]]  # this flight's own schedule (TimelineRow list)
+    # Per-slide route map (v1.13.x). group_name matches this flight back to its
+    # mission group so the frontend can render a route map; route_map_base64 is
+    # the client-rendered PNG (no data: prefix) placed on a ROUTE MAP slide.
+    group_name: str = ""
+    route_map_base64: str = ""
 
 
 @dataclass
@@ -1653,6 +1658,7 @@ def build_flight_briefs(
             fuel_rtb_lbs=2500,
             notes="",
             timeline=flight_timeline,
+            group_name=g.get("groupName", ""),
         )
         out.append(asdict(brief))
     return out

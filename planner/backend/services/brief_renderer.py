@@ -900,6 +900,23 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
          brief["commanders_intent"], size=16, color=LIGHT)
 
+    # ---------- Slide 4b: Route overview map (client-rendered) -----------
+    # All flight tracks + threat rings on one image (captureOverviewImage,
+    # 760x520). Fitted by that aspect so it never distorts. Optional.
+    overview_img = _decode_image(brief.get("route_overview_base64") or "")
+    if overview_img:
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "ROUTE OVERVIEW")
+        iw, ih = 760, 520
+        avail_w, avail_h = Inches(12.1), Inches(5.7)
+        scale = min(avail_w / iw, avail_h / ih)
+        w = int(iw * scale); h = int(ih * scale)
+        x = int((prs.slide_width - w) / 2); y = Inches(1.45)
+        try:
+            s.shapes.add_picture(overview_img, x, y, width=w, height=h)
+        except Exception:
+            pass
+
     # ---------- Slide 5: Threats ----------------------------------------
     # Spatially-clustered threat areas, ranked by tier then engagement
     # range. Pilots see "STRATEGIC / TACTICAL / SHORAD / AAA" at a glance
@@ -1304,6 +1321,31 @@ def render_flight_brief(brief: Dict[str, Any]) -> bytes:
     else:
         _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
              "No waypoints in mission file.", size=18, color=DIM, italic=True)
+
+    # ---------- 3b: Route map (client-rendered PNG, optional) ---------
+    rm = (brief.get("route_map_base64") or "").strip()
+    if rm:
+        try:
+            import base64
+            if rm.startswith("data:") and "," in rm:
+                rm = rm.split(",", 1)[1]
+            img_bytes = base64.b64decode(rm, validate=False)
+            iw, ih = 560, 400  # captureRouteImage default aspect (7:5)
+            try:
+                from PIL import Image as _PImg
+                with _PImg.open(io.BytesIO(img_bytes)) as _im:
+                    iw, ih = _im.size
+            except Exception:
+                pass
+            s = prs.slides.add_slide(BLANK); _bg(s)
+            _header(s, "ROUTE MAP")
+            avail_w, avail_h = Inches(12.1), Inches(5.6)
+            scale = min(avail_w / iw, avail_h / ih)
+            w = int(iw * scale); h = int(ih * scale)
+            x = int((prs.slide_width - w) / 2); y = Inches(1.45)
+            s.shapes.add_picture(io.BytesIO(img_bytes), x, y, width=w, height=h)
+        except Exception:
+            pass
 
     # ---------- 4: Comms + Fuel ---------------------------------------
     s = prs.slides.add_slide(BLANK); _bg(s)

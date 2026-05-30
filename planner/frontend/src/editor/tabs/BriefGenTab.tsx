@@ -20,6 +20,7 @@ import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
 import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
+import { captureRouteImage, captureOverviewImage } from '../../kneeboard/captureRoute';
 import { useAiStore } from '../../ai/aiStore';
 import { generateCommandersIntent } from '../../ai/commandersIntent';
 import { generateFullBrief } from '../../ai/briefWriter';
@@ -76,6 +77,41 @@ export function BriefGenTab() {
   const [error, setError] = useState<string | null>(null);
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
+
+  // Per-flight brief editor (v1.13.x). Loaded on demand from the mission
+  // (build-package); when present, the package render uses THESE edited
+  // flights instead of regenerating fresh from the .miz. Each is a plain
+  // FlightBrief dict — we keep all server fields ([k]:any) and only surface
+  // tasking / fuel / notes for editing; route/timeline stay auto.
+  const [flightBriefs, setFlightBriefs] = useState<Record<string, any>[] | null>(null);
+  const [loadingFlights, setLoadingFlights] = useState(false);
+  const loadFlights = async () => {
+    if (!sessionId) return;
+    setLoadingFlights(true); setError(null);
+    try {
+      const res = await fetch('/api/brief/build-package', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load flights');
+      const pkg = await res.json();
+      setFlightBriefs(pkg.flights || []);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoadingFlights(false); }
+  };
+  const updateFlight = (i: number, patch: Record<string, any>) =>
+    setFlightBriefs((prev) => (prev ? prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)) : prev));
+
+  // Wing/cover overview map: all flight tracks + threat rings on one image,
+  // rendered client-side and attached to the wing brief as route_overview_base64
+  // (placed on a ROUTE OVERVIEW slide by the backend). Best-effort — never blocks.
+  const buildOverviewMap = async (): Promise<string> => {
+    try {
+      const st = useMissionStore.getState();
+      const url = await captureOverviewImage(st.groups, st.threats);
+      return url.split(',')[1] || '';
+    } catch { return ''; }
+  };
 
   // AI integration — BYOK Anthropic/Gemini. We read the active
   // provider's key + model from aiStore; if empty, the AI button
@@ -212,10 +248,11 @@ export function BriefGenTab() {
     if (!brief) return;
     setRendering(true); setError(null);
     try {
+      const route_overview_base64 = await buildOverviewMap();
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
+        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -261,12 +298,36 @@ export function BriefGenTab() {
       const pkg = await buildRes.json();
       // Override the auto-built wing with the user's edited one
       pkg.wing = brief;
+      // Use the user's EDITED per-flight briefs if they loaded them; otherwise
+      // the freshly-built ones. Either way `flights` is what we map + render.
+      const flights: Record<string, any>[] = (flightBriefs && flightBriefs.length)
+        ? flightBriefs : (pkg.flights || []);
+
+      // Step 1b: render a per-flight route map (client-side OL snapshot) and
+      // attach it so each flight brief gets a ROUTE MAP slide. Match each
+      // flight back to its mission group by group_name (fallback: callsign).
+      // Best-effort — a flight with no coords/group just skips its map.
+      try {
+        const groups = useMissionStore.getState().groups;
+        for (const fl of flights) {
+          const grp = groups.find((g) => g.groupName === fl.group_name)
+            || groups.find((g) => (g.units?.[0]?.name || g.groupName) === fl.callsign);
+          if (!grp) continue;
+          try {
+            const dataUrl = await captureRouteImage(grp);
+            fl.route_map_base64 = dataUrl.split(',')[1] || '';
+          } catch { /* no waypoints / capture failed — skip this flight's map */ }
+        }
+      } catch { /* maps are optional; never block the render */ }
+
+      // Step 1c: wing/cover overview map (all flight tracks + threat rings).
+      const route_overview_base64 = await buildOverviewMap();
 
       // Step 2: render the whole package as a ZIP
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: pkg.wing, flights: pkg.flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
+        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -996,6 +1057,50 @@ export function BriefGenTab() {
             </table>
           </Card>
 
+          <Card title="Per-Flight Briefs" right={
+            <button onClick={loadFlights} disabled={loadingFlights || !sessionId} style={btnSmall}>
+              {loadingFlights ? 'Loading…' : flightBriefs ? 'Reload from mission' : 'Load from mission'}
+            </button>
+          }>
+            {!flightBriefs ? (
+              <div style={{ fontSize: 13, color: '#aaa', padding: '2px 0', lineHeight: 1.5 }}>
+                Load the player flights to edit each one's <b>tasking</b>, <b>fuel</b> (joker/bingo/RTB) and
+                <b> notes</b> before render. Edits feed the per-flight brief slides; route &amp; timeline stay
+                auto from the .miz. (If you don't load them, flights are auto-built as before.)
+              </div>
+            ) : flightBriefs.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#aaa' }}>No player flights found in this mission.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {flightBriefs.map((f, i) => (
+                  <div key={i} style={{ border: '1px solid #3a3a3a', borderRadius: 4, padding: 10, background: '#1d1d1d' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, color: '#e8833a' }}>{f.callsign || `Flight ${i + 1}`}</span>
+                      <span style={{ color: '#aaa', fontSize: 12 }}>{f.aircraft} · ×{f.count}{f.role ? ` · ${f.role}` : ''}</span>
+                    </div>
+                    <Field label="Tasking">
+                      <textarea value={f.tasking || ''} onChange={(e) => updateFlight(i, { tasking: e.target.value })}
+                        rows={3} style={flTextarea} />
+                    </Field>
+                    <div style={{ display: 'flex', gap: 12, margin: '8px 0' }}>
+                      {([['fuel_joker_lbs', 'Joker'], ['fuel_bingo_lbs', 'Bingo'], ['fuel_rtb_lbs', 'RTB']] as const).map(([k, lbl]) => (
+                        <Field key={k} label={`${lbl} (lbs)`}>
+                          <input type="number" value={f[k] ?? 0}
+                            onChange={(e) => updateFlight(i, { [k]: Number(e.target.value) })}
+                            style={{ ...cellInput, width: 90 }} />
+                        </Field>
+                      ))}
+                    </div>
+                    <Field label="Notes">
+                      <textarea value={f.notes || ''} onChange={(e) => updateFlight(i, { notes: e.target.value })}
+                        rows={2} style={flTextarea} />
+                    </Field>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Card title="Comms" right={
             <button onClick={() => addRow('comms', { label: '', value: '' })} style={btnSmall}>+ Add</button>
           }>
@@ -1653,6 +1758,11 @@ const td: React.CSSProperties = { padding: '3px 4px', verticalAlign: 'middle' };
 const cellInput: React.CSSProperties = {
   width: '100%', background: '#1a1a1a', border: '1px solid #3a3a3a',
   color: '#e0e0e0', padding: '4px 6px', fontSize: 12, fontFamily: 'inherit',
+};
+const flTextarea: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', background: '#1a1a1a', border: '1px solid #3a3a3a',
+  color: '#e0e0e0', padding: '6px 8px', fontSize: 13, fontFamily: 'inherit',
+  borderRadius: 4, resize: 'vertical', lineHeight: 1.4,
 };
 const btnPrimary: React.CSSProperties = {
   background: '#2a2a2a', border: '1px solid #fbb941', color: '#fbb941',

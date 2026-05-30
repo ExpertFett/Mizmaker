@@ -29,6 +29,18 @@ testable in prod after "ship it"
   - ⚠️ Content is reference-level + carries a "verify vs NATOPS" disclaimer —
         as the instructor, check the figures/switchology and tell me any fixes
   - ☐ (deferred) auto-inject per flight's actual loadout — currently manual pick
+- ☐ **Per-flight brief route maps** (Brief tab → "Build from mission" → render
+      package as PPTX/PDF): each flight brief now has a **ROUTE MAP** slide with
+      that flight's route drawn (waypoints + legs). Check the map matches the
+      flight's route and renders on every flight.
+- ☐ **Wing ROUTE OVERVIEW map** (wing brief / package render): one slide with
+      ALL flight tracks (colored per flight + labels) + enemy threat rings on a
+      single map. Check it shows on the wing brief and looks right.
+- ☐ **Per-flight brief editor** (Brief tab → "Per-Flight Briefs" card → "Load
+      from mission"): edit a flight's tasking / fuel / notes → render package →
+      confirm the edits show on that flight's brief slides (route/timeline stay
+      auto). Not loading = flights auto-build as before.
+- ☐ **Homepage logo glow** (already viewable): soft orange halo behind the logo
 - ☐ **Missions-edited counter**: edit + download any mission → reload the
       homepage → footer shows `🎯 1 missions edited`
       (NOTE: local resets when the backend restarts — that's expected; it
