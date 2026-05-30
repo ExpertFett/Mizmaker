@@ -72,7 +72,7 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
 
   return (
     <div style={{
-      minHeight: '100vh', width: '100%', overflowY: 'auto',
+      minHeight: '100vh', width: '100%',
       background: PAGE_BG, color: TEXT,
       fontFamily: "'B612', system-ui, sans-serif",
     }}>

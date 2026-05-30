@@ -323,20 +323,35 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           </ul>
         </div>
 
-        {/* DCS:OPT Suite — sibling product links */}
-        <div style={{
-          marginTop: 24, padding: '14px 16px', textAlign: 'center',
-          borderTop: '1px solid #2a2a2a', fontSize: 12, color: '#888',
-        }}>
-          <span style={{ letterSpacing: 1.5, marginRight: 10 }}>PART OF THE DCS:OPT SUITE:</span>
-          <a href="https://dcsoptbot-production-0c4b.up.railway.app" target="_blank" rel="noreferrer"
-             style={{ color: '#e8833a', textDecoration: 'none', marginRight: 12 }}>
-            Ops Bot ↗
-          </a>
-          <a href="https://dcsoptreadyroom.up.railway.app" target="_blank" rel="noreferrer"
-             style={{ color: '#e8833a', textDecoration: 'none' }}>
-            Ready Room ↗
-          </a>
+        {/* DCS:OPT Suite — sibling product tiles (matches landing page style) */}
+        <div style={{ marginTop: 30, paddingTop: 24, borderTop: '1px solid #2a2a2a' }}>
+          <div style={{
+            fontSize: 12, fontWeight: 700, color: '#888', textAlign: 'center',
+            letterSpacing: 2, marginBottom: 14,
+          }}>
+            PART OF THE DCS:OPT SUITE
+          </div>
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {[
+              { name: 'Ops Bot',    desc: 'Discord moderation, scheduling, social alerts, server stats.', href: 'https://dcsoptbot-production-0c4b.up.railway.app' },
+              { name: 'Ready Room', desc: 'Squadron roster, qualifications, mission ops, attendance.',    href: 'https://dcsoptreadyroom.up.railway.app' },
+            ].map((p) => (
+              <a key={p.name} href={p.href} target="_blank" rel="noreferrer"
+                 style={{
+                   flex: '1 1 280px', maxWidth: 360, background: '#1a1a1a',
+                   border: '1px solid #2e2e2e', padding: '14px 18px', textDecoration: 'none',
+                   display: 'block', color: '#e0e0e0', transition: 'border-color 0.15s',
+                 }}
+                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#e8833a')}
+                 onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2e2e2e')}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#e8833a', marginBottom: 4 }}>
+                  DCS:OPT {p.name} <span style={{ color: '#888', fontSize: 11, fontWeight: 400 }}>↗</span>
+                </div>
+                <div style={{ fontSize: 13, color: '#9a9a9a', lineHeight: 1.5 }}>{p.desc}</div>
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>
