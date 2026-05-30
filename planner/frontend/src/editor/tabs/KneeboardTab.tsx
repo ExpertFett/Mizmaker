@@ -26,7 +26,7 @@ import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
 import { WeaponCard, weaponCardPageCount } from '../../kneeboard/WeaponCard';
-import { WEAPONS } from '../../kneeboard/weaponData';
+import { WEAPONS, matchWeaponsToLoadout } from '../../kneeboard/weaponData';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { kbThemeStyle, type KneeboardTheme } from '../../kneeboard/cardStyles';
 import { useSopStore } from '../../sop/sopStore';
@@ -42,6 +42,7 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
   { key: 'fuelLadder', label: 'Fuel Ladder', desc: 'Fuel burn per leg, joker/bingo' },
   { key: 'homePlate', label: 'Home Plate / Divert', desc: 'Departure field + nearest diverts' },
+  { key: 'weaponsAuto', label: 'Weapon Cards (auto)', desc: "Auto-inject employment cards for each flight's actual loadout (matched from pylons)" },
 ];
 
 const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
@@ -188,6 +189,19 @@ export function KneeboardTab() {
     if (cards.homePlate) {
       const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined, coordFormat });
       results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el, theme) });
+    }
+    if (cards.weaponsAuto) {
+      // Auto-inject one weapon-employment card per matched store from this
+      // flight's actual pylons (see weaponData.matches). Pylons live on the
+      // ClientUnit shape, so match the lead MissionUnit by unitId.
+      const leadId = g.units[0]?.unitId;
+      const lead = clientUnits.find((c) => c.unitId === leadId);
+      const pylonNames = (lead?.pylons || []).map((p) => p.name || '');
+      const ids = matchWeaponsToLoadout(pylonNames);
+      for (const id of ids) {
+        const el = createElement(WeaponCard, { weaponIds: [id], page: 0, overview: overview || undefined });
+        results.push({ name: `${safeName}_W_${id}.png`, blob: await renderCardToBlob(el, theme) });
+      }
     }
     return results;
   };
@@ -964,6 +978,19 @@ function CardCarousel({
           key: 'homePlate', label: 'Home Plate / Divert',
           element: createElement(HomePlateCard, { group: selectedGroup, airbases, overview: overview || undefined, coordFormat }),
         });
+      }
+      if (cards.weaponsAuto) {
+        // Preview entries: one card per weapon matched from this flight's pylons.
+        const leadId = selectedGroup.units[0]?.unitId;
+        const lead = clientUnits.find((c) => c.unitId === leadId);
+        const pylonNames = (lead?.pylons || []).map((p) => p.name || '');
+        const ids = matchWeaponsToLoadout(pylonNames);
+        for (const id of ids) {
+          list.push({
+            key: `weaponsAuto-${id}`, label: `Weapon · ${id.toUpperCase()}`,
+            element: createElement(WeaponCard, { weaponIds: [id], page: 0, overview: overview || undefined }),
+          });
+        }
       }
     }
 

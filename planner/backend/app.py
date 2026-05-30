@@ -160,6 +160,55 @@ def stats():
     return jsonify({"missions_edited": get_missions_edited()})
 
 
+@app.route("/api/roster/parse", methods=["POST"])
+def roster_parse():
+    """Parse a CSV/TSV/XLSX roster upload into {headers: [...], rows: [{header: value}]}.
+
+    Frontend RosterTab routes XLSX files here (CSV paste stays client-side).
+    XLSX needs openpyxl (declared in requirements.txt); if it's missing on a
+    deploy, returns a clear 503 so the frontend can surface a useful message.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    f = request.files["file"]
+    name = (f.filename or "").lower()
+    try:
+        if name.endswith(".csv") or name.endswith(".tsv"):
+            import csv, io as _io
+            text = f.read().decode("utf-8", errors="replace")
+            delim = "\t" if name.endswith(".tsv") else ","
+            rows_raw = [r for r in csv.reader(_io.StringIO(text), delimiter=delim)
+                        if any((c or "").strip() for c in r)]
+            if not rows_raw:
+                return jsonify({"headers": [], "rows": []})
+            headers = [h.strip() for h in rows_raw[0]]
+            rows = [{headers[i]: ((r[i] if i < len(r) else "") or "").strip()
+                     for i in range(len(headers))} for r in rows_raw[1:]]
+            return jsonify({"headers": headers, "rows": rows})
+        if name.endswith(".xlsx") or name.endswith(".xlsm"):
+            try:
+                import openpyxl
+            except ImportError:
+                return jsonify({"error": "XLSX support not installed on this deploy "
+                                         "(openpyxl missing). Use CSV instead."}), 503
+            import io as _io
+            wb = openpyxl.load_workbook(_io.BytesIO(f.read()), read_only=True, data_only=True)
+            ws = wb.active
+            rows_raw = []
+            for row in ws.iter_rows(values_only=True):
+                if any(c is not None and str(c).strip() for c in row):
+                    rows_raw.append([("" if c is None else str(c)) for c in row])
+            if not rows_raw:
+                return jsonify({"headers": [], "rows": []})
+            headers = [h.strip() for h in rows_raw[0]]
+            rows = [{headers[i]: (r[i] if i < len(r) else "").strip()
+                     for i in range(len(headers))} for r in rows_raw[1:]]
+            return jsonify({"headers": headers, "rows": rows})
+        return jsonify({"error": "Unsupported file type — use .csv or .xlsx"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Parse failed: {e}"}), 400
+
+
 # --------------------------------------------------------------------------
 # Upload — returns full mission data including 856-equivalent extraction
 # --------------------------------------------------------------------------

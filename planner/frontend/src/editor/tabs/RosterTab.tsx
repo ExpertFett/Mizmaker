@@ -94,16 +94,47 @@ export function RosterTab() {
       (a.groupName || '').localeCompare(b.groupName || '') || a.unitId - b.unitId);
   }, [clientUnits]);
 
-  const ingest = useCallback((text: string) => {
-    setRaw(text);
-    const { headers: h, rows: r } = parseCsv(text);
+  // Common post-parse: stash headers/rows, auto-detect column mapping, auto-match.
+  const applyParsed = useCallback((h: string[], r: Row[], label?: string) => {
     setHeaders(h); setRows(r);
     const detected = autoDetectCols(h);
     setCols(detected);
     autoMatch(r, detected);
     setApplied(false);
-    setParseMsg(r.length ? `Parsed ${r.length} roster row${r.length === 1 ? '' : 's'}, ${h.length} columns.` : 'No rows found — is this a CSV with a header line?');
+    setParseMsg(r.length
+      ? `Parsed ${r.length} roster row${r.length === 1 ? '' : 's'}, ${h.length} columns${label ? ` (${label})` : ''}.`
+      : 'No rows found — is this a CSV/XLSX with a header line?');
   }, [slots]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ingest = useCallback((text: string) => {
+    setRaw(text);
+    const { headers: h, rows: r } = parseCsv(text);
+    applyParsed(h, r);
+  }, [applyParsed]);
+
+  // File upload — route XLSX through the backend (needs openpyxl) and parse
+  // CSV/TSV client-side. Falls back to text() for unknown extensions.
+  const handleFile = useCallback(async (f: File) => {
+    const lower = (f.name || '').toLowerCase();
+    if (lower.endsWith('.xlsx') || lower.endsWith('.xlsm')) {
+      try {
+        const fd = new FormData(); fd.append('file', f);
+        const res = await fetch('/api/roster/parse', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({} as { error?: string }));
+          setParseMsg(err.error || `XLSX parse failed (HTTP ${res.status})`);
+          return;
+        }
+        const d = await res.json() as { headers: string[]; rows: Row[] };
+        setRaw(''); // XLSX has no plain-text representation to preview
+        applyParsed(d.headers || [], d.rows || [], 'XLSX');
+      } catch (e: any) {
+        setParseMsg(e?.message || 'XLSX upload failed');
+      }
+    } else {
+      ingest(await f.text());
+    }
+  }, [applyParsed, ingest]);
 
   // Auto-match: first by callsign equality, then sequential fill of remaining slots.
   const autoMatch = useCallback((r: Row[], detected: Record<ColKey, string>) => {
@@ -174,9 +205,9 @@ export function RosterTab() {
       {/* Upload / paste */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         <label style={btn}>
-          Upload CSV
-          <input type="file" accept=".csv,text/csv" style={{ display: 'none' }}
-                 onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(ingest); }} />
+          Upload CSV / XLSX
+          <input type="file" accept=".csv,.tsv,.xlsx,.xlsm,text/csv" style={{ display: 'none' }}
+                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         </label>
         <span style={{ fontSize: 12, color: MUTED }}>or paste below ·</span>
         {parseMsg && <span style={{ fontSize: 12, color: rows.length ? '#3fb950' : '#d8a657' }}>{parseMsg}</span>}

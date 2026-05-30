@@ -36,6 +36,11 @@ export interface KneeboardCards {
    *  (envelope, profile, switchology, mistakes). Which stores appear is
    *  driven by KneeboardSettings.weaponIds. Defaults OFF. */
   weaponsRef: boolean;
+  /** Auto-inject the weapon-employment cards PER FLIGHT based on each
+   *  flight's actual loadout (pylon item names matched via WeaponSpec.matches).
+   *  Independent of weaponsRef. Defaults OFF. Lands the right cards in each
+   *  aircraft's KNEEBOARD folder on .miz download — no manual picking. */
+  weaponsAuto: boolean;
 }
 
 export interface KneeboardSettings {
@@ -128,7 +133,7 @@ export const useEditStore = create<EditState>((set) => ({
       // Notes + weapon-reference cards default OFF — only emit them when the
       // planner has opted in (notes written / weapons picked), so an empty
       // card doesn't ride along in every download.
-      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false,
+      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false, weaponsAuto: false,
     },
   },
 

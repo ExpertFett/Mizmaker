@@ -33,4 +33,8 @@ supabase>=2.11,<2.16
 # Fernet encryption for stored server credentials (Olympus role passwords) —
 # see services/profile_crypto.py. Key in PROFILE_ENC_KEY (Railway env).
 cryptography>=42
+# XLSX roster upload — /api/roster/parse uses openpyxl to read .xlsx into
+# {headers, rows}. CSV stays stdlib. Lazy-imported; the endpoint returns 503
+# with a clear message if it's missing on a given deploy.
+openpyxl>=3.1
 

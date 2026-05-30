@@ -168,6 +168,23 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
           {error && <p style={{ color: '#d95050', marginTop: 12 }}>{error}</p>}
         </div>
 
+        {/* Secondary entry: jump straight into Live mode without a .miz —
+            Olympus groups are server/group-based and don't actually need
+            a mission. Adds ?live=1 to the URL; App.tsx routes to LiveTerminal. */}
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <button
+            onClick={() => { window.location.href = window.location.pathname + '?live=1'; }}
+            style={{
+              background: 'transparent', border: '1px solid #3a3a3a', color: '#aaaaaa',
+              padding: '8px 18px', borderRadius: 6, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 13,
+            }}
+            title="Open the multiplayer Live terminal (Olympus groups) without uploading a mission"
+          >
+            or → <span style={{ color: '#e0e0e0', fontWeight: 600 }}>Go Live without a mission</span>
+          </button>
+        </div>
+
         {/* AI Connection card — explains what BYOK is, why you might
             want it, and what it costs. Was previously a tiny button
             tucked in the top-right corner; promoted here so first-time

@@ -6,6 +6,7 @@ import { LandingPage } from './panels/LandingPage';
 import { MissionEditor } from './editor/MissionEditor';
 import { JoinSession } from './session/JoinSession';
 import { DiscordButton } from './panels/DiscordButton';
+import { LiveTerminal } from './editor/live/LiveTerminal';
 
 export default function App() {
   const sessionId = useMissionStore((s) => s.sessionId);
@@ -36,6 +37,9 @@ export default function App() {
   const path = window.location.pathname;
   const joinMatch = path.match(/^\/join\/([a-f0-9-]+)/);
   const joinToken = new URLSearchParams(window.location.search).get('token');
+  // ?live=1 → go straight to LiveTerminal without a .miz (Olympus groups don't
+  // need a mission). Honoured only when there's no editor session active.
+  const liveStandalone = new URLSearchParams(window.location.search).get('live') === '1';
 
   // Pick the active view. The Discord button is rendered alongside ALL views
   // (below) so it's visible everywhere in the program.
@@ -50,6 +54,8 @@ export default function App() {
   } else if (!user && !enteredAsGuest) {
     // Gate: landing/login page until the user logs in or chooses guest.
     view = <LandingPage authError={authError} authDetail={authDetail} />;
+  } else if (!sessionId && liveStandalone) {
+    view = <LiveStandalone />;
   } else if (!sessionId) {
     view = <UploadPanel />;
   } else {
@@ -61,5 +67,26 @@ export default function App() {
       {view}
       <DiscordButton />
     </>
+  );
+}
+
+/** Wrapper around LiveTerminal for the no-mission entry path (?live=1): adds a
+ *  small "Back to Upload" header so the user can return to the file picker
+ *  without manually editing the URL. */
+function LiveStandalone() {
+  const back = () => {
+    const u = new URL(window.location.href);
+    u.searchParams.delete('live');
+    window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+    window.location.reload();
+  };
+  return (
+    <div style={{ minHeight: '100vh', background: '#141414' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={back} style={{ background: 'transparent', border: '1px solid #4a4a4a', color: '#cccccc', padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, borderRadius: 4 }}>← Back to Upload</button>
+        <span style={{ fontSize: 13, color: '#888' }}>Live mode · no mission loaded</span>
+      </div>
+      <LiveTerminal />
+    </div>
   );
 }

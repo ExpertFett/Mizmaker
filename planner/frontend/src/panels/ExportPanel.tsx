@@ -12,6 +12,8 @@ import { FuelLadderCard } from '../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../kneeboard/AirbaseRefCard';
+import { WeaponCard } from '../kneeboard/WeaponCard';
+import { matchWeaponsToLoadout } from '../kneeboard/weaponData';
 import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
@@ -154,6 +156,22 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
               createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));
+
+          // Auto-inject weapon-employment cards per this flight's loadout.
+          // Scans the lead unit's pylons (matched via ClientUnit by unitId,
+          // since pylons don't live on MissionUnit), matches WeaponSpec.matches
+          // patterns, injects one card per matched store into this flight's
+          // aircraft folder. Independent of the manual weaponsRef shared card.
+          if (cards.weaponsAuto) {
+            const leadId = g.units[0]?.unitId;
+            const lead = clientUnits.find((c) => c.unitId === leadId);
+            const pylonNames = (lead?.pylons || []).map((p) => p.name || '');
+            const ids = matchWeaponsToLoadout(pylonNames);
+            for (const id of ids) {
+              await addCard(aircraftType, `${safeName}_W_${id}.png`,
+                createElement(WeaponCard, { weaponIds: [id], page: 0 }));
+            }
+          }
         } catch (e) {
           console.error(`Kneeboard render failed for ${g.groupName}:`, e);
         }
