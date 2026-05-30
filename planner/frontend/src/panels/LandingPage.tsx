@@ -174,6 +174,37 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
         </div>
       </div>
 
+      {/* DCS:OPT Suite — sibling products */}
+      <div style={{ maxWidth: 1040, margin: '24px auto 0', padding: '20px 24px 4px' }}>
+        <div style={{
+          fontSize: 12, fontWeight: 700, color: MUTED, textAlign: 'center',
+          letterSpacing: 2, marginBottom: 14,
+        }}>
+          PART OF THE DCS:OPT SUITE
+        </div>
+        <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[
+            { name: 'Ops Bot',    desc: 'Discord moderation, scheduling, social alerts, server stats.',  href: 'https://dcsoptbot-production-0c4b.up.railway.app' },
+            { name: 'Ready Room', desc: 'Squadron roster, qualifications, mission ops, attendance.',     href: 'https://dcsoptreadyroom.up.railway.app' },
+          ].map((p) => (
+            <a key={p.name} href={p.href} target="_blank" rel="noreferrer"
+               style={{
+                 flex: '1 1 280px', maxWidth: 360, background: CARD_BG,
+                 border: `1px solid ${BORDER}`, padding: '14px 18px', textDecoration: 'none',
+                 display: 'block', color: TEXT, transition: 'border-color 0.15s',
+               }}
+               onMouseEnter={(e) => (e.currentTarget.style.borderColor = ACCENT)}
+               onMouseLeave={(e) => (e.currentTarget.style.borderColor = BORDER)}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: ACCENT, marginBottom: 4 }}>
+                DCS:OPT {p.name} <span style={{ color: MUTED, fontSize: 11, fontWeight: 400 }}>↗</span>
+              </div>
+              <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.5 }}>{p.desc}</div>
+            </a>
+          ))}
+        </div>
+      </div>
+
       {/* Footer */}
       <div style={{
         maxWidth: 1040, margin: '40px auto 0', padding: '20px 24px 40px',

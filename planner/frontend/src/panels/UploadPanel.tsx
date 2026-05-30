@@ -322,6 +322,22 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
             <li><strong style={{ color: '#ffffff' }}>Elevation</strong> — SRTM terrain data with MGRS grid</li>
           </ul>
         </div>
+
+        {/* DCS:OPT Suite — sibling product links */}
+        <div style={{
+          marginTop: 24, padding: '14px 16px', textAlign: 'center',
+          borderTop: '1px solid #2a2a2a', fontSize: 12, color: '#888',
+        }}>
+          <span style={{ letterSpacing: 1.5, marginRight: 10 }}>PART OF THE DCS:OPT SUITE:</span>
+          <a href="https://dcsoptbot-production-0c4b.up.railway.app" target="_blank" rel="noreferrer"
+             style={{ color: '#e8833a', textDecoration: 'none', marginRight: 12 }}>
+            Ops Bot ↗
+          </a>
+          <a href="https://dcsoptreadyroom.up.railway.app" target="_blank" rel="noreferrer"
+             style={{ color: '#e8833a', textDecoration: 'none' }}>
+            Ready Room ↗
+          </a>
+        </div>
       </div>
     </div>
   );
