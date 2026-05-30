@@ -55,11 +55,15 @@ export const PLANNER_TAB_IDS: ReadonlySet<string> = new Set([
   'threats', 'dmpi', 'rangePlan',
   // FLIGHTS — loadout + DTC
   'weapons', 'dtc',
+  // OUTPUT — kneeboard preview/export (added 2026-05-27 per Fett: planners need
+  // to see/produce kneeboards inside the planning face too, not bounce out to
+  // Editing for the artefact they're trying to build).
+  'kneeboard',
   // UTIL — let the planner load a different mission
   'upload',
-  // NOTE: SOP / SOP Check / Goals / Visibility / Datalink / Radio / Kneeboard /
-  // Brief are intentionally Editing-only — the mission editor handles those
-  // before (and after) planning. Bomb Wind was removed from the app entirely.
+  // NOTE: SOP / SOP Check / Goals / Visibility / Datalink / Radio / Brief are
+  // still Editing-only — the mission editor handles those before (and after)
+  // planning. Bomb Wind was removed from the app entirely.
 ]);
 
 /* -------------------------------------------------------------------------
