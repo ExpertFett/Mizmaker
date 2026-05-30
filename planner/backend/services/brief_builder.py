@@ -233,6 +233,10 @@ class WingBrief:
     # text floats below (or over a dark gradient on) the image. Empty
     # default so missions without a cover image use a text-only layout.
     cover_image_base64: str = ""
+    # AI-generated 2-4 sentence threat paragraph (v1.15.x). Rendered above the
+    # surface-threats table when present. User-editable like the other prose
+    # sections; defaults empty so old missions/clients without it still render.
+    threat_narrative: str = ""
 
 
 # ---------------------------------------------------------------------------

@@ -1005,6 +1005,17 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                  f"{wez_nm:.0f} nm  ({wez_km:.0f} km)" if wez_nm > 0 else "—",
                  size=12, color=LIGHT)
 
+    # ---------- Slide 4c: Threat brief (AI prose, optional) --------------
+    # Short paragraph that frames the threat picture for the lead before the
+    # detailed surface/air tables. Empty by default — only renders when the
+    # planner / AI fills it in. (v1.15.x)
+    tn = (brief.get("threat_narrative") or "").strip()
+    if tn:
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "THREAT BRIEF")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             tn, size=18, color=LIGHT)
+
     if threats_list:
         # 7 rows × 0.65" = 4.55" of rows + 0.7" header headroom = 5.25"
         # plus the 1.7" header zone = 6.95" total — fits in 7.5" slide.

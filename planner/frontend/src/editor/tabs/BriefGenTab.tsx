@@ -23,6 +23,7 @@ import { isPlayerGroup } from '../../utils/groups';
 import { captureRouteImage, captureOverviewImage } from '../../kneeboard/captureRoute';
 import { useAiStore } from '../../ai/aiStore';
 import { generateCommandersIntent } from '../../ai/commandersIntent';
+import { generateThreatNarrative } from '../../ai/threatNarrative';
 import { generateFullBrief } from '../../ai/briefWriter';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
@@ -48,6 +49,7 @@ interface WingBrief {
   theatre_overview: string;
   scenario: string;
   commanders_intent: string;
+  threat_narrative: string;
   mission_flow: string;
   notes: string;
   timeline: TimelineRow[];
@@ -382,6 +384,32 @@ export function BriefGenTab() {
       setError(`AI intent generation failed: ${e.message}`);
     } finally {
       setAiBusy(false);
+    }
+  };
+
+  // AI: regenerate Threat Brief paragraph ------------------------------------
+  // Short 2-4 sentence threat prose for the THREAT BRIEF slide (v1.15.x).
+  const [aiThreatBusy, setAiThreatBusy] = useState(false);
+  const [aiThreatNote, setAiThreatNote] = useState<string | null>(null);
+  const handleAiThreatNarrative = async () => {
+    if (!brief) return;
+    if (!aiKey) { setAiOpen(true); return; }
+    setAiThreatBusy(true); setError(null); setAiThreatNote(null);
+    try {
+      const result = await generateThreatNarrative(aiProvider, aiKey, aiModel, {
+        mission_name: brief.mission_name,
+        theater: brief.theater,
+        flights: brief.flights as any,
+        threats: brief.threats as any,
+        air_threats: brief.air_threats as any,
+        playerCoalition: brief.coalition,
+      });
+      setBrief((b) => (b ? { ...b, threat_narrative: result.text } : null));
+      setAiThreatNote(`Generated via ${result.model} · ${result.usage.input_tokens} in / ${result.usage.output_tokens} out tokens.`);
+    } catch (e: any) {
+      setError(`AI threat narrative failed: ${e.message}`);
+    } finally {
+      setAiThreatBusy(false);
     }
   };
 
@@ -952,6 +980,52 @@ export function BriefGenTab() {
                 Bring your own Anthropic or Gemini key to auto-generate
                 a tailored intent. Without a key the templated starter
                 above stays — fully editable.
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Threat Brief (AI)"
+            right={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  onClick={handleAiThreatNarrative}
+                  disabled={aiThreatBusy}
+                  style={{
+                    ...btnSmall,
+                    background: aiKey ? '#2a2418' : '#2a2a2a',
+                    borderColor: aiKey ? '#fbb941' : '#4a4a4a',
+                    color: aiKey ? '#fbb941' : '#cccccc',
+                    opacity: aiThreatBusy ? 0.6 : 1,
+                  }}
+                  title={aiKey
+                    ? `Generate via ${aiProvider} (${aiModel}). Uses your BYOK key.`
+                    : 'No AI key configured. Click to open AI Settings.'}
+                >
+                  {aiThreatBusy ? 'Thinking…' : aiKey ? '✨ Generate with AI' : '✨ Set up AI'}
+                </button>
+              </div>
+            }
+          >
+            <textarea
+              value={brief.threat_narrative || ''}
+              onChange={(e) => { set('threat_narrative', e.target.value); setAiThreatNote(null); }}
+              placeholder="2-4 sentence summary of the threat picture — dominant threat type, where it sits in the AO, recommended counter, priority targets. Renders above the threats table on its own brief slide."
+              rows={4}
+              style={{
+                width: '100%', background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4,
+                color: '#e0e0e0', fontSize: 13, padding: '8px', fontFamily: 'inherit',
+                lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box',
+              }}
+            />
+            {aiThreatNote && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#fbb941', fontFamily: "'B612 Mono', monospace" }}>
+                {aiThreatNote}
+              </div>
+            )}
+            {!aiKey && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#888888' }}>
+                Bring your own Anthropic or Gemini key to auto-generate the threat paragraph.
               </div>
             )}
           </Card>
