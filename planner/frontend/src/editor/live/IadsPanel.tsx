@@ -32,8 +32,8 @@ const KIND_ORDER: IadsKind[] = ['ewr', 'area', 'shorad'];
 export function IadsPanel({ group, profile, area, shape, onShape, onRadius, onUndoVertex, onClear, onClose }: {
   group: GroupSummary; profile: ServerProfile;
   area: IadsArea | null;
-  shape: 'circle' | 'polygon';
-  onShape: (s: 'circle' | 'polygon') => void;
+  shape: 'circle' | 'polygon' | 'freehand';
+  onShape: (s: 'circle' | 'polygon' | 'freehand') => void;
   onRadius: (nm: number) => void;
   onUndoVertex: () => void;
   onClear: () => void;
@@ -126,10 +126,11 @@ export function IadsPanel({ group, profile, area, shape, onShape, onRadius, onUn
         {/* Shape toggle */}
         <Row label="Area">
           <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' }}>
-            {(['circle', 'polygon'] as const).map((s) => (
+            {(['circle', 'polygon', 'freehand'] as const).map((s) => (
               <button key={s} onClick={() => onShape(s)}
-                      style={{ background: shape === s ? C.accentDim : 'transparent', color: shape === s ? '#cfe6ff' : C.dim, border: 'none', padding: '4px 14px', cursor: 'pointer', fontSize: 12, fontWeight: shape === s ? 700 : 400, fontFamily: 'inherit' }}>
-                {s === 'circle' ? '◎ Circle' : '⬡ Polygon'}
+                      title={s === 'freehand' ? 'Drag on the map to draw a freeform area' : undefined}
+                      style={{ background: shape === s ? C.accentDim : 'transparent', color: shape === s ? '#cfe6ff' : C.dim, border: 'none', padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: shape === s ? 700 : 400, fontFamily: 'inherit' }}>
+                {s === 'circle' ? '◎ Circle' : s === 'polygon' ? '⬡ Polygon' : '✎ Freehand'}
               </button>
             ))}
           </div>
@@ -140,7 +141,9 @@ export function IadsPanel({ group, profile, area, shape, onShape, onRadius, onUn
           <div style={{ fontSize: 12, color: C.accent, lineHeight: 1.5, background: C.accentDim, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px' }}>
             {shape === 'circle'
               ? 'Click the map to drop the IADS centre, then set a radius.'
-              : `Click the map to add polygon vertices (${polyVerts}/3 min).`}
+              : shape === 'polygon'
+                ? `Click the map to add polygon vertices (${polyVerts}/3 min).`
+                : 'Drag on the map to draw a freeform area (release to finish).'}
             {shape === 'polygon' && polyVerts > 0 && (
               <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 <button onClick={onUndoVertex} style={{ ...mbtn, flex: 1, padding: '4px' }}>Undo</button>

@@ -29,6 +29,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import { getDistance } from 'ol/sphere';
 import { Style, Circle as CircleStyle, RegularShape, Fill, Stroke, Text } from 'ol/style';
 import { boundingExtent } from 'ol/extent';
+import Draw from 'ol/interaction/Draw';
 import 'ol/ol.css';
 import {
   getTelemetry, sendCommand, getUnitDatabase, can, ROLE_LABEL,
@@ -384,7 +385,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [mode, setMode] = useState<'select' | 'spawn' | 'iads'>('select');
   // IADS generator drawn area. Circle: centre + radius. Polygon: vertex list.
   // Clicks in 'iads' mode set the centre (circle) or append a vertex (polygon).
-  const [iadsShape, setIadsShape] = useState<'circle' | 'polygon'>('circle');
+  const [iadsShape, setIadsShape] = useState<'circle' | 'polygon' | 'freehand'>('circle');
   const [iadsCircle, setIadsCircle] = useState<{ lat: number; lng: number; radiusNm: number } | null>(null);
   const [iadsPoly, setIadsPoly] = useState<{ lat: number; lng: number }[]>([]);
   // Unified area for the panel/generator (null until something is drawn).
@@ -457,9 +458,40 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     place: (lat: number, lng: number) => placeFnRef.current?.(lat, lng),
     onIads: (lat: number, lng: number) => {
       if (iadsShape === 'circle') setIadsCircle((prev) => ({ lat, lng, radiusNm: prev?.radiusNm ?? 30 }));
-      else setIadsPoly((prev) => [...prev, { lat, lng }]);
+      else if (iadsShape === 'polygon') setIadsPoly((prev) => [...prev, { lat, lng }]);
+      // 'freehand': OL Draw interaction handles drag-to-draw; clicks do nothing.
     },
   };
+
+  // Freehand polygon: while in iads + freehand mode, attach OL's built-in Draw
+  // interaction (type:'Polygon', freehand:true) — drag-to-draw a continuous path.
+  // On finish, convert the projected ring to lat/lng verts and store in iadsPoly
+  // so the existing render + generator pipeline takes over unchanged.
+  useEffect(() => {
+    const map = mapRef.current; const src = iadsSrcRef.current;
+    if (!map || !src) return;
+    if (mode !== 'iads' || iadsShape !== 'freehand') return;
+    const draw = new Draw({ source: src, type: 'Polygon', freehand: true });
+    draw.on('drawend', (e: any) => {
+      const geom = e.feature?.getGeometry?.();
+      if (!geom) return;
+      const ring = geom.getCoordinates()[0] as number[][];
+      const verts: { lat: number; lng: number }[] = ring.map((c) => {
+        const ll = toLonLat(c);
+        return { lat: ll[1], lng: ll[0] };
+      });
+      // OL's Polygon ring repeats its first point at the end — drop the dup.
+      if (verts.length > 1) {
+        const a = verts[0], b = verts[verts.length - 1];
+        if (Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9) verts.pop();
+      }
+      setIadsPoly(verts);
+      // Remove the draw so the next mode/shape change doesn't stack interactions.
+      map.removeInteraction(draw);
+    });
+    map.addInteraction(draw);
+    return () => { map.removeInteraction(draw); };
+  }, [mode, iadsShape]);
 
   // Draw the IADS generator area overlay. Circle radius is lat-corrected so the
   // projected circle matches the real ground radius used to distribute sites.
