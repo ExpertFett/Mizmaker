@@ -81,8 +81,17 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
         maxWidth: 920, margin: '0 auto', padding: '64px 24px 40px',
         textAlign: 'center',
       }}>
-        <img src="/logo.png" alt="DCS:OPT"
-             style={{ width: 460, maxWidth: '90%', height: 'auto', margin: '0 auto 14px', display: 'block' }} />
+        {/* Logo with a soft orange brand halo behind it */}
+        <div style={{ position: 'relative', width: 460, maxWidth: '90%', margin: '0 auto 14px' }}>
+          <div aria-hidden style={{
+            position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
+            width: '88%', height: '160%', zIndex: 0, pointerEvents: 'none',
+            background: 'radial-gradient(ellipse at center, rgba(232,131,58,0.38) 0%, rgba(232,131,58,0.13) 38%, rgba(232,131,58,0) 70%)',
+            filter: 'blur(20px)',
+          }} />
+          <img src="/logo.png" alt="DCS:OPT"
+               style={{ position: 'relative', zIndex: 1, width: '100%', height: 'auto', display: 'block' }} />
+        </div>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
           <span style={{
             fontSize: 12, fontWeight: 800, letterSpacing: 3, color: '#141414',
