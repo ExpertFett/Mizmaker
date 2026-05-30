@@ -27,6 +27,9 @@ import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
 import { WeaponCard, weaponCardPageCount } from '../../kneeboard/WeaponCard';
 import { WEAPONS, matchWeaponsToLoadout } from '../../kneeboard/weaponData';
+import { PopupAttackCard } from '../../kneeboard/PopupAttackCard';
+import type { PopupAttackInput } from '../../utils/popupAttack';
+import { PopupAttackEditor } from './PopupAttackEditor';
 import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { kbThemeStyle, type KneeboardTheme } from '../../kneeboard/cardStyles';
 import { useSopStore } from '../../sop/sopStore';
@@ -57,6 +60,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
   { key: 'weaponsRef', label: 'Weapon Reference', desc: 'Per-store employment, switchology, mistakes — pick stores below' },
+  { key: 'popupAttack', label: 'Popup Attack Profiles', desc: 'Physics-based popup/lay-down side-profile cards — define profiles below' },
 ];
 
 // Cards that have a NOTES box the planner can fill with typed notes.
@@ -126,6 +130,7 @@ export function KneeboardTab() {
   // NOTES box renders cardNotes[key] when set.
   const cardNotes = kneeboardSettings.cardNotes ?? {};
   const weaponIds = kneeboardSettings.weaponIds ?? [];
+  const popupAttacks = kneeboardSettings.popupAttacks ?? [];
   // Day/night color scheme (v0.9.74). Default 'night' for settings
   // objects that pre-date the field.
   const theme: KneeboardTheme = kneeboardSettings.theme ?? 'night';
@@ -291,6 +296,14 @@ export function KneeboardTab() {
       for (let p = 0; p < pageCount; p++) {
         const el = createElement(WeaponCard, { weaponIds, page: p, overview: overview || undefined });
         results.push({ name: `Weapon_${p + 1}.png`, blob: await renderCardToBlob(el, theme) });
+      }
+    }
+    if (cards.popupAttack && popupAttacks.length > 0) {
+      const total = popupAttacks.length;
+      for (let i = 0; i < total; i++) {
+        const el = createElement(PopupAttackCard, { input: popupAttacks[i], overview: overview || undefined, index: i + 1, total });
+        const safe = (popupAttacks[i].name || `Attack_${i + 1}`).replace(/\s+/g, '_');
+        results.push({ name: `Popup_${i + 1}_${safe}.png`, blob: await renderCardToBlob(el, theme) });
       }
     }
     return results;
@@ -794,6 +807,14 @@ export function KneeboardTab() {
         </div>
       )}
 
+      {/* Popup Attack profile editor — appears when the card type is on. */}
+      {cards.popupAttack && (
+        <PopupAttackEditor
+          profiles={popupAttacks}
+          onChange={(next) => setKneeboardSettings({ popupAttacks: next })}
+        />
+      )}
+
       {/* Rebuild bar — sits between the settings panel and the
           carousel. Bumps `rebuildAt` which both re-mounts the
           carousel (key prop) and refreshes the timestamp the user
@@ -865,6 +886,7 @@ export function KneeboardTab() {
         notesTitle={notesTitle}
         cardNotes={cardNotes}
         weaponIds={weaponIds}
+        popupAttacks={popupAttacks}
         theme={theme}
       />
     </div>
@@ -899,6 +921,7 @@ interface CarouselProps {
   notesTitle: string;
   cardNotes: Record<string, string>;
   weaponIds: string[];
+  popupAttacks: PopupAttackInput[];
   theme: KneeboardTheme;
 }
 
@@ -920,6 +943,7 @@ function CardCarousel({
   notesTitle,
   cardNotes,
   weaponIds,
+  popupAttacks,
   theme,
 }: CarouselProps) {
   const [cardIndex, setCardIndex] = useState(0);
@@ -1085,9 +1109,19 @@ function CardCarousel({
         });
       }
     }
+    if (cards.popupAttack && popupAttacks.length > 0) {
+      const total = popupAttacks.length;
+      for (let i = 0; i < total; i++) {
+        list.push({
+          key: `popupAttack-${i}`,
+          label: `Popup · ${popupAttacks[i].name || `Attack ${i + 1}`}${total > 1 ? ` (${i + 1}/${total})` : ''}`,
+          element: createElement(PopupAttackCard, { input: popupAttacks[i], overview: overview || undefined, index: i + 1, total }),
+        });
+      }
+    }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, weaponIds]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, weaponIds, popupAttacks]);
 
   // Clamp index when list changes
   useEffect(() => {
@@ -1220,3 +1254,4 @@ function CardCarousel({
     </div>
   );
 }
+

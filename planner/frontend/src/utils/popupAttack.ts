@@ -1,0 +1,185 @@
+/**
+ * Popup attack geometry — physics-based reference-point calculator.
+ *
+ * Given target / popup / dive / release / ingress parameters, computes the
+ * along-track distance and altitude of each key reference point so the side
+ * profile chart and kneeboard card can render the attack run honestly. Math
+ * is intentionally simple (constant climb/dive angles, no weapon ballistics,
+ * no terrain) — these are PLANNING figures, not a sim solver. Instructors can
+ * tweak numbers; aircrew use the chart for the geometry, not the precise drop
+ * solution.
+ *
+ * Reference points (acronyms used in the card legend):
+ *   IP   — Initial Point (display anchor, before the run-in)
+ *   AP   — Action Point / Visual IP — pilot pulls up here
+ *   PDP  — Pull-Down Point — apex of the climb, roll into the dive
+ *   RP   — Release Point
+ *   TGT  — Target (ground)
+ *   REC  — Recovery / egress complete
+ */
+
+export type AttackType = 'type1' | 'laydown';
+
+export const ATTACK_TYPE_LABEL: Record<AttackType, string> = {
+  type1: 'Type 1 Popup',
+  laydown: 'Lay-Down',
+};
+
+export interface PopupAttackInput {
+  attackType: AttackType;
+  /** Free-text label so a mission with multiple profiles can name each one. */
+  name?: string;
+  /** Target ground elevation in feet MSL. */
+  targetElevationFt: number;
+  /** Distance from target to the Action Point along the attack run (NM). */
+  vipDistanceNm: number;
+  /** Apex altitude reached during the climb, in feet MSL. */
+  popupAltitudeFtMsl: number;
+  /** Climb angle held during the popup (deg). */
+  popupAngleDeg: number;
+  /** Ingress heading offset from target heading (deg) — for note only; the
+   *  side profile is along-track and doesn't visualise the lateral offset. */
+  angleOffsetDeg: number;
+  diveAngleDeg: number;
+  /** Release altitude above target ground (ft AGL). */
+  releaseAltitudeFtAgl: number;
+  releaseSpeedKts: number;
+  ingressAltitudeFtAgl: number;
+  ingressSpeedKts: number;
+  /** Recovery (post-pull-out) altitude above target (ft AGL).
+   *  Defaults to ingressAltitudeFtAgl when omitted — back to deck. */
+  recoveryAltitudeFtAgl?: number;
+}
+
+export interface AttackPoint {
+  label: string;
+  distanceNm: number;       // along-track from chart origin (the Start point)
+  altitudeFtMsl: number;
+  /** Short caption for the chart marker / table row. */
+  note?: string;
+}
+
+export interface PopupAttackProfile {
+  input: PopupAttackInput;
+  /** Ordered along-track waypoints — connect with straight segments for the
+   *  side-profile chart. Last entry is the recovery / egress point. */
+  points: AttackPoint[];
+  totals: {
+    ingressDisplayNm: number;
+    popupDistanceNm: number;
+    diveDistanceNm: number;
+    recoveryDistanceNm: number;
+    timeToTargetSec: number;
+  };
+}
+
+const FT_PER_NM = 6076.115;
+const INGRESS_DISPLAY_NM = 5; // visual run-in shown before the Action Point
+
+/** Compute a popup attack profile from its input parameters. Pure function —
+ *  always safe to call; physically nonsensical inputs (e.g. negative climb
+ *  angle, popup altitude below ingress) won't throw but produce a degenerate
+ *  profile the chart will still render. */
+export function computePopupAttack(input: PopupAttackInput): PopupAttackProfile {
+  const tElev = input.targetElevationFt;
+  const ingressMsl = tElev + input.ingressAltitudeFtAgl;
+  const releaseMsl = tElev + input.releaseAltitudeFtAgl;
+  const recoveryAgl = input.recoveryAltitudeFtAgl ?? input.ingressAltitudeFtAgl;
+  const recoveryMsl = tElev + recoveryAgl;
+
+  const points: AttackPoint[] = [];
+
+  // Start / IP marker — a 5 NM run-in for chart context.
+  points.push({ label: 'IP', distanceNm: 0, altitudeFtMsl: ingressMsl, note: `${input.ingressSpeedKts} kt` });
+
+  // Action Point (Visual IP) — pull-up here.
+  const apDist = INGRESS_DISPLAY_NM;
+  points.push({
+    label: 'AP', distanceNm: apDist, altitudeFtMsl: ingressMsl,
+    note: input.attackType === 'laydown' ? 'Visual IP' : `Pull up ${input.popupAngleDeg}°`,
+  });
+
+  if (input.attackType === 'laydown') {
+    // Lay-down: ingress altitude through to release (over target).
+    const tgtDist = apDist + Math.max(0, input.vipDistanceNm);
+    points.push({
+      label: 'RP', distanceNm: tgtDist, altitudeFtMsl: releaseMsl,
+      note: `${input.releaseSpeedKts} kt level`,
+    });
+    points.push({ label: 'TGT', distanceNm: tgtDist, altitudeFtMsl: tElev, note: 'Target' });
+    const recDist = tgtDist + 1.5;
+    points.push({ label: 'REC', distanceNm: recDist, altitudeFtMsl: recoveryMsl, note: 'Egress' });
+    return {
+      input, points,
+      totals: {
+        ingressDisplayNm: INGRESS_DISPLAY_NM,
+        popupDistanceNm: 0,
+        diveDistanceNm: 0,
+        recoveryDistanceNm: 1.5,
+        timeToTargetSec: (Math.max(0, input.vipDistanceNm) / Math.max(1, input.ingressSpeedKts)) * 3600,
+      },
+    };
+  }
+
+  // Type 1 popup geometry.
+  const popupVertFt = input.popupAltitudeFtMsl - ingressMsl;
+  const popupHorizFt = popupVertFt / Math.tan((Math.max(1, input.popupAngleDeg) * Math.PI) / 180);
+  const popupHorizNm = Math.max(0, popupHorizFt / FT_PER_NM);
+  const pdpDist = apDist + popupHorizNm;
+  points.push({
+    label: 'PDP', distanceNm: pdpDist, altitudeFtMsl: input.popupAltitudeFtMsl,
+    note: `Apex · roll & pull ${input.diveAngleDeg}°`,
+  });
+
+  const diveVertFt = input.popupAltitudeFtMsl - releaseMsl;
+  const diveHorizFt = diveVertFt / Math.tan((Math.max(1, input.diveAngleDeg) * Math.PI) / 180);
+  const diveHorizNm = Math.max(0, diveHorizFt / FT_PER_NM);
+  const rpDist = pdpDist + diveHorizNm;
+  points.push({
+    label: 'RP', distanceNm: rpDist, altitudeFtMsl: releaseMsl,
+    note: `${input.releaseSpeedKts} kt · ${input.diveAngleDeg}° dive`,
+  });
+
+  // Target — approximated 0.5 NM past release on the chart (weapon ballistics
+  // are out of scope; the marker is there so the chart shows the target
+  // ground point relative to the release).
+  const tgtDist = rpDist + 0.5;
+  points.push({ label: 'TGT', distanceNm: tgtDist, altitudeFtMsl: tElev, note: 'Target' });
+
+  const recDist = tgtDist + 1.5;
+  points.push({ label: 'REC', distanceNm: recDist, altitudeFtMsl: recoveryMsl, note: 'Egress' });
+
+  const avgSpeed = (input.ingressSpeedKts + input.releaseSpeedKts) / 2;
+  const totalRunNm = tgtDist - INGRESS_DISPLAY_NM;
+  const ttt = (totalRunNm / Math.max(1, avgSpeed)) * 3600;
+
+  return {
+    input, points,
+    totals: {
+      ingressDisplayNm: INGRESS_DISPLAY_NM,
+      popupDistanceNm: popupHorizNm,
+      diveDistanceNm: diveHorizNm,
+      recoveryDistanceNm: 1.5,
+      timeToTargetSec: ttt,
+    },
+  };
+}
+
+/** A sensible starter set for a fresh profile. */
+export function defaultPopupAttack(name = 'Attack 1'): PopupAttackInput {
+  return {
+    attackType: 'type1',
+    name,
+    targetElevationFt: 100,
+    vipDistanceNm: 8,
+    popupAltitudeFtMsl: 8000,
+    popupAngleDeg: 40,
+    angleOffsetDeg: 25,
+    diveAngleDeg: 30,
+    releaseAltitudeFtAgl: 2000,
+    releaseSpeedKts: 480,
+    ingressAltitudeFtAgl: 500,
+    ingressSpeedKts: 480,
+    recoveryAltitudeFtAgl: 500,
+  };
+}

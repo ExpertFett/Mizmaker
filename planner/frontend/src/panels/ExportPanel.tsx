@@ -14,6 +14,7 @@ import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../kneeboard/AirbaseRefCard';
 import { WeaponCard } from '../kneeboard/WeaponCard';
 import { matchWeaponsToLoadout } from '../kneeboard/weaponData';
+import { PopupAttackCard } from '../kneeboard/PopupAttackCard';
 import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
@@ -239,6 +240,18 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
               title: kneeboardSettings.notesTitle ?? '',
               squadron: activeSop?.squadron, overview: overview || undefined,
             }));
+        // Popup attack profiles (one card per profile). Lands in the SHARED
+        // KNEEBOARD/IMAGES folder — they're mission-level reference, not
+        // per-aircraft.
+        const popupAttacks = kneeboardSettings.popupAttacks ?? [];
+        if (cards.popupAttack && popupAttacks.length > 0) {
+          const total = popupAttacks.length;
+          for (let i = 0; i < total; i++) {
+            const safe = (popupAttacks[i].name || `Attack_${i + 1}`).replace(/\s+/g, '_');
+            await addCard(sharedType, `Popup_${i + 1}_${safe}.png`,
+              createElement(PopupAttackCard, { input: popupAttacks[i], overview: overview || undefined, index: i + 1, total }));
+          }
+        }
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
       }

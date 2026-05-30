@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { WaypointEdit, UnitEdit } from '../types/mission';
+import type { PopupAttackInput } from '../utils/popupAttack';
 
 export interface KneeboardCards {
   // Per-flight cards
@@ -41,6 +42,10 @@ export interface KneeboardCards {
    *  Independent of weaponsRef. Defaults OFF. Lands the right cards in each
    *  aircraft's KNEEBOARD folder on .miz download — no manual picking. */
   weaponsAuto: boolean;
+  /** Popup-attack reference card(s) — one card per profile defined in
+   *  KneeboardSettings.popupAttacks (see utils/popupAttack.ts). Side profile
+   *  + parameter table + reference points. Defaults OFF. (v1.17.x) */
+  popupAttack: boolean;
 }
 
 export interface KneeboardSettings {
@@ -81,6 +86,9 @@ export interface KneeboardSettings {
   /** Selected weapon ids for the Weapon Reference card (see weaponData.ts).
    *  Empty = card produces nothing even when cards.weaponsRef is on. */
   weaponIds: string[];
+  /** Popup-attack profiles defined for this mission (one card per profile
+   *  when cards.popupAttack is on). Empty = card produces nothing. */
+  popupAttacks: PopupAttackInput[];
   /** Kneeboard color scheme. 'night' = dark background (default,
    *  cockpit-at-night), 'day' = white background (daylight / printing).
    *  Drives the --kb-* CSS variables the cards resolve. (v0.9.74) */
@@ -126,14 +134,15 @@ export const useEditStore = create<EditState>((set) => ({
     notesTitle: '',
     cardNotes: {},
     weaponIds: [],
+    popupAttacks: [],
     theme: 'night',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
       supportAssets: true, radioLadder: true, airbaseRef: true, bullseyeRef: true, threatCard: true, weatherBrief: true,
-      // Notes + weapon-reference cards default OFF — only emit them when the
-      // planner has opted in (notes written / weapons picked), so an empty
-      // card doesn't ride along in every download.
-      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false, weaponsAuto: false,
+      // Notes + weapon-reference + popup-attack cards default OFF — only emit
+      // them when the planner has opted in (notes written / weapons picked /
+      // profiles defined), so an empty card doesn't ride along every download.
+      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
     },
   },
 
