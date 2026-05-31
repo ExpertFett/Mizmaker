@@ -247,3 +247,17 @@ export function postComms(gid: string, text: string) {
 export function commsStreamUrl(gid: string): string {
   return `/api/groups/${gid}/comms/stream`;
 }
+
+// ─── SRS-Server stats (v1.17.8 — optional, env-gated on the backend) ────────
+export interface SrsStatusFreq { freq_mhz: number; modulation: number }
+export interface SrsStatusClient { name: string; coalition: string; freqs: SrsStatusFreq[] }
+export interface SrsStatus {
+  configured: boolean;
+  available?: boolean;
+  clients?: SrsStatusClient[];
+  count?: number;
+  error?: string;
+}
+export function getSrsStatus(gid: string) {
+  return req<SrsStatus>(`/api/groups/${gid}/srs_status`);
+}

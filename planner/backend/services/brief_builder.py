@@ -194,6 +194,11 @@ class FlightBrief:
     # the client-rendered PNG (no data: prefix) placed on a ROUTE MAP slide.
     group_name: str = ""
     route_map_base64: str = ""
+    # Popup-attack profiles (v1.17.8). Same list every flight currently gets
+    # (no per-flight binding yet); kept on each FlightBrief so the renderer
+    # doesn't need a second argument and so the per-flight pptx is self-
+    # contained when downloaded individually.
+    popup_attacks: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -1546,6 +1551,7 @@ def build_flight_briefs(
     theater: str,
     filename: str,
     dictionary_text: Optional[str] = None,
+    popup_attacks: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Build one FlightBrief per blue player flight.
 
@@ -1553,6 +1559,10 @@ def build_flight_briefs(
     serialization. Order matches the order player flights appear in the
     parsed mission data — that's typically the squadron's preferred order
     when groups are named alphabetically/numerically.
+
+    `popup_attacks` is a list of frontend PopupAttackInput dicts; the same
+    list is copied to every player flight's brief so each flight's standalone
+    PPTX includes the appendix when downloaded individually. v1.17.8.
     """
     overview = mission_data.get("overview") or {}
     groups = mission_data.get("groups") or []
@@ -1668,6 +1678,7 @@ def build_flight_briefs(
             notes="",
             timeline=flight_timeline,
             group_name=g.get("groupName", ""),
+            popup_attacks=list(popup_attacks or []),
         )
         out.append(asdict(brief))
     return out

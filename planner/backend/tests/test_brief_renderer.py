@@ -656,3 +656,234 @@ class TestScenarioFleshOut:
         out = _build_scenario({}, {}, groups=[], threats=[], theater="Caucasus")
         assert "ADVERSARY" in out
         assert "no enemy aircraft detected" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# POPUP ATTACK slide (v1.17.6 — auto brief grows a Popup Attack section when
+# the planner has profiles defined in the Kneeboard tab; v1.17.7 adds the
+# per-row mini side-profile chart).
+# ---------------------------------------------------------------------------
+
+def _popup_profile(attack_type: str = "type1", name: str = "Attack 1") -> dict:
+    """Frontend's PopupAttackInput dict — full geometry so the renderer's
+    mini-chart helper can compute reference points for all six types."""
+    return {
+        "attackType": attack_type, "name": name,
+        "targetElevationFt": 100, "vipDistanceNm": 8,
+        "popupAltitudeFtMsl": 8000, "popupAngleDeg": 40, "angleOffsetDeg": 25,
+        "diveAngleDeg": 30,
+        "releaseAltitudeFtAgl": 2000, "releaseSpeedKts": 480,
+        "ingressAltitudeFtAgl": 500, "ingressSpeedKts": 480,
+        "recoveryAltitudeFtAgl": 500,
+    }
+
+
+def _slide_text_all(pptx_bytes: bytes) -> list[str]:
+    """All paragraph text from every slide, one string per slide."""
+    prs = Presentation(io.BytesIO(pptx_bytes))
+    out = []
+    for slide in prs.slides:
+        parts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for p in shape.text_frame.paragraphs:
+                    parts.append("".join(r.text for r in p.runs))
+        out.append("\n".join(parts))
+    return out
+
+
+class TestPopupAttackSlide:
+    def test_empty_profiles_no_extra_slide(self):
+        """Empty popup_attacks → existing 10-slide layout unchanged."""
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief() | {"popup_attacks": []}
+        prs = Presentation(io.BytesIO(render_wing_brief(brief)))
+        assert len(prs.slides._sldIdLst) == 10
+
+    def test_single_profile_adds_one_slide(self):
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief() | {"popup_attacks": [_popup_profile()]}
+        prs = Presentation(io.BytesIO(render_wing_brief(brief)))
+        assert len(prs.slides._sldIdLst) == 11
+
+    def test_pagination_4_per_slide(self):
+        """5 profiles → 2 popup slides (4 + 1) on top of the 10 base slides."""
+        from services.brief_renderer import render_wing_brief
+        profiles = [_popup_profile(name=f"P{i}") for i in range(5)]
+        brief = _minimal_wing_brief() | {"popup_attacks": profiles}
+        prs = Presentation(io.BytesIO(render_wing_brief(brief)))
+        assert len(prs.slides._sldIdLst) == 12
+
+    def test_slide_header_pagination_label(self):
+        """Multi-page popup-attack slides label themselves '(N/M)'."""
+        from services.brief_renderer import render_wing_brief
+        profiles = [_popup_profile(name=f"P{i}") for i in range(5)]
+        brief = _minimal_wing_brief() | {"popup_attacks": profiles}
+        slides = _slide_text_all(render_wing_brief(brief))
+        # Slides 11/12 (0-indexed 10/11) are the popup-attack pages.
+        assert "POPUP ATTACK (1/2)" in slides[10]
+        assert "POPUP ATTACK (2/2)" in slides[11]
+
+    def test_single_page_no_pagination_label(self):
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief() | {"popup_attacks": [_popup_profile()]}
+        slides = _slide_text_all(render_wing_brief(brief))
+        assert "POPUP ATTACK" in slides[10]
+        # Header is bare 'POPUP ATTACK' — no '(1/1)' on a single-page section.
+        assert "(1/1)" not in slides[10]
+
+    def test_profile_data_renders_as_text(self):
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief() | {"popup_attacks": [
+            _popup_profile(name="LGB Run"),
+        ]}
+        slide_text = _slide_text_all(render_wing_brief(brief))[10]
+        assert "LGB Run" in slide_text
+        assert "Type 1 Popup" in slide_text
+        # Parameters appear in the two-column ladder.
+        assert "8,000 ft MSL" in slide_text   # popup alt
+        assert "2,000 ft AGL" in slide_text   # release alt
+        assert "40°" in slide_text             # popup angle
+        assert "30°" in slide_text             # dive angle / offset overlap
+
+    @pytest.mark.parametrize("attack_type", [
+        "type1", "type2", "type3", "laydown", "loft", "dive",
+    ])
+    def test_all_attack_types_render(self, attack_type):
+        """Every supported type renders without throwing — covers the mini
+        side-profile helper's per-type geometry branches."""
+        from services.brief_renderer import render_wing_brief
+        brief = _minimal_wing_brief() | {
+            "popup_attacks": [_popup_profile(attack_type=attack_type)],
+        }
+        out = render_wing_brief(brief)
+        prs = Presentation(io.BytesIO(out))
+        assert len(prs.slides._sldIdLst) == 11
+        # Type label maps to a human-readable string in the slide chip.
+        labels = {
+            "type1": "Type 1 Popup", "type2": "Type 2 Popup",
+            "type3": "Type 3 Popup", "laydown": "Lay-Down",
+            "loft": "Loft (Toss)", "dive": "Straight Dive",
+        }
+        assert labels[attack_type] in _slide_text_all(out)[10]
+
+    def test_degenerate_profile_renders(self):
+        """Bad inputs (zero angles, missing fields) should clamp, not crash."""
+        from services.brief_renderer import render_wing_brief
+        weird = {
+            "attackType": "type1", "name": "Weird",
+            "targetElevationFt": 0, "vipDistanceNm": 0,
+            "popupAltitudeFtMsl": 0, "popupAngleDeg": 0,
+            "diveAngleDeg": 0, "angleOffsetDeg": 0,
+            "releaseAltitudeFtAgl": 0, "releaseSpeedKts": 0,
+            "ingressAltitudeFtAgl": 0, "ingressSpeedKts": 0,
+        }
+        brief = _minimal_wing_brief() | {"popup_attacks": [weird]}
+        # Must not raise; output is still a valid pptx.
+        out = render_wing_brief(brief)
+        prs = Presentation(io.BytesIO(out))
+        assert len(prs.slides._sldIdLst) == 11
+
+    def test_builder_passthrough(self):
+        """build_wing_brief accepts popup_attacks kwarg and the dict it
+        returns contains the list verbatim."""
+        from services.brief_builder import build_wing_brief
+        prof = _popup_profile()
+        out = build_wing_brief(
+            mission_data={"overview": {}, "groups": [], "threats": [], "airbases": []},
+            theater="Caucasus", filename="t.miz",
+            popup_attacks=[prof],
+        )
+        assert out["popup_attacks"] == [prof]
+
+    def test_builder_defaults_to_empty_list(self):
+        from services.brief_builder import build_wing_brief
+        out = build_wing_brief(
+            mission_data={"overview": {}, "groups": [], "threats": [], "airbases": []},
+            theater="Caucasus", filename="t.miz",
+        )
+        assert out["popup_attacks"] == []
+
+
+def _minimal_flight_brief() -> dict:
+    """Smallest FlightBrief dict render_flight_brief accepts. Mirrors the
+    fields the dataclass requires; popup_attacks defaults to empty."""
+    return {
+        "mission_name": "TEST OP", "theater": "Caucasus",
+        "date": "2026-05-21", "time_zulu": "0830Z",
+        "callsign": "ENFIELD", "aircraft": "FA-18C", "count": 4,
+        "role": "cas", "home_plate": "Senaki", "divert": "Kobuleti",
+        "tasking": "Strike", "waypoints": [], "frequency": "305.000",
+        "tacan": "", "icls": "",
+        "fuel_joker_lbs": 4500, "fuel_bingo_lbs": 3500, "fuel_rtb_lbs": 2500,
+        "notes": "", "timeline": [],
+    }
+
+
+class TestPopupAttackFlightSlide:
+    def test_empty_profiles_no_extra_slide(self):
+        """No popup_attacks → flight brief is the original 4 slides
+        (cover + comms+fuel + ... no notes since notes is empty)."""
+        from services.brief_renderer import render_flight_brief
+        out = render_flight_brief(_minimal_flight_brief() | {"popup_attacks": []})
+        prs = Presentation(io.BytesIO(out))
+        # Base layout has 3 slides (cover, comms+fuel, route) — notes
+        # only renders when non-empty.
+        baseline = len(prs.slides._sldIdLst)
+        # And adding a profile bumps by exactly 1.
+        out2 = render_flight_brief(_minimal_flight_brief() | {"popup_attacks": [_popup_profile()]})
+        prs2 = Presentation(io.BytesIO(out2))
+        assert len(prs2.slides._sldIdLst) == baseline + 1
+
+    def test_5_profiles_paginate(self):
+        from services.brief_renderer import render_flight_brief
+        profiles = [_popup_profile(name=f"P{i}") for i in range(5)]
+        baseline = len(Presentation(io.BytesIO(
+            render_flight_brief(_minimal_flight_brief()))).slides._sldIdLst)
+        prs = Presentation(io.BytesIO(
+            render_flight_brief(_minimal_flight_brief() | {"popup_attacks": profiles})))
+        assert len(prs.slides._sldIdLst) == baseline + 2  # 4+1 across 2 slides
+
+    @pytest.mark.parametrize("attack_type", [
+        "type1", "type2", "type3", "laydown", "loft", "dive",
+    ])
+    def test_per_flight_all_types_render(self, attack_type):
+        from services.brief_renderer import render_flight_brief
+        out = render_flight_brief(_minimal_flight_brief() | {
+            "popup_attacks": [_popup_profile(attack_type=attack_type)],
+        })
+        # Must produce a valid pptx + include the type label.
+        assert b"PK" == out[:2]  # zip header — pptx is a zip
+        prs = Presentation(io.BytesIO(out))
+        last_slide_text = []
+        for shape in prs.slides[len(prs.slides) - 1].shapes:
+            if shape.has_text_frame:
+                for p in shape.text_frame.paragraphs:
+                    last_slide_text.append("".join(r.text for r in p.runs))
+        labels = {
+            "type1": "Type 1 Popup", "type2": "Type 2 Popup",
+            "type3": "Type 3 Popup", "laydown": "Lay-Down",
+            "loft": "Loft (Toss)", "dive": "Straight Dive",
+        }
+        assert labels[attack_type] in "\n".join(last_slide_text)
+
+    def test_flight_builder_passthrough(self):
+        from services.brief_builder import build_flight_briefs
+        # Need a minimal mission with a player flight.
+        mission = {
+            "overview": {"start_time": 0},
+            "groups": [{
+                "groupName": "ENFIELD", "task": "cas", "category": "plane",
+                "coalition": "blue",
+                "units": [{"name": "ENFIELD11", "type": "FA-18C", "skill": "Player"}],
+                "waypoints": [],
+            }],
+            "airbases": [],
+        }
+        profiles = [_popup_profile()]
+        out = build_flight_briefs(
+            mission_data=mission, theater="Caucasus", filename="x.miz",
+            popup_attacks=profiles,
+        )
+        assert len(out) == 1
+        assert out[0]["popup_attacks"] == profiles

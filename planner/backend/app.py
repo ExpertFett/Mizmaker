@@ -1808,8 +1808,9 @@ def brief_build_package():
             filename=session.get("filename") or "",
             dictionary_text=dictionary_text,
         )
-        wing = build_wing_brief(**kwargs, popup_attacks=body.get("popupAttacks") or [])
-        flights = build_flight_briefs(**kwargs)
+        popup_attacks = body.get("popupAttacks") or []
+        wing = build_wing_brief(**kwargs, popup_attacks=popup_attacks)
+        flights = build_flight_briefs(**kwargs, popup_attacks=popup_attacks)
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"error": f"Package build failed: {e}"}), 500

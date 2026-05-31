@@ -519,6 +519,22 @@ def register_group_routes(app) -> None:
         return jsonify(result), (200 if result.get("ok") else 502)
 
     # ----------------------------------------------------------------------
+    # SRS-Server stats poll (Phase 2 of the LotATC scope, v1.17.8).
+    # Member-gated; degrades gracefully when SRS_SERVER_URL is unset (returns
+    # 200 + configured:false so the SRS Directory just hides the "● N on"
+    # pills). When configured, returns the connected client list + freqs.
+    # ----------------------------------------------------------------------
+    @app.route("/api/groups/<gid>/srs_status", methods=["GET"])
+    def group_srs_status(gid):
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        from services.srs_status import get_status
+        return jsonify(get_status())
+
+    # ----------------------------------------------------------------------
     # Controller text comms (Phase 3 of the LotATC-style scope).
     # The DM (or anyone with the `command` cap) posts typed orders; every
     # member's CommsLog SSE stream receives them within ~1s. Pure app-

@@ -118,6 +118,26 @@ interface EditState {
   setKneeboardSettings: (s: Partial<KneeboardSettings>) => void;
 }
 
+// localStorage-backed survival for popup-attack profiles (v1.17.8). Pilots
+// who tune a profile for one mission usually want it next session too —
+// without persistence the array resets every page-refresh / mission re-upload.
+// Tucked OUTSIDE the store so the read happens once at module-init.
+const POPUP_ATTACKS_LS_KEY = 'dcsopt.kneeboard.popupAttacks';
+function loadPopupAttacks(): PopupAttackInput[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(POPUP_ATTACKS_LS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as PopupAttackInput[]) : [];
+  } catch { return []; }
+}
+function savePopupAttacks(p: PopupAttackInput[]): void {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(POPUP_ATTACKS_LS_KEY, JSON.stringify(p)); }
+  catch { /* quota / private mode — best effort */ }
+}
+
 export const useEditStore = create<EditState>((set) => ({
   edits: [],
   isDirty: false,
@@ -134,7 +154,7 @@ export const useEditStore = create<EditState>((set) => ({
     notesTitle: '',
     cardNotes: {},
     weaponIds: [],
-    popupAttacks: [],
+    popupAttacks: loadPopupAttacks(),
     theme: 'night',
     cards: {
       lineup: true, flight: true, comms: true, routeDetail: true, fuelLadder: true, homePlate: true,
@@ -165,3 +185,15 @@ export const useEditStore = create<EditState>((set) => ({
   setKneeboardSettings: (s) =>
     set((prev) => ({ kneeboardSettings: { ...prev.kneeboardSettings, ...s } })),
 }));
+
+// Mirror popup-attack profile changes into localStorage so they survive
+// page reloads + mission re-uploads. Selector subscription (vs. a full
+// subscribe) means we only write when the array reference actually
+// changes — not on every unrelated edit-store mutation.
+if (typeof window !== 'undefined') {
+  useEditStore.subscribe((s, prev) => {
+    if (s.kneeboardSettings.popupAttacks !== prev.kneeboardSettings.popupAttacks) {
+      savePopupAttacks(s.kneeboardSettings.popupAttacks);
+    }
+  });
+}

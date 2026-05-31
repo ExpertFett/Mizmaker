@@ -1450,7 +1450,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {/* ── SRS directory (left side, below the tool rail) ───────────────── */}
       {srsOpen && (
         <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
-          <SrsDirectory onClose={toggleSrs} />
+          <SrsDirectory groupId={group.id} onClose={toggleSrs} />
         </div>
       )}
 

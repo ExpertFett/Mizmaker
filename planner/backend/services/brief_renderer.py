@@ -1656,6 +1656,70 @@ def render_flight_brief(brief: Dict[str, Any]) -> bytes:
         _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
              notes, size=15, color=LIGHT)
 
+    # ---------- 6: Popup attack appendix (only if profiles exist) -------
+    # Compact per-flight version of the wing-brief slide — same row layout,
+    # same mini side-profile sketches, paged 4 profiles/slide. v1.17.8.
+    flight_pops = brief.get("popup_attacks") or []
+    if flight_pops:
+        ATTACK_LABELS = {
+            "type1":   "Type 1 Popup",
+            "type2":   "Type 2 Popup",
+            "type3":   "Type 3 Popup",
+            "laydown": "Lay-Down",
+            "loft":    "Loft (Toss)",
+            "dive":    "Straight Dive",
+        }
+        ROWS_PER_SLIDE = 4
+        n_pop = len(flight_pops)
+        pop_pages = (n_pop + ROWS_PER_SLIDE - 1) // ROWS_PER_SLIDE
+        BORDER = RGBColor(0x55, 0x55, 0x55)
+        for pidx in range(pop_pages):
+            s = prs.slides.add_slide(BLANK); _bg(s)
+            head_label = "POPUP ATTACK" if pop_pages == 1 else f"POPUP ATTACK ({pidx + 1}/{pop_pages})"
+            _header(s, head_label)
+            P_TOP = Inches(1.4)
+            P_ROW_H = Inches(1.35)
+            page_slice = flight_pops[pidx * ROWS_PER_SLIDE:(pidx + 1) * ROWS_PER_SLIDE]
+            for j, p in enumerate(page_slice):
+                y = P_TOP + P_ROW_H * j
+                atk = str(p.get("attackType") or "type1")
+                atk_label = ATTACK_LABELS.get(atk, atk)
+                name = str(p.get("name") or f"Attack {pidx * ROWS_PER_SLIDE + j + 1}")
+                _txt(s, Inches(0.6), y, Inches(5.0), Inches(0.4),
+                     name, size=15, bold=True, color=BRIGHT)
+                _txt(s, Inches(5.6), y + Inches(0.05), Inches(2.4), Inches(0.4),
+                     atk_label, size=12, bold=True, color=ACCENT)
+                def _pf(k, default=""):
+                    v = p.get(k)
+                    return v if v is not None else default
+                left_col = (
+                    f"TGT elev:  {int(_pf('targetElevationFt') or 0):,} ft MSL\n"
+                    f"VIP dist:  {_pf('vipDistanceNm')} NM\n"
+                    f"Popup:     {int(_pf('popupAltitudeFtMsl') or 0):,} ft MSL  /  {_pf('popupAngleDeg')}°\n"
+                    f"Offset:    {_pf('angleOffsetDeg')}°"
+                )
+                right_col = (
+                    f"Dive ang:  {_pf('diveAngleDeg')}°\n"
+                    f"Release:   {int(_pf('releaseAltitudeFtAgl') or 0):,} ft AGL  /  {_pf('releaseSpeedKts')} kt\n"
+                    f"Ingress:   {int(_pf('ingressAltitudeFtAgl') or 0):,} ft AGL  /  {_pf('ingressSpeedKts')} kt\n"
+                )
+                _txt(s, Inches(0.6),  y + Inches(0.42), Inches(4.4), Inches(0.95),
+                     left_col, size=12, color=LIGHT)
+                _txt(s, Inches(5.1),  y + Inches(0.42), Inches(4.4), Inches(0.95),
+                     right_col, size=12, color=LIGHT)
+                _draw_popup_mini_profile(
+                    s, p, x=Inches(9.6), y=y + Inches(0.4),
+                    w=Inches(3.5), h=Inches(0.9),
+                    accent=ACCENT, dim=DIM, light=LIGHT, border=BORDER,
+                )
+                if j < len(page_slice) - 1:
+                    sep = s.shapes.add_shape(
+                        MSO_SHAPE.RECTANGLE, Inches(0.6), y + P_ROW_H - Inches(0.05),
+                        Inches(12.1), Inches(0.012),
+                    )
+                    sep.fill.solid(); sep.fill.fore_color.rgb = BORDER
+                    sep.line.fill.background()
+
     out = io.BytesIO(); prs.save(out)
     return out.getvalue()
 

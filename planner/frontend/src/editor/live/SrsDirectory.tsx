@@ -30,9 +30,10 @@
  * the case).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import type { MissionGroup, ClientUnit } from '../../types/mission';
+import { getSrsStatus, type SrsStatus } from '../../api/groups';
 
 const C = {
   bg: 'rgba(13,19,29,0.96)',
@@ -95,11 +96,43 @@ function formatTacan(g: MissionGroup): string | undefined {
   return `${g.tacan.channel}${g.tacan.band || ''}${g.tacan.callsign ? ` (${g.tacan.callsign})` : ''}`;
 }
 
-export function SrsDirectory({ onClose }: { onClose?: () => void }) {
+export function SrsDirectory({ groupId, onClose }: { groupId?: string; onClose?: () => void }) {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('blue');
   const [search, setSearch] = useState('');
+  // Optional SRS-Server stats poll (Phase 2). Backend returns
+  // {configured:false} when SRS_SERVER_URL is unset — we just hide the
+  // "● N on" pills in that case. When configured but unreachable, the
+  // panel shows a muted "SRS server offline" note.
+  const [srsStatus, setSrsStatus] = useState<SrsStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!groupId) return;
+    let cancelled = false;
+    const fetchOnce = () => getSrsStatus(groupId)
+      .then((s) => { if (!cancelled) setSrsStatus(s); })
+      .catch(() => { /* network blips tolerated — keep last good state */ });
+    fetchOnce();
+    // 10s cadence keeps the pill fresh without hammering SRS-Server.
+    pollRef.current = setInterval(fetchOnce, 10000);
+    return () => { cancelled = true; if (pollRef.current) clearInterval(pollRef.current); };
+  }, [groupId]);
+
+  // Build a (freq_mhz, modulation) → connected-client-count lookup so each
+  // row can show its pill in O(1). Rounded to 3 dp to match what the
+  // directory's own rows show; SRS-Server's freq precision varies.
+  const liveCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!srsStatus?.available || !srsStatus.clients) return m;
+    for (const c of srsStatus.clients) {
+      for (const f of c.freqs ?? []) {
+        const k = `${f.freq_mhz.toFixed(3)}|${f.modulation}`;
+        m.set(k, (m.get(k) ?? 0) + 1);
+      }
+    }
+    return m;
+  }, [srsStatus]);
 
   const rows = useMemo<Row[]>(() => {
     if (!groups || groups.length === 0) return [];
@@ -187,7 +220,21 @@ export function SrsDirectory({ onClose }: { onClose?: () => void }) {
   return (
     <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: C.accentDim, borderBottom: `1px solid ${C.border}`, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text }}>
-        <span>📻 SRS DIRECTORY</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          📻 SRS DIRECTORY
+          {srsStatus?.configured && srsStatus.available && (
+            <span title={`SRS-Server reports ${srsStatus.count ?? 0} client(s) connected`}
+                  style={{ fontWeight: 400, fontSize: 10, color: C.green, letterSpacing: 0.5 }}>
+              ● {srsStatus.count ?? 0} live
+            </span>
+          )}
+          {srsStatus?.configured && srsStatus.available === false && (
+            <span title="SRS-Server unreachable — directory still works"
+                  style={{ fontWeight: 400, fontSize: 10, color: C.textDim, letterSpacing: 0.5 }}>
+              ● offline
+            </span>
+          )}
+        </span>
         {onClose && <span onClick={onClose} style={{ cursor: 'pointer', color: C.textDim, fontWeight: 400 }}>×</span>}
       </div>
 
@@ -233,6 +280,16 @@ export function SrsDirectory({ onClose }: { onClose?: () => void }) {
                     </td>
                     <td style={{ ...td, fontFamily: 'ui-monospace, monospace', color: C.amber, fontWeight: 600 }}>
                       {r.freqMhz.toFixed(3)} <span style={{ color: C.textDim, fontSize: 10 }}>{r.modulation === 0 ? 'AM' : 'FM'}</span>
+                      {(() => {
+                        const n = liveCounts.get(`${r.freqMhz.toFixed(3)}|${r.modulation}`) ?? 0;
+                        if (n === 0) return null;
+                        return (
+                          <span title={`${n} client(s) currently tuned to this frequency in SRS`}
+                                style={{ display: 'inline-block', marginLeft: 6, padding: '0 4px', fontSize: 9, fontWeight: 700, color: C.green, border: `1px solid ${C.green}`, borderRadius: 2, verticalAlign: 'middle' }}>
+                            ● {n} on
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ ...td, color: C.textDim, fontSize: 10, letterSpacing: 0.5 }}>{r.role}</td>
                     <td style={{ ...td, textAlign: 'right' }}>

@@ -26,12 +26,23 @@ export function PopupAttackEditor({ profiles, onChange }: Props) {
 
   return (
     <div style={{ margin: '10px 0', padding: '10px 14px', background: '#222', border: '1px solid #3a3a3a', borderRadius: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#e0e0e0' }}>
           Popup Attack Profiles
           <span style={{ color: '#888', fontWeight: 400, marginLeft: 6 }}>— {profiles.length} defined (one card each)</span>
         </span>
         <button onClick={add} style={btn}>+ Add profile</button>
+        {profiles.length > 0 && (
+          <button
+            onClick={() => { if (window.confirm(`Clear all ${profiles.length} popup attack profile(s)?`)) onChange([]); }}
+            title="Clear every profile (also clears the localStorage backup)"
+            style={{ ...btn, borderColor: '#5a3a3a', color: '#d95050' }}>
+            Clear all
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: '#666', marginBottom: 8, fontStyle: 'italic' }}>
+        Profiles persist across page reloads + mission re-uploads (stored in your browser only).
       </div>
       {profiles.length === 0 && (
         <div style={{ fontSize: 11, color: '#d29922' }}>Add at least one profile, or the card produces nothing.</div>
