@@ -1155,6 +1155,83 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
          notes_text, size=15, color=DIM if is_placeholder else LIGHT,
          italic=is_placeholder)
 
+    # ---------- Slide 11: Popup attack profiles (optional) ---------------
+    # Pages through the kneeboard popup-attack profiles, one row per
+    # profile per slide (max 4 per slide so each gets enough vertical
+    # room for the parameter ladder). Skipped entirely when the planner
+    # didn't define any. (v1.17.6)
+    popups = brief.get("popup_attacks") or []
+    if popups:
+        ATTACK_LABELS = {
+            "type1":   "Type 1 Popup",
+            "type2":   "Type 2 Popup",
+            "type3":   "Type 3 Popup",
+            "laydown": "Lay-Down",
+            "loft":    "Loft (Toss)",
+            "dive":    "Straight Dive",
+        }
+        ROWS_PER_SLIDE = 4
+        n_pop = len(popups)
+        pop_pages = (n_pop + ROWS_PER_SLIDE - 1) // ROWS_PER_SLIDE
+        for pidx in range(pop_pages):
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            head = "POPUP ATTACK" if pop_pages == 1 else f"POPUP ATTACK ({pidx + 1}/{pop_pages})"
+            _slide_header(s, head)
+            if pidx == 0:
+                _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
+                     f"{n_pop} attack profile(s) defined for this mission — "
+                     "Apply per-flight as required.",
+                     size=11, color=DIM, italic=True)
+            P_TOP = Inches(1.7) if pidx == 0 else Inches(1.3)
+            P_ROW_H = Inches(1.35)
+            for j, p in enumerate(popups[pidx * ROWS_PER_SLIDE:(pidx + 1) * ROWS_PER_SLIDE]):
+                y = P_TOP + P_ROW_H * j
+                atk = str(p.get("attackType") or "type1")
+                atk_label = ATTACK_LABELS.get(atk, atk)
+                name = str(p.get("name") or f"Attack {pidx * ROWS_PER_SLIDE + j + 1}")
+                # Profile name + type chip
+                _txt(s, Inches(0.6), y, Inches(5.0), Inches(0.4),
+                     name, size=15, bold=True, color=BRIGHT)
+                _txt(s, Inches(5.6), y + Inches(0.05), Inches(2.4), Inches(0.4),
+                     atk_label, size=12, bold=True, color=ACCENT)
+                # Parameters — two columns of three rows each.
+                def _p(k, default=""):
+                    v = p.get(k)
+                    return v if v is not None else default
+                t_elev   = f"{int(_p('targetElevationFt') or 0):,} ft MSL"
+                vip      = f"{_p('vipDistanceNm')} NM"
+                pop_alt  = f"{int(_p('popupAltitudeFtMsl') or 0):,} ft MSL"
+                pop_ang  = f"{_p('popupAngleDeg')}°"
+                div_ang  = f"{_p('diveAngleDeg')}°"
+                off      = f"{_p('angleOffsetDeg')}°"
+                rel_alt  = f"{int(_p('releaseAltitudeFtAgl') or 0):,} ft AGL"
+                rel_spd  = f"{_p('releaseSpeedKts')} kt"
+                ing_alt  = f"{int(_p('ingressAltitudeFtAgl') or 0):,} ft AGL"
+                ing_spd  = f"{_p('ingressSpeedKts')} kt"
+                left_col = (
+                    f"TGT elev:  {t_elev}\n"
+                    f"VIP dist:  {vip}\n"
+                    f"Popup:     {pop_alt}  /  {pop_ang}\n"
+                    f"Offset:    {off}"
+                )
+                right_col = (
+                    f"Dive ang:  {div_ang}\n"
+                    f"Release:   {rel_alt}  /  {rel_spd}\n"
+                    f"Ingress:   {ing_alt}  /  {ing_spd}\n"
+                )
+                _txt(s, Inches(0.6),  y + Inches(0.42), Inches(5.5), Inches(0.95),
+                     left_col, size=12, color=LIGHT)
+                _txt(s, Inches(6.3),  y + Inches(0.42), Inches(6.4), Inches(0.95),
+                     right_col, size=12, color=LIGHT)
+                # Row separator
+                if j < min(ROWS_PER_SLIDE, n_pop - pidx * ROWS_PER_SLIDE) - 1:
+                    sep = s.shapes.add_shape(
+                        MSO_SHAPE.RECTANGLE, Inches(0.6), y + P_ROW_H - Inches(0.05),
+                        Inches(12.1), Inches(0.012),
+                    )
+                    sep.fill.solid(); sep.fill.fore_color.rgb = BORDER
+                    sep.line.fill.background()
+
     # Template post-processing (v0.9.84):
     #   1. Drop the built-in cover (the slide WE added right after the
     #      template's own slides) — the template's slide(s) are the cover.

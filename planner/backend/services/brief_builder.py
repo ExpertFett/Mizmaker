@@ -237,6 +237,11 @@ class WingBrief:
     # surface-threats table when present. User-editable like the other prose
     # sections; defaults empty so old missions/clients without it still render.
     threat_narrative: str = ""
+    # Popup-attack profiles (v1.17.6). Mirrors the Kneeboard tab's profile
+    # list (PopupAttackInput[] shape). When non-empty, the renderer adds a
+    # POPUP ATTACK slide with one row per profile; empty = no slide. Pure
+    # passthrough — the frontend owns the schema; backend just renders.
+    popup_attacks: List[Dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1674,6 +1679,7 @@ def build_wing_brief(
     theater: str,
     filename: str,
     dictionary_text: Optional[str] = None,
+    popup_attacks: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build a complete WingBrief from parsed mission data.
 
@@ -1684,6 +1690,11 @@ def build_wing_brief(
       dictionary_text: raw text of the .miz's l10n/DEFAULT/dictionary file,
         used to resolve DictKey_* references. Optional — falls back to
         showing the raw key if not provided.
+      popup_attacks: optional list of PopupAttackInput dicts from the
+        Kneeboard tab. When non-empty, the renderer emits a POPUP ATTACK
+        slide with one row per profile. Schema is the frontend's
+        PopupAttackInput shape (attackType, name, targetElevationFt, etc.);
+        the renderer is permissive about missing fields.
 
     Returns the brief as a plain dict (for easy JSON serialization to the
     frontend editor). Use `WingBrief(**dict)` to round-trip back to the
@@ -1728,5 +1739,6 @@ def build_wing_brief(
         flights=_build_flights(groups, airbases),
 
         comms=_build_comms(groups),
+        popup_attacks=list(popup_attacks or []),
     )
     return asdict(brief)

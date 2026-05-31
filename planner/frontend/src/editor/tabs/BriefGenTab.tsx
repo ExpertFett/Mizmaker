@@ -95,7 +95,10 @@ export function BriefGenTab() {
     try {
       const res = await fetch('/api/brief/build-package', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          popupAttacks: useEditStore.getState().kneeboardSettings.popupAttacks ?? [],
+        }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load flights');
       const pkg = await res.json();
@@ -194,7 +197,10 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/build-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          popupAttacks: useEditStore.getState().kneeboardSettings.popupAttacks ?? [],
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Build failed' }));
@@ -293,7 +299,10 @@ export function BriefGenTab() {
       const buildRes = await fetch('/api/brief/build-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          popupAttacks: useEditStore.getState().kneeboardSettings.popupAttacks ?? [],
+        }),
       });
       if (!buildRes.ok) {
         const err = await buildRes.json().catch(() => ({ error: 'Build failed' }));

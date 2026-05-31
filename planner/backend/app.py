@@ -1663,6 +1663,7 @@ def brief_build_wing():
             theater=session["theater"],
             filename=session.get("filename") or "",
             dictionary_text=dictionary_text,
+            popup_attacks=body.get("popupAttacks") or [],
         )
     except Exception as e:
         import traceback
@@ -1807,7 +1808,7 @@ def brief_build_package():
             filename=session.get("filename") or "",
             dictionary_text=dictionary_text,
         )
-        wing = build_wing_brief(**kwargs)
+        wing = build_wing_brief(**kwargs, popup_attacks=body.get("popupAttacks") or [])
         flights = build_flight_briefs(**kwargs)
     except Exception as e:
         import traceback; traceback.print_exc()
