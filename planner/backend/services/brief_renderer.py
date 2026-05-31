@@ -25,6 +25,7 @@ Design choices:
     on that one paragraph but keeps the substitution working.
 """
 import io
+import math
 import os
 import re
 import shutil
@@ -563,6 +564,157 @@ def _fill_template_cover(slide, title: str, subtitle: str) -> None:
                 _set_tf_text(ph.text_frame, subtitle); sub_done = True
     except Exception:
         pass
+
+
+def _draw_popup_mini_profile(slide, p: Dict[str, Any], *, x, y, w, h,
+                              accent, dim, light, border) -> None:
+    """Draw a thumbnail side-profile of one popup-attack profile inside
+    (x, y, w, h) of the slide. Pure shape-based — no images — so it
+    survives PowerPoint round-trips cleanly.
+
+    Geometry mirrors utils/popupAttack.ts so the slide thumbnail matches
+    the kneeboard card's chart. Reference points: IP / AP / PDP / RP /
+    TGT / REC, drawn as small ovals with a single-letter label centred
+    in each.
+    """
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Pt, Emu
+
+    FT_PER_NM = 6076.115
+    INGRESS_DISPLAY_NM = 5.0
+    atk = str(p.get("attackType") or "type1")
+
+    def _f(k, default=0.0):
+        v = p.get(k)
+        try:
+            return float(v) if v is not None else float(default)
+        except (TypeError, ValueError):
+            return float(default)
+
+    t_elev   = _f("targetElevationFt", 100)
+    vip_nm   = max(0.0, _f("vipDistanceNm", 8))
+    pop_msl  = _f("popupAltitudeFtMsl", 8000)
+    pop_ang  = max(1.0, _f("popupAngleDeg", 40))
+    dive_ang = max(1.0, _f("diveAngleDeg", 30))
+    rel_agl  = _f("releaseAltitudeFtAgl", 2000)
+    ing_agl  = _f("ingressAltitudeFtAgl", 500)
+    rec_agl  = _f("recoveryAltitudeFtAgl", ing_agl)
+    ingress_msl = t_elev + ing_agl
+    release_msl = t_elev + rel_agl
+    recovery_msl = t_elev + rec_agl
+
+    # Build (along-track NM, alt MSL) waypoints per attack type. Mirrors
+    # the JS computePopupAttack in utils/popupAttack.ts — kept short:
+    # only the points the chart needs (IP, AP, PDP/RP/TGT/REC as relevant).
+    pts: List[tuple] = []  # (label, dist_nm, alt_msl)
+    pts.append(("IP", 0.0, ingress_msl))
+    ap_dist = INGRESS_DISPLAY_NM
+    pts.append(("AP", ap_dist, ingress_msl))
+
+    if atk == "laydown":
+        tgt_dist = ap_dist + vip_nm
+        pts.append(("RP",  tgt_dist, release_msl))
+        pts.append(("TGT", tgt_dist, t_elev))
+        pts.append(("REC", tgt_dist + 1.5, recovery_msl))
+    elif atk == "loft":
+        climb_v = pop_msl - ingress_msl
+        climb_h_nm = max(0.0, (climb_v / max(1e-3, math.tan(math.radians(pop_ang)))) / FT_PER_NM)
+        rp_dist = ap_dist + climb_h_nm
+        pts.append(("RP", rp_dist, pop_msl))
+        tgt_dist = rp_dist + max(0.5, vip_nm * 0.4)
+        pts.append(("TGT", tgt_dist, t_elev))
+        pts.append(("REC", tgt_dist + 1.5, recovery_msl))
+    elif atk == "dive":
+        dive_v = ingress_msl - release_msl
+        dive_h_nm = max(0.0, (dive_v / max(1e-3, math.tan(math.radians(dive_ang)))) / FT_PER_NM)
+        rp_dist = ap_dist + dive_h_nm
+        pts.append(("RP", rp_dist, release_msl))
+        tgt_dist = rp_dist + 0.5
+        pts.append(("TGT", tgt_dist, t_elev))
+        pts.append(("REC", tgt_dist + 1.5, recovery_msl))
+    else:
+        # type1/2/3 popup — same math
+        climb_v = pop_msl - ingress_msl
+        climb_h_nm = max(0.0, (climb_v / max(1e-3, math.tan(math.radians(pop_ang)))) / FT_PER_NM)
+        pdp_dist = ap_dist + climb_h_nm
+        pts.append(("PDP", pdp_dist, pop_msl))
+        dive_v = pop_msl - release_msl
+        dive_h_nm = max(0.0, (dive_v / max(1e-3, math.tan(math.radians(dive_ang)))) / FT_PER_NM)
+        rp_dist = pdp_dist + dive_h_nm
+        pts.append(("RP", rp_dist, release_msl))
+        tgt_dist = rp_dist + 0.5
+        pts.append(("TGT", tgt_dist, t_elev))
+        pts.append(("REC", tgt_dist + 1.5, recovery_msl))
+
+    # Scale into the chart box. Leave a 2 px padding margin at the edges.
+    x0, y0, ww, hh = int(x), int(y), int(w), int(h)
+    pad = Pt(3)
+    xmin, xmax = 0.0, max(pt[1] for pt in pts) or 1.0
+    ymin = min(min(pt[2] for pt in pts), t_elev)
+    ymax = max(pt[2] for pt in pts)
+    ymax = max(ymax, ymin + 1.0)  # avoid divide-by-zero on degenerate profiles
+    inner_w = ww - 2 * int(pad)
+    inner_h = hh - 2 * int(pad)
+
+    def xy(d_nm, alt_msl):
+        u = (d_nm - xmin) / (xmax - xmin) if xmax > xmin else 0
+        v = 1 - (alt_msl - ymin) / (ymax - ymin) if ymax > ymin else 1
+        return x0 + int(pad) + int(u * inner_w), y0 + int(pad) + int(v * inner_h)
+
+    # Chart border (subtle, for visual containment).
+    box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x0, y0, ww, hh)
+    box.fill.background()  # transparent fill
+    box.line.color.rgb = border; box.line.width = Pt(0.5)
+
+    # Ground line (target elevation).
+    gx1, gy = xy(xmin, t_elev)
+    gx2, _ = xy(xmax, t_elev)
+    ground = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, gx1, gy, gx2 - gx1, Emu(6000))
+    ground.fill.solid(); ground.fill.fore_color.rgb = dim
+    ground.line.fill.background()
+
+    # Trajectory segments — straight lines between non-TGT points.
+    traj = [pt for pt in pts if pt[0] != "TGT"]
+    line_thick = Emu(8000)
+    for a, b in zip(traj, traj[1:]):
+        ax, ay = xy(a[1], a[2])
+        bx, by = xy(b[1], b[2])
+        # Use a rotated thin rectangle as a line segment. Math: position +
+        # rotation between (ax, ay) and (bx, by). python-pptx's rotation
+        # is in degrees clockwise; centre the rect on the segment midpoint.
+        dx, dy = bx - ax, by - ay
+        length = max(1, int(math.hypot(dx, dy)))
+        angle = math.degrees(math.atan2(dy, dx))
+        mx, my = (ax + bx) // 2, (ay + by) // 2
+        seg = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, mx - length // 2, my - line_thick // 2,
+            length, line_thick,
+        )
+        seg.fill.solid(); seg.fill.fore_color.rgb = accent
+        seg.line.fill.background()
+        seg.rotation = angle
+
+    # Markers — small ovals with a 1-letter label.
+    dot_r = Pt(4)
+    for label, d_nm, alt_msl in pts:
+        cx, cy = xy(d_nm, alt_msl)
+        dot = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL, cx - int(dot_r), cy - int(dot_r),
+            int(dot_r * 2), int(dot_r * 2),
+        )
+        dot.fill.solid(); dot.fill.fore_color.rgb = accent
+        dot.line.color.rgb = light; dot.line.width = Pt(0.5)
+        # Label letter — first character (IP/AP/PDP/RP/TGT/REC → I/A/P/R/T/R).
+        lbl = "T" if label == "TGT" else label[0]
+        tx = slide.shapes.add_textbox(
+            cx + int(dot_r) + Pt(2), cy - Pt(6),
+            Pt(20), Pt(12),
+        )
+        tf = tx.text_frame; tf.word_wrap = False
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        para = tf.paragraphs[0]
+        run = para.add_run(); run.text = lbl
+        run.font.size = Pt(7); run.font.bold = True; run.font.color.rgb = light
 
 
 def _slide_has_content(slide) -> bool:
@@ -1219,10 +1371,19 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                     f"Release:   {rel_alt}  /  {rel_spd}\n"
                     f"Ingress:   {ing_alt}  /  {ing_spd}\n"
                 )
-                _txt(s, Inches(0.6),  y + Inches(0.42), Inches(5.5), Inches(0.95),
+                _txt(s, Inches(0.6),  y + Inches(0.42), Inches(4.4), Inches(0.95),
                      left_col, size=12, color=LIGHT)
-                _txt(s, Inches(6.3),  y + Inches(0.42), Inches(6.4), Inches(0.95),
+                _txt(s, Inches(5.1),  y + Inches(0.42), Inches(4.4), Inches(0.95),
                      right_col, size=12, color=LIGHT)
+                # Mini side-profile chart — pilots want to SEE the geometry,
+                # not just read parameters. Drawn with plain pptx shapes so
+                # it round-trips through PowerPoint cleanly (no embedded
+                # SVG / images).
+                _draw_popup_mini_profile(
+                    s, p, x=Inches(9.6), y=y + Inches(0.4),
+                    w=Inches(3.5), h=Inches(0.9),
+                    accent=ACCENT, dim=DIM, light=LIGHT, border=BORDER,
+                )
                 # Row separator
                 if j < min(ROWS_PER_SLIDE, n_pop - pidx * ROWS_PER_SLIDE) - 1:
                     sep = s.shapes.add_shape(
