@@ -219,3 +219,31 @@ export function getUnitDatabase(gid: string, pid: string, category: UnitCategory
 export function unitImageUrl(gid: string, pid: string, filename: string): string {
   return `/api/groups/${gid}/profiles/${pid}/unit-image/${encodeURIComponent(filename)}`;
 }
+
+// ─── Controller text comms (Phase 3 LotATC scope) ─────────────────────────
+export interface CommsMessage {
+  id: string;
+  ts: string;                 // ISO timestamp
+  author: string;
+  authorId: string;
+  role: string;
+  text: string;
+}
+
+/** Backfill recent messages when CommsLog first mounts. */
+export function listComms(gid: string) {
+  return req<{ messages: CommsMessage[] }>(`/api/groups/${gid}/comms`);
+}
+
+/** Broadcast a typed order. Requires the `command` capability. */
+export function postComms(gid: string, text: string) {
+  return req<CommsMessage>(`/api/groups/${gid}/comms`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+/** Same-origin URL for the comms SSE stream. */
+export function commsStreamUrl(gid: string): string {
+  return `/api/groups/${gid}/comms/stream`;
+}

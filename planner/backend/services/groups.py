@@ -19,11 +19,44 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+import json
+import threading
+
 from flask import request, jsonify, Response
+from gevent.queue import Queue
 
 from services.auth import current_user
 from services.supabase_client import get_supabase
 from services import profile_crypto
+
+
+# --------------------------------------------------------------------------
+# Comms pubsub — in-memory, per-group. Survives requests via module globals.
+# --------------------------------------------------------------------------
+# Each group keeps a ring buffer of the last N messages (for backfill when a
+# member opens CommsLog mid-session) and a list of active subscriber queues
+# that receive each new message. All access is wrapped under _COMMS_LOCK.
+# Survives Flask request boundaries; resets on backend restart (acceptable —
+# comms are session-scoped and the audit log is best-effort, not durable).
+_COMMS_HISTORY_MAX = 200
+_COMMS_HISTORY: dict[str, list[dict]] = {}
+_COMMS_SUBS: dict[str, list[Queue]] = {}
+_COMMS_LOCK = threading.Lock()
+
+
+def _comms_publish(gid: str, msg: dict) -> None:
+    """Append to history + fan out to every subscriber queue for this group."""
+    with _COMMS_LOCK:
+        hist = _COMMS_HISTORY.setdefault(gid, [])
+        hist.append(msg)
+        if len(hist) > _COMMS_HISTORY_MAX:
+            del hist[: len(hist) - _COMMS_HISTORY_MAX]
+        subs = list(_COMMS_SUBS.get(gid, []))
+    for q in subs:
+        try:
+            q.put_nowait(msg)
+        except Exception:
+            pass  # subscriber's queue full / dead — they'll drop and reconnect
 
 
 def _now_iso() -> str:
@@ -484,3 +517,92 @@ def register_group_routes(app) -> None:
         from services.olympus_bridge import send_command
         result = send_command(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", command, params)
         return jsonify(result), (200 if result.get("ok") else 502)
+
+    # ----------------------------------------------------------------------
+    # Controller text comms (Phase 3 of the LotATC-style scope).
+    # The DM (or anyone with the `command` cap) posts typed orders; every
+    # member's CommsLog SSE stream receives them within ~1s. Pure app-
+    # internal lane — Olympus has no chat command, so we route through
+    # our own pubsub.
+    # ----------------------------------------------------------------------
+    @app.route("/api/groups/<gid>/comms", methods=["GET"])
+    def comms_list(gid):
+        """Backfill the recent message history when a member first opens CommsLog."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+        with _COMMS_LOCK:
+            hist = list(_COMMS_HISTORY.get(gid, []))
+        return jsonify({"messages": hist})
+
+    @app.route("/api/groups/<gid>/comms", methods=["POST"])
+    def comms_post(gid):
+        """DM posts a typed order. Gated by the `command` capability (DM model)."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        member_role = role_in_group(sb, user["id"], gid)
+        if member_role is None:
+            return jsonify({"error": "Not a member"}), 403
+        if not role_has(member_role, "command"):
+            return jsonify({"error": f"Your role ({member_role}) cannot broadcast comms."}), 403
+        body = request.get_json(silent=True) or {}
+        text = (body.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "text required"}), 400
+        if len(text) > 1000:
+            text = text[:1000]
+        msg = {
+            "id": _uuid(),
+            "ts": _now_iso(),
+            "author": user.get("username") or "DM",
+            "authorId": user["id"],
+            "role": member_role,
+            "text": text,
+        }
+        _comms_publish(gid, msg)
+        return jsonify(msg)
+
+    @app.route("/api/groups/<gid>/comms/stream", methods=["GET"])
+    def comms_stream(gid):
+        """SSE: every member can subscribe. Heartbeat every HEARTBEAT_INTERVAL
+        seconds keeps Cloudflare from killing the connection on idle groups."""
+        sb, user, err = _ctx()
+        if err:
+            return err
+        if role_in_group(sb, user["id"], gid) is None:
+            return jsonify({"error": "Not a member"}), 403
+
+        q: Queue = Queue()
+        with _COMMS_LOCK:
+            _COMMS_SUBS.setdefault(gid, []).append(q)
+
+        def generate():
+            yield ": connected\n\n"
+            try:
+                while True:
+                    try:
+                        msg = q.get(timeout=30)
+                        yield f"event: comms\ndata: {json.dumps(msg)}\n\n"
+                    except Exception:
+                        yield ": heartbeat\n\n"
+            except GeneratorExit:
+                pass
+            finally:
+                with _COMMS_LOCK:
+                    try:
+                        _COMMS_SUBS.get(gid, []).remove(q)
+                    except (ValueError, KeyError):
+                        pass
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )

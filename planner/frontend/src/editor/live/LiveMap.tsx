@@ -38,6 +38,10 @@ import {
 import { SpawnPanel } from './SpawnPanel';
 import { IadsPanel } from './IadsPanel';
 import type { IadsArea } from './iadsRecipes';
+import { computeBra, formatBra, metresToFeet } from './braCalc';
+import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictureCall';
+import { SrsDirectory } from './SrsDirectory';
+import { CommsLog } from './CommsLog';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -68,9 +72,10 @@ function headingRad(u: UnitT): number {
 
 // Category-shaped, coalition-colored marker, rotated to the unit's heading
 // (air = a triangle that points where it's flying). Dead units render dimmed +
-// hollow. When `showLabels`, the unit name is drawn beneath the marker. Styles
-// are cheap and built per-unit (heading is continuous, so caching doesn't help).
-function styleForUnit(u: UnitT, showLabels = false): Style {
+// hollow. Labels: 0=off, 1=basic (callsign/name), 2=rich GCI block (callsign
+// on top, ALT thousands + 3-digit HDG, then SPD knots). Styles are cheap and
+// built per-unit (heading is continuous, so caching doesn't help).
+function styleForUnit(u: UnitT, labelsMode: LabelsMode = 0): Style {
   const cat = (u.category || '').toLowerCase();
   const bucket = cat.includes('heli') ? 'air'
     : cat.includes('air') || cat.includes('plane') ? 'air'
@@ -88,12 +93,33 @@ function styleForUnit(u: UnitT, showLabels = false): Style {
   else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke, rotation: rot }); // square
   else image = new CircleStyle({ radius: 4.5, fill, stroke });
   const style = new Style({ image });
-  if (showLabels) {
+  if (labelsMode === 1) {
     const label = u.unitName || u.name || '';
     if (label) style.setText(new Text({
       text: label, font: '10px sans-serif', offsetY: 15,
       fill: new Fill({ color: dead ? '#8a93a0' : '#cfe0f0' }),
       stroke: new Stroke({ color: 'rgba(8,12,18,0.9)', width: 2.5 }),
+    }));
+  } else if (labelsMode === 2) {
+    // GCI block: line 1 callsign, line 2 alt(thousands) + 3-digit heading, line 3 knots.
+    const callsign = u.unitName || u.name || '';
+    const altKft = u.position?.alt != null && Number.isFinite(u.position.alt)
+      ? `${Math.round((u.position.alt * 3.28084) / 1000)}` : '—';
+    const hdgRad = u.track != null ? u.track : u.heading;
+    const hdgDeg = hdgRad != null && Number.isFinite(hdgRad)
+      ? String(Math.round((hdgRad * 180 / Math.PI + 360) % 360)).padStart(3, '0')
+      : '—';
+    const knots = u.speed != null && Number.isFinite(u.speed)
+      ? `${Math.round(u.speed * 1.94384)}` : '—';
+    const lines = [
+      callsign,
+      `${altKft}K · ${hdgDeg}°`,
+      `${knots} kt`,
+    ].filter((s) => s && !s.startsWith(' ')).join('\n');
+    if (lines) style.setText(new Text({
+      text: lines, font: 'bold 10px sans-serif', offsetY: 22, textAlign: 'center',
+      fill: new Fill({ color: dead ? '#8a93a0' : '#e7f0fb' }),
+      stroke: new Stroke({ color: 'rgba(8,12,18,0.95)', width: 3 }),
     }));
   }
   return style;
@@ -105,15 +131,19 @@ interface UnitT {
   ROE?: number; reactionToThreat?: number; alarmState?: number; emissionsCountermeasures?: number;
   desiredAltitudeType?: number; desiredSpeedType?: number;  // 1=AGL/1=GS ; 0=ASL/0=CAS
   heading?: number; track?: number;  // radians (0=N, CW) — for the heading arrow
+  speed?: number;  // m/s — shipped by the decoder for moving units
   position?: { lat: number; lng: number; alt?: number };
 }
+
+// 0 = off, 1 = basic (unit name), 2 = rich (CALLSIGN / ALT·HDG / SPD)
+type LabelsMode = 0 | 1 | 2;
 
 // Highlight ring drawn around each selected unit.
 const SEL_STYLE = new Style({ image: new CircleStyle({ radius: 11, stroke: new Stroke({ color: '#ffd24a', width: 2 }), fill: undefined }) });
 
 // Style for a cluster of N ground units: count badge colored by majority side.
-function clusterStyle(features: Feature[], showLabels = false): Style {
-  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u || {}, showLabels); }
+function clusterStyle(features: Feature[], labelsMode: LabelsMode = 0): Style {
+  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u || {}, labelsMode); }
   let red = 0, blue = 0;
   for (const f of features) { const c = (f.get('unit') as UnitT | undefined)?.coalition; if (c === 1) red++; else if (c === 2) blue++; }
   const side = red > blue ? 1 : blue > red ? 2 : 0;
@@ -136,6 +166,29 @@ function measureFeatureStyle(feature: Feature): Style {
     image: new CircleStyle({ radius: 3.5, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.7)', width: 1 }) }),
   });
   return new Style({ stroke: new Stroke({ color: '#ffd24a', width: 2, lineDash: [6, 4] }) });
+}
+
+// BRA-tool feature styling: solid yellow line from anchor → target, both
+// endpoints marked with a 2-px dot, and a labelled chip floating at the
+// midpoint (BRA bearing/range/altitude). The anchor dot is hollow so it
+// reads as a "pinned" point distinct from the target.
+function braFeatureStyle(feature: Feature): Style {
+  const role = feature.get('_role') as 'anchor' | 'target' | 'line' | 'label' | undefined;
+  const label = feature.get('_label') as string | undefined;
+  if (role === 'label' && label) return new Style({
+    text: new Text({ text: label, font: 'bold 12px sans-serif', offsetY: -14,
+      fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.9)', width: 3 }),
+      backgroundFill: new Fill({ color: 'rgba(9,13,20,0.92)' }),
+      backgroundStroke: new Stroke({ color: '#ffd24a', width: 1 }), padding: [3, 6, 2, 6] }),
+  });
+  if (role === 'anchor') return new Style({
+    image: new CircleStyle({ radius: 5, fill: new Fill({ color: 'rgba(255,210,74,0.15)' }), stroke: new Stroke({ color: '#ffd24a', width: 2 }) }),
+  });
+  if (role === 'target') return new Style({
+    image: new CircleStyle({ radius: 4, fill: new Fill({ color: '#ffd24a' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.7)', width: 1 }) }),
+  });
+  // line
+  return new Style({ stroke: new Stroke({ color: '#ffd24a', width: 1.8 }) });
 }
 
 // IADS generator area: dashed accent circle + centre dot.
@@ -216,6 +269,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const measureSrcRef = useRef<VectorSource | null>(null); // measure-tool line + labels
   const iadsSrcRef = useRef<VectorSource | null>(null);    // IADS generator area circle
   const selSrcRef = useRef<VectorSource | null>(null);     // selection highlight rings
+  const historySrcRef = useRef<VectorSource | null>(null); // GCI track-history trails
+  // Per-unit position breadcrumbs for the track-history overlay. Keyed by
+  // olympusID (or unitName/name fallback). Pushed each poll, pruned to the
+  // active trailSec window each render.
+  const historyRef = useRef<Map<string, Array<{ lat: number; lng: number; t: number }>>>(new Map());
   const fittedRef = useRef(false);
   // Persistent unit store (merge across polls so units don't blink out on a
   // delta frame / decode hiccup). Removed when explicitly dead or absent ~3 polls.
@@ -318,9 +376,26 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [showEng, toggleEng] = usePersistedToggle('dcsopt.live.engrings');
   const [showAcq, toggleAcq] = usePersistedToggle('dcsopt.live.acqrings');
   const [clusterGround, toggleCluster] = usePersistedToggle('dcsopt.live.cluster');
-  const [showLabels, toggleLabels] = usePersistedToggle('dcsopt.live.labels');
-  const showLabelsRef = useRef(false);
-  showLabelsRef.current = showLabels;  // read by the (once-registered) cluster layer style
+  // 3-state labels (off / basic / rich). Migrates the legacy boolean key on
+  // first read: '0' → off, '1' → basic. Cycle order: off → basic → rich → off.
+  const [labelsMode, setLabelsMode] = useState<LabelsMode>(() => {
+    try {
+      const v = localStorage.getItem('dcsopt.live.labelsMode');
+      if (v === '0' || v === '1' || v === '2') return Number(v) as LabelsMode;
+      // Migrate legacy 'dcsopt.live.labels' boolean → basic if it was on (the default).
+      const legacy = localStorage.getItem('dcsopt.live.labels');
+      return legacy === '0' ? 0 : 1;
+    } catch { return 1; }
+  });
+  const cycleLabels = () => setLabelsMode((p) => {
+    const next = ((p + 1) % 3) as LabelsMode;
+    try { localStorage.setItem('dcsopt.live.labelsMode', String(next)); } catch { /* ignore */ }
+    return next;
+  });
+  const labelsModeRef = useRef<LabelsMode>(labelsMode);
+  labelsModeRef.current = labelsMode;  // read by the (once-registered) cluster layer style
+  // Legacy alias so the existing dep arrays don't all have to be renamed.
+  const showLabels = labelsMode;
 
   // Rebuild the vector layer from the persistent unit store, applying the
   // human / Olympus visibility filters + counts. Reassigned each render so it
@@ -399,10 +474,136 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     placeFnRef.current = fn; setPlaceLabel(fn ? label : '');
   }, []);
 
-  // Map tools (zoom / select / measure / erase). Tool 'measure' makes clicks
-  // drop range+bearing points; 'select' is normal unit selection.
-  const [tool, setTool] = useState<'select' | 'measure'>('select');
+  // Map tools (zoom / select / measure / bra / erase). Tool 'measure' makes
+  // clicks drop range+bearing points; 'select' is normal unit selection;
+  // 'bra' is the GCI Bearing/Range/Altitude tool — 1st click sets the anchor,
+  // 2nd sets the target, 3rd resets to a new anchor.
+  const [tool, setTool] = useState<'select' | 'measure' | 'bra' | 'gci'>('select');
   const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
+  // Track-history trail window in seconds. 0 = off. Persisted across reloads.
+  const [trailSec, setTrailSec] = useState<0 | 30 | 60 | 120>(() => {
+    try { const v = Number(localStorage.getItem('dcsopt.live.trailSec') ?? '0'); return ([0, 30, 60, 120] as const).includes(v as 0 | 30 | 60 | 120) ? (v as 0 | 30 | 60 | 120) : 0; }
+    catch { return 0; }
+  });
+  const cycleTrailSec = () => setTrailSec((p) => {
+    const next = p === 0 ? 30 : p === 30 ? 60 : p === 60 ? 120 : 0;
+    try { localStorage.setItem('dcsopt.live.trailSec', String(next)); } catch { /* ignore */ }
+    return next;
+  });
+  const trailSecRef = useRef(trailSec);
+  trailSecRef.current = trailSec;
+  // GCI range rings — controller-placed circles with adjustable radius (NM).
+  // The default-radius slider value is used at drop time.
+  type GciRing = { id: number; lat: number; lng: number; nm: number };
+  const [gciRings, setGciRings] = useState<GciRing[]>([]);
+  const [gciDefaultNm, setGciDefaultNm] = useState(30);
+  const gciSrcRef = useRef<VectorSource | null>(null);
+  const gciIdRef = useRef(1);
+  // Picture-call panel — open by default if the user has ever opened it before
+  // (persisted) so DMs who use it always see it.
+  const [pictureOpen, setPictureOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.pictureOpen') === '1'; } catch { return false; }
+  });
+  const togglePicture = () => setPictureOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.pictureOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
+  const [srsOpen, setSrsOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.srsOpen') === '1'; } catch { return false; }
+  });
+  const toggleSrs = () => setSrsOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.srsOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
+  const [commsOpen, setCommsOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.commsOpen') === '1'; } catch { return false; }
+  });
+  const toggleComms = () => setCommsOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.commsOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
+  // BRA tool state. Anchor + target are independent lat/lng+optional-alt points.
+  // When both are present, the line + chip render and the persistent readout
+  // updates. `_unitId` lets us re-resolve a clicked unit each render so live
+  // altitude/track stay current as the unit moves.
+  type BraPoint = { lat: number; lng: number; altFt?: number; trackDeg?: number; unitId?: number; label?: string };
+  const [braAnchor, setBraAnchor] = useState<BraPoint | null>(null);
+  const [braTarget, setBraTarget] = useState<BraPoint | null>(null);
+  const braSrcRef = useRef<VectorSource | null>(null);
+  // Refresh BRA endpoints from live unit telemetry each poll so the call
+  // stays current as the bandit moves. Cleared by the tool's clear button.
+  const refreshBraFromUnits = useCallback(() => {
+    setBraAnchor((p) => {
+      if (!p?.unitId) return p;
+      const u = unitsRef.current[String(p.unitId)]?.u;
+      if (!u?.position) return p;
+      const trackDeg = u.track != null ? (u.track * 180 / Math.PI + 360) % 360 : u.heading != null ? (u.heading * 180 / Math.PI + 360) % 360 : undefined;
+      return { ...p, lat: u.position.lat, lng: u.position.lng, altFt: metresToFeet(u.position.alt), trackDeg };
+    });
+    setBraTarget((p) => {
+      if (!p?.unitId) return p;
+      const u = unitsRef.current[String(p.unitId)]?.u;
+      if (!u?.position) return p;
+      const trackDeg = u.track != null ? (u.track * 180 / Math.PI + 360) % 360 : u.heading != null ? (u.heading * 180 / Math.PI + 360) % 360 : undefined;
+      return { ...p, lat: u.position.lat, lng: u.position.lng, altFt: metresToFeet(u.position.alt), trackDeg };
+    });
+  }, []);
+  // Computed call for the persistent readout + the floating chip on the map.
+  const braCall = braAnchor && braTarget
+    ? computeBra({ lat: braAnchor.lat, lng: braAnchor.lng }, { lat: braTarget.lat, lng: braTarget.lng, altFt: braTarget.altFt })
+    : null;
+
+  // Rebuild the track-history layer from the current ring buffers. One
+  // LineString per unit, coalition-tinted, ~0.85 alpha. Cheap (called ~once
+  // every 5s + on toggle).
+  const rebuildHistoryLayer = useCallback(() => {
+    const src = historySrcRef.current; if (!src) return;
+    src.clear();
+    if (trailSecRef.current === 0) return;
+    const hist = historyRef.current;
+    const store = unitsRef.current as Record<string, { u: UnitT; miss: number }>;
+    for (const [key, arr] of hist) {
+      if (arr.length < 2) continue;
+      const coalition = store[key]?.u?.coalition;
+      const color = SIDE_COLOR[coalition ?? -1] ?? C.neutral;
+      const coords = arr.map((p) => fromLonLat([p.lng, p.lat]));
+      const f = new Feature({ geometry: new LineString(coords) });
+      f.setStyle(new Style({ stroke: new Stroke({ color: hexA(color, 0.7), width: 1.4 }) }));
+      src.addFeature(f);
+    }
+  }, []);
+  // Refresh trails when the window changes (clears stale segments outside the new window).
+  useEffect(() => { rebuildHistoryLayer(); }, [trailSec, rebuildHistoryLayer]);
+
+  // Rebuild the GCI rings layer when the ring list changes. Same lat-corrected
+  // projected-radius pattern as `ringFeature`. Each ring shows a centre dot,
+  // the ring outline, and a small radius label.
+  useEffect(() => {
+    const src = gciSrcRef.current; if (!src) return;
+    src.clear();
+    for (const r of gciRings) {
+      const center = fromLonLat([r.lng, r.lat]);
+      const projR = (r.nm * 1852) / Math.max(0.15, Math.cos(r.lat * Math.PI / 180));
+      const ring = new Feature({ geometry: new CircleGeom(center, projR) });
+      ring.setStyle(new Style({
+        stroke: new Stroke({ color: '#9ad0ff', width: 1.4, lineDash: [4, 4] }),
+        fill: new Fill({ color: 'rgba(154,208,255,0.04)' }),
+      }));
+      src.addFeature(ring);
+      const dot = new Feature({ geometry: new Point(center) });
+      dot.setStyle(new Style({ image: new CircleStyle({ radius: 3, fill: new Fill({ color: '#9ad0ff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.7)', width: 1 }) }) }));
+      src.addFeature(dot);
+      const lbl = new Feature({ geometry: new Point(center) });
+      lbl.setStyle(new Style({ text: new Text({
+        text: `${r.nm} NM`, font: 'bold 10px sans-serif', offsetY: -10,
+        fill: new Fill({ color: '#9ad0ff' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.8)', width: 3 }),
+      }) }));
+      src.addFeature(lbl);
+    }
+  }, [gciRings]);
   const zoomBy = (d: number) => { const v = mapRef.current?.getView(); if (v) v.animate({ zoom: (v.getZoom() ?? 6) + d, duration: 180 }); };
   // Rebuild the measure line + per-segment range/bearing labels from the vertices.
   useEffect(() => {
@@ -443,6 +644,35 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       });
     },
     onMeasure: (lat: number, lng: number) => setMeasurePts((prev) => [...prev, [lng, lat]]),
+    onBra: (lat: number, lng: number, target: UnitT | null) => {
+      // Build a BRA point. If the click hit a live unit, capture its altitude
+      // (metres → feet) and heading/track (rad → deg) so the call uses real
+      // telemetry. Otherwise just the surface position is used.
+      const buildPt = (): BraPoint => {
+        if (target?.position) {
+          const trackDeg = target.track != null ? (target.track * 180 / Math.PI + 360) % 360
+            : target.heading != null ? (target.heading * 180 / Math.PI + 360) % 360 : undefined;
+          return {
+            lat: target.position.lat,
+            lng: target.position.lng,
+            altFt: metresToFeet(target.position.alt),
+            trackDeg,
+            unitId: target.olympusID,
+            label: target.unitName || target.name,
+          };
+        }
+        return { lat, lng };
+      };
+      const pt = buildPt();
+      // 3-state cycle: nothing set → set anchor. Anchor set, no target → set target.
+      // Both set → start over (new anchor, clear target).
+      if (!braAnchor) { setBraAnchor(pt); setBraTarget(null); return; }
+      if (!braTarget) { setBraTarget(pt); return; }
+      setBraAnchor(pt); setBraTarget(null);
+    },
+    onGci: (lat: number, lng: number) => {
+      setGciRings((prev) => [...prev, { id: gciIdRef.current++, lat, lng, nm: gciDefaultNm }]);
+    },
     onArmed: (lat: number, lng: number, target: UnitT | null) => {
       const a = armed;
       if (!a) return;
@@ -462,6 +692,32 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       // 'freehand': OL Draw interaction handles drag-to-draw; clicks do nothing.
     },
   };
+
+  // Rebuild the BRA layer (anchor dot + target dot + connecting line + chip)
+  // every time either endpoint moves. Empty when neither is set.
+  useEffect(() => {
+    const src = braSrcRef.current; if (!src) return;
+    src.clear();
+    if (!braAnchor && !braTarget) return;
+    if (braAnchor) {
+      const af = new Feature({ geometry: new Point(fromLonLat([braAnchor.lng, braAnchor.lat])) });
+      af.set('_role', 'anchor'); src.addFeature(af);
+    }
+    if (braTarget) {
+      const tf = new Feature({ geometry: new Point(fromLonLat([braTarget.lng, braTarget.lat])) });
+      tf.set('_role', 'target'); src.addFeature(tf);
+    }
+    if (braAnchor && braTarget && braCall) {
+      const a = fromLonLat([braAnchor.lng, braAnchor.lat]);
+      const b = fromLonLat([braTarget.lng, braTarget.lat]);
+      const lf = new Feature({ geometry: new LineString([a, b]) });
+      lf.set('_role', 'line'); src.addFeature(lf);
+      const labelPt = new Feature({ geometry: new Point([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) });
+      labelPt.set('_role', 'label');
+      labelPt.set('_label', formatBra(braCall));
+      src.addFeature(labelPt);
+    }
+  }, [braAnchor, braTarget, braCall]);
 
   // Freehand polygon: while in iads + freehand mode, attach OL's built-in Draw
   // interaction (type:'Polygon', freehand:true) — drag-to-draw a continuous path.
@@ -527,16 +783,28 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const unitsLayer = new VectorLayer({ source: src });
     const abLayer = new VectorLayer({ source: abSrc });
     const ringLayer = new VectorLayer({ source: ringSrc });
-    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[], showLabelsRef.current) });
+    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[], labelsModeRef.current) });
     const measureSrc = new VectorSource();
     measureSrcRef.current = measureSrc;
     const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
+    const braSrc = new VectorSource();
+    braSrcRef.current = braSrc;
+    const braLayer = new VectorLayer({ source: braSrc, style: (f) => braFeatureStyle(f as Feature) });
     const iadsSrc = new VectorSource();
     iadsSrcRef.current = iadsSrc;
     const iadsLayer = new VectorLayer({ source: iadsSrc, style: (f) => iadsFeatureStyle(f as Feature) });
+    const gciSrc = new VectorSource();
+    gciSrcRef.current = gciSrc;
+    // GCI rings carry their own per-feature style (we tint each ring by index).
+    const gciLayer = new VectorLayer({ source: gciSrc });
     const selSrc = new VectorSource();
     selSrcRef.current = selSrc;
     const selLayer = new VectorLayer({ source: selSrc, style: SEL_STYLE });
+    const historySrc = new VectorSource();
+    historySrcRef.current = historySrc;
+    // Each history feature carries its own coalition-tinted style (set when
+    // we rebuild the layer) — no shared style function needed.
+    const historyLayer = new VectorLayer({ source: historySrc });
     abLayerRef.current = abLayer;
     const map = new OlMap({
       target: elRef.current,
@@ -546,10 +814,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         abLayer,        // airbases under units
         ringLayer,      // threat rings under units
         iadsLayer,      // IADS generator area circle (under markers)
+        gciLayer,       // GCI/ATC range rings (under markers)
         selLayer,       // selection highlight rings (under markers)
+        historyLayer,   // GCI track-history trails (under markers, above rings)
         clusterLayer,   // ground units (clustered)
         unitsLayer,     // air/navy units on top
-        measureLayer,   // measure tool overlay (topmost)
+        measureLayer,   // measure tool overlay
+        braLayer,       // BRA tool overlay (topmost)
       ],
       view: new View({ center: fromLonLat([35, 43]), zoom: 6 }),
     });
@@ -574,6 +845,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           target = (f.get('unit') as UnitT) ?? null;
         }
       }
+      if (c.tool === 'bra') { c.onBra(lat, lng, target); return; }  // BRA uses hit-test (unit alt/track)
+      if (c.tool === 'gci') { c.onGci(lat, lng); return; }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
       c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
@@ -614,7 +887,38 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           if (!seen.has(k)) { if (++store[k].miss >= 3) delete store[k]; }
         }
         feedLenRef.current = units.length;
+        // Push live positions into the per-unit history ring buffer. Only
+        // moving (air/heli/navy) units get trails; static ground noise would
+        // just clutter the scope.
+        const tNow = Date.now();
+        const winMs = (trailSecRef.current || 0) * 1000;
+        if (winMs > 0) {
+          const hist = historyRef.current;
+          for (const u of units) {
+            const cat = String(u.category || '').toLowerCase();
+            if (cat !== 'aircraft' && cat !== 'helicopter' && cat !== 'navyunit' && cat !== 'navy') continue;
+            if (!u.position) continue;
+            const key = u.olympusID != null ? String(u.olympusID) : (u.unitName || u.name || '');
+            if (!key) continue;
+            const arr = hist.get(key) ?? [];
+            arr.push({ lat: u.position.lat, lng: u.position.lng, t: tNow });
+            // Prune anything older than the window.
+            while (arr.length && tNow - arr[0].t > winMs) arr.shift();
+            hist.set(key, arr);
+          }
+          // Drop trails for units the feed has forgotten.
+          for (const key of Array.from(hist.keys())) {
+            if (!units.some((u) => (u.olympusID != null ? String(u.olympusID) : (u.unitName || u.name || '')) === key)) {
+              hist.delete(key);
+            }
+          }
+          rebuildHistoryLayer();
+        } else if (historyRef.current.size) {
+          historyRef.current.clear();
+          rebuildHistoryLayer();
+        }
         renderRef.current();  // rebuild features + counts (applies visibility filters)
+        refreshBraFromUnits();  // keep BRA endpoints anchored to live units (alt/track move)
       } catch (e) { if (!cancelled) setErr(e instanceof Error ? e.message : 'failed'); }
     };
     poll(); const id = setInterval(poll, 5000);
@@ -682,10 +986,58 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
 
-  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || mode === 'iads';
+  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || mode === 'iads';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
   // Live copy of the selected unit (refreshed each poll) for current-state highlights.
   const sUnit = selected ? (unitsRef.current[String(selected.olympusID)]?.u ?? selected) : null;
+  // Picture call (auto bogey-dope). Anchor priority:
+  //   1. BRA tool's anchor (if set)
+  //   2. First friendly unit in the current selection (own-ship / GCI)
+  //   3. First friendly unit in the live store (fallback)
+  // Picture pulls every airborne hostile (aircraft / heli) from the live store.
+  const pictureCall = (() => {
+    let anchor: { lat: number; lng: number } | null = null;
+    let anchorLabel = '';
+    if (braAnchor) { anchor = { lat: braAnchor.lat, lng: braAnchor.lng }; anchorLabel = braAnchor.label || 'BRA anchor'; }
+    else {
+      const firstFriendly = selUnits.find((u) => u.coalition === 2 && u.position) ?? null;
+      if (firstFriendly?.position) {
+        anchor = { lat: firstFriendly.position.lat, lng: firstFriendly.position.lng };
+        anchorLabel = firstFriendly.unitName || firstFriendly.name || 'selection';
+      } else {
+        // Fallback: first friendly in the store with a position.
+        const store = unitsRef.current as Record<string, { u: UnitT; miss: number }>;
+        for (const k of Object.keys(store)) {
+          const u = store[k].u;
+          if (u.coalition === 2 && u.alive !== 0 && u.position) {
+            anchor = { lat: u.position.lat, lng: u.position.lng };
+            anchorLabel = u.unitName || u.name || 'friendly';
+            break;
+          }
+        }
+      }
+    }
+    if (!anchor) return { call: null as ReturnType<typeof buildPictureCall>, anchorLabel: '' };
+    const store = unitsRef.current as Record<string, { u: UnitT; miss: number }>;
+    const tracks: PictureTrack[] = [];
+    for (const k of Object.keys(store)) {
+      const u = store[k].u;
+      if (u.coalition !== 1) continue;          // hostiles only
+      if (u.alive === 0) continue;
+      if (!u.position) continue;
+      const cat = String(u.category || '').toLowerCase();
+      if (cat !== 'aircraft' && cat !== 'helicopter') continue;  // air picture only
+      const trackRad = u.track ?? u.heading;
+      const trackDeg = trackRad != null ? (trackRad * 180 / Math.PI + 360) % 360 : null;
+      tracks.push({
+        id: u.olympusID ?? k,
+        lat: u.position.lat, lng: u.position.lng,
+        altFt: metresToFeet(u.position.alt),
+        trackDeg, coalition: u.coalition,
+      });
+    }
+    return { call: buildPictureCall(anchor, tracks), anchorLabel };
+  })();
 
   return (
     <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
@@ -703,8 +1055,42 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
         <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
                 style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
-        <button onClick={toggleLabels} title="Toggle unit name labels" style={{ ...toolBtn, ...(showLabels ? toolOn : {}) }}>🏷</button>
+        <button onClick={() => { setTool('bra'); setArmed(null); }}
+                title="BRA tool — click anchor then target for a controller-style bearing/range/altitude call (click a live unit to capture its altitude + track)"
+                style={{ ...toolBtn, ...(tool === 'bra' ? toolOn : {}) }}>📐</button>
+        <button onClick={() => { setBraAnchor(null); setBraTarget(null); }}
+                title="Clear BRA call"
+                disabled={!braAnchor && !braTarget}
+                style={{ ...toolBtn, opacity: (!braAnchor && !braTarget) ? 0.4 : 1 }}>✕</button>
+        <button onClick={() => { setTool('gci'); setArmed(null); }}
+                title={`GCI range rings — click the map to drop a ${gciDefaultNm} NM ring`}
+                style={{ ...toolBtn, ...(tool === 'gci' ? toolOn : {}) }}>◎</button>
+        <button onClick={() => setGciRings([])} title="Clear all GCI rings"
+                disabled={gciRings.length === 0}
+                style={{ ...toolBtn, opacity: gciRings.length === 0 ? 0.4 : 1 }}>🧹</button>
+        <button onClick={cycleTrailSec}
+                title={`Track history trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s window`} — click to cycle off → 30s → 60s → 120s`}
+                style={{ ...toolBtn, ...(trailSec > 0 ? toolOn : {}), position: 'relative' }}>
+          🛤
+          {trailSec > 0 && (
+            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: C.text, border: `1px solid ${C.border}`, borderRadius: 2 }}>{trailSec}</span>
+          )}
+        </button>
+        <button onClick={cycleLabels}
+                title={`Labels: ${labelsMode === 0 ? 'OFF' : labelsMode === 1 ? 'BASIC (callsign)' : 'RICH (callsign · ALT · HDG · SPD)'} — click to cycle`}
+                style={{ ...toolBtn, ...(labelsMode > 0 ? toolOn : {}), position: 'relative' }}>
+          🏷
+          {labelsMode === 2 && (
+            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: '#ffd24a', border: `1px solid #ffd24a`, borderRadius: 2 }}>+</span>
+          )}
+        </button>
         <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
+        <button onClick={toggleSrs}
+                title="SRS frequency directory — every flight's radio freq + TACAN, with copy buttons"
+                style={{ ...toolBtn, ...(srsOpen ? toolOn : {}) }}>📻</button>
+        <button onClick={toggleComms}
+                title="Controller text comms — typed broadcast lane (canCommand-only composer)"
+                style={{ ...toolBtn, ...(commsOpen ? toolOn : {}) }}>💬</button>
         <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
                 style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
       </div>
@@ -1041,9 +1427,97 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
+      {/* ── GCI ring tool prompt + radius slider ─────────────────────────── */}
+      {tool === 'gci' && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '8px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #9ad0ff`, color: '#9ad0ff', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(154,208,255,0.25)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span>◎ Click to drop a {gciDefaultNm} NM ring</span>
+          <input type="range" min={5} max={150} step={5} value={gciDefaultNm}
+                 onChange={(e) => setGciDefaultNm(Number(e.target.value))}
+                 style={{ width: 140 }} />
+          {gciRings.length > 0 && <span style={{ color: C.textDim, fontWeight: 400 }}>{gciRings.length} ring{gciRings.length === 1 ? '' : 's'}</span>}
+        </div>
+      )}
+
+      {/* ── BRA tool prompt (top-centre, only while BRA is the active tool) ── */}
+      {tool === 'bra' && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #ffd24a`, color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)' }}>
+          {!braAnchor ? '📐 Click an ANCHOR (own-ship, GCI station, or a friendly track)'
+            : !braTarget ? '📐 Click a TARGET (clicking a live unit captures alt + track)'
+            : '📐 Click again to start over'}
+        </div>
+      )}
+
+      {/* ── SRS directory (left side, below the tool rail) ───────────────── */}
+      {srsOpen && (
+        <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
+          <SrsDirectory onClose={toggleSrs} />
+        </div>
+      )}
+
+      {/* ── Comms log drawer (bottom-left, above the status bar) ─────────── */}
+      {commsOpen && (
+        <div style={{ position: 'absolute', bottom: 36, left: 56, width: 360, height: 320, zIndex: 4, display: 'flex' }}>
+          <CommsLog group={group} onClose={toggleComms} />
+        </div>
+      )}
+
+      {/* ── Picture-call panel (bottom-right; auto bogey-dope) ───────────── */}
+      {!pictureOpen ? (
+        <button onClick={togglePicture}
+                title="Open the PICTURE call (auto bogey-dope summary)"
+                style={{ position: 'absolute', bottom: 36, right: 12, zIndex: 4, padding: '6px 10px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.border}`, color: C.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+          📡 PICTURE{pictureCall.call ? ` · ${pictureCall.call.totalBandits}` : ''}
+        </button>
+      ) : (
+        <div style={{ position: 'absolute', bottom: 36, right: 12, width: 280, zIndex: 4, background: 'rgba(9,13,20,0.96)', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'rgba(74,158,255,0.10)', borderBottom: `1px solid ${C.border}`, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text }}>
+            <span>📡 PICTURE</span>
+            <span onClick={togglePicture} style={{ cursor: 'pointer', color: C.textDim, fontWeight: 400 }}>×</span>
+          </div>
+          <div style={{ padding: 10, fontSize: 12, color: C.text, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {!pictureCall.call ? (
+              <div style={{ color: C.textDim, fontSize: 11, lineHeight: 1.5 }}>
+                No bandits in the air picture, or no friendly anchor.{' '}
+                <span style={{ color: C.textDim }}>Set an anchor with 📐 BRA, or select a friendly track.</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 10, color: C.textDim, letterSpacing: 0.5 }}>
+                  ANCHOR: <span style={{ color: C.text }}>{pictureCall.anchorLabel}</span>
+                  <span style={{ float: 'right' }}>{pictureCall.call.totalBandits} contact{pictureCall.call.totalBandits === 1 ? '' : 's'}</span>
+                </div>
+                {pictureCall.call.bands.map((b) => (
+                  <div key={b.band} style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '3px 0', borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, width: 36 }}>{b.band.toUpperCase()}</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#ffd24a', flex: 1 }}>{b.line}</span>
+                  </div>
+                ))}
+                <button onClick={() => {
+                  if (pictureCall.call) {
+                    const text = formatPictureCall(pictureCall.call);
+                    try { navigator.clipboard?.writeText(text); setCmdMsg('✓ Picture copied'); } catch { /* ignore */ }
+                  }
+                }}
+                        style={{ ...mbtn, marginTop: 4, padding: '5px 8px', fontSize: 10, letterSpacing: 1 }}>
+                  Copy to clipboard
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Bottom status bar ────────────────────────────────────────────── */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
         <span ref={coordRef}>—</span>
+        {braCall && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#ffd24a', fontWeight: 600 }}>
+            <span style={{ opacity: 0.75 }}>📐</span>
+            <span>{formatBra(braCall)}</span>
+            {braAnchor?.label && <span style={{ color: C.textDim, fontWeight: 400 }}>from {braAnchor.label}</span>}
+            {braTarget?.label && <span style={{ color: C.textDim, fontWeight: 400 }}>→ {braTarget.label}</span>}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <span>{ROLE_LABEL[group.role] || group.role}</span>
         <span>{profile.name}</span>
