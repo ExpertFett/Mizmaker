@@ -83,8 +83,10 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 0,
+        // Body has overflow:hidden globally — be our own scroll container with
+        // a fixed viewport height. Top-aligned (no justifyContent:center) so
+        // content flowing past the viewport stays reachable via scroll.
+        height: '100vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
         background: '#1a1a1a',
         color: '#cccccc',
         fontFamily: 'system-ui, sans-serif',

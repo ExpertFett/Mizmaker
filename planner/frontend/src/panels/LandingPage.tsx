@@ -72,7 +72,11 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
 
   return (
     <div style={{
-      minHeight: '100vh', width: '100%',
+      // body has overflow:hidden globally (editor views use absolute layouts),
+      // so the landing page must be its own scroll container — fixed height +
+      // overflowY:auto. -webkit-overflow-scrolling smooths iOS touch scrolling.
+      height: '100vh', width: '100%', overflowY: 'auto',
+      WebkitOverflowScrolling: 'touch',
       background: PAGE_BG, color: TEXT,
       fontFamily: "'B612', system-ui, sans-serif",
     }}>
