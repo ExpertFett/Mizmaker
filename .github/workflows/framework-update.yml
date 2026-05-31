@@ -1,0 +1,89 @@
+# Weekly auto-update for the bundled DCS scripting frameworks (MOOSE, MIST).
+#
+# The Scripts library embeds these .lua files into a downloaded .miz; the
+# canonical copies live in `planner/backend/assets/scripts/`. Upstream cuts
+# new releases on its own schedule, so testers asked us to "keep MOOSE/MIST
+# updated" — this is that.
+#
+# Runs every Monday 14:00 UTC (07:00 Mountain — Fett's morning). The job
+# invokes `scripts/update_frameworks.py` which downloads the latest copies
+# and overwrites the committed files; if anything actually changed we open
+# a PR against `dev` so Fett reviews + merges (no auto-push to main — real
+# users live on prod, every framework bump deserves an eyes-on review).
+#
+# Manual run: Actions → "Framework update" → Run workflow.
+name: Framework update
+
+on:
+  schedule:
+    # Monday 14:00 UTC every week. UTC because GH Actions cron is UTC-only.
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+jobs:
+  update:
+    name: MOOSE + MIST
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # The PR action needs both write scopes — contents for the branch push,
+      # pull-requests to actually open the PR.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          # Need full history so the auto-PR action's commit chain is happy.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run framework updater
+        id: update
+        working-directory: planner/backend
+        run: |
+          python scripts/update_frameworks.py
+          # `git diff --quiet` exits 1 when there are changes; we invert
+          # that into a step output so the next steps can branch on it.
+          if git diff --quiet -- assets/scripts/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No framework updates available."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Frameworks updated — will open a PR."
+          fi
+
+      - name: Open PR if anything changed
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          base: dev
+          branch: bot/framework-update
+          # Reuse the branch on every run so a second update overwrites the
+          # PR instead of opening a stack of stale ones.
+          delete-branch: true
+          commit-message: "Bundled frameworks: refresh MOOSE / MIST from upstream"
+          title: "Bundled frameworks: refresh MOOSE / MIST"
+          body: |
+            Automated weekly bump of the bundled MOOSE / MIST `.lua` files in
+            `planner/backend/assets/scripts/` (the Scripts library injects
+            these into downloaded `.miz` files).
+
+            **Before merging:**
+            1. Smoke-test by downloading a `.miz` with both frameworks
+               injected — Hornet School fixtures work.
+            2. Check the upstream changelogs for breaking changes:
+               - MOOSE: https://github.com/FlightControl-Master/MOOSE/releases
+               - MIST:  https://github.com/mrSkortch/MissionScriptingTools/commits/master
+            3. If a tester has a known-broken script with the new version,
+               either pin or open an issue upstream — don't merge yet.
+
+            Auto-merging this PR redeploys nothing (lands on `dev`); promote
+            via the usual "ship it" flow when ready.
+          labels: |
+            automation
+            frameworks
