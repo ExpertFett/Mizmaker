@@ -18,11 +18,26 @@
  *   REC  — Recovery / egress complete
  */
 
-export type AttackType = 'type1' | 'laydown';
+export type AttackType = 'type1' | 'type2' | 'type3' | 'laydown' | 'loft' | 'dive';
 
 export const ATTACK_TYPE_LABEL: Record<AttackType, string> = {
   type1: 'Type 1 Popup',
+  type2: 'Type 2 Popup',
+  type3: 'Type 3 Popup',
   laydown: 'Lay-Down',
+  loft: 'Loft (Toss)',
+  dive: 'Straight Dive',
+};
+
+/** Per-attack-type description shown beside the type chip in the editor +
+ *  card. Keeps the geometry mental model in front of the user. */
+export const ATTACK_TYPE_DESC: Record<AttackType, string> = {
+  type1: 'High-angle popup, 30°+ dive — visual delivery from above the apex.',
+  type2: 'Medium-angle popup, ~15–30° dive — compromise of stand-off and accuracy.',
+  type3: 'Low-angle popup, ~10–15° dive — flatter run, shorter exposure peak.',
+  laydown: 'Level release with retarded weapons — ingress alt through release.',
+  loft: 'Toss / Loft — wings-level pull through the release; bomb arcs onto target.',
+  dive: 'Roll-in from cruise into a straight dive — no popup, no level run-in.',
 };
 
 export interface PopupAttackInput {
@@ -121,7 +136,69 @@ export function computePopupAttack(input: PopupAttackInput): PopupAttackProfile 
     };
   }
 
-  // Type 1 popup geometry.
+  if (input.attackType === 'loft') {
+    // Loft / Toss: ingress level → pull up at the Action Point → release
+    // while still climbing at the popup altitude. The bomb arcs onto the
+    // target as a stand-off projectile; no dive segment. PDP = RP here.
+    const climbVertFt = input.popupAltitudeFtMsl - ingressMsl;
+    const climbHorizFt = climbVertFt / Math.tan((Math.max(1, input.popupAngleDeg) * Math.PI) / 180);
+    const climbHorizNm = Math.max(0, climbHorizFt / FT_PER_NM);
+    const rpDist = apDist + climbHorizNm;
+    points.push({
+      label: 'RP', distanceNm: rpDist, altitudeFtMsl: input.popupAltitudeFtMsl,
+      note: `Release climbing ${input.popupAngleDeg}° · ${input.releaseSpeedKts} kt`,
+    });
+    // Target sits stand-off — beyond the release point along the run line.
+    const tgtDist = rpDist + Math.max(0.5, input.vipDistanceNm * 0.4);
+    points.push({ label: 'TGT', distanceNm: tgtDist, altitudeFtMsl: tElev, note: 'Target (stand-off)' });
+    // Recovery: pilot continues the pull through and recovers, modelled as
+    // a level segment back at recovery altitude past the target.
+    const recDist = tgtDist + 1.5;
+    points.push({ label: 'REC', distanceNm: recDist, altitudeFtMsl: recoveryMsl, note: 'Recover & egress' });
+    return {
+      input, points,
+      totals: {
+        ingressDisplayNm: INGRESS_DISPLAY_NM,
+        popupDistanceNm: climbHorizNm,
+        diveDistanceNm: 0,
+        recoveryDistanceNm: 1.5,
+        timeToTargetSec: ((climbHorizNm + (tgtDist - rpDist)) / Math.max(1, (input.ingressSpeedKts + input.releaseSpeedKts) / 2)) * 3600,
+      },
+    };
+  }
+
+  if (input.attackType === 'dive') {
+    // Straight dive: pilot ingresses at altitude, rolls in at the Action
+    // Point, holds the dive angle to release, then recovers. No level
+    // run-in past AP, no climb segment. Ingress altitude is the dive entry
+    // altitude (popup alt input is ignored — we use ingressAltitudeFtAgl).
+    const diveVertFt = ingressMsl - releaseMsl;
+    const diveHorizFt = diveVertFt / Math.tan((Math.max(1, input.diveAngleDeg) * Math.PI) / 180);
+    const diveHorizNm = Math.max(0, diveHorizFt / FT_PER_NM);
+    const rpDist = apDist + diveHorizNm;
+    points.push({
+      label: 'RP', distanceNm: rpDist, altitudeFtMsl: releaseMsl,
+      note: `${input.releaseSpeedKts} kt · ${input.diveAngleDeg}° dive`,
+    });
+    const tgtDist = rpDist + 0.5;
+    points.push({ label: 'TGT', distanceNm: tgtDist, altitudeFtMsl: tElev, note: 'Target' });
+    const recDist = tgtDist + 1.5;
+    points.push({ label: 'REC', distanceNm: recDist, altitudeFtMsl: recoveryMsl, note: 'Egress' });
+    const avgSpd = (input.ingressSpeedKts + input.releaseSpeedKts) / 2;
+    return {
+      input, points,
+      totals: {
+        ingressDisplayNm: INGRESS_DISPLAY_NM,
+        popupDistanceNm: 0,
+        diveDistanceNm: diveHorizNm,
+        recoveryDistanceNm: 1.5,
+        timeToTargetSec: ((diveHorizNm + 0.5) / Math.max(1, avgSpd)) * 3600,
+      },
+    };
+  }
+
+  // Type 1 / Type 2 / Type 3 popup geometry — identical math, the type
+  // label and the typical dive-angle bracket are what differ in practice.
   const popupVertFt = input.popupAltitudeFtMsl - ingressMsl;
   const popupHorizFt = popupVertFt / Math.tan((Math.max(1, input.popupAngleDeg) * Math.PI) / 180);
   const popupHorizNm = Math.max(0, popupHorizFt / FT_PER_NM);
@@ -165,21 +242,44 @@ export function computePopupAttack(input: PopupAttackInput): PopupAttackProfile 
   };
 }
 
-/** A sensible starter set for a fresh profile. */
-export function defaultPopupAttack(name = 'Attack 1'): PopupAttackInput {
-  return {
-    attackType: 'type1',
+/** A sensible starter set for a fresh profile. Defaults track real-world
+ *  brackets per attack type so a new profile lands in a usable place
+ *  without the planner having to read NATOPS first. */
+export function defaultPopupAttack(name = 'Attack 1', attackType: AttackType = 'type1'): PopupAttackInput {
+  const base = {
+    attackType,
     name,
     targetElevationFt: 100,
     vipDistanceNm: 8,
-    popupAltitudeFtMsl: 8000,
-    popupAngleDeg: 40,
     angleOffsetDeg: 25,
-    diveAngleDeg: 30,
-    releaseAltitudeFtAgl: 2000,
     releaseSpeedKts: 480,
-    ingressAltitudeFtAgl: 500,
     ingressSpeedKts: 480,
     recoveryAltitudeFtAgl: 500,
-  };
+  } as const;
+  switch (attackType) {
+    case 'type1':
+      // High-angle popup: 40° climb to ~8000 MSL, 30° dive to ~2000 AGL release.
+      return { ...base, popupAltitudeFtMsl: 8000, popupAngleDeg: 40, diveAngleDeg: 30,
+               releaseAltitudeFtAgl: 2000, ingressAltitudeFtAgl: 500 };
+    case 'type2':
+      // Medium-angle popup: 30° climb to ~5000 MSL, 20° dive to ~1500 AGL.
+      return { ...base, popupAltitudeFtMsl: 5000, popupAngleDeg: 30, diveAngleDeg: 20,
+               releaseAltitudeFtAgl: 1500, ingressAltitudeFtAgl: 500 };
+    case 'type3':
+      // Low-angle popup: 20° climb to ~3000 MSL, 12° dive to ~1000 AGL.
+      return { ...base, popupAltitudeFtMsl: 3000, popupAngleDeg: 20, diveAngleDeg: 12,
+               releaseAltitudeFtAgl: 1000, ingressAltitudeFtAgl: 500 };
+    case 'laydown':
+      // Level release with retarded weapons — ingress = release alt.
+      return { ...base, popupAltitudeFtMsl: 500, popupAngleDeg: 0, diveAngleDeg: 0,
+               releaseAltitudeFtAgl: 500, ingressAltitudeFtAgl: 500 };
+    case 'loft':
+      // Toss: 4-G pull through ~25° climb, release climbing at ~6000 MSL.
+      return { ...base, popupAltitudeFtMsl: 6000, popupAngleDeg: 25, diveAngleDeg: 0,
+               releaseAltitudeFtAgl: 5500, ingressAltitudeFtAgl: 500, vipDistanceNm: 6 };
+    case 'dive':
+      // Roll-in dive from 15K, 30° dive to ~3K AGL release.
+      return { ...base, popupAltitudeFtMsl: 15000, popupAngleDeg: 0, diveAngleDeg: 30,
+               releaseAltitudeFtAgl: 3000, ingressAltitudeFtAgl: 15000, recoveryAltitudeFtAgl: 2000 };
+  }
 }

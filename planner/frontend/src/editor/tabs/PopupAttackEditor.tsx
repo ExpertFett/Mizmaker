@@ -8,7 +8,7 @@
  * in utils/popupAttack.ts; the rendered card is kneeboard/PopupAttackCard.tsx.
  */
 
-import { computePopupAttack, defaultPopupAttack, ATTACK_TYPE_LABEL, type PopupAttackInput, type AttackType } from '../../utils/popupAttack';
+import { computePopupAttack, defaultPopupAttack, ATTACK_TYPE_LABEL, ATTACK_TYPE_DESC, type PopupAttackInput, type AttackType } from '../../utils/popupAttack';
 
 interface Props {
   profiles: PopupAttackInput[];
@@ -58,16 +58,34 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
           onChange={(e) => onPatch({ name: e.target.value })}
           style={{ ...inp, width: 160, fontWeight: 600 }} />
         <select value={profile.attackType} onChange={(e) => onPatch({ attackType: e.target.value as AttackType })}
-                style={{ ...inp, width: 130 }}>
+                style={{ ...inp, width: 140 }}>
           {(Object.keys(ATTACK_TYPE_LABEL) as AttackType[]).map((k) => (
             <option key={k} value={k}>{ATTACK_TYPE_LABEL[k]}</option>
           ))}
         </select>
+        <button
+          onClick={() => {
+            const d = defaultPopupAttack(profile.name || `Attack ${idx + 1}`, profile.attackType);
+            // Preserve the few "scenario" fields the planner has likely tuned to
+            // the target (elev, run-in distance, offset, speeds) — only blow
+            // away the geometry the type controls.
+            onPatch({
+              popupAltitudeFtMsl: d.popupAltitudeFtMsl,
+              popupAngleDeg: d.popupAngleDeg,
+              diveAngleDeg: d.diveAngleDeg,
+              releaseAltitudeFtAgl: d.releaseAltitudeFtAgl,
+              ingressAltitudeFtAgl: d.ingressAltitudeFtAgl,
+              recoveryAltitudeFtAgl: d.recoveryAltitudeFtAgl,
+            });
+          }}
+          title={`Reset altitudes/angles to defaults for ${ATTACK_TYPE_LABEL[profile.attackType]}`}
+          style={{ ...btn, padding: '4px 7px', fontSize: 11 }}>↺</button>
         <span style={{ flex: 1, fontSize: 11, color: '#888', textAlign: 'right' }}>
           TTT ~{Math.round(prof.totals.timeToTargetSec)}s · popup {prof.totals.popupDistanceNm.toFixed(1)} NM · dive {prof.totals.diveDistanceNm.toFixed(1)} NM
         </span>
         <button onClick={onRemove} style={btnDel} title="Remove profile">×</button>
       </div>
+      <div style={{ fontSize: 10, color: '#888', marginBottom: 6, paddingLeft: 2 }}>{ATTACK_TYPE_DESC[profile.attackType]}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
         <Field label="TGT elev (ft MSL)" v={profile.targetElevationFt} onChange={(n) => onPatch({ targetElevationFt: n })} />
         <Field label="VIP dist (NM)" v={profile.vipDistanceNm} onChange={(n) => onPatch({ vipDistanceNm: n })} step={0.5} />

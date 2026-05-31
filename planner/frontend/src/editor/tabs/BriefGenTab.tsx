@@ -18,6 +18,8 @@ import { useSopStore } from '../../sop/sopStore';
 import type { SOP } from '../../sop/types';
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
+import { useEditStore } from '../../store/editStore';
+import { computePopupAttack, ATTACK_TYPE_LABEL, type PopupAttackInput } from '../../utils/popupAttack';
 import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 import { captureRouteImage, captureOverviewImage } from '../../kneeboard/captureRoute';
@@ -1525,6 +1527,31 @@ function CustomTemplateFlow() {
   );
 }
 
+/** Format one popup-attack profile as a compact multi-line summary for the
+ *  `popup_attacks.list` and per-profile `summary` tokens. Kept here (not in
+ *  utils/popupAttack.ts) because it shapes for a brief slide, not the
+ *  kneeboard card. */
+function formatPopupSummary(p: PopupAttackInput): string {
+  const prof = computePopupAttack(p);
+  const head = `${p.name || 'Attack'} (${ATTACK_TYPE_LABEL[p.attackType]})`;
+  const lines = [
+    head,
+    `  TGT elev: ${p.targetElevationFt.toLocaleString()} ft MSL · VIP: ${p.vipDistanceNm} NM · TTT ~${Math.round(prof.totals.timeToTargetSec)}s`,
+  ];
+  if (p.attackType === 'laydown') {
+    lines.push(`  Release ${p.releaseAltitudeFtAgl.toLocaleString()} ft AGL @ ${p.releaseSpeedKts} kt level · ingress ${p.ingressAltitudeFtAgl.toLocaleString()} AGL @ ${p.ingressSpeedKts} kt`);
+  } else if (p.attackType === 'loft') {
+    lines.push(`  Pull ${p.popupAngleDeg}° at AP → release climbing @ ${p.popupAltitudeFtMsl.toLocaleString()} ft MSL · ${p.releaseSpeedKts} kt`);
+  } else if (p.attackType === 'dive') {
+    lines.push(`  Ingress ${p.ingressAltitudeFtAgl.toLocaleString()} ft AGL → ${p.diveAngleDeg}° dive → release ${p.releaseAltitudeFtAgl.toLocaleString()} ft AGL @ ${p.releaseSpeedKts} kt`);
+  } else {
+    // type1/2/3 popup
+    lines.push(`  Pull ${p.popupAngleDeg}° to ${p.popupAltitudeFtMsl.toLocaleString()} ft MSL → ${p.diveAngleDeg}° dive → release ${p.releaseAltitudeFtAgl.toLocaleString()} ft AGL @ ${p.releaseSpeedKts} kt`);
+  }
+  lines.push(`  Offset: ${p.angleOffsetDeg}° from target axis`);
+  return lines.join('\n');
+}
+
 /** Resolve {{tokens}} in custom-template mode against the mission store. */
 function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.getState>): string | null {
   const fmtZ = (sec?: number | null) => {
@@ -1581,6 +1608,12 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     }).join('\n');
   };
 
+  // Popup-attack profiles — read from editStore via getState() so the
+  // resolver stays cheap and doesn't subscribe to the store. Empty
+  // arrays render the tokens as null so the template designer can spot
+  // when no profiles are defined.
+  const popupAttacks: PopupAttackInput[] = useEditStore.getState().kneeboardSettings.popupAttacks ?? [];
+
   const direct: Record<string, () => string | null> = {
     'mission.theater':      () => s.theater ?? null,
     'mission.sortie':       () => s.overview?.sortie ?? null,
@@ -1630,8 +1663,43 @@ function resolveCustomToken(token: string, s: ReturnType<typeof useMissionStore.
     'dmpis.names':     () => formatDmpiList('names'),
     'dmpis.coords':    () => formatDmpiList('coords'),
     'dmpis.count':     () => dmpis.length > 0 ? String(dmpis.length) : null,
+    // Popup-attack profile tokens (v1.17.5). Aerial-delivery profiles defined
+    // in the Kneeboard tab — typically 0–3 per mission. `list` produces a
+    // headed multi-line summary suitable for a "Popup Attack" slide; per-
+    // profile tokens (popup_attack[N].field) hand back individual fields
+    // for templates that prefer a structured layout.
+    'popup_attacks.count':  () => popupAttacks.length > 0 ? String(popupAttacks.length) : null,
+    'popup_attacks.list':   () => popupAttacks.length === 0 ? null : popupAttacks.map(formatPopupSummary).join('\n\n'),
+    'popup_attacks.names':  () => popupAttacks.length === 0 ? null : popupAttacks.map((p, i) => p.name || `Attack ${i + 1}`).join(', '),
+    'popup_attacks.types':  () => popupAttacks.length === 0 ? null : popupAttacks.map((p) => ATTACK_TYPE_LABEL[p.attackType]).join(', '),
   };
   if (direct[token]) return direct[token]!();
+
+  // Per-profile popup-attack tokens: popup_attack[N].field
+  const pa = token.match(/^popup_attack\[(\d+)\]\.(.+)$/);
+  if (pa) {
+    const p = popupAttacks[parseInt(pa[1], 10)];
+    if (!p) return null;
+    const prof = computePopupAttack(p);
+    switch (pa[2]) {
+      case 'name':           return p.name || `Attack ${parseInt(pa[1], 10) + 1}`;
+      case 'type':           return ATTACK_TYPE_LABEL[p.attackType];
+      case 'type_code':      return p.attackType;
+      case 'tgt_elev':       return `${p.targetElevationFt.toLocaleString()} ft MSL`;
+      case 'vip_dist':       return `${p.vipDistanceNm} NM`;
+      case 'popup_alt':      return `${p.popupAltitudeFtMsl.toLocaleString()} ft MSL`;
+      case 'popup_angle':    return `${p.popupAngleDeg}°`;
+      case 'dive_angle':     return `${p.diveAngleDeg}°`;
+      case 'offset':         return `${p.angleOffsetDeg}°`;
+      case 'release_alt':    return `${p.releaseAltitudeFtAgl.toLocaleString()} ft AGL`;
+      case 'release_speed':  return `${p.releaseSpeedKts} kt`;
+      case 'ingress_alt':    return `${p.ingressAltitudeFtAgl.toLocaleString()} ft AGL`;
+      case 'ingress_speed':  return `${p.ingressSpeedKts} kt`;
+      case 'ttt':            return `${Math.round(prof.totals.timeToTargetSec)}s`;
+      case 'summary':        return formatPopupSummary(p);
+      default: return null;
+    }
+  }
 
   const m = token.match(/^flight\[(\d+)\]\.(.+)$/);
   if (!m) return null;
