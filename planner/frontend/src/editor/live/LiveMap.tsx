@@ -42,6 +42,8 @@ import { computeBra, formatBra, metresToFeet } from './braCalc';
 import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictureCall';
 import { SrsDirectory } from './SrsDirectory';
 import { CommsLog } from './CommsLog';
+import { bullseyeBR, formatBullseye } from './bullseye';
+import { useMissionStore } from '../../store/missionStore';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -75,7 +77,7 @@ function headingRad(u: UnitT): number {
 // hollow. Labels: 0=off, 1=basic (callsign/name), 2=rich GCI block (callsign
 // on top, ALT thousands + 3-digit HDG, then SPD knots). Styles are cheap and
 // built per-unit (heading is continuous, so caching doesn't help).
-function styleForUnit(u: UnitT, labelsMode: LabelsMode = 0): Style {
+function styleForUnit(u: UnitT, labelsMode: LabelsMode = 0, bullseye?: { lat: number; lng: number } | null): Style {
   const cat = (u.category || '').toLowerCase();
   const bucket = cat.includes('heli') ? 'air'
     : cat.includes('air') || cat.includes('plane') ? 'air'
@@ -87,10 +89,31 @@ function styleForUnit(u: UnitT, labelsMode: LabelsMode = 0): Style {
   const fill = new Fill({ color: dead ? 'rgba(107,114,128,0.35)' : color });
   const stroke = new Stroke({ color: dead ? 'rgba(107,114,128,0.9)' : 'rgba(0,0,0,0.65)', width: dead ? 1 : 1.25 });
   const rot = headingRad(u);
+  // 2525-faithful symbology (Phase 5): hostile = chevron, friendly = circle,
+  // neutral / unknown = square. All air markers still rotated to heading; the
+  // rotation drives a vector readout for the eye even at low zoom.
+  //   side 1 (red/hostile)   → top-only chevron (inverted-V pointing along heading)
+  //   side 2 (blue/friendly) → circle (LotATC convention: friend = round)
+  //   else                   → square (neutral)
+  // Ground + navy keep distinct shapes (square / diamond) so the controller
+  // still tells them apart from the air picture.
   let image;
-  if (bucket === 'air') image = new RegularShape({ points: 3, radius: 8, fill, stroke, rotation: rot });            // triangle → heading
-  else if (bucket === 'navy') image = new RegularShape({ points: 4, radius: 6.5, fill, stroke, rotation: rot });   // diamond → heading
-  else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke, rotation: rot }); // square
+  if (bucket === 'air') {
+    if (side === 1) {
+      // Hostile chevron — pointy 3-sided shape, oriented to heading.
+      image = new RegularShape({ points: 3, radius: 9, radius2: 4, fill, stroke, rotation: rot });
+    } else if (side === 2) {
+      // Friendly half-moon — circle with a thin heading tick added below via
+      // a second Style image is too heavy in OL; use a solid circle with a
+      // stroke ring instead, and rely on the GCI label rich mode for heading.
+      image = new CircleStyle({ radius: 6.5, fill, stroke: new Stroke({ color: dead ? 'rgba(107,114,128,0.9)' : color, width: 2 }) });
+    } else {
+      // Neutral / unknown air — square, rotated to heading.
+      image = new RegularShape({ points: 4, radius: 6, angle: Math.PI / 4, fill, stroke, rotation: rot });
+    }
+  }
+  else if (bucket === 'navy') image = new RegularShape({ points: 4, radius: 6.5, fill, stroke, rotation: rot });
+  else if (bucket === 'ground') image = new RegularShape({ points: 4, radius: 5.5, angle: Math.PI / 4, fill, stroke, rotation: rot });
   else image = new CircleStyle({ radius: 4.5, fill, stroke });
   const style = new Style({ image });
   if (labelsMode === 1) {
@@ -111,10 +134,16 @@ function styleForUnit(u: UnitT, labelsMode: LabelsMode = 0): Style {
       : '—';
     const knots = u.speed != null && Number.isFinite(u.speed)
       ? `${Math.round(u.speed * 1.94384)}` : '—';
+    let beLine = '';
+    if (bullseye && u.position) {
+      const be = bullseyeBR(bullseye, { lat: u.position.lat, lng: u.position.lng });
+      beLine = formatBullseye(be, { tag: 'BE' });
+    }
     const lines = [
       callsign,
       `${altKft}K · ${hdgDeg}°`,
       `${knots} kt`,
+      beLine,
     ].filter((s) => s && !s.startsWith(' ')).join('\n');
     if (lines) style.setText(new Text({
       text: lines, font: 'bold 10px sans-serif', offsetY: 22, textAlign: 'center',
@@ -142,8 +171,8 @@ type LabelsMode = 0 | 1 | 2;
 const SEL_STYLE = new Style({ image: new CircleStyle({ radius: 11, stroke: new Stroke({ color: '#ffd24a', width: 2 }), fill: undefined }) });
 
 // Style for a cluster of N ground units: count badge colored by majority side.
-function clusterStyle(features: Feature[], labelsMode: LabelsMode = 0): Style {
-  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u || {}, labelsMode); }
+function clusterStyle(features: Feature[], labelsMode: LabelsMode = 0, bullseye?: { lat: number; lng: number } | null): Style {
+  if (features.length === 1) { const u = features[0].get('unit') as UnitT | undefined; return styleForUnit(u || {}, labelsMode, bullseye); }
   let red = 0, blue = 0;
   for (const f of features) { const c = (f.get('unit') as UnitT | undefined)?.coalition; if (c === 1) red++; else if (c === 2) blue++; }
   const side = red > blue ? 1 : blue > red ? 2 : 0;
@@ -434,7 +463,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (isGround && groundSrc) {
         groundSrc.addFeature(ft);  // ground units are styled by the cluster layer
       } else {
-        ft.setStyle(styleForUnit(u, showLabels)); src.addFeature(ft);
+        ft.setStyle(styleForUnit(u, showLabels, bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null)); src.addFeature(ft);
       }
       if (selSrc && u.olympusID != null && selSet.has(u.olympusID)) selSrc.addFeature(new Feature({ geometry: new Point(coord) }));
       // Threat rings (live units only) from the unit's blueprint ranges.
@@ -478,7 +507,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // clicks drop range+bearing points; 'select' is normal unit selection;
   // 'bra' is the GCI Bearing/Range/Altitude tool — 1st click sets the anchor,
   // 2nd sets the target, 3rd resets to a new anchor.
-  const [tool, setTool] = useState<'select' | 'measure' | 'bra' | 'gci'>('select');
+  const [tool, setTool] = useState<'select' | 'measure' | 'bra' | 'gci' | 'be' | 'marker'>('select');
   const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
   // Track-history trail window in seconds. 0 = off. Persisted across reloads.
   const [trailSec, setTrailSec] = useState<0 | 30 | 60 | 120>(() => {
@@ -499,6 +528,34 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [gciDefaultNm, setGciDefaultNm] = useState(30);
   const gciSrcRef = useRef<VectorSource | null>(null);
   const gciIdRef = useRef(1);
+  // Bullseye (Phase 5). Auto-loads from missionStore when present; the DM can
+  // override by activating the 🎯 BE tool and clicking. Persistence is
+  // per-session — the manual position is forgotten on page reload (the
+  // mission's own bullseye reasserts), which matches DM expectations.
+  type BullseyePin = { lat: number; lng: number; source: 'mission' | 'manual' };
+  const missionBullseye = useMissionStore((s) => s.overview?.bullseye?.blue);
+  const [bullseyePin, setBullseyePin] = useState<BullseyePin | null>(null);
+  // Initial seed from mission. Re-seeds whenever the mission's BE changes
+  // (new .miz upload) — but only when the DM hasn't manually overridden.
+  useEffect(() => {
+    if (missionBullseye?.lat != null && missionBullseye?.lon != null) {
+      setBullseyePin((prev) => prev?.source === 'manual' ? prev : { lat: missionBullseye.lat!, lng: missionBullseye.lon!, source: 'mission' });
+    }
+  }, [missionBullseye?.lat, missionBullseye?.lon]);
+  const bullseyeSrcRef = useRef<VectorSource | null>(null);
+  // Ref so the once-registered cluster style sees the current bullseye each render.
+  const bullseyeRef = useRef<{ lat: number; lng: number } | null>(null);
+  bullseyeRef.current = bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null;
+
+  // Named markers — colored labeled pins the DM drops anywhere (anchors,
+  // station points, target reference points). Distinct from GCI rings; pins
+  // are point-only without a radius. State is volatile per-session.
+  type MapMarker = { id: number; lat: number; lng: number; label: string; color: string };
+  const [markers, setMarkers] = useState<MapMarker[]>([]);
+  const [markerLabel, setMarkerLabel] = useState('STN1');
+  const [markerColor, setMarkerColor] = useState('#ffd24a');  // amber default
+  const markerSrcRef = useRef<VectorSource | null>(null);
+  const markerIdRef = useRef(1);
   // Picture-call panel — open by default if the user has ever opened it before
   // (persisted) so DMs who use it always see it.
   const [pictureOpen, setPictureOpen] = useState<boolean>(() => {
@@ -509,6 +566,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     try { localStorage.setItem('dcsopt.live.pictureOpen', next ? '1' : '0'); } catch { /* ignore */ }
     return next;
   });
+  // Picture-call format mode (Phase 5). Defaults to bullseye when one is set,
+  // BRAA otherwise. Persisted so DMs who prefer BRAA keep it across sessions.
+  const [pictureMode, setPictureMode] = useState<'braa' | 'bullseye'>(() => {
+    try { return (localStorage.getItem('dcsopt.live.pictureMode') as 'braa' | 'bullseye') || 'bullseye'; }
+    catch { return 'bullseye'; }
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.pictureMode', pictureMode); } catch { /* ignore */ } }, [pictureMode]);
   const [srsOpen, setSrsOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('dcsopt.live.srsOpen') === '1'; } catch { return false; }
   });
@@ -557,22 +621,58 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     : null;
 
   // Rebuild the track-history layer from the current ring buffers. One
-  // LineString per unit, coalition-tinted, ~0.85 alpha. Cheap (called ~once
-  // every 5s + on toggle).
+  // LineString per unit for the PAST (breadcrumbs) and a second forward-
+  // projected line for the FUTURE (extrapolation) — coupled to the same
+  // trail window so the controller sees a single "where it's been + where
+  // it's going" stripe through every moving track. Forward leg uses
+  // current track + speed, straight-line at constant velocity (no
+  // turn-radius modelling — these are vectoring aids, not predictions).
   const rebuildHistoryLayer = useCallback(() => {
     const src = historySrcRef.current; if (!src) return;
     src.clear();
-    if (trailSecRef.current === 0) return;
+    const winSec = trailSecRef.current;
+    if (winSec === 0) return;
     const hist = historyRef.current;
     const store = unitsRef.current as Record<string, { u: UnitT; miss: number }>;
     for (const [key, arr] of hist) {
-      if (arr.length < 2) continue;
-      const coalition = store[key]?.u?.coalition;
+      const u = store[key]?.u;
+      const coalition = u?.coalition;
       const color = SIDE_COLOR[coalition ?? -1] ?? C.neutral;
-      const coords = arr.map((p) => fromLonLat([p.lng, p.lat]));
-      const f = new Feature({ geometry: new LineString(coords) });
-      f.setStyle(new Style({ stroke: new Stroke({ color: hexA(color, 0.7), width: 1.4 }) }));
-      src.addFeature(f);
+      // Past breadcrumb polyline.
+      if (arr.length >= 2) {
+        const coords = arr.map((p) => fromLonLat([p.lng, p.lat]));
+        const f = new Feature({ geometry: new LineString(coords) });
+        f.setStyle(new Style({ stroke: new Stroke({ color: hexA(color, 0.7), width: 1.4 }) }));
+        src.addFeature(f);
+      }
+      // Forward extrapolation — only when the unit has a usable track + speed
+      // and is alive. Distance covered in `winSec` at current speed (m/s).
+      if (!u || u.alive === 0 || !u.position) continue;
+      const spdMs = (typeof u.speed === 'number' && Number.isFinite(u.speed)) ? u.speed : 0;
+      if (spdMs < 5) continue;  // hide noisy near-stationary "vectors"
+      const trkRad = (typeof u.track === 'number') ? u.track
+        : (typeof u.heading === 'number') ? u.heading : null;
+      if (trkRad == null) continue;
+      const distM = spdMs * winSec;
+      // Spherical forward step from current position along track bearing.
+      const R = 6371000;
+      const phi1 = u.position.lat * Math.PI / 180;
+      const lam1 = u.position.lng * Math.PI / 180;
+      const d = distM / R;
+      const phi2 = Math.asin(Math.sin(phi1) * Math.cos(d) + Math.cos(phi1) * Math.sin(d) * Math.cos(trkRad));
+      const lam2 = lam1 + Math.atan2(Math.sin(trkRad) * Math.sin(d) * Math.cos(phi1), Math.cos(d) - Math.sin(phi1) * Math.sin(phi2));
+      const fwdLat = phi2 * 180 / Math.PI;
+      const fwdLng = ((lam2 * 180 / Math.PI) + 540) % 360 - 180;
+      const fwdLine = new Feature({ geometry: new LineString([
+        fromLonLat([u.position.lng, u.position.lat]),
+        fromLonLat([fwdLng, fwdLat]),
+      ]) });
+      fwdLine.setStyle(new Style({ stroke: new Stroke({ color: hexA(color, 0.55), width: 1.2, lineDash: [4, 4] }) }));
+      src.addFeature(fwdLine);
+      // Terminal tick — small perpendicular at the end of the leader line.
+      const tick = new Feature({ geometry: new Point(fromLonLat([fwdLng, fwdLat])) });
+      tick.setStyle(new Style({ image: new CircleStyle({ radius: 2.5, fill: new Fill({ color: hexA(color, 0.8) }), stroke: new Stroke({ color: 'rgba(0,0,0,0.7)', width: 1 }) }) }));
+      src.addFeature(tick);
     }
   }, []);
   // Refresh trails when the window changes (clears stale segments outside the new window).
@@ -604,6 +704,70 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       src.addFeature(lbl);
     }
   }, [gciRings]);
+
+  // Bullseye overlay — concentric rings at 30/60/90/120 NM, a small cross,
+  // a "BE" label, and an indicator chip showing the source (mission/manual).
+  // Same lat-corrected projected radius as GCI rings + threat rings.
+  useEffect(() => {
+    const src = bullseyeSrcRef.current; if (!src) return;
+    src.clear();
+    if (!bullseyePin) return;
+    const center = fromLonLat([bullseyePin.lng, bullseyePin.lat]);
+    const cosLat = Math.max(0.15, Math.cos(bullseyePin.lat * Math.PI / 180));
+    const RING_NM = [30, 60, 90, 120];
+    for (const nm of RING_NM) {
+      const projR = (nm * 1852) / cosLat;
+      const ring = new Feature({ geometry: new CircleGeom(center, projR) });
+      ring.setStyle(new Style({
+        stroke: new Stroke({ color: '#f0b840', width: 1, lineDash: [3, 5] }),
+      }));
+      src.addFeature(ring);
+      // Range label on the right side of each ring.
+      const labelOffset = projR;
+      const labelPt = new Feature({ geometry: new Point([center[0] + labelOffset, center[1]]) });
+      labelPt.setStyle(new Style({ text: new Text({
+        text: `${nm}`, font: '9px sans-serif', textAlign: 'left', offsetX: 4,
+        fill: new Fill({ color: '#f0b840' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.85)', width: 3 }),
+      }) }));
+      src.addFeature(labelPt);
+    }
+    // Central cross + "BE" label.
+    const crossH = new Feature({ geometry: new LineString([
+      [center[0] - 14, center[1]], [center[0] + 14, center[1]],
+    ]) });
+    crossH.setStyle(new Style({ stroke: new Stroke({ color: '#f0b840', width: 1.4 }) }));
+    src.addFeature(crossH);
+    const crossV = new Feature({ geometry: new LineString([
+      [center[0], center[1] - 14], [center[0], center[1] + 14],
+    ]) });
+    crossV.setStyle(new Style({ stroke: new Stroke({ color: '#f0b840', width: 1.4 }) }));
+    src.addFeature(crossV);
+    const dot = new Feature({ geometry: new Point(center) });
+    dot.setStyle(new Style({ image: new CircleStyle({ radius: 3, fill: new Fill({ color: '#f0b840' }), stroke: new Stroke({ color: '#000', width: 1 }) }) }));
+    src.addFeature(dot);
+    const lbl = new Feature({ geometry: new Point(center) });
+    lbl.setStyle(new Style({ text: new Text({
+      text: 'BE', font: 'bold 11px sans-serif', offsetX: 0, offsetY: 22, textAlign: 'center',
+      fill: new Fill({ color: '#f0b840' }), stroke: new Stroke({ color: 'rgba(0,0,0,0.9)', width: 3 }),
+    }) }));
+    src.addFeature(lbl);
+  }, [bullseyePin]);
+
+  // Named map markers — coloured pin + label per entry.
+  useEffect(() => {
+    const src = markerSrcRef.current; if (!src) return;
+    src.clear();
+    for (const m of markers) {
+      const p = fromLonLat([m.lng, m.lat]);
+      const pin = new Feature({ geometry: new Point(p) });
+      pin.setStyle(new Style({
+        image: new RegularShape({ points: 3, radius: 7, angle: Math.PI, fill: new Fill({ color: m.color }), stroke: new Stroke({ color: 'rgba(0,0,0,0.8)', width: 1.2 }) }),
+        text: new Text({ text: m.label, font: 'bold 11px sans-serif', offsetY: -14,
+          fill: new Fill({ color: m.color }), stroke: new Stroke({ color: 'rgba(0,0,0,0.9)', width: 3 }) }),
+      }));
+      src.addFeature(pin);
+    }
+  }, [markers]);
   const zoomBy = (d: number) => { const v = mapRef.current?.getView(); if (v) v.animate({ zoom: (v.getZoom() ?? 6) + d, duration: 180 }); };
   // Rebuild the measure line + per-segment range/bearing labels from the vertices.
   useEffect(() => {
@@ -672,6 +836,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     },
     onGci: (lat: number, lng: number) => {
       setGciRings((prev) => [...prev, { id: gciIdRef.current++, lat, lng, nm: gciDefaultNm }]);
+    },
+    onBullseye: (lat: number, lng: number) => {
+      setBullseyePin({ lat, lng, source: 'manual' });
+    },
+    onMarker: (lat: number, lng: number) => {
+      const label = (markerLabel || `M${markerIdRef.current}`).trim();
+      setMarkers((prev) => [...prev, { id: markerIdRef.current++, lat, lng, label, color: markerColor }]);
     },
     onArmed: (lat: number, lng: number, target: UnitT | null) => {
       const a = armed;
@@ -783,7 +954,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const unitsLayer = new VectorLayer({ source: src });
     const abLayer = new VectorLayer({ source: abSrc });
     const ringLayer = new VectorLayer({ source: ringSrc });
-    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[], labelsModeRef.current) });
+    const clusterLayer = new VectorLayer({ source: clusterSrc, style: (f) => clusterStyle(f.get('features') as Feature[], labelsModeRef.current, bullseyeRef.current) });
     const measureSrc = new VectorSource();
     measureSrcRef.current = measureSrc;
     const measureLayer = new VectorLayer({ source: measureSrc, style: (f) => measureFeatureStyle(f as Feature) });
@@ -797,6 +968,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     gciSrcRef.current = gciSrc;
     // GCI rings carry their own per-feature style (we tint each ring by index).
     const gciLayer = new VectorLayer({ source: gciSrc });
+    const bullseyeSrc = new VectorSource();
+    bullseyeSrcRef.current = bullseyeSrc;
+    // Bullseye carries its own per-feature style (concentric rings + cross + label).
+    const bullseyeLayer = new VectorLayer({ source: bullseyeSrc });
+    const markerSrc = new VectorSource();
+    markerSrcRef.current = markerSrc;
+    const markerLayer = new VectorLayer({ source: markerSrc });
     const selSrc = new VectorSource();
     selSrcRef.current = selSrc;
     const selLayer = new VectorLayer({ source: selSrc, style: SEL_STYLE });
@@ -815,6 +993,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         ringLayer,      // threat rings under units
         iadsLayer,      // IADS generator area circle (under markers)
         gciLayer,       // GCI/ATC range rings (under markers)
+        bullseyeLayer,  // bullseye reference (under markers, over rings)
+        markerLayer,    // named map markers (above bullseye, under units)
         selLayer,       // selection highlight rings (under markers)
         historyLayer,   // GCI track-history trails (under markers, above rings)
         clusterLayer,   // ground units (clustered)
@@ -847,6 +1027,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       }
       if (c.tool === 'bra') { c.onBra(lat, lng, target); return; }  // BRA uses hit-test (unit alt/track)
       if (c.tool === 'gci') { c.onGci(lat, lng); return; }
+      if (c.tool === 'be')  { c.onBullseye(lat, lng); return; }
+      if (c.tool === 'marker') { c.onMarker(lat, lng); return; }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
       c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
@@ -926,7 +1108,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, showLabels, selectedIds]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, showLabels, selectedIds, bullseyePin]);
 
   // Load the unit databases once: classify SAM/air-defense ground units (Olympus
   // splits GroundUnit into SAM vs other ground by blueprint type) and build the
@@ -986,7 +1168,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
 
-  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || mode === 'iads';
+  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || tool === 'be' || tool === 'marker' || mode === 'iads';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
   // Live copy of the selected unit (refreshed each poll) for current-state highlights.
   const sUnit = selected ? (unitsRef.current[String(selected.olympusID)]?.u ?? selected) : null;
@@ -1036,7 +1218,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         trackDeg, coalition: u.coalition,
       });
     }
-    return { call: buildPictureCall(anchor, tracks), anchorLabel };
+    return { call: buildPictureCall(anchor, tracks, bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : undefined), anchorLabel };
   })();
 
   return (
@@ -1068,6 +1250,31 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => setGciRings([])} title="Clear all GCI rings"
                 disabled={gciRings.length === 0}
                 style={{ ...toolBtn, opacity: gciRings.length === 0 ? 0.4 : 1 }}>🧹</button>
+        <button onClick={() => { setTool('be'); setArmed(null); }}
+                title={`Bullseye — click the map to (re)set the bullseye reference${missionBullseye?.lat != null ? ' (mission has a bullseye seeded)' : ''}`}
+                style={{ ...toolBtn, ...(tool === 'be' ? toolOn : {}), position: 'relative' }}>
+          🎯
+          {bullseyePin?.source === 'manual' && (
+            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: '#f0b840', border: `1px solid #f0b840`, borderRadius: 2 }}>M</span>
+          )}
+        </button>
+        <button onClick={() => {
+          // Reset to mission bullseye, or clear when no mission BE exists.
+          if (missionBullseye?.lat != null && missionBullseye?.lon != null) {
+            setBullseyePin({ lat: missionBullseye.lat, lng: missionBullseye.lon, source: 'mission' });
+          } else {
+            setBullseyePin(null);
+          }
+        }}
+                title="Reset bullseye to mission default (or clear)"
+                disabled={bullseyePin == null}
+                style={{ ...toolBtn, opacity: bullseyePin == null ? 0.4 : 1 }}>↺</button>
+        <button onClick={() => { setTool('marker'); setArmed(null); }}
+                title="Drop a named marker pin (label/colour set in the floating panel)"
+                style={{ ...toolBtn, ...(tool === 'marker' ? toolOn : {}) }}>📌</button>
+        <button onClick={() => setMarkers([])} title="Clear all markers"
+                disabled={markers.length === 0}
+                style={{ ...toolBtn, opacity: markers.length === 0 ? 0.4 : 1 }}>🗑</button>
         <button onClick={cycleTrailSec}
                 title={`Track history trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s window`} — click to cycle off → 30s → 60s → 120s`}
                 style={{ ...toolBtn, ...(trailSec > 0 ? toolOn : {}), position: 'relative' }}>
@@ -1438,12 +1645,47 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
+      {/* ── Bullseye tool prompt ─────────────────────────────────────────── */}
+      {tool === 'be' && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #f0b840`, color: '#f0b840', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(240,184,64,0.25)' }}>
+          🎯 Click the map to drop the bullseye reference
+        </div>
+      )}
+
+      {/* ── Marker tool prompt + label/colour controls ───────────────────── */}
+      {tool === 'marker' && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${markerColor}`, color: markerColor, fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: `0 0 14px ${markerColor}40`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>📌 Drop marker:</span>
+          <input value={markerLabel}
+                 onChange={(e) => setMarkerLabel(e.target.value.slice(0, 8).toUpperCase())}
+                 placeholder="LABEL"
+                 style={{ width: 90, background: 'rgba(0,0,0,0.4)', border: `1px solid ${markerColor}66`, color: markerColor, padding: '3px 6px', fontSize: 11, fontFamily: 'inherit', borderRadius: 3, outline: 'none', textAlign: 'center', letterSpacing: 1 }} />
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['#ffd24a', '#5a9fd4', '#e0554f', '#3fb950', '#c090d0', '#bbbbbb'] as const).map((c) => (
+              <button key={c} onClick={() => setMarkerColor(c)}
+                      title={c}
+                      style={{ width: 16, height: 16, padding: 0, background: c, border: markerColor === c ? '2px solid #fff' : '1px solid rgba(0,0,0,0.5)', borderRadius: 2, cursor: 'pointer' }} />
+            ))}
+          </div>
+          <span style={{ color: C.textDim, fontWeight: 400, fontSize: 10 }}>{markers.length} placed</span>
+        </div>
+      )}
+
       {/* ── BRA tool prompt (top-centre, only while BRA is the active tool) ── */}
       {tool === 'bra' && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #ffd24a`, color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)' }}>
-          {!braAnchor ? '📐 Click an ANCHOR (own-ship, GCI station, or a friendly track)'
-            : !braTarget ? '📐 Click a TARGET (clicking a live unit captures alt + track)'
-            : '📐 Click again to start over'}
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #ffd24a`, color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <span>
+            {!braAnchor ? '📐 Click an ANCHOR (own-ship, GCI station, or a friendly track)'
+              : !braTarget ? '📐 Click a TARGET (clicking a live unit captures alt + track)'
+              : '📐 Click again to start over'}
+          </span>
+          {!braAnchor && bullseyePin && (
+            <button onClick={() => setBraAnchor({ lat: bullseyePin.lat, lng: bullseyePin.lng, label: 'Bullseye' })}
+                    title="Use the bullseye as the BRA anchor"
+                    style={{ background: 'transparent', border: '1px solid #ffd24a', color: '#ffd24a', padding: '2px 7px', fontSize: 10, fontWeight: 700, letterSpacing: 0.5, borderRadius: 3, cursor: 'pointer' }}>
+              FROM BE
+            </button>
+          )}
         </div>
       )}
 
@@ -1486,7 +1728,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                   ANCHOR: <span style={{ color: C.text }}>{pictureCall.anchorLabel}</span>
                   <span style={{ float: 'right' }}>{pictureCall.call.totalBandits} contact{pictureCall.call.totalBandits === 1 ? '' : 's'}</span>
                 </div>
-                {pictureCall.call.bands.map((b) => (
+                {/* Mode toggle — BRAA vs BE relative. BE only enabled when a bullseye is set. */}
+                <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                  {(['braa', 'bullseye'] as const).map((m) => {
+                    const enabled = m === 'braa' || !!pictureCall.call?.bandsBE;
+                    const on = pictureMode === m;
+                    return (
+                      <button key={m}
+                              onClick={() => enabled && setPictureMode(m)}
+                              disabled={!enabled}
+                              title={m === 'bullseye' && !enabled ? 'Set a bullseye to enable bullseye-relative calls' : ''}
+                              style={{ flex: 1, padding: '3px 4px', fontSize: 10, letterSpacing: 0.5, fontWeight: 700, border: `1px solid ${on ? '#ffd24a' : C.border}`, borderRadius: 3, cursor: enabled ? 'pointer' : 'not-allowed', background: on ? 'rgba(255,210,74,0.12)' : 'transparent', color: !enabled ? C.textDim : on ? '#ffd24a' : C.textDim, opacity: enabled ? 1 : 0.5 }}>
+                        {m === 'braa' ? 'BRAA' : 'BULLSEYE'}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(pictureMode === 'bullseye' && pictureCall.call.bandsBE ? pictureCall.call.bandsBE : pictureCall.call.bands).map((b) => (
                   <div key={b.band} style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '3px 0', borderTop: `1px solid ${C.border}` }}>
                     <span style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, width: 36 }}>{b.band.toUpperCase()}</span>
                     <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#ffd24a', flex: 1 }}>{b.line}</span>
@@ -1494,7 +1752,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                 ))}
                 <button onClick={() => {
                   if (pictureCall.call) {
-                    const text = formatPictureCall(pictureCall.call);
+                    const text = formatPictureCall(pictureCall.call, { mode: pictureMode });
                     try { navigator.clipboard?.writeText(text); setCmdMsg('✓ Picture copied'); } catch { /* ignore */ }
                   }
                 }}
@@ -1510,6 +1768,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {/* ── Bottom status bar ────────────────────────────────────────────── */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
         <span ref={coordRef}>—</span>
+        {bullseyePin && (
+          <span title={`Bullseye (${bullseyePin.source})`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#f0b840', fontWeight: 600 }}>
+            <span style={{ opacity: 0.75 }}>🎯</span>
+            <span>BE {bullseyePin.lat.toFixed(3)}, {bullseyePin.lng.toFixed(3)}</span>
+            {bullseyePin.source === 'manual' && <span style={{ color: C.textDim, fontWeight: 400, fontSize: 10 }}>(manual)</span>}
+          </span>
+        )}
         {braCall && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#ffd24a', fontWeight: 600 }}>
             <span style={{ opacity: 0.75 }}>📐</span>
