@@ -43,6 +43,9 @@ import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictur
 import { SrsDirectory } from './SrsDirectory';
 import { CommsLog } from './CommsLog';
 import { bullseyeBR, formatBullseye } from './bullseye';
+import { BrevityCard } from './BrevityCard';
+import { NineLineBuilder } from './NineLineBuilder';
+import { postComms } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
@@ -287,6 +290,7 @@ function usePersistedToggle(key: string): [boolean, () => void] {
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const coordRef = useRef<HTMLSpanElement | null>(null);
+  const hoverRef = useRef<HTMLDivElement | null>(null);  // Phase 6 — track-hover info chip
   const mapRef = useRef<OlMap | null>(null);
   const srcRef = useRef<VectorSource | null>(null);
   const abSrcRef = useRef<VectorSource | null>(null);   // airbase markers
@@ -522,19 +526,57 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const trailSecRef = useRef(trailSec);
   trailSecRef.current = trailSec;
   // GCI range rings — controller-placed circles with adjustable radius (NM).
-  // The default-radius slider value is used at drop time.
+  // The default-radius slider value is used at drop time. Persisted across
+  // page reloads + mission re-uploads (Phase 6) so the DM doesn't lose the
+  // station-circle layout mid-session.
   type GciRing = { id: number; lat: number; lng: number; nm: number };
-  const [gciRings, setGciRings] = useState<GciRing[]>([]);
-  const [gciDefaultNm, setGciDefaultNm] = useState(30);
+  const [gciRings, setGciRings] = useState<GciRing[]>(() => {
+    try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.gciRings') || '[]'); return Array.isArray(raw) ? raw as GciRing[] : []; }
+    catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.gciRings', JSON.stringify(gciRings)); } catch { /* ignore */ } }, [gciRings]);
+  const [gciDefaultNm, setGciDefaultNm] = useState<number>(() => {
+    const v = Number(localStorage.getItem('dcsopt.live.gciDefaultNm') ?? '30');
+    return Number.isFinite(v) && v > 0 ? v : 30;
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.gciDefaultNm', String(gciDefaultNm)); } catch { /* ignore */ } }, [gciDefaultNm]);
   const gciSrcRef = useRef<VectorSource | null>(null);
-  const gciIdRef = useRef(1);
+  const gciIdRef = useRef<number>(1);
+  // Initialise the id counter to one past the highest persisted id so new
+  // rings don't collide with restored ones (otherwise React's key dedup
+  // would treat the new ring as a re-render of an old one).
+  useEffect(() => {
+    if (gciRings.length > 0) gciIdRef.current = Math.max(gciIdRef.current, ...gciRings.map((r) => r.id || 0)) + 1;
+  // Run once on mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Bullseye (Phase 5). Auto-loads from missionStore when present; the DM can
-  // override by activating the 🎯 BE tool and clicking. Persistence is
-  // per-session — the manual position is forgotten on page reload (the
-  // mission's own bullseye reasserts), which matches DM expectations.
+  // override by activating the 🎯 BE tool and clicking. **Manual** placements
+  // persist across reloads (Phase 6) — the controller's hand-placed BE is
+  // valuable enough to survive a tab refresh.
   type BullseyePin = { lat: number; lng: number; source: 'mission' | 'manual' };
   const missionBullseye = useMissionStore((s) => s.overview?.bullseye?.blue);
-  const [bullseyePin, setBullseyePin] = useState<BullseyePin | null>(null);
+  const [bullseyePin, setBullseyePin] = useState<BullseyePin | null>(() => {
+    try {
+      const raw = localStorage.getItem('dcsopt.live.bullseyeManual');
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (typeof p?.lat === 'number' && typeof p?.lng === 'number') {
+        return { lat: p.lat, lng: p.lng, source: 'manual' };
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+  // Mirror manual placements into localStorage; null + mission-source clears the slot.
+  useEffect(() => {
+    try {
+      if (bullseyePin?.source === 'manual') {
+        localStorage.setItem('dcsopt.live.bullseyeManual', JSON.stringify({ lat: bullseyePin.lat, lng: bullseyePin.lng }));
+      } else {
+        localStorage.removeItem('dcsopt.live.bullseyeManual');
+      }
+    } catch { /* ignore */ }
+  }, [bullseyePin]);
   // Initial seed from mission. Re-seeds whenever the mission's BE changes
   // (new .miz upload) — but only when the DM hasn't manually overridden.
   useEffect(() => {
@@ -548,14 +590,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   bullseyeRef.current = bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null;
 
   // Named markers — colored labeled pins the DM drops anywhere (anchors,
-  // station points, target reference points). Distinct from GCI rings; pins
-  // are point-only without a radius. State is volatile per-session.
+  // station points, target reference points). Persisted across reloads
+  // (Phase 6) — the DM's scope layout survives a tab refresh.
   type MapMarker = { id: number; lat: number; lng: number; label: string; color: string };
-  const [markers, setMarkers] = useState<MapMarker[]>([]);
-  const [markerLabel, setMarkerLabel] = useState('STN1');
-  const [markerColor, setMarkerColor] = useState('#ffd24a');  // amber default
+  const [markers, setMarkers] = useState<MapMarker[]>(() => {
+    try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.markers') || '[]'); return Array.isArray(raw) ? raw as MapMarker[] : []; }
+    catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.markers', JSON.stringify(markers)); } catch { /* ignore */ } }, [markers]);
+  const [markerLabel, setMarkerLabel] = useState<string>(() => localStorage.getItem('dcsopt.live.markerLabel') || 'STN1');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.markerLabel', markerLabel); } catch { /* ignore */ } }, [markerLabel]);
+  const [markerColor, setMarkerColor] = useState<string>(() => localStorage.getItem('dcsopt.live.markerColor') || '#ffd24a');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.markerColor', markerColor); } catch { /* ignore */ } }, [markerColor]);
   const markerSrcRef = useRef<VectorSource | null>(null);
-  const markerIdRef = useRef(1);
+  const markerIdRef = useRef<number>(1);
+  useEffect(() => {
+    if (markers.length > 0) markerIdRef.current = Math.max(markerIdRef.current, ...markers.map((m) => m.id || 0)) + 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Picture-call panel — open by default if the user has ever opened it before
   // (persisted) so DMs who use it always see it.
   const [pictureOpen, setPictureOpen] = useState<boolean>(() => {
@@ -589,6 +641,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     try { localStorage.setItem('dcsopt.live.commsOpen', next ? '1' : '0'); } catch { /* ignore */ }
     return next;
   });
+  const [brevityOpen, setBrevityOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.brevityOpen') === '1'; } catch { return false; }
+  });
+  const toggleBrevity = () => setBrevityOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.brevityOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
+  const [nineLineOpen, setNineLineOpen] = useState(false);  // not persisted — modal-style use
   // BRA tool state. Anchor + target are independent lat/lng+optional-alt points.
   // When both are present, the line + chip render and the persistent readout
   // updates. `_unitId` lets us re-resolve a clicked unit each render so live
@@ -1033,13 +1094,59 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
       c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
     });
-    // Live cursor coordinate readout (write to DOM directly — no re-render).
+    // Live cursor coordinate readout + track-hover info chip (Phase 6).
+    // Direct DOM writes — pointermove fires fast, React state would churn.
     map.on('pointermove', (e) => {
-      if (!coordRef.current || e.dragging) return;
+      if (e.dragging) { if (hoverRef.current) hoverRef.current.style.display = 'none'; return; }
       const ll = toLonLat(e.coordinate);
       const lat = ll[1], lng = ll[0];
-      const ns = lat >= 0 ? 'N' : 'S', ew = lng >= 0 ? 'E' : 'W';
-      coordRef.current.textContent = `${ns} ${Math.abs(lat).toFixed(4)}°   ${ew} ${Math.abs(lng).toFixed(4)}°`;
+      if (coordRef.current) {
+        const ns = lat >= 0 ? 'N' : 'S', ew = lng >= 0 ? 'E' : 'W';
+        coordRef.current.textContent = `${ns} ${Math.abs(lat).toFixed(4)}°   ${ew} ${Math.abs(lng).toFixed(4)}°`;
+      }
+      // Hit-test for hover — same layer filter as the click handler.
+      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, {
+        hitTolerance: 6,
+        layerFilter: (l) => l === unitsLayer || l === clusterLayer,
+      });
+      let hover: UnitT | null = null;
+      if (f) {
+        const clustered = f.get('features') as Feature[] | undefined;
+        if (Array.isArray(clustered)) {
+          hover = clustered.length === 1 ? (clustered[0]?.get('unit') as UnitT) ?? null : null;
+        } else {
+          hover = (f.get('unit') as UnitT) ?? null;
+        }
+      }
+      const chip = hoverRef.current;
+      if (!chip) return;
+      if (!hover || !hover.position) { chip.style.display = 'none'; return; }
+      // Build the chip text block: callsign · alt · hdg · spd · BE · BRA-from-anchor.
+      const callsign = hover.unitName || hover.name || '—';
+      const cat = String(hover.category || '').toLowerCase();
+      const altFt = hover.position.alt != null ? hover.position.alt * 3.28084 : null;
+      const altStr = altFt != null ? `${Math.round(altFt / 1000)}K` : '—';
+      const hdgRad = hover.track ?? hover.heading;
+      const hdgStr = hdgRad != null ? String(Math.round(((hdgRad * 180) / Math.PI + 360) % 360)).padStart(3, '0') : '—';
+      const spdStr = typeof hover.speed === 'number' && Number.isFinite(hover.speed)
+        ? `${Math.round(hover.speed * 1.94384)} kt` : '—';
+      const lines: string[] = [`${callsign}  (${cat || '?'})`];
+      lines.push(`ALT ${altStr} · HDG ${hdgStr}° · ${spdStr}`);
+      const be = bullseyeRef.current;
+      if (be) {
+        const br = bullseyeBR(be, { lat: hover.position.lat, lng: hover.position.lng });
+        lines.push(formatBullseye(br, { tag: 'BE' }));
+      }
+      chip.textContent = lines.join('\n');
+      chip.style.display = 'block';
+      // Position chip 14 px right + 14 px below cursor, clamped to map container.
+      const target = map.getTargetElement() as HTMLElement | null;
+      const rect = target?.getBoundingClientRect();
+      const me = e.originalEvent as MouseEvent;
+      if (rect) {
+        chip.style.left = `${me.clientX - rect.left + 14}px`;
+        chip.style.top = `${me.clientY - rect.top + 14}px`;
+      }
     });
     mapRef.current = map;
     const onResize = () => map.updateSize();
@@ -1298,6 +1405,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={toggleComms}
                 title="Controller text comms — typed broadcast lane (canCommand-only composer)"
                 style={{ ...toolBtn, ...(commsOpen ? toolOn : {}) }}>💬</button>
+        <button onClick={toggleBrevity}
+                title="Brevity quick-reference (NATO / USN GCI vocabulary)"
+                style={{ ...toolBtn, ...(brevityOpen ? toolOn : {}) }}>📖</button>
+        {canCommand && (
+          <button onClick={() => setNineLineOpen(true)}
+                  title="CAS 9-line builder — fill the form, send as a comms broadcast"
+                  style={{ ...toolBtn }}>📋</button>
+        )}
         <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
                 style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
       </div>
@@ -1703,6 +1818,27 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
+      {/* ── Brevity card (right side, opposite of unit-control) ──────────── */}
+      {brevityOpen && (
+        <div style={{ position: 'absolute', top: 56, right: 12, width: 360, maxHeight: 'calc(100% - 90px)', zIndex: 5, display: 'flex', flexDirection: 'column' }}>
+          <BrevityCard onClose={toggleBrevity} />
+        </div>
+      )}
+
+      {/* ── 9-line builder (centered modal-style) ────────────────────────── */}
+      {nineLineOpen && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 460, maxHeight: 'calc(100% - 90px)', zIndex: 6, display: 'flex', flexDirection: 'column' }}>
+          <NineLineBuilder
+            onClose={() => setNineLineOpen(false)}
+            onSubmit={(text) => {
+              postComms(group.id, text)
+                .then(() => { setCmdMsg('✓ 9-line broadcast'); setNineLineOpen(false); })
+                .catch((e: unknown) => setCmdMsg(`✗ ${e instanceof Error ? e.message : 'send failed'}`));
+            }}
+          />
+        </div>
+      )}
+
       {/* ── Picture-call panel (bottom-right; auto bogey-dope) ───────────── */}
       {!pictureOpen ? (
         <button onClick={togglePicture}
@@ -1764,6 +1900,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           </div>
         </div>
       )}
+
+      {/* ── Track hover chip (positioned by the OL pointermove handler) ──── */}
+      <div ref={hoverRef}
+           style={{ position: 'absolute', display: 'none', zIndex: 5, padding: '5px 8px', fontSize: 11, lineHeight: 1.4, color: C.text, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.border}`, borderRadius: 4, whiteSpace: 'pre', fontFamily: 'ui-monospace, monospace', pointerEvents: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.5)' }} />
 
       {/* ── Bottom status bar ────────────────────────────────────────────── */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
