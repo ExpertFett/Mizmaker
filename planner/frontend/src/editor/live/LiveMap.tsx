@@ -573,6 +573,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     id: number; label: string; dataUrl: string;
     centerLat: number; centerLng: number;
     widthNm: number; heightNm: number;
+    /** naturalH / naturalW from the source image — used to preserve aspect
+     *  ratio when the user drags the W or H slider. Optional for charts
+     *  saved before this field existed; falls back to current heightNm/widthNm. */
+    aspectRatio?: number;
+    /** When true (default), editing W or H also adjusts the other dimension
+     *  so the image keeps its natural proportions. v1.19.5. */
+    aspectLocked?: boolean;
     opacity: number;  // 0..1
     visible: boolean;
   };
@@ -2489,11 +2496,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 // state lifecycle without a backend round-trip. Persistence is via
 // localStorage; the LiveMap parent owns the actual array.
 function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onRemove, onClose }: {
-  charts: Array<{ id: number; label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>;
+  charts: Array<{ id: number; label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean; opacity: number; visible: boolean }>;
   airfields: Array<{ name: string; lat: number; lng: number }>;
-  onStartPlacement: (p: { label: string; dataUrl: string; widthNm: number; heightNm: number; opacity: number; pxW: number; pxH: number }) => void;
-  onAdd: (c: { label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }) => void;
-  onUpdate: (id: number, patch: Partial<{ label: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>) => void;
+  onStartPlacement: (p: { label: string; dataUrl: string; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean; opacity: number; pxW: number; pxH: number }) => void;
+  onAdd: (c: { label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean; opacity: number; visible: boolean }) => void;
+  onUpdate: (id: number, patch: Partial<{ label: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; aspectRatio: number; aspectLocked: boolean; opacity: number; visible: boolean }>) => void;
   onRemove: (id: number) => void;
   onClose: () => void;
 }) {
@@ -2543,6 +2550,7 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
       label: pendingLabel || pendingFile.name || 'Chart',
       dataUrl: pendingFile.dataUrl,
       widthNm: pendingWidthNm, heightNm: pendingHeightNm,
+      aspectRatio: aspect, aspectLocked: true,
       opacity: pendingOpacity, pxW, pxH,
     });
     setPendingFile(null); setPendingLabel('');
@@ -2551,14 +2559,36 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
     if (!pendingFile || !autoAirfield) return;
     const a = airfields.find((x) => x.name === autoAirfield);
     if (!a) return;
+    const aspect = pendingFile.naturalH / pendingFile.naturalW;
     onAdd({
       label: pendingLabel || pendingFile.name || 'Chart',
       dataUrl: pendingFile.dataUrl,
       centerLat: a.lat, centerLng: a.lng,
       widthNm: pendingWidthNm, heightNm: pendingHeightNm,
+      aspectRatio: aspect, aspectLocked: true,
       opacity: pendingOpacity, visible: true,
     });
     setPendingFile(null); setPendingLabel(''); setAutoAirfield('');
+  };
+  // Helper for the per-row W/H edits — when aspect is locked, changing
+  // W also updates H proportionally (and vice versa).
+  const onWidthEdit = (c: { id: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean }, nextW: number) => {
+    const aspect = c.aspectRatio ?? (c.heightNm / Math.max(0.0001, c.widthNm));
+    const w = Math.max(0.1, nextW);
+    if (c.aspectLocked !== false && aspect > 0 && Number.isFinite(aspect)) {
+      onUpdate(c.id, { widthNm: w, heightNm: Math.max(0.1, w * aspect) });
+    } else {
+      onUpdate(c.id, { widthNm: w });
+    }
+  };
+  const onHeightEdit = (c: { id: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean }, nextH: number) => {
+    const aspect = c.aspectRatio ?? (c.heightNm / Math.max(0.0001, c.widthNm));
+    const h = Math.max(0.1, nextH);
+    if (c.aspectLocked !== false && aspect > 0 && Number.isFinite(aspect)) {
+      onUpdate(c.id, { heightNm: h, widthNm: Math.max(0.1, h / aspect) });
+    } else {
+      onUpdate(c.id, { heightNm: h });
+    }
   };
   return (
     <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, background: 'rgba(9,13,20,0.96)', border: '1px solid #243349', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -2579,8 +2609,24 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
                    style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
             {/* Size + opacity controls — applied to whichever placement method you pick */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-              <NumberRow label="W NM" v={pendingWidthNm} step={1} onChange={(n) => setPendingWidthNm(Math.max(0.1, n))} />
-              <NumberRow label="H NM" v={pendingHeightNm} step={1} onChange={(n) => setPendingHeightNm(Math.max(0.1, n))} />
+              <NumberRow label="W NM" v={pendingWidthNm} step={1} onChange={(n) => {
+                const w = Math.max(0.1, n);
+                setPendingWidthNm(w);
+                // Keep aspect locked during the pre-placement entry — most
+                // plates are scanned at their natural proportions.
+                if (pendingFile) {
+                  const aspect = pendingFile.naturalH / pendingFile.naturalW;
+                  if (Number.isFinite(aspect) && aspect > 0) setPendingHeightNm(Math.max(0.1, w * aspect));
+                }
+              }} />
+              <NumberRow label="H NM" v={pendingHeightNm} step={1} onChange={(n) => {
+                const h = Math.max(0.1, n);
+                setPendingHeightNm(h);
+                if (pendingFile) {
+                  const aspect = pendingFile.naturalH / pendingFile.naturalW;
+                  if (Number.isFinite(aspect) && aspect > 0) setPendingWidthNm(Math.max(0.1, h / aspect));
+                }
+              }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>
@@ -2634,8 +2680,19 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               <NumberRow label="Lat" v={c.centerLat} step={0.001} onChange={(n) => onUpdate(c.id, { centerLat: n })} />
               <NumberRow label="Lng" v={c.centerLng} step={0.001} onChange={(n) => onUpdate(c.id, { centerLng: n })} />
-              <NumberRow label="W NM" v={c.widthNm} step={1} onChange={(n) => onUpdate(c.id, { widthNm: Math.max(0.1, n) })} />
-              <NumberRow label="H NM" v={c.heightNm} step={1} onChange={(n) => onUpdate(c.id, { heightNm: Math.max(0.1, n) })} />
+              <NumberRow label="W NM" v={c.widthNm} step={1} onChange={(n) => onWidthEdit(c, n)} />
+              <NumberRow label="H NM" v={c.heightNm} step={1} onChange={(n) => onHeightEdit(c, n)} />
+            </div>
+            {/* Aspect-ratio lock — preserves the image's natural proportions
+                when adjusting either dimension. Defaults to ON; click to
+                stretch freely (e.g. for non-photographic chart graphics). */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 10, color: '#8aa0ba' }}>
+              <span style={{ width: 36 }}>ASPECT</span>
+              <button onClick={() => onUpdate(c.id, { aspectLocked: c.aspectLocked === false })}
+                      title={c.aspectLocked === false ? 'Stretch freely — W and H are independent' : 'Locked — W and H stay in the image\'s natural ratio'}
+                      style={{ flex: 1, background: c.aspectLocked === false ? 'transparent' : 'rgba(255,210,74,0.10)', border: `1px solid ${c.aspectLocked === false ? '#243349' : '#ffd24a'}`, color: c.aspectLocked === false ? '#8aa0ba' : '#ffd24a', padding: '3px 7px', fontSize: 10, fontWeight: 700, letterSpacing: 0.5, borderRadius: 3, cursor: 'pointer' }}>
+                {c.aspectLocked === false ? '🔓 STRETCH' : `🔒 LOCKED ${c.aspectRatio ? `(${(1 / c.aspectRatio).toFixed(2)}:1)` : ''}`}
+              </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
               <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>

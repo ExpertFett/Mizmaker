@@ -2386,6 +2386,14 @@ interface ScriptEntry {
 
 const SCRIPT_LIBRARY: ScriptEntry[] = [
   {
+    id: 'dcsopt-dm-bridge',
+    name: 'DCS:OPT — DM Trigger Bridge',
+    category: 'utility',
+    description: 'Pairs with the Live → Triggers panel (🎬). Catches "fire flag N" signals the web panel sends via Olympus and calls trigger.action.setUserFlag(N, 1) so DM-tagged trigger conditions (Editor → Triggers → 🎬 DM) fire on demand. Pure DCS API — no MOOSE or MIST dependency. Load order: TIME MORE > 1 at mission start; place it AFTER MOOSE/MIST if you also use those, but order is otherwise unimportant. Outputs "DM-bridge: armed" + per-fire chat lines so you can confirm signals are landing.',
+    bundledFile: 'dcsopt-dm-bridge.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads dcsopt-dm-bridge.lua\n-- (auto-bundled into the .miz on download). Wire DM-fireable triggers in\n-- Editor → Triggers → 🎬 DM, then fire from Live → 🎬 panel.',
+  },
+  {
     id: 'moose',
     name: 'MOOSE Framework',
     category: 'framework',
