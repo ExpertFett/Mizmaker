@@ -529,13 +529,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawKind', drawKind); } catch { /* ignore */ } }, [drawKind]);
   const [drawColor, setDrawColor] = useState<string>(() => localStorage.getItem('dcsopt.live.drawColor') || '#ffd24a');
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawColor', drawColor); } catch { /* ignore */ } }, [drawColor]);
-  // Drawing info-label mode (Phase 7b). Each line/arrow drawing carries a
-  // midpoint label showing start→end vector info. BRA = bearing/range from
-  // start point. BE = endpoint's bullseye-relative bearing/range (falls back
-  // to BRA when no bullseye is set).
+  // Drawing info-label mode (Phase 7b → reworked v1.19.6). Labels no longer
+  // sit on every drawing permanently. Instead:
+  //   - LIVE: while you're laying a line/arrow, a floating chip near the
+  //     cursor shows the running BRA / BE from start to current endpoint
+  //   - REVEAL: clicking a finished drawing in 'select' mode renders its
+  //     label until you click elsewhere
+  // The toggle picks which call format (BRA bearing/range or BE bullseye-
+  // relative) for both modes.
   type DrawInfoMode = 'bra' | 'bullseye' | 'off';
   const [drawInfoMode, setDrawInfoMode] = useState<DrawInfoMode>(() => (localStorage.getItem('dcsopt.live.drawInfoMode') as DrawInfoMode) || 'bra');
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawInfoMode', drawInfoMode); } catch { /* ignore */ } }, [drawInfoMode]);
+  const drawInfoModeRef = useRef(drawInfoMode);
+  drawInfoModeRef.current = drawInfoMode;
+  // Click-to-reveal: the drawing currently selected for showing its BRA label.
+  // Null when nothing's selected. Cleared by clicking empty space in 'select'.
+  const [selectedDrawingId, setSelectedDrawingId] = useState<number | null>(null);
+  // Floating chip for the live readout while drawing — written direct to DOM.
+  const liveDrawInfoRef = useRef<HTMLDivElement | null>(null);
   type DrawnFeature = { id: number; kind: DrawKind; color: string; coords: [number, number][] };  // [lng,lat]
   const [drawings, setDrawings] = useState<DrawnFeature[]>(() => {
     try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.drawings') || '[]'); return Array.isArray(raw) ? raw as DrawnFeature[] : []; }
@@ -962,7 +973,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!d.coords || d.coords.length < 2) continue;
       const proj = d.coords.map((c) => fromLonLat(c));
       const line = new Feature({ geometry: new LineString(proj) });
-      line.setStyle(new Style({ stroke: new Stroke({ color: d.color, width: 2 }) }));
+      // Tag so the singleclick hit-test can resolve clicks on the line to
+      // its parent drawing for the reveal-on-click flow.
+      line.set('_drawingId', d.id);
+      // Slightly thicker stroke when selected so the reveal click reads
+      // visually as "selected".
+      const selW = d.id === selectedDrawingId ? 3 : 2;
+      line.setStyle(new Style({ stroke: new Stroke({ color: d.color, width: selW }) }));
       src.addFeature(line);
       if (d.kind === 'arrow') {
         // Arrowhead at the last point, pointing along the last segment.
@@ -979,9 +996,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         }));
         src.addFeature(head);
       }
-      // BRA / Bullseye midpoint label for line + arrow drawings (freehand
-      // gets nothing — a curved path's "start→end bearing" is misleading).
-      if (drawInfoMode !== 'off' && (d.kind === 'line' || d.kind === 'arrow')) {
+      // Reveal-on-click label (v1.19.6): only show the BRA/BE chip for the
+      // drawing the user has clicked. Freehand still gets nothing — a curved
+      // path's "start→end bearing" reads as misleading.
+      const showLabel =
+        d.id === selectedDrawingId &&
+        drawInfoMode !== 'off' &&
+        (d.kind === 'line' || d.kind === 'arrow');
+      if (showLabel) {
         const startLL = d.coords[0];
         const endLL = d.coords[d.coords.length - 1];
         const start: LL = { lat: startLL[1], lng: startLL[0] };
@@ -997,16 +1019,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         const midProj = proj[Math.floor(proj.length / 2)];
         const lbl = new Feature({ geometry: new Point(midProj) });
         lbl.setStyle(new Style({ text: new Text({
-          text: label, font: 'bold 10px sans-serif', offsetY: -8,
+          text: label, font: 'bold 11px sans-serif', offsetY: -10,
           fill: new Fill({ color: d.color }),
-          stroke: new Stroke({ color: 'rgba(0,0,0,0.9)', width: 3 }),
-          backgroundFill: new Fill({ color: 'rgba(9,13,20,0.65)' }),
-          padding: [2, 4, 1, 4],
+          stroke: new Stroke({ color: 'rgba(0,0,0,0.95)', width: 3 }),
+          backgroundFill: new Fill({ color: 'rgba(9,13,20,0.85)' }),
+          backgroundStroke: new Stroke({ color: d.color, width: 1 }),
+          padding: [3, 6, 2, 6],
         }) }));
         src.addFeature(lbl);
       }
     }
-  }, [drawings, drawInfoMode, bullseyePin]);
+  }, [drawings, drawInfoMode, bullseyePin, selectedDrawingId]);
 
   // ESC cancels a pending chart placement.
   useEffect(() => {
@@ -1068,6 +1091,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   // OL Draw interaction — active only when tool === 'draw'. drawKind chooses
   // line / arrow (both straight 2-point linestrings) / freehand (open path).
+  // While the geometry is being placed we run a live BRA / BE readout into
+  // the floating drawing chip (v1.19.6).
   useEffect(() => {
     const map = mapRef.current; const src = drawSrcRef.current;
     if (!map || !src) return;
@@ -1079,7 +1104,51 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       freehand: isFree,
       maxPoints: isFree ? undefined : 2,
     });
+
+    let geomListenerOff: (() => void) | null = null;
+    const updateLiveChip = (geom: any) => {
+      const chip = liveDrawInfoRef.current;
+      if (!chip) return;
+      const mode = drawInfoModeRef.current;
+      if (mode === 'off') { chip.style.display = 'none'; return; }
+      const coords = geom?.getCoordinates?.() as number[][] | undefined;
+      if (!coords || coords.length < 2) { chip.style.display = 'none'; return; }
+      const a = coords[0], b = coords[coords.length - 1];
+      const aLL = toLonLat(a), bLL = toLonLat(b);
+      const start: LL = { lat: aLL[1], lng: aLL[0] };
+      const end: LL = { lat: bLL[1], lng: bLL[0] };
+      let text: string;
+      if (mode === 'bullseye' && bullseyeRef.current) {
+        const be = bullseyeBR(bullseyeRef.current, end);
+        text = formatBullseye(be, { tag: 'BE' });
+      } else {
+        const br = computeBra(start, end);
+        text = formatBra(br, { decorate: false });
+      }
+      chip.textContent = text;
+      chip.style.display = 'block';
+      // Position next to the cursor — the OL pixel for the geometry's
+      // current end-vertex is the freshest cursor approximation.
+      const px = map.getPixelFromCoordinate(b);
+      if (px) {
+        chip.style.left = `${px[0] + 12}px`;
+        chip.style.top = `${px[1] - 18}px`;
+      }
+    };
+
+    draw.on('drawstart', (e: any) => {
+      const feature = e.feature;
+      if (!feature) return;
+      const geom = feature.getGeometry();
+      const handler = () => updateLiveChip(geom);
+      handler();
+      geom.on('change', handler);
+      geomListenerOff = () => geom.un('change', handler);
+    });
+
     draw.on('drawend', (e: any) => {
+      if (geomListenerOff) { geomListenerOff(); geomListenerOff = null; }
+      if (liveDrawInfoRef.current) liveDrawInfoRef.current.style.display = 'none';
       const geom = e.feature?.getGeometry?.();
       if (!geom) return;
       const ring = geom.getCoordinates() as number[][];
@@ -1091,7 +1160,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       setDrawings((prev) => [...prev, { id: drawIdRef.current++, kind: drawKind, color: drawColor, coords: verts }]);
     });
     map.addInteraction(draw);
-    return () => { map.removeInteraction(draw); };
+    return () => {
+      if (geomListenerOff) geomListenerOff();
+      if (liveDrawInfoRef.current) liveDrawInfoRef.current.style.display = 'none';
+      map.removeInteraction(draw);
+    };
   }, [tool, drawKind, drawColor]);
 
   // Airfield search — the airbase poll loop above populates airfieldList
@@ -1395,6 +1468,26 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (c.tool === 'gci') { c.onGci(lat, lng); return; }
       if (c.tool === 'be')  { c.onBullseye(lat, lng); return; }
       if (c.tool === 'marker') { c.onMarker(lat, lng); return; }
+      // In select mode, hit-test the drawing layer so the user can reveal
+      // BRA/BE on a finished drawing by clicking it. (v1.19.6)
+      if (c.tool === 'select') {
+        const drawHit = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, {
+          hitTolerance: 8, layerFilter: (l) => l === drawLayer,
+        });
+        if (drawHit && !target) {
+          // The drawing layer carries multiple feature types (line, label,
+          // arrowhead). We marked the line feature with `_drawingId` so the
+          // hit-test resolves to the parent drawing.
+          const did = drawHit.get('_drawingId') as number | undefined;
+          if (did != null) {
+            setSelectedDrawingId((prev) => prev === did ? null : did);
+            return;
+          }
+        } else if (!drawHit && !target) {
+          // Empty space click clears the selected drawing too.
+          setSelectedDrawingId(null);
+        }
+      }
       if (c.armed) { c.onArmed(lat, lng, target); return; }
       if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
       c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
@@ -2462,6 +2555,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {/* ── Track hover chip (positioned by the OL pointermove handler) ──── */}
       <div ref={hoverRef}
            style={{ position: 'absolute', display: 'none', zIndex: 5, padding: '5px 8px', fontSize: 11, lineHeight: 1.4, color: C.text, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.border}`, borderRadius: 4, whiteSpace: 'pre', fontFamily: 'ui-monospace, monospace', pointerEvents: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.5)' }} />
+
+      {/* ── Live drawing readout (BRA/BE while laying a line/arrow) ──────── */}
+      <div ref={liveDrawInfoRef}
+           style={{ position: 'absolute', display: 'none', zIndex: 6, padding: '3px 7px', fontSize: 11, color: drawColor, background: 'rgba(9,13,20,0.92)', border: `1px solid ${drawColor}`, borderRadius: 3, fontFamily: 'ui-monospace, monospace', fontWeight: 700, pointerEvents: 'none', boxShadow: `0 0 10px ${drawColor}40` }} />
 
       {/* ── Bottom status bar ────────────────────────────────────────────── */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, display: 'flex', alignItems: 'center', gap: 16, padding: '0 12px', zIndex: 2, background: 'linear-gradient(0deg, rgba(9,13,20,0.96), rgba(9,13,20,0.55))', borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textDim, fontVariantNumeric: 'tabular-nums' }}>
