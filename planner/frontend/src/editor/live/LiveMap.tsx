@@ -40,7 +40,7 @@ import {
 import { SpawnPanel } from './SpawnPanel';
 import { IadsPanel } from './IadsPanel';
 import type { IadsArea } from './iadsRecipes';
-import { computeBra, formatBra, metresToFeet } from './braCalc';
+import { computeBra, formatBra, metresToFeet, type LL } from './braCalc';
 import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictureCall';
 import { SrsDirectory } from './SrsDirectory';
 import { CommsLog } from './CommsLog';
@@ -529,6 +529,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawKind', drawKind); } catch { /* ignore */ } }, [drawKind]);
   const [drawColor, setDrawColor] = useState<string>(() => localStorage.getItem('dcsopt.live.drawColor') || '#ffd24a');
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawColor', drawColor); } catch { /* ignore */ } }, [drawColor]);
+  // Drawing info-label mode (Phase 7b). Each line/arrow drawing carries a
+  // midpoint label showing start→end vector info. BRA = bearing/range from
+  // start point. BE = endpoint's bullseye-relative bearing/range (falls back
+  // to BRA when no bullseye is set).
+  type DrawInfoMode = 'bra' | 'bullseye' | 'off';
+  const [drawInfoMode, setDrawInfoMode] = useState<DrawInfoMode>(() => (localStorage.getItem('dcsopt.live.drawInfoMode') as DrawInfoMode) || 'bra');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.drawInfoMode', drawInfoMode); } catch { /* ignore */ } }, [drawInfoMode]);
   type DrawnFeature = { id: number; kind: DrawKind; color: string; coords: [number, number][] };  // [lng,lat]
   const [drawings, setDrawings] = useState<DrawnFeature[]>(() => {
     try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.drawings') || '[]'); return Array.isArray(raw) ? raw as DrawnFeature[] : []; }
@@ -589,6 +596,20 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // map). Track them by chart id so updates can target the specific layer.
   const chartLayersRef = useRef<Map<number, ImageLayer<ImageStatic>>>(new Map());
   const [chartsPanelOpen, setChartsPanelOpen] = useState(false);
+  // Cursor-driven chart placement (Phase 8b). When the panel hands us a
+  // pending payload, we show a ghost preview that follows the cursor; the
+  // next map click commits placement, Esc / right-click cancels.
+  type PendingChart = {
+    label: string; dataUrl: string;
+    widthNm: number; heightNm: number; opacity: number;
+    // Ghost size in screen pixels — set to the preview's natural pixel size
+    // so the user sees the image at the size it'll occupy at the current zoom.
+    pxW: number; pxH: number;
+  };
+  const [pendingChartPlacement, setPendingChartPlacement] = useState<PendingChart | null>(null);
+  const pendingChartRef = useRef<PendingChart | null>(null);
+  pendingChartRef.current = pendingChartPlacement;
+  const pendingChartGhostRef = useRef<HTMLDivElement | null>(null);
 
   // Airfield search panel — toggle + live filter that highlights matching
   // airbases. Phase 7. The abSrc layer always renders; the search panel just
@@ -925,7 +946,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   // Free drawings — render the persisted list. Each kind gets its own style:
   // line = solid stroke; arrow = solid stroke + filled triangle at the tip;
-  // freehand = the same stroke (drawn as a polyline). Phase 7.
+  // freehand = the same stroke (drawn as a polyline). Phase 7. Line + arrow
+  // drawings also get a BRA / BE label at their midpoint when info mode is on.
   useEffect(() => {
     const src = drawSrcRef.current; if (!src) return;
     src.clear();
@@ -945,16 +967,49 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           image: new RegularShape({
             points: 3, radius: 9, fill: new Fill({ color: d.color }),
             stroke: new Stroke({ color: 'rgba(0,0,0,0.6)', width: 1 }),
-            // OL's RegularShape rotation is clockwise from north (12 o'clock).
-            // Our angle is CCW from east. Convert + offset 90° so the
-            // triangle's apex points along the line.
             rotation: -ang + Math.PI / 2,
           }),
         }));
         src.addFeature(head);
       }
+      // BRA / Bullseye midpoint label for line + arrow drawings (freehand
+      // gets nothing — a curved path's "start→end bearing" is misleading).
+      if (drawInfoMode !== 'off' && (d.kind === 'line' || d.kind === 'arrow')) {
+        const startLL = d.coords[0];
+        const endLL = d.coords[d.coords.length - 1];
+        const start: LL = { lat: startLL[1], lng: startLL[0] };
+        const end: LL = { lat: endLL[1], lng: endLL[0] };
+        let label: string;
+        if (drawInfoMode === 'bullseye' && bullseyePin) {
+          const be = bullseyeBR({ lat: bullseyePin.lat, lng: bullseyePin.lng }, end);
+          label = formatBullseye(be, { tag: 'BE' });
+        } else {
+          const br = computeBra(start, end);
+          label = formatBra(br, { decorate: false });
+        }
+        const midProj = proj[Math.floor(proj.length / 2)];
+        const lbl = new Feature({ geometry: new Point(midProj) });
+        lbl.setStyle(new Style({ text: new Text({
+          text: label, font: 'bold 10px sans-serif', offsetY: -8,
+          fill: new Fill({ color: d.color }),
+          stroke: new Stroke({ color: 'rgba(0,0,0,0.9)', width: 3 }),
+          backgroundFill: new Fill({ color: 'rgba(9,13,20,0.65)' }),
+          padding: [2, 4, 1, 4],
+        }) }));
+        src.addFeature(lbl);
+      }
     }
-  }, [drawings]);
+  }, [drawings, drawInfoMode, bullseyePin]);
+
+  // ESC cancels a pending chart placement.
+  useEffect(() => {
+    if (!pendingChartPlacement) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPendingChartPlacement(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingChartPlacement]);
 
   // Reconcile the chart-overlay layer collection with the React state. Each
   // chart maps to one OL ImageLayer; when a chart's extent / opacity /
@@ -1032,35 +1087,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     return () => { map.removeInteraction(draw); };
   }, [tool, drawKind, drawColor]);
 
-  // Airfield search — update the candidates list whenever the airbase poll
-  // refreshes the abSrc layer, and rebuild the highlight overlay when the
-  // query changes.
-  useEffect(() => {
-    const ab = abSrcRef.current;
-    if (!ab) return;
-    // Hydrate the list once after the first feed populates. abSrc features
-    // carry no coalition / name in their attributes, so we read straight from
-    // the geometry + style text. Refresh on poll.
-    const refresh = () => {
-      const list: Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }> = [];
-      ab.forEachFeature((f) => {
-        const g = f.getGeometry();
-        if (!g) return;
-        const c = (g as Point).getCoordinates();
-        const ll = toLonLat(c);
-        // Style text on these features holds the field name; coalition lives
-        // on the original poll data which we don't keep around — best-effort.
-        const st = (f.getStyle() as Style | undefined);
-        const txt = st?.getText?.()?.getText?.() as string | undefined;
-        list.push({ name: String(txt || '—'), lat: ll[1], lng: ll[0], coalition: undefined });
-      });
-      setAirfieldList(list);
-    };
-    // Initial + then re-pull every 15s (matches airbase poll cadence).
-    refresh();
-    const id = setInterval(refresh, 15000);
-    return () => clearInterval(id);
-  }, []);
+  // Airfield search — the airbase poll loop above populates airfieldList
+  // inline now (no need for a separate refresh effect). Highlight overlay
+  // tracks the query.
   useEffect(() => {
     const src = airfieldHighlightRef.current; if (!src) return;
     src.clear();
@@ -1324,6 +1353,20 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       const c = ctrl.current;
       const ll = toLonLat(e.coordinate);
       const lng = ll[0], lat = ll[1];
+      // Cursor-driven chart placement runs first — drops the pending chart
+      // at the click position and clears the placement state.
+      const pending = pendingChartRef.current;
+      if (pending) {
+        setCharts((p) => [...p, {
+          id: chartIdRef.current++,
+          label: pending.label, dataUrl: pending.dataUrl,
+          centerLat: lat, centerLng: lng,
+          widthNm: pending.widthNm, heightNm: pending.heightNm,
+          opacity: pending.opacity, visible: true,
+        }]);
+        setPendingChartPlacement(null);
+        return;
+      }
       if (c.tool === 'measure') { c.onMeasure(lat, lng); return; }  // measure tool owns clicks
       if (c.mode === 'iads') { c.onIads(lat, lng); return; }        // IADS mode: click sets area centre
       // Hit-test only the unit + cluster layers (not airbases/rings).
@@ -1358,6 +1401,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (coordRef.current) {
         const ns = lat >= 0 ? 'N' : 'S', ew = lng >= 0 ? 'E' : 'W';
         coordRef.current.textContent = `${ns} ${Math.abs(lat).toFixed(4)}°   ${ew} ${Math.abs(lng).toFixed(4)}°`;
+      }
+      // Chart-placement ghost — follow the cursor so the user sees where
+      // the image will drop. Position is screen-relative to the map element.
+      const ghost = pendingChartGhostRef.current;
+      const pending = pendingChartRef.current;
+      if (ghost && pending) {
+        const targetEl = map.getTargetElement() as HTMLElement | null;
+        const rect = targetEl?.getBoundingClientRect();
+        const me = e.originalEvent as MouseEvent;
+        if (rect) {
+          ghost.style.display = 'block';
+          ghost.style.left = `${me.clientX - rect.left - pending.pxW / 2}px`;
+          ghost.style.top = `${me.clientY - rect.top - pending.pxH / 2}px`;
+          ghost.style.width = `${pending.pxW}px`;
+          ghost.style.height = `${pending.pxH}px`;
+        }
+      } else if (ghost) {
+        ghost.style.display = 'none';
       }
       // Hit-test for hover — same layer filter as the click handler.
       const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, {
@@ -1407,8 +1468,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     mapRef.current = map;
     // Right-click → track context menu (Phase 7). Hit-test the unit/cluster
     // layer at the cursor; if a single unit is under it, open the rename UI.
+    // Right-click also cancels a pending chart placement.
     const ctxTarget = map.getTargetElement() as HTMLElement | null;
     const onContext = (e: MouseEvent) => {
+      if (pendingChartRef.current) {
+        e.preventDefault();
+        setPendingChartPlacement(null);
+        return;
+      }
       if (!ctxTarget) return;
       const rect = ctxTarget.getBoundingClientRect();
       const px: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
@@ -1537,6 +1604,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         if (!r.ok || !r.data) return;
         const obj = ((r.data as Record<string, unknown>).airbases || {}) as Record<string, any>;
         const src = abSrcRef.current; src.clear();
+        // Build the airfield-search list inline from the same data we use
+        // to draw markers. The old approach (reading style text) returned
+        // nothing — OL's Style.getText() doesn't expose the resolved
+        // string back through forEachFeature. (Bug fix v1.19.4.)
+        const list: Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }> = [];
         for (const a of Object.values(obj)) {
           const lat = Number(a?.latitude), lng = Number(a?.longitude);
           if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) continue;
@@ -1544,7 +1616,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           const ft = new Feature({ geometry: new Point(fromLonLat([lng, lat])) });
           ft.setStyle(airbaseStyle(a.coalition, name));
           src.addFeature(ft);
+          list.push({ name, lat, lng, coalition: a.coalition, unitId: a.unitId });
         }
+        setAirfieldList(list);
       } catch { /* airbases unavailable — leave layer empty */ }
     };
     poll(); const id = setInterval(poll, 15000);  // airfields are mostly static
@@ -2072,9 +2146,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
-      {/* ── Drawing tool prompt + kind/colour controls ───────────────────── */}
+      {/* ── Drawing tool prompt + kind/colour/info-mode controls ─────────── */}
       {tool === 'draw' && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${drawColor}`, color: drawColor, fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: `0 0 14px ${drawColor}40`, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${drawColor}`, color: drawColor, fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: `0 0 14px ${drawColor}40`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>🖊 {drawKind === 'line' ? 'Click two points' : drawKind === 'arrow' ? 'Click start → end' : 'Click + drag to draw'}</span>
           <div style={{ display: 'flex', gap: 3 }}>
             {(['line', 'arrow', 'freehand'] as const).map((k) => (
@@ -2090,6 +2164,21 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                       title={c}
                       style={{ width: 16, height: 16, padding: 0, background: c, border: drawColor === c ? '2px solid #fff' : '1px solid rgba(0,0,0,0.5)', borderRadius: 2, cursor: 'pointer' }} />
             ))}
+          </div>
+          {/* BRA / Bullseye info-label toggle */}
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['bra', 'bullseye', 'off'] as const).map((m) => {
+              const enabled = m !== 'bullseye' || !!bullseyePin;
+              return (
+                <button key={m}
+                        onClick={() => enabled && setDrawInfoMode(m)}
+                        disabled={!enabled}
+                        title={m === 'bullseye' && !enabled ? 'Set a bullseye to enable BE labels' : ''}
+                        style={{ padding: '3px 7px', fontSize: 10, letterSpacing: 0.5, fontWeight: 700, border: `1px solid ${drawInfoMode === m ? drawColor : C.border}`, borderRadius: 3, cursor: enabled ? 'pointer' : 'not-allowed', background: drawInfoMode === m ? `${drawColor}22` : 'transparent', color: !enabled ? C.textDim : drawInfoMode === m ? drawColor : C.textDim, opacity: enabled ? 1 : 0.5 }}>
+                  {m === 'bra' ? 'BRA' : m === 'bullseye' ? 'BE' : 'OFF'}
+                </button>
+              );
+            })}
           </div>
           <span style={{ color: C.textDim, fontWeight: 400, fontSize: 10 }}>{drawings.length} on map</span>
         </div>
@@ -2137,17 +2226,35 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {chartsPanelOpen && (
         <ChartsPanel
           charts={charts}
+          airfields={airfieldList}
+          onStartPlacement={(payload) => setPendingChartPlacement(payload)}
           onAdd={(c) => setCharts((p) => [...p, { ...c, id: chartIdRef.current++ }])}
           onUpdate={(id, patch) => setCharts((p) => p.map((c) => c.id === id ? { ...c, ...patch } : c))}
           onRemove={(id) => setCharts((p) => p.filter((c) => c.id !== id))}
           onClose={() => setChartsPanelOpen(false)}
-          getViewCenter={() => {
-            const v = mapRef.current?.getView();
-            const c = v?.getCenter();
-            if (!c) return { lat: 43, lng: 35 };
-            const ll = toLonLat(c); return { lat: ll[1], lng: ll[0] };
-          }}
         />
+      )}
+
+      {/* ── Cursor-driven chart placement (follow-pointer ghost) ──────────── */}
+      {pendingChartPlacement && (
+        <div
+          ref={pendingChartGhostRef}
+          style={{
+            position: 'absolute',
+            display: 'none',  // populated by the pointermove handler
+            zIndex: 50, pointerEvents: 'none',
+            border: '2px dashed #ffd24a',
+            background: 'rgba(0,0,0,0.25)',
+            boxShadow: '0 0 14px rgba(255,210,74,0.35)',
+          }}>
+          <img src={pendingChartPlacement.dataUrl} alt=""
+               style={{ width: '100%', height: '100%', opacity: 0.7, objectFit: 'contain' }} />
+        </div>
+      )}
+      {pendingChartPlacement && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 51, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: '1px solid #ffd24a', color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)' }}>
+          🗺 Click to drop "{pendingChartPlacement.label}" · Esc / right-click to cancel
+        </div>
       )}
 
       {/* ── Right-click track context menu (rename / clear override) ──────── */}
@@ -2381,16 +2488,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 // Image data is read via FileReader → data URL so it survives the React
 // state lifecycle without a backend round-trip. Persistence is via
 // localStorage; the LiveMap parent owns the actual array.
-function ChartsPanel({ charts, onAdd, onUpdate, onRemove, onClose, getViewCenter }: {
+function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onRemove, onClose }: {
   charts: Array<{ id: number; label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>;
+  airfields: Array<{ name: string; lat: number; lng: number }>;
+  onStartPlacement: (p: { label: string; dataUrl: string; widthNm: number; heightNm: number; opacity: number; pxW: number; pxH: number }) => void;
   onAdd: (c: { label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }) => void;
   onUpdate: (id: number, patch: Partial<{ label: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>) => void;
   onRemove: (id: number) => void;
   onClose: () => void;
-  getViewCenter: () => { lat: number; lng: number };
 }) {
-  const [pendingFile, setPendingFile] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [pendingFile, setPendingFile] = useState<{ name: string; dataUrl: string; naturalW: number; naturalH: number } | null>(null);
   const [pendingLabel, setPendingLabel] = useState('');
+  // Pre-placement controls — let the user pick size + opacity BEFORE
+  // committing, so the cursor ghost and the final overlay match.
+  const [pendingWidthNm, setPendingWidthNm] = useState(20);
+  const [pendingHeightNm, setPendingHeightNm] = useState(20);
+  const [pendingOpacity, setPendingOpacity] = useState(0.7);
+  const [autoAirfield, setAutoAirfield] = useState('');  // dropdown choice
   const onUpload = (file: File) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
@@ -2401,22 +2515,50 @@ function ChartsPanel({ charts, onAdd, onUpdate, onRemove, onClose, getViewCenter
     r.onload = () => {
       const dataUrl = String(r.result || '');
       const base = file.name.replace(/\.[^.]+$/, '');
-      setPendingFile({ name: base, dataUrl });
-      setPendingLabel(base);
+      // Read natural pixel size so the follow-cursor ghost looks honest.
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth || 200;
+        const h = img.naturalHeight || 200;
+        // Default height NM to match the image's aspect ratio at 20 NM wide.
+        const aspect = h / w;
+        setPendingFile({ name: base, dataUrl, naturalW: w, naturalH: h });
+        setPendingLabel(base);
+        setPendingWidthNm(20);
+        setPendingHeightNm(Math.max(1, Math.round(20 * aspect)));
+      };
+      img.src = dataUrl;
     };
     r.readAsDataURL(file);
   };
-  const commit = () => {
+  const startCursorPlacement = () => {
     if (!pendingFile) return;
-    const center = getViewCenter();
+    // Ghost size in screen pixels — keep aspect, cap at 240 px for a sane
+    // viewport footprint while the user picks a spot.
+    const cap = 240;
+    const aspect = pendingFile.naturalH / pendingFile.naturalW;
+    const pxW = Math.min(cap, pendingFile.naturalW);
+    const pxH = Math.round(pxW * aspect);
+    onStartPlacement({
+      label: pendingLabel || pendingFile.name || 'Chart',
+      dataUrl: pendingFile.dataUrl,
+      widthNm: pendingWidthNm, heightNm: pendingHeightNm,
+      opacity: pendingOpacity, pxW, pxH,
+    });
+    setPendingFile(null); setPendingLabel('');
+  };
+  const placeOnAirfield = () => {
+    if (!pendingFile || !autoAirfield) return;
+    const a = airfields.find((x) => x.name === autoAirfield);
+    if (!a) return;
     onAdd({
       label: pendingLabel || pendingFile.name || 'Chart',
       dataUrl: pendingFile.dataUrl,
-      centerLat: center.lat, centerLng: center.lng,
-      widthNm: 20, heightNm: 20,
-      opacity: 0.7, visible: true,
+      centerLat: a.lat, centerLng: a.lng,
+      widthNm: pendingWidthNm, heightNm: pendingHeightNm,
+      opacity: pendingOpacity, visible: true,
     });
-    setPendingFile(null); setPendingLabel('');
+    setPendingFile(null); setPendingLabel(''); setAutoAirfield('');
   };
   return (
     <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, background: 'rgba(9,13,20,0.96)', border: '1px solid #243349', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -2435,17 +2577,43 @@ function ChartsPanel({ charts, onAdd, onUpdate, onRemove, onClose, getViewCenter
             <input value={pendingLabel} onChange={(e) => setPendingLabel(e.target.value)}
                    placeholder="Label (e.g. Senaki TACAN approach)"
                    style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
-            <div style={{ fontSize: 10, color: '#8aa0ba' }}>Will be placed at the current map centre; resize after via the row controls.</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={commit}
-                      style={{ flex: 1, padding: '5px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: '#cfe6ff', background: 'rgba(74,158,255,0.18)', border: '1px solid #4a9eff', borderRadius: 3, cursor: 'pointer' }}>
-                PIN TO MAP
-              </button>
-              <button onClick={() => { setPendingFile(null); setPendingLabel(''); }}
-                      style={{ background: 'transparent', border: '1px solid #243349', color: '#8aa0ba', padding: '5px 10px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>
-                Cancel
-              </button>
+            {/* Size + opacity controls — applied to whichever placement method you pick */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              <NumberRow label="W NM" v={pendingWidthNm} step={1} onChange={(n) => setPendingWidthNm(Math.max(0.1, n))} />
+              <NumberRow label="H NM" v={pendingHeightNm} step={1} onChange={(n) => setPendingHeightNm(Math.max(0.1, n))} />
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>
+              <input type="range" min={0.1} max={1} step={0.05} value={pendingOpacity}
+                     onChange={(e) => setPendingOpacity(Number(e.target.value))}
+                     style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: '#dce6f2', width: 26, textAlign: 'right' }}>{Math.round(pendingOpacity * 100)}%</span>
+            </div>
+            {/* Placement method 1 — cursor-driven */}
+            <button onClick={startCursorPlacement}
+                    style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: '#cfe6ff', background: 'rgba(74,158,255,0.18)', border: '1px solid #4a9eff', borderRadius: 3, cursor: 'pointer' }}>
+              📍 PLACE WITH CURSOR
+            </button>
+            {/* Placement method 2 — snap to a known airfield */}
+            {airfields.length > 0 && (
+              <div style={{ display: 'flex', gap: 4 }}>
+                <select value={autoAirfield} onChange={(e) => setAutoAirfield(e.target.value)}
+                        style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3, outline: 'none' }}>
+                  <option value="">Pick an airfield…</option>
+                  {airfields.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
+                    <option key={a.name + a.lat} value={a.name}>{a.name}</option>
+                  ))}
+                </select>
+                <button onClick={placeOnAirfield} disabled={!autoAirfield}
+                        style={{ padding: '4px 10px', fontSize: 11, fontWeight: 700, color: autoAirfield ? '#cfe6ff' : '#8aa0ba', background: autoAirfield ? 'rgba(74,158,255,0.18)' : 'transparent', border: `1px solid ${autoAirfield ? '#4a9eff' : '#243349'}`, borderRadius: 3, cursor: autoAirfield ? 'pointer' : 'not-allowed' }}>
+                  🛬 SNAP
+                </button>
+              </div>
+            )}
+            <button onClick={() => { setPendingFile(null); setPendingLabel(''); }}
+                    style={{ background: 'transparent', border: '1px solid #243349', color: '#8aa0ba', padding: '5px 10px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>
+              Cancel
+            </button>
           </div>
         )}
       </div>
