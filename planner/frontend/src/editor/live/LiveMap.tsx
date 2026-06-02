@@ -1079,13 +1079,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!currentIds.has(id)) { map.removeLayer(layer); live.delete(id); }
     }
     // Project lat/lng + size in NM into the EPSG:3857 extent OL needs.
-    // Web Mercator scales horizontal distance by 1/cos(lat) — undo so the
-    // image stays true-to-size at the chart's centre latitude.
+    // Web Mercator scales BOTH horizontal AND vertical distance by 1/cos(lat)
+    // at small extents — earlier code lat-corrected only width, which squashed
+    // images vertically at higher latitudes. Fixed v1.19.8.
     for (const c of charts) {
       const center = fromLonLat([c.centerLng, c.centerLat]);
       const cosLat = Math.max(0.15, Math.cos(c.centerLat * Math.PI / 180));
       const halfW = (c.widthNm * 1852) / cosLat / 2;
-      const halfH = (c.heightNm * 1852) / 2;
+      const halfH = (c.heightNm * 1852) / cosLat / 2;
       const extent: [number, number, number, number] = [
         center[0] - halfW, center[1] - halfH,
         center[0] + halfW, center[1] + halfH,
@@ -2732,26 +2733,11 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
     }
   };
 
-  // Helper for the per-row W/H edits — when aspect is locked, changing
-  // W also updates H proportionally (and vice versa).
-  const onWidthEdit = (c: { id: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean }, nextW: number) => {
-    const aspect = c.aspectRatio ?? (c.heightNm / Math.max(0.0001, c.widthNm));
-    const w = Math.max(0.1, nextW);
-    if (c.aspectLocked !== false && aspect > 0 && Number.isFinite(aspect)) {
-      onUpdate(c.id, { widthNm: w, heightNm: Math.max(0.1, w * aspect) });
-    } else {
-      onUpdate(c.id, { widthNm: w });
-    }
-  };
-  const onHeightEdit = (c: { id: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean }, nextH: number) => {
-    const aspect = c.aspectRatio ?? (c.heightNm / Math.max(0.0001, c.widthNm));
-    const h = Math.max(0.1, nextH);
-    if (c.aspectLocked !== false && aspect > 0 && Number.isFinite(aspect)) {
-      onUpdate(c.id, { heightNm: h, widthNm: Math.max(0.1, h / aspect) });
-    } else {
-      onUpdate(c.id, { heightNm: h });
-    }
-  };
+  // Per-row W/H edits no longer have manual inputs — the single SIZE slider
+  // handles both via the aspect ratio. Stretch mode (aspectLocked === false)
+  // is preserved on the data model for forward compatibility but isn't UI-
+  // exposed today; legacy charts saved with it still render unstretched
+  // when the slider is dragged.
   return (
     <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, background: 'rgba(9,13,20,0.96)', border: '1px solid #243349', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'rgba(74,158,255,0.18)', borderBottom: '1px solid #243349', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: '#dce6f2' }}>
@@ -2769,26 +2755,29 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
             <input value={pendingLabel} onChange={(e) => setPendingLabel(e.target.value)}
                    placeholder="Label (e.g. Senaki TACAN approach)"
                    style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
-            {/* Size + opacity controls — applied to whichever placement method you pick */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-              <NumberRow label="W NM" v={pendingWidthNm} step={1} onChange={(n) => {
-                const w = Math.max(0.1, n);
-                setPendingWidthNm(w);
-                // Keep aspect locked during the pre-placement entry — most
-                // plates are scanned at their natural proportions.
-                if (pendingFile) {
-                  const aspect = pendingFile.naturalH / pendingFile.naturalW;
-                  if (Number.isFinite(aspect) && aspect > 0) setPendingHeightNm(Math.max(0.1, w * aspect));
-                }
-              }} />
-              <NumberRow label="H NM" v={pendingHeightNm} step={1} onChange={(n) => {
-                const h = Math.max(0.1, n);
-                setPendingHeightNm(h);
-                if (pendingFile) {
-                  const aspect = pendingFile.naturalH / pendingFile.naturalW;
-                  if (Number.isFinite(aspect) && aspect > 0) setPendingWidthNm(Math.max(0.1, h / aspect));
-                }
-              }} />
+            {/* Single SIZE slider (v1.19.8) — width in NM. Height is always
+                derived from the image's natural aspect ratio so plates can
+                never get squashed. Log-scale slider covers 1–200 NM with
+                useful resolution at both ends (small plates → big sector
+                graphics). */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, color: '#8aa0ba', width: 36, letterSpacing: 0.5 }}>SIZE</span>
+              <input type="range" min={0} max={100} step={1}
+                     value={Math.round(Math.log10(Math.max(1, pendingWidthNm)) / Math.log10(200) * 100)}
+                     onChange={(e) => {
+                       // log scale: 0 → 1 NM, 100 → 200 NM
+                       const t = Number(e.target.value) / 100;
+                       const w = Math.max(1, Math.round(Math.pow(10, t * Math.log10(200))));
+                       setPendingWidthNm(w);
+                       if (pendingFile) {
+                         const aspect = pendingFile.naturalH / pendingFile.naturalW;
+                         if (Number.isFinite(aspect) && aspect > 0) setPendingHeightNm(Math.max(1, Math.round(w * aspect)));
+                       }
+                     }}
+                     style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, color: '#ffd24a', fontFamily: 'ui-monospace, monospace', minWidth: 80, textAlign: 'right' }}>
+                {pendingWidthNm}×{pendingHeightNm} NM
+              </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>
@@ -2860,19 +2849,24 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               <NumberRow label="Lat" v={c.centerLat} step={0.001} onChange={(n) => onUpdate(c.id, { centerLat: n })} />
               <NumberRow label="Lng" v={c.centerLng} step={0.001} onChange={(n) => onUpdate(c.id, { centerLng: n })} />
-              <NumberRow label="W NM" v={c.widthNm} step={1} onChange={(n) => onWidthEdit(c, n)} />
-              <NumberRow label="H NM" v={c.heightNm} step={1} onChange={(n) => onHeightEdit(c, n)} />
             </div>
-            {/* Aspect-ratio lock — preserves the image's natural proportions
-                when adjusting either dimension. Defaults to ON; click to
-                stretch freely (e.g. for non-photographic chart graphics). */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 10, color: '#8aa0ba' }}>
-              <span style={{ width: 36 }}>ASPECT</span>
-              <button onClick={() => onUpdate(c.id, { aspectLocked: c.aspectLocked === false })}
-                      title={c.aspectLocked === false ? 'Stretch freely — W and H are independent' : 'Locked — W and H stay in the image\'s natural ratio'}
-                      style={{ flex: 1, background: c.aspectLocked === false ? 'transparent' : 'rgba(255,210,74,0.10)', border: `1px solid ${c.aspectLocked === false ? '#243349' : '#ffd24a'}`, color: c.aspectLocked === false ? '#8aa0ba' : '#ffd24a', padding: '3px 7px', fontSize: 10, fontWeight: 700, letterSpacing: 0.5, borderRadius: 3, cursor: 'pointer' }}>
-                {c.aspectLocked === false ? '🔓 STRETCH' : `🔒 LOCKED ${c.aspectRatio ? `(${(1 / c.aspectRatio).toFixed(2)}:1)` : ''}`}
-              </button>
+            {/* SIZE slider — single control, height always derived from the
+                image's natural aspect ratio. Log scale 1–200 NM. v1.19.8. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 10, color: '#8aa0ba', width: 36, letterSpacing: 0.5 }}>SIZE</span>
+              <input type="range" min={0} max={100} step={1}
+                     value={Math.round(Math.log10(Math.max(1, c.widthNm)) / Math.log10(200) * 100)}
+                     onChange={(e) => {
+                       const t = Number(e.target.value) / 100;
+                       const w = Math.max(1, Math.round(Math.pow(10, t * Math.log10(200))));
+                       const aspect = c.aspectRatio ?? (c.heightNm / Math.max(0.0001, c.widthNm));
+                       const h = Number.isFinite(aspect) && aspect > 0 ? Math.max(1, Math.round(w * aspect)) : c.heightNm;
+                       onUpdate(c.id, { widthNm: w, heightNm: h });
+                     }}
+                     style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: '#ffd24a', fontFamily: 'ui-monospace, monospace', width: 76, textAlign: 'right' }}>
+                {c.widthNm}×{c.heightNm} NM
+              </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
               <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>
