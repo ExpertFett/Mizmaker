@@ -50,6 +50,8 @@ import { NineLineBuilder } from './NineLineBuilder';
 import { TriggersPanel } from './TriggersPanel';
 import { postComms } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
+import { useAiStore, getActiveAiCreds } from '../../ai/aiStore';
+import { identifyAirfieldFromImage } from './chartAiIdentify';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
 const C = {
@@ -529,6 +531,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawKind', drawKind); } catch { /* ignore */ } }, [drawKind]);
   const [drawColor, setDrawColor] = useState<string>(() => localStorage.getItem('dcsopt.live.drawColor') || '#ffd24a');
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawColor', drawColor); } catch { /* ignore */ } }, [drawColor]);
+  // Stroke thickness in CSS px. Persisted; new drawings inherit. Existing
+  // drawings keep whatever width they were drawn at — width is stored on
+  // each DrawnFeature so the prompt slider doesn't restyle history.
+  const [drawWidth, setDrawWidth] = useState<number>(() => {
+    const v = Number(localStorage.getItem('dcsopt.live.drawWidth') ?? '2');
+    return Number.isFinite(v) && v >= 1 && v <= 8 ? v : 2;
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.drawWidth', String(drawWidth)); } catch { /* ignore */ } }, [drawWidth]);
   // Drawing info-label mode (Phase 7b → reworked v1.19.6). Labels no longer
   // sit on every drawing permanently. Instead:
   //   - LIVE: while you're laying a line/arrow, a floating chip near the
@@ -547,7 +557,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [selectedDrawingId, setSelectedDrawingId] = useState<number | null>(null);
   // Floating chip for the live readout while drawing — written direct to DOM.
   const liveDrawInfoRef = useRef<HTMLDivElement | null>(null);
-  type DrawnFeature = { id: number; kind: DrawKind; color: string; coords: [number, number][] };  // [lng,lat]
+  type DrawnFeature = { id: number; kind: DrawKind; color: string; width?: number; coords: [number, number][] };  // [lng,lat]
   const [drawings, setDrawings] = useState<DrawnFeature[]>(() => {
     try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.drawings') || '[]'); return Array.isArray(raw) ? raw as DrawnFeature[] : []; }
     catch { return []; }
@@ -614,6 +624,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // map). Track them by chart id so updates can target the specific layer.
   const chartLayersRef = useRef<Map<number, ImageLayer<ImageStatic>>>(new Map());
   const [chartsPanelOpen, setChartsPanelOpen] = useState(false);
+  // AI helper for chart placement is defined further down (after airfieldList).
   // Cursor-driven chart placement (Phase 8b). When the panel hands us a
   // pending payload, we show a ghost preview that follows the cursor; the
   // next map click commits placement, Esc / right-click cancels.
@@ -636,6 +647,19 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [airfieldQuery, setAirfieldQuery] = useState('');
   const [airfieldList, setAirfieldList] = useState<Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }>>([]);
   const airfieldHighlightRef = useRef<VectorSource | null>(null);
+  // AI airfield identification for chart placement. Reads the active BYOK
+  // creds — Anthropic or Gemini — and calls the vision identifier helper.
+  // Available when there's a key configured AND we have airfield candidates.
+  const aiCreds = useAiStore((s) => getActiveAiCreds(s));
+  const chartAiAvailable = !!aiCreds.key && airfieldList.length > 0;
+  const chartAiIdentify = useCallback(async (dataUrl: string) => {
+    if (!aiCreds.key) return { match: null as string | null, reason: 'No AI key configured.' };
+    const r = await identifyAirfieldFromImage({
+      provider: aiCreds.provider, apiKey: aiCreds.key, model: aiCreds.model,
+      dataUrl, candidates: airfieldList,
+    });
+    return { match: r.match, reason: r.reason };
+  }, [aiCreds.provider, aiCreds.key, aiCreds.model, airfieldList]);
   const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
   // Track-history trail window in seconds. 0 = off. Persisted across reloads.
   const [trailSec, setTrailSec] = useState<0 | 30 | 60 | 120>(() => {
@@ -976,10 +1000,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       // Tag so the singleclick hit-test can resolve clicks on the line to
       // its parent drawing for the reveal-on-click flow.
       line.set('_drawingId', d.id);
-      // Slightly thicker stroke when selected so the reveal click reads
-      // visually as "selected".
-      const selW = d.id === selectedDrawingId ? 3 : 2;
-      line.setStyle(new Style({ stroke: new Stroke({ color: d.color, width: selW }) }));
+      // Base width = stored value (defaults to 2 for pre-v1.19.7 drawings).
+      // Selected drawing strokes +1 px so the reveal click reads as selected.
+      const baseW = d.width ?? 2;
+      const renderW = d.id === selectedDrawingId ? baseW + 1 : baseW;
+      line.setStyle(new Style({ stroke: new Stroke({ color: d.color, width: renderW }) }));
       src.addFeature(line);
       if (d.kind === 'arrow') {
         // Arrowhead at the last point, pointing along the last segment.
@@ -1157,7 +1182,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         return [ll[0], ll[1]] as [number, number];
       });
       if (verts.length < 2) return;
-      setDrawings((prev) => [...prev, { id: drawIdRef.current++, kind: drawKind, color: drawColor, coords: verts }]);
+      setDrawings((prev) => [...prev, { id: drawIdRef.current++, kind: drawKind, color: drawColor, width: drawWidth, coords: verts }]);
     });
     map.addInteraction(draw);
     return () => {
@@ -1165,7 +1190,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (liveDrawInfoRef.current) liveDrawInfoRef.current.style.display = 'none';
       map.removeInteraction(draw);
     };
-  }, [tool, drawKind, drawColor]);
+  }, [tool, drawKind, drawColor, drawWidth]);
 
   // Airfield search — the airbase poll loop above populates airfieldList
   // inline now (no need for a separate refresh effect). Highlight overlay
@@ -2265,6 +2290,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                       style={{ width: 16, height: 16, padding: 0, background: c, border: drawColor === c ? '2px solid #fff' : '1px solid rgba(0,0,0,0.5)', borderRadius: 2, cursor: 'pointer' }} />
             ))}
           </div>
+          {/* Stroke width selector — visual sample of each thickness as a
+              short horizontal bar so the user picks by feel, not by number. */}
+          <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+            {[1, 2, 3, 4, 5].map((w) => (
+              <button key={w} onClick={() => setDrawWidth(w)}
+                      title={`Stroke width ${w} px`}
+                      style={{ height: 18, width: 22, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${drawWidth === w ? drawColor : C.border}`, borderRadius: 3, cursor: 'pointer', background: drawWidth === w ? `${drawColor}22` : 'transparent' }}>
+                <div style={{ width: 14, height: w, background: drawColor, borderRadius: w / 2 }} />
+              </button>
+            ))}
+          </div>
           {/* BRA / Bullseye info-label toggle */}
           <div style={{ display: 'flex', gap: 3 }}>
             {(['bra', 'bullseye', 'off'] as const).map((m) => {
@@ -2332,6 +2368,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           onUpdate={(id, patch) => setCharts((p) => p.map((c) => c.id === id ? { ...c, ...patch } : c))}
           onRemove={(id) => setCharts((p) => p.filter((c) => c.id !== id))}
           onClose={() => setChartsPanelOpen(false)}
+          aiAvailable={chartAiAvailable}
+          aiIdentify={chartAiIdentify}
         />
       )}
 
@@ -2592,7 +2630,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 // Image data is read via FileReader → data URL so it survives the React
 // state lifecycle without a backend round-trip. Persistence is via
 // localStorage; the LiveMap parent owns the actual array.
-function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onRemove, onClose }: {
+function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onRemove, onClose, aiAvailable, aiIdentify }: {
   charts: Array<{ id: number; label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean; opacity: number; visible: boolean }>;
   airfields: Array<{ name: string; lat: number; lng: number }>;
   onStartPlacement: (p: { label: string; dataUrl: string; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean; opacity: number; pxW: number; pxH: number }) => void;
@@ -2600,6 +2638,12 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
   onUpdate: (id: number, patch: Partial<{ label: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; aspectRatio: number; aspectLocked: boolean; opacity: number; visible: boolean }>) => void;
   onRemove: (id: number) => void;
   onClose: () => void;
+  /** True when the user has a BYOK key configured (either provider). */
+  aiAvailable: boolean;
+  /** Caller resolves the active AI provider/key/model and runs the
+   *  identification; on confident match, returns the candidate name (which
+   *  this panel uses to auto-fill the SNAP dropdown). */
+  aiIdentify: (dataUrl: string) => Promise<{ match: string | null; reason?: string }>;
 }) {
   const [pendingFile, setPendingFile] = useState<{ name: string; dataUrl: string; naturalW: number; naturalH: number } | null>(null);
   const [pendingLabel, setPendingLabel] = useState('');
@@ -2667,6 +2711,27 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
     });
     setPendingFile(null); setPendingLabel(''); setAutoAirfield('');
   };
+  // AI identify (BYOK). Disabled when no key configured OR no candidates yet.
+  const [aiIdentifying, setAiIdentifying] = useState(false);
+  const [aiMessage, setAiMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const onAiIdentify = async () => {
+    if (!pendingFile) return;
+    setAiIdentifying(true); setAiMessage(null);
+    try {
+      const res = await aiIdentify(pendingFile.dataUrl);
+      if (res.match) {
+        setAutoAirfield(res.match);
+        setAiMessage({ ok: true, text: `✓ Matched: ${res.match}${res.reason ? ` — ${res.reason}` : ''}` });
+      } else {
+        setAiMessage({ ok: false, text: `No confident match. ${res.reason || ''}`.trim() });
+      }
+    } catch (e) {
+      setAiMessage({ ok: false, text: e instanceof Error ? e.message : 'AI call failed' });
+    } finally {
+      setAiIdentifying(false);
+    }
+  };
+
   // Helper for the per-row W/H edits — when aspect is locked, changing
   // W also updates H proportionally (and vice versa).
   const onWidthEdit = (c: { id: number; widthNm: number; heightNm: number; aspectRatio?: number; aspectLocked?: boolean }, nextW: number) => {
@@ -2751,6 +2816,24 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
                         style={{ padding: '4px 10px', fontSize: 11, fontWeight: 700, color: autoAirfield ? '#cfe6ff' : '#8aa0ba', background: autoAirfield ? 'rgba(74,158,255,0.18)' : 'transparent', border: `1px solid ${autoAirfield ? '#4a9eff' : '#243349'}`, borderRadius: 3, cursor: autoAirfield ? 'pointer' : 'not-allowed' }}>
                   🛬 SNAP
                 </button>
+              </div>
+            )}
+            {/* AI auto-identify — reads the chart's own labels (ICAO, runway,
+                city) and picks the matching candidate. Only enabled when a
+                BYOK key is configured AND we have candidates to pick from. */}
+            {airfields.length > 0 && (
+              <button onClick={() => onAiIdentify?.()}
+                      disabled={!aiAvailable || aiIdentifying}
+                      title={aiAvailable
+                        ? 'AI reads the chart\'s ICAO / city / runway labels and picks the best match.'
+                        : 'Set an Anthropic or Gemini API key in Tools → AI Settings to enable AI identification.'}
+                      style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: aiAvailable ? '#c090d0' : '#8aa0ba', background: aiAvailable ? 'rgba(192,144,208,0.10)' : 'transparent', border: `1px solid ${aiAvailable ? '#c090d0' : '#243349'}`, borderRadius: 3, cursor: aiAvailable && !aiIdentifying ? 'pointer' : 'not-allowed' }}>
+                {aiIdentifying ? '🤖 Identifying…' : '🤖 AI IDENTIFY AIRFIELD'}
+              </button>
+            )}
+            {aiMessage && (
+              <div style={{ fontSize: 10, color: aiMessage.ok ? '#3fb950' : '#e0554f', padding: '2px 0', lineHeight: 1.4 }}>
+                {aiMessage.text}
               </div>
             )}
             <button onClick={() => { setPendingFile(null); setPendingLabel(''); }}
