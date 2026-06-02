@@ -20,6 +20,8 @@ import XYZ from 'ol/source/XYZ';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import Cluster from 'ol/source/Cluster';
+import ImageLayer from 'ol/layer/Image';
+import ImageStatic from 'ol/source/ImageStatic';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import CircleGeom from 'ol/geom/Circle';
@@ -554,6 +556,39 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // null = closed.
   const [trackMenu, setTrackMenu] = useState<{ x: number; y: number; unit: UnitT } | null>(null);
 
+  // Chart / plate overlays (Phase 8). DM uploads a PNG/JPG (an approach
+  // plate, sector map, kill-box graphic) and pins it to the map at a chosen
+  // centre + size (width/height in NM). Renders via OL ImageLayer + Static
+  // source; opacity is per-overlay. Persisted to localStorage; image data
+  // URLs can be large so the panel shows a size estimate + warns at 4 MB.
+  type ChartOverlay = {
+    id: number; label: string; dataUrl: string;
+    centerLat: number; centerLng: number;
+    widthNm: number; heightNm: number;
+    opacity: number;  // 0..1
+    visible: boolean;
+  };
+  const [charts, setCharts] = useState<ChartOverlay[]>(() => {
+    try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.charts') || '[]'); return Array.isArray(raw) ? raw as ChartOverlay[] : []; }
+    catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('dcsopt.live.charts', JSON.stringify(charts)); }
+    catch (e) {
+      // QuotaExceeded — surface a warning, don't crash.
+      setCmdMsg(`✗ Chart save: storage full (${e instanceof Error ? e.message : 'quota'})`);
+    }
+  }, [charts]);
+  const chartIdRef = useRef<number>(1);
+  useEffect(() => {
+    if (charts.length > 0) chartIdRef.current = Math.max(chartIdRef.current, ...charts.map((c) => c.id || 0)) + 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // ImageLayer instances are mutated outside React (add / remove from the OL
+  // map). Track them by chart id so updates can target the specific layer.
+  const chartLayersRef = useRef<Map<number, ImageLayer<ImageStatic>>>(new Map());
+  const [chartsPanelOpen, setChartsPanelOpen] = useState(false);
+
   // Airfield search panel — toggle + live filter that highlights matching
   // airbases. Phase 7. The abSrc layer always renders; the search panel just
   // controls a separate "highlight" overlay.
@@ -911,6 +946,54 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       }
     }
   }, [drawings]);
+
+  // Reconcile the chart-overlay layer collection with the React state. Each
+  // chart maps to one OL ImageLayer; when a chart's extent / opacity /
+  // visibility changes we update the existing layer in place rather than
+  // tearing it down (avoids a load-flicker each time the panel changes).
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
+    const live = chartLayersRef.current;
+    const currentIds = new Set(charts.map((c) => c.id));
+    // Remove any layers for charts no longer in state.
+    for (const [id, layer] of live) {
+      if (!currentIds.has(id)) { map.removeLayer(layer); live.delete(id); }
+    }
+    // Project lat/lng + size in NM into the EPSG:3857 extent OL needs.
+    // Web Mercator scales horizontal distance by 1/cos(lat) — undo so the
+    // image stays true-to-size at the chart's centre latitude.
+    for (const c of charts) {
+      const center = fromLonLat([c.centerLng, c.centerLat]);
+      const cosLat = Math.max(0.15, Math.cos(c.centerLat * Math.PI / 180));
+      const halfW = (c.widthNm * 1852) / cosLat / 2;
+      const halfH = (c.heightNm * 1852) / 2;
+      const extent: [number, number, number, number] = [
+        center[0] - halfW, center[1] - halfH,
+        center[0] + halfW, center[1] + halfH,
+      ];
+      const existing = live.get(c.id);
+      if (existing) {
+        existing.setOpacity(c.opacity);
+        existing.setVisible(c.visible);
+        // ImageStatic doesn't support extent updates — replace its source when
+        // extent changes. Cheap (the data URL is already decoded).
+        const src = existing.getSource();
+        const cur = src?.getImageExtent?.();
+        if (!cur || cur[0] !== extent[0] || cur[1] !== extent[1] || cur[2] !== extent[2] || cur[3] !== extent[3]) {
+          existing.setSource(new ImageStatic({ url: c.dataUrl, imageExtent: extent, projection: 'EPSG:3857' }));
+        }
+      } else {
+        const layer = new ImageLayer({
+          source: new ImageStatic({ url: c.dataUrl, imageExtent: extent, projection: 'EPSG:3857' }),
+          opacity: c.opacity, visible: c.visible,
+        });
+        // Insert ABOVE the basemap (index 1) so chart overlays sit between
+        // the basemap tiles and the tactical vector stack.
+        map.getLayers().insertAt(1, layer);
+        live.set(c.id, layer);
+      }
+    }
+  }, [charts]);
 
   // OL Draw interaction — active only when tool === 'draw'. drawKind chooses
   // line / arrow (both straight 2-point linestrings) / freehand (open path).
@@ -1584,6 +1667,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => setAirfieldSearchOpen((o) => !o)}
                 title="Search airfields — filter visible field markers and highlight matches"
                 style={{ ...toolBtn, ...(airfieldSearchOpen ? toolOn : {}) }}>🔍</button>
+        <button onClick={() => setChartsPanelOpen((o) => !o)}
+                title="Chart overlays — upload approach plates / kill boxes / sector maps and pin them to the map"
+                style={{ ...toolBtn, ...(chartsPanelOpen ? toolOn : {}), position: 'relative' }}>
+          🗺
+          {charts.length > 0 && (
+            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: C.text, border: `1px solid ${C.border}`, borderRadius: 2 }}>{charts.length}</span>
+          )}
+        </button>
         <button onClick={cycleTrailSec}
                 title={`Track history trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s window`} — click to cycle off → 30s → 60s → 120s`}
                 style={{ ...toolBtn, ...(trailSec > 0 ? toolOn : {}), position: 'relative' }}>
@@ -2030,6 +2121,23 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
+      {/* ── Chart overlays panel (Phase 8) — left dock below airfield search */}
+      {chartsPanelOpen && (
+        <ChartsPanel
+          charts={charts}
+          onAdd={(c) => setCharts((p) => [...p, { ...c, id: chartIdRef.current++ }])}
+          onUpdate={(id, patch) => setCharts((p) => p.map((c) => c.id === id ? { ...c, ...patch } : c))}
+          onRemove={(id) => setCharts((p) => p.filter((c) => c.id !== id))}
+          onClose={() => setChartsPanelOpen(false)}
+          getViewCenter={() => {
+            const v = mapRef.current?.getView();
+            const c = v?.getCenter();
+            if (!c) return { lat: 43, lng: 35 };
+            const ll = toLonLat(c); return { lat: ll[1], lng: ll[0] };
+          }}
+        />
+      )}
+
       {/* ── Right-click track context menu (rename / clear override) ──────── */}
       {trackMenu && (
         <div style={{ position: 'absolute', left: trackMenu.x, top: trackMenu.y, zIndex: 10, minWidth: 220, background: 'rgba(9,13,20,0.98)', border: `1px solid ${C.border}`, borderRadius: 5, boxShadow: '0 4px 14px rgba(0,0,0,0.6)', padding: 8 }}>
@@ -2250,6 +2358,123 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 }
 
 // Small NATO-ish coalition glyph for the status counts (▲ matches air markers).
+// Chart-overlay manager (Phase 8). Upload + size + position + opacity.
+// Image data is read via FileReader → data URL so it survives the React
+// state lifecycle without a backend round-trip. Persistence is via
+// localStorage; the LiveMap parent owns the actual array.
+function ChartsPanel({ charts, onAdd, onUpdate, onRemove, onClose, getViewCenter }: {
+  charts: Array<{ id: number; label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>;
+  onAdd: (c: { label: string; dataUrl: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }) => void;
+  onUpdate: (id: number, patch: Partial<{ label: string; centerLat: number; centerLng: number; widthNm: number; heightNm: number; opacity: number; visible: boolean }>) => void;
+  onRemove: (id: number) => void;
+  onClose: () => void;
+  getViewCenter: () => { lat: number; lng: number };
+}) {
+  const [pendingFile, setPendingFile] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [pendingLabel, setPendingLabel] = useState('');
+  const onUpload = (file: File) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image larger than 5 MB — localStorage will reject it. Compress first.');
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => {
+      const dataUrl = String(r.result || '');
+      const base = file.name.replace(/\.[^.]+$/, '');
+      setPendingFile({ name: base, dataUrl });
+      setPendingLabel(base);
+    };
+    r.readAsDataURL(file);
+  };
+  const commit = () => {
+    if (!pendingFile) return;
+    const center = getViewCenter();
+    onAdd({
+      label: pendingLabel || pendingFile.name || 'Chart',
+      dataUrl: pendingFile.dataUrl,
+      centerLat: center.lat, centerLng: center.lng,
+      widthNm: 20, heightNm: 20,
+      opacity: 0.7, visible: true,
+    });
+    setPendingFile(null); setPendingLabel('');
+  };
+  return (
+    <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, background: 'rgba(9,13,20,0.96)', border: '1px solid #243349', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'rgba(74,158,255,0.18)', borderBottom: '1px solid #243349', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: '#dce6f2' }}>
+        <span>🗺 CHART OVERLAYS</span>
+        <span onClick={onClose} style={{ cursor: 'pointer', color: '#8aa0ba', fontWeight: 400 }}>×</span>
+      </div>
+      <div style={{ padding: 10, borderBottom: '1px solid #243349', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ fontSize: 10, color: '#8aa0ba', letterSpacing: 1 }}>UPLOAD (PNG / JPG, ≤ 5 MB)</label>
+        <input type="file" accept="image/png,image/jpeg,image/webp"
+               onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+               style={{ fontSize: 11, color: '#dce6f2' }} />
+        {pendingFile && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #3a6ea5', borderRadius: 4, background: 'rgba(74,158,255,0.06)' }}>
+            <img src={pendingFile.dataUrl} alt="preview" style={{ maxWidth: '100%', maxHeight: 80, objectFit: 'contain', background: 'rgba(0,0,0,0.4)' }} />
+            <input value={pendingLabel} onChange={(e) => setPendingLabel(e.target.value)}
+                   placeholder="Label (e.g. Senaki TACAN approach)"
+                   style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
+            <div style={{ fontSize: 10, color: '#8aa0ba' }}>Will be placed at the current map centre; resize after via the row controls.</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={commit}
+                      style={{ flex: 1, padding: '5px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: '#cfe6ff', background: 'rgba(74,158,255,0.18)', border: '1px solid #4a9eff', borderRadius: 3, cursor: 'pointer' }}>
+                PIN TO MAP
+              </button>
+              <button onClick={() => { setPendingFile(null); setPendingLabel(''); }}
+                      style={{ background: 'transparent', border: '1px solid #243349', color: '#8aa0ba', padding: '5px 10px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        {charts.length === 0 ? (
+          <div style={{ padding: 14, fontSize: 11, color: '#8aa0ba', textAlign: 'center', lineHeight: 1.5 }}>
+            No overlays yet. Upload a chart, plate, or sector graphic and pin it.
+          </div>
+        ) : charts.map((c) => (
+          <div key={c.id} style={{ borderTop: '1px solid #243349', padding: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+              <input type="checkbox" checked={c.visible} onChange={(e) => onUpdate(c.id, { visible: e.target.checked })} />
+              <input value={c.label} onChange={(e) => onUpdate(c.id, { label: e.target.value })}
+                     style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '3px 6px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
+              <button onClick={() => onRemove(c.id)}
+                      style={{ background: 'transparent', border: '1px solid #5a3a3a', color: '#e0554f', padding: '3px 6px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              <NumberRow label="Lat" v={c.centerLat} step={0.001} onChange={(n) => onUpdate(c.id, { centerLat: n })} />
+              <NumberRow label="Lng" v={c.centerLng} step={0.001} onChange={(n) => onUpdate(c.id, { centerLng: n })} />
+              <NumberRow label="W NM" v={c.widthNm} step={1} onChange={(n) => onUpdate(c.id, { widthNm: Math.max(0.1, n) })} />
+              <NumberRow label="H NM" v={c.heightNm} step={1} onChange={(n) => onUpdate(c.id, { heightNm: Math.max(0.1, n) })} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>OPACITY</span>
+              <input type="range" min={0.1} max={1} step={0.05} value={c.opacity}
+                     onChange={(e) => onUpdate(c.id, { opacity: Number(e.target.value) })}
+                     style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: '#dce6f2', width: 26, textAlign: 'right' }}>{Math.round(c.opacity * 100)}%</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NumberRow({ label, v, step, onChange }: { label: string; v: number; step: number; onChange: (n: number) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ fontSize: 10, color: '#8aa0ba', width: 36 }}>{label}</span>
+      <input type="number" value={v} step={step}
+             onChange={(e) => onChange(Number(e.target.value))}
+             style={{ flex: 1, minWidth: 0, background: 'rgba(0,0,0,0.4)', border: '1px solid #243349', color: '#dce6f2', padding: '2px 5px', fontSize: 11, borderRadius: 3, outline: 'none', fontFamily: 'ui-monospace, monospace' }} />
+    </label>
+  );
+}
+
 function Glyph({ side }: { side: number }) {
   return <span style={{ color: SIDE_COLOR[side] ?? C.neutral, fontSize: 10 }}>◆</span>;
 }
