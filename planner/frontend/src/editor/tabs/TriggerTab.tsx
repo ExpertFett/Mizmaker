@@ -88,6 +88,37 @@ export function TriggerTab() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'overview' | 'editor' | 'builder' | 'f10menu'>('overview');
 
+  // DM-fire tagging (Phase 9b) — per-rule flag hint that the Live → Triggers
+  // panel reads to surface a one-click FIRE button. Persisted to localStorage
+  // (`dcsopt.editor.triggerDmFire`) keyed by rule.id. Flag indices auto-
+  // allocated starting at 9001 to avoid collision with the typical 1–8000
+  // range mission designers use for built-in trigger flags.
+  type DmHint = { dmFire: boolean; flagIndex: number };
+  type DmHints = Record<string, DmHint>;
+  const [dmHints, setDmHints] = useState<DmHints>(() => {
+    try { return JSON.parse(localStorage.getItem('dcsopt.editor.triggerDmFire') || '{}') as DmHints; }
+    catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('dcsopt.editor.triggerDmFire', JSON.stringify(dmHints)); } catch { /* ignore */ }
+  }, [dmHints]);
+  const toggleDmFire = (ruleId: string | number) => {
+    const key = String(ruleId);
+    setDmHints((prev) => {
+      const next = { ...prev };
+      if (next[key]?.dmFire) {
+        delete next[key];
+        return next;
+      }
+      // Allocate the next free flag index (9001+) so multiple tags don't collide.
+      const used = new Set(Object.values(next).map((h) => h.flagIndex));
+      let n = 9001;
+      while (used.has(n)) n++;
+      next[key] = { dmFire: true, flagIndex: n };
+      return next;
+    });
+  };
+
   // Load triggers on mount
   useEffect(() => {
     if (!sessionId || loaded) return;
@@ -267,8 +298,29 @@ export function TriggerTab() {
                         {rule.eventType}
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 4 }}>
-                      {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''} → {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+                    <div style={{ fontSize: 12, color: '#aaaaaa', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>{rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''} → {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}</span>
+                      {/* DM Fire toggle — turns this rule into a button on the Live → Triggers panel */}
+                      {(() => {
+                        const hint = dmHints[String(rule.id)];
+                        const on = !!hint?.dmFire;
+                        return (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleDmFire(rule.id); }}
+                            title={on
+                              ? `DM-fireable via flag ${hint.flagIndex}. Add 'USER_FLAG ${hint.flagIndex} = 1' to this rule's conditions (OR-joined) to wire the loop.`
+                              : "Tag as DM-fireable — surfaces a FIRE button on the Live → Triggers panel."}
+                            style={{
+                              background: on ? 'rgba(255,210,74,0.12)' : 'transparent',
+                              border: `1px solid ${on ? '#ffd24a' : '#3a3a3a'}`,
+                              color: on ? '#ffd24a' : '#888',
+                              padding: '2px 7px', fontSize: 10, fontWeight: 700,
+                              letterSpacing: 0.5, borderRadius: 3, cursor: 'pointer',
+                            }}>
+                            🎬 DM{on && hint ? ` · ${hint.flagIndex}` : ''}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
