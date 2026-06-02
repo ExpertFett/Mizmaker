@@ -1519,50 +1519,75 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         setPendingChartPlacement(null);
         return;
       }
-      if (c.tool === 'measure') { c.onMeasure(lat, lng); return; }  // measure tool owns clicks
-      if (c.mode === 'iads') { c.onIads(lat, lng); return; }        // IADS mode: click sets area centre
-      // Hit-test only the unit + cluster layers (not airbases/rings).
-      const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer || l === clusterLayer });
-      let target: UnitT | null = null;
-      if (f) {
-        const clustered = f.get('features') as Feature[] | undefined;
-        if (Array.isArray(clustered)) {
-          if (clustered.length > 1) {  // expand a multi-unit cluster instead of selecting
-            map.getView().fit(boundingExtent(clustered.map((cf) => (cf.getGeometry() as Point).getCoordinates())), { padding: [90, 90, 90, 90], maxZoom: 13, duration: 250 });
-            return;
+      try {
+        if (c.tool === 'measure') { c.onMeasure(lat, lng); return; }  // measure tool owns clicks
+        if (c.mode === 'iads') { c.onIads(lat, lng); return; }        // IADS mode: click sets area centre
+        // Hit-test only the unit + cluster layers (not airbases/rings).
+        const f = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, { hitTolerance: 6, layerFilter: (l) => l === unitsLayer || l === clusterLayer });
+        let target: UnitT | null = null;
+        if (f) {
+          const clustered = f.get('features') as Feature[] | undefined;
+          if (Array.isArray(clustered)) {
+            if (clustered.length > 1) {  // expand a multi-unit cluster instead of selecting
+              map.getView().fit(boundingExtent(clustered.map((cf) => (cf.getGeometry() as Point).getCoordinates())), { padding: [90, 90, 90, 90], maxZoom: 13, duration: 250 });
+              return;
+            }
+            target = (clustered[0]?.get('unit') as UnitT) ?? null;
+          } else {
+            target = (f.get('unit') as UnitT) ?? null;
           }
-          target = (clustered[0]?.get('unit') as UnitT) ?? null;
-        } else {
-          target = (f.get('unit') as UnitT) ?? null;
         }
-      }
-      if (c.tool === 'bra') { c.onBra(lat, lng, target); return; }  // BRA uses hit-test (unit alt/track)
-      if (c.tool === 'gci') { c.onGci(lat, lng); return; }
-      if (c.tool === 'be')  { c.onBullseye(lat, lng); return; }
-      if (c.tool === 'marker') { c.onMarker(lat, lng); return; }
-      // In select mode, hit-test the drawing layer so the user can reveal
-      // BRA/BE on a finished drawing by clicking it. (v1.19.6)
-      if (c.tool === 'select') {
-        const drawHit = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, {
-          hitTolerance: 8, layerFilter: (l) => l === drawLayer,
-        });
-        if (drawHit && !target) {
-          // The drawing layer carries multiple feature types (line, label,
-          // arrowhead). We marked the line feature with `_drawingId` so the
-          // hit-test resolves to the parent drawing.
-          const did = drawHit.get('_drawingId') as number | undefined;
-          if (did != null) {
-            setSelectedDrawingId((prev) => prev === did ? null : did);
-            return;
+        // Diagnostic — surface what the click is doing. The 🐛 debug panel
+        // shows the most recent entry; console gives a fuller trace for the
+        // "I can't click AI units" class of bug.
+        if (typeof console !== 'undefined') {
+          // eslint-disable-next-line no-console
+          console.debug('[LiveMap click]', {
+            tool: c.tool, mode: c.mode, armed: c.armed,
+            targetID: target?.olympusID, targetName: target?.unitName || target?.name,
+            human: target?.human, controlled: target?.controlled, coalition: target?.coalition,
+            hadFeature: !!f, hadCluster: Array.isArray(f?.get('features')),
+          });
+        }
+        // Tool-armed branches use the unit hit-test result.
+        if (c.tool === 'bra') { c.onBra(lat, lng, target); return; }  // BRA uses hit-test (unit alt/track)
+        if (c.tool === 'gci') { c.onGci(lat, lng); return; }
+        if (c.tool === 'be')  { c.onBullseye(lat, lng); return; }
+        if (c.tool === 'marker') { c.onMarker(lat, lng); return; }
+        // CRITICAL (v1.19.12): if we hit a unit, select it IMMEDIATELY before
+        // any other select-mode logic. Earlier the drawing reveal-on-click
+        // block ran between hit-test and selection — if a stale closure or
+        // unhandled branch returned early, AI unit clicks would silently
+        // drop. Putting selection before reveal removes that risk path.
+        if (c.tool === 'select' && target) {
+          c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
+          return;
+        }
+        // In select mode with no unit hit, hit-test the drawing layer for
+        // the BRA/BE reveal flow.
+        if (c.tool === 'select') {
+          const drawHit = map.forEachFeatureAtPixel(e.pixel, (ft) => ft, {
+            hitTolerance: 8, layerFilter: (l) => l === drawLayer,
+          });
+          if (drawHit) {
+            const did = drawHit.get('_drawingId') as number | undefined;
+            if (did != null) {
+              setSelectedDrawingId((prev) => prev === did ? null : did);
+              return;
+            }
+          } else {
+            // Empty space click clears the selected drawing too.
+            setSelectedDrawingId(null);
           }
-        } else if (!drawHit && !target) {
-          // Empty space click clears the selected drawing too.
-          setSelectedDrawingId(null);
         }
+        if (c.armed) { c.onArmed(lat, lng, target); return; }
+        if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
+        c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
+      } catch (err) {
+        // Surface unexpected click handler errors instead of silently dropping.
+        // eslint-disable-next-line no-console
+        console.error('[LiveMap click handler] threw', err);
       }
-      if (c.armed) { c.onArmed(lat, lng, target); return; }
-      if (c.mode === 'spawn' && placeFnRef.current) { c.place(lat, lng); return; }
-      c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
     });
     // Live cursor coordinate readout + track-hover info chip (Phase 6).
     // Direct DOM writes — pointermove fires fast, React state would churn.
@@ -2476,8 +2501,12 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
       {pendingChartPlacement && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 51, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: '1px solid #ffd24a', color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)' }}>
-          🗺 Click to drop "{pendingChartPlacement.label}" · Esc / right-click to cancel
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 51, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: '1px solid #ffd24a', color: '#ffd24a', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(255,210,74,0.25)', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <span>🗺 Click to drop "{pendingChartPlacement.label}" · Esc / right-click to cancel</span>
+          <button onClick={() => setPendingChartPlacement(null)}
+                  style={{ background: 'transparent', border: '1px solid #ffd24a', color: '#ffd24a', padding: '2px 8px', fontSize: 10, fontWeight: 700, letterSpacing: 0.5, borderRadius: 3, cursor: 'pointer' }}>
+            CANCEL
+          </button>
         </div>
       )}
 
@@ -2704,6 +2733,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           </span>
         )}
         <div style={{ flex: 1 }} />
+        {/* Active tool / mode indicator — so the user always knows what
+            click is going to do. Lights up amber when in a tool that
+            doesn't select units. (v1.19.12 diagnostic for "can't click
+            units" reports.) */}
+        {tool !== 'select' || mode !== 'select' ? (
+          <span style={{ color: '#ffd24a', fontWeight: 600, letterSpacing: 0.5 }}>
+            CLICK→ {tool !== 'select' ? tool.toUpperCase() : mode.toUpperCase()}
+            {tool !== 'select' && (
+              <button onClick={() => setTool('select')}
+                      title="Switch back to ⊹ Pointer (selects units)"
+                      style={{ marginLeft: 6, background: 'transparent', border: '1px solid #ffd24a', color: '#ffd24a', padding: '0 5px', fontSize: 9, fontWeight: 700, borderRadius: 2, cursor: 'pointer' }}>
+                ⊹ POINTER
+              </button>
+            )}
+          </span>
+        ) : (
+          <span style={{ color: C.textDim }}>⊹ Pointer</span>
+        )}
         <span>{ROLE_LABEL[group.role] || group.role}</span>
         <span>{profile.name}</span>
       </div>
