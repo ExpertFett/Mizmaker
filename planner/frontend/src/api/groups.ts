@@ -261,3 +261,18 @@ export interface SrsStatus {
 export function getSrsStatus(gid: string) {
   return req<SrsStatus>(`/api/groups/${gid}/srs_status`);
 }
+
+// ─── DM trigger fire (Phase 9 — paired with dcsopt-dm-bridge.lua) ───────────
+export interface FireTriggerResp {
+  ok: boolean;
+  flagIndex: number;
+  encodedLat: number;
+  encodedLng: number;
+  raw: unknown;
+}
+export function fireTrigger(gid: string, pid: string, flagIndex: number) {
+  return req<FireTriggerResp>(`/api/groups/${gid}/profiles/${pid}/fire_trigger`, {
+    method: 'POST',
+    body: JSON.stringify({ flagIndex }),
+  });
+}

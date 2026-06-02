@@ -47,6 +47,7 @@ import { CommsLog } from './CommsLog';
 import { bullseyeBR, formatBullseye } from './bullseye';
 import { BrevityCard } from './BrevityCard';
 import { NineLineBuilder } from './NineLineBuilder';
+import { TriggersPanel } from './TriggersPanel';
 import { postComms } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
 
@@ -734,6 +735,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     return next;
   });
   const [nineLineOpen, setNineLineOpen] = useState(false);  // not persisted — modal-style use
+  const [triggersOpen, setTriggersOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.triggersOpen') === '1'; } catch { return false; }
+  });
+  const toggleTriggers = () => setTriggersOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.triggersOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
   // BRA tool state. Anchor + target are independent lat/lng+optional-alt points.
   // When both are present, the line + chip render and the persistent readout
   // updates. `_unitId` lets us re-resolve a clicked unit each render so live
@@ -1706,6 +1715,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                   title="CAS 9-line builder — fill the form, send as a comms broadcast"
                   style={{ ...toolBtn }}>📋</button>
         )}
+        <button onClick={toggleTriggers}
+                title="Mission triggers — fire any DM-tagged trigger from the scope (replaces the F10 menu)"
+                style={{ ...toolBtn, ...(triggersOpen ? toolOn : {}) }}>🎬</button>
         <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
                 style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
       </div>
@@ -2247,6 +2259,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {brevityOpen && (
         <div style={{ position: 'absolute', top: 56, right: 12, width: 360, maxHeight: 'calc(100% - 90px)', zIndex: 5, display: 'flex', flexDirection: 'column' }}>
           <BrevityCard onClose={toggleBrevity} />
+        </div>
+      )}
+
+      {/* ── Triggers panel — DM fire control (Phase 9) ───────────────────── */}
+      {triggersOpen && (
+        <div style={{ position: 'absolute', top: 56, right: brevityOpen ? 380 : 12, width: 360, maxHeight: 'calc(100% - 90px)', zIndex: 5, display: 'flex', flexDirection: 'column' }}>
+          <TriggersPanel group={group} profile={profile} onClose={toggleTriggers} />
         </div>
       )}
 

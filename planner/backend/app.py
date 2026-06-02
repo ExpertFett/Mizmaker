@@ -1971,6 +1971,21 @@ def brief_capabilities():
 # 500ing because it landed on `brief_scan`).
 # --------------------------------------------------------------------------
 
+@app.route("/api/assets/<path:name>", methods=["GET"])
+def serve_backend_asset(name):
+    """Expose select read-only backend assets (Lua scripts, etc.) for the
+    frontend to download. Whitelist-based so we never accidentally leak
+    something sensitive."""
+    WHITELIST = {
+        "dcsopt-dm-bridge.lua": "scripts/dcsopt-dm-bridge.lua",
+    }
+    rel = WHITELIST.get(name)
+    if not rel:
+        return jsonify({"error": "asset not found"}), 404
+    asset_dir = os.path.join(os.path.dirname(__file__), "assets")
+    return send_from_directory(asset_dir, rel, mimetype="text/x-lua")
+
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_frontend(path):

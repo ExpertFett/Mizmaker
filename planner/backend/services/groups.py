@@ -519,6 +519,82 @@ def register_group_routes(app) -> None:
         return jsonify(result), (200 if result.get("ok") else 502)
 
     # ----------------------------------------------------------------------
+    # Trigger fire (Phase 9). DCS missions normally fire triggers via the F10
+    # comm menu or via in-game events; this exposes a web-side fire mechanism
+    # so the DM never has to leave the scope. Mechanism: spawn a tiny effect
+    # (smoke) at a magic-encoded coordinate; a mission-side bridge script
+    # listens for smoke at those coords and sets the matching user flag,
+    # which the (Editor-modified) trigger's condition watches.
+    #
+    # The magic-coord encoding: lat = 89.0 + flagIndex * 0.000_001, lng = -179.0
+    # Outside any DCS theatre projection so spawns don't visibly land on the
+    # mission area; ~0.1 m precision is ample for the flag-index integer.
+    # The bridge script (Editor → Scripts → "DM trigger bridge") matches lat
+    # vs the encoded value and dispatches.
+    # ----------------------------------------------------------------------
+    @app.route("/api/groups/<gid>/profiles/<pid>/fire_trigger", methods=["POST"])
+    def fire_trigger(gid, pid):
+        sb, user, err = _ctx()
+        if err:
+            return err
+        member_role = role_in_group(sb, user["id"], gid)
+        if member_role is None:
+            return jsonify({"error": "Not a member"}), 403
+        if not role_has(member_role, "command"):
+            return jsonify({"error": f"Your role ({member_role}) cannot fire triggers."}), 403
+        body = request.get_json(silent=True) or {}
+        flag_index = body.get("flagIndex")
+        try:
+            flag_index = int(flag_index)
+        except (TypeError, ValueError):
+            return jsonify({"error": "flagIndex required (int)"}), 400
+        if not (0 < flag_index < 1_000_000):
+            return jsonify({"error": "flagIndex out of range (1..999_999)"}), 400
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        try:
+            pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        # Encode flagIndex into the latitude's microsecond field. lat = 89 +
+        # flag*1e-6 stays comfortably under 90 for any flag in the allowed
+        # range. lng pegged at -179 so spawns cluster at the "fire pole" and
+        # the bridge script can be lat-only checked.
+        lat = 89.0 + flag_index * 1e-6
+        lng = -179.0
+        from services.olympus_bridge import send_command
+        # spawnGroundUnits fires DCS's S_EVENT_BIRTH which our bridge script
+        # listens for. Soldier M4 = smallest / cheapest unit type Olympus
+        # exposes; immediate=true skips spawn-points consumption; spawnPoints
+        # = 0 to make sure even capped roles can fire. Coalition neutral so
+        # the spawn doesn't show up to red/blue players in the F10 picture.
+        units_payload = [{
+            "unitType": "Soldier M4",
+            "location": {"lat": lat, "lng": lng},
+            "skill": "Average", "liveryID": "",
+        }]
+        params = {
+            "units": units_payload, "coalition": "neutral", "country": "",
+            "immediate": True, "spawnPoints": 0,
+        }
+        result = send_command(
+            p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "",
+            "spawnGroundUnits", params,
+        )
+        return jsonify({
+            "ok": result.get("ok", False),
+            "flagIndex": flag_index,
+            "encodedLat": lat,
+            "encodedLng": lng,
+            "raw": result,
+        }), (200 if result.get("ok") else 502)
+
+    # ----------------------------------------------------------------------
     # SRS-Server stats poll (Phase 2 of the LotATC scope, v1.17.8).
     # Member-gated; degrades gracefully when SRS_SERVER_URL is unset (returns
     # 200 + configured:false so the SRS Directory just hides the "● N on"
