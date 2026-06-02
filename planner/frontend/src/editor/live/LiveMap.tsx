@@ -467,7 +467,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (isGround && groundSrc) {
         groundSrc.addFeature(ft);  // ground units are styled by the cluster layer
       } else {
-        ft.setStyle(styleForUnit(u, showLabels, bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null)); src.addFeature(ft);
+        // Apply friend/foe override before styling so labels show the DM's
+        // chosen tag. The unit object isn't mutated — we shallow-clone.
+        const labeled = u.olympusID != null && unitLabels[u.olympusID]
+          ? { ...u, unitName: unitLabels[u.olympusID] } : u;
+        ft.setStyle(styleForUnit(labeled, showLabels, bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null)); src.addFeature(ft);
       }
       if (selSrc && u.olympusID != null && selSet.has(u.olympusID)) selSrc.addFeature(new Feature({ geometry: new Point(coord) }));
       // Threat rings (live units only) from the unit's blueprint ranges.
@@ -511,7 +515,52 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // clicks drop range+bearing points; 'select' is normal unit selection;
   // 'bra' is the GCI Bearing/Range/Altitude tool — 1st click sets the anchor,
   // 2nd sets the target, 3rd resets to a new anchor.
-  const [tool, setTool] = useState<'select' | 'measure' | 'bra' | 'gci' | 'be' | 'marker'>('select');
+  const [tool, setTool] = useState<'select' | 'measure' | 'bra' | 'gci' | 'be' | 'marker' | 'draw' | 'airfield'>('select');
+  // Drawing tool sub-mode + drawing state. Phase 7. Three primitives —
+  // straight line, arrow (line + arrowhead at the second point), freehand
+  // polyline — all using OL's built-in Draw interaction. Persisted across
+  // reloads (`dcsopt.live.drawings`) so the DM's scribble survives a tab
+  // refresh.
+  type DrawKind = 'line' | 'arrow' | 'freehand';
+  const [drawKind, setDrawKind] = useState<DrawKind>(() => (localStorage.getItem('dcsopt.live.drawKind') as DrawKind) || 'line');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.drawKind', drawKind); } catch { /* ignore */ } }, [drawKind]);
+  const [drawColor, setDrawColor] = useState<string>(() => localStorage.getItem('dcsopt.live.drawColor') || '#ffd24a');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.drawColor', drawColor); } catch { /* ignore */ } }, [drawColor]);
+  type DrawnFeature = { id: number; kind: DrawKind; color: string; coords: [number, number][] };  // [lng,lat]
+  const [drawings, setDrawings] = useState<DrawnFeature[]>(() => {
+    try { const raw = JSON.parse(localStorage.getItem('dcsopt.live.drawings') || '[]'); return Array.isArray(raw) ? raw as DrawnFeature[] : []; }
+    catch { return []; }
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.drawings', JSON.stringify(drawings)); } catch { /* ignore */ } }, [drawings]);
+  const drawSrcRef = useRef<VectorSource | null>(null);
+  const drawIdRef = useRef<number>(1);
+  useEffect(() => {
+    if (drawings.length > 0) drawIdRef.current = Math.max(drawIdRef.current, ...drawings.map((d) => d.id || 0)) + 1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Friend/foe label override — per-unit rename keyed by olympusID. Persisted
+  // (`dcsopt.live.unitLabels`). Used in styleForUnit, hover chip, and the
+  // picture-call panel so the DM can refer to a track as "BOGEY-1" instead of
+  // its game callsign.
+  const [unitLabels, setUnitLabels] = useState<Record<number, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('dcsopt.live.unitLabels') || '{}'); }
+    catch { return {}; }
+  });
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.unitLabels', JSON.stringify(unitLabels)); } catch { /* ignore */ } }, [unitLabels]);
+  const unitLabelsRef = useRef<Record<number, string>>(unitLabels);
+  unitLabelsRef.current = unitLabels;
+  // Context menu — opens on right-click of a unit. Position in screen px;
+  // null = closed.
+  const [trackMenu, setTrackMenu] = useState<{ x: number; y: number; unit: UnitT } | null>(null);
+
+  // Airfield search panel — toggle + live filter that highlights matching
+  // airbases. Phase 7. The abSrc layer always renders; the search panel just
+  // controls a separate "highlight" overlay.
+  const [airfieldSearchOpen, setAirfieldSearchOpen] = useState(false);
+  const [airfieldQuery, setAirfieldQuery] = useState('');
+  const [airfieldList, setAirfieldList] = useState<Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }>>([]);
+  const airfieldHighlightRef = useRef<VectorSource | null>(null);
   const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
   // Track-history trail window in seconds. 0 = off. Persisted across reloads.
   const [trailSec, setTrailSec] = useState<0 | 30 | 60 | 120>(() => {
@@ -829,6 +878,110 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       src.addFeature(pin);
     }
   }, [markers]);
+
+  // Free drawings — render the persisted list. Each kind gets its own style:
+  // line = solid stroke; arrow = solid stroke + filled triangle at the tip;
+  // freehand = the same stroke (drawn as a polyline). Phase 7.
+  useEffect(() => {
+    const src = drawSrcRef.current; if (!src) return;
+    src.clear();
+    for (const d of drawings) {
+      if (!d.coords || d.coords.length < 2) continue;
+      const proj = d.coords.map((c) => fromLonLat(c));
+      const line = new Feature({ geometry: new LineString(proj) });
+      line.setStyle(new Style({ stroke: new Stroke({ color: d.color, width: 2 }) }));
+      src.addFeature(line);
+      if (d.kind === 'arrow') {
+        // Arrowhead at the last point, pointing along the last segment.
+        const n = proj.length;
+        const [ax, ay] = proj[n - 2], [bx, by] = proj[n - 1];
+        const ang = Math.atan2(by - ay, bx - ax);
+        const head = new Feature({ geometry: new Point([bx, by]) });
+        head.setStyle(new Style({
+          image: new RegularShape({
+            points: 3, radius: 9, fill: new Fill({ color: d.color }),
+            stroke: new Stroke({ color: 'rgba(0,0,0,0.6)', width: 1 }),
+            // OL's RegularShape rotation is clockwise from north (12 o'clock).
+            // Our angle is CCW from east. Convert + offset 90° so the
+            // triangle's apex points along the line.
+            rotation: -ang + Math.PI / 2,
+          }),
+        }));
+        src.addFeature(head);
+      }
+    }
+  }, [drawings]);
+
+  // OL Draw interaction — active only when tool === 'draw'. drawKind chooses
+  // line / arrow (both straight 2-point linestrings) / freehand (open path).
+  useEffect(() => {
+    const map = mapRef.current; const src = drawSrcRef.current;
+    if (!map || !src) return;
+    if (tool !== 'draw') return;
+    const isFree = drawKind === 'freehand';
+    const draw = new Draw({
+      source: new VectorSource(),  // throw-away — we read coords on drawend
+      type: 'LineString',
+      freehand: isFree,
+      maxPoints: isFree ? undefined : 2,
+    });
+    draw.on('drawend', (e: any) => {
+      const geom = e.feature?.getGeometry?.();
+      if (!geom) return;
+      const ring = geom.getCoordinates() as number[][];
+      const verts: [number, number][] = ring.map((c) => {
+        const ll = toLonLat(c);
+        return [ll[0], ll[1]] as [number, number];
+      });
+      if (verts.length < 2) return;
+      setDrawings((prev) => [...prev, { id: drawIdRef.current++, kind: drawKind, color: drawColor, coords: verts }]);
+    });
+    map.addInteraction(draw);
+    return () => { map.removeInteraction(draw); };
+  }, [tool, drawKind, drawColor]);
+
+  // Airfield search — update the candidates list whenever the airbase poll
+  // refreshes the abSrc layer, and rebuild the highlight overlay when the
+  // query changes.
+  useEffect(() => {
+    const ab = abSrcRef.current;
+    if (!ab) return;
+    // Hydrate the list once after the first feed populates. abSrc features
+    // carry no coalition / name in their attributes, so we read straight from
+    // the geometry + style text. Refresh on poll.
+    const refresh = () => {
+      const list: Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }> = [];
+      ab.forEachFeature((f) => {
+        const g = f.getGeometry();
+        if (!g) return;
+        const c = (g as Point).getCoordinates();
+        const ll = toLonLat(c);
+        // Style text on these features holds the field name; coalition lives
+        // on the original poll data which we don't keep around — best-effort.
+        const st = (f.getStyle() as Style | undefined);
+        const txt = st?.getText?.()?.getText?.() as string | undefined;
+        list.push({ name: String(txt || '—'), lat: ll[1], lng: ll[0], coalition: undefined });
+      });
+      setAirfieldList(list);
+    };
+    // Initial + then re-pull every 15s (matches airbase poll cadence).
+    refresh();
+    const id = setInterval(refresh, 15000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const src = airfieldHighlightRef.current; if (!src) return;
+    src.clear();
+    if (!airfieldQuery.trim()) return;
+    const q = airfieldQuery.trim().toLowerCase();
+    for (const a of airfieldList) {
+      if (!a.name.toLowerCase().includes(q)) continue;
+      const c = fromLonLat([a.lng, a.lat]);
+      const ring = new Feature({ geometry: new CircleGeom(c, 600) });
+      ring.setStyle(new Style({ stroke: new Stroke({ color: '#ffd24a', width: 2 }), fill: new Fill({ color: 'rgba(255,210,74,0.10)' }) }));
+      src.addFeature(ring);
+    }
+  }, [airfieldQuery, airfieldList]);
   const zoomBy = (d: number) => { const v = mapRef.current?.getView(); if (v) v.animate({ zoom: (v.getZoom() ?? 6) + d, duration: 180 }); };
   // Rebuild the measure line + per-segment range/bearing labels from the vertices.
   useEffect(() => {
@@ -1036,6 +1189,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     const markerSrc = new VectorSource();
     markerSrcRef.current = markerSrc;
     const markerLayer = new VectorLayer({ source: markerSrc });
+    const drawSrc = new VectorSource();
+    drawSrcRef.current = drawSrc;
+    // Drawing layer carries per-feature styles (line / arrow / freehand all
+    // use a thin stroke; arrow gets an arrowhead style on the last segment).
+    const drawLayer = new VectorLayer({ source: drawSrc });
+    const airfieldHighlight = new VectorSource();
+    airfieldHighlightRef.current = airfieldHighlight;
+    const airfieldHighlightLayer = new VectorLayer({ source: airfieldHighlight });
     const selSrc = new VectorSource();
     selSrcRef.current = selSrc;
     const selLayer = new VectorLayer({ source: selSrc, style: SEL_STYLE });
@@ -1056,6 +1217,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         gciLayer,       // GCI/ATC range rings (under markers)
         bullseyeLayer,  // bullseye reference (under markers, over rings)
         markerLayer,    // named map markers (above bullseye, under units)
+        drawLayer,      // free drawings (lines / arrows / freehand)
+        airfieldHighlightLayer,  // airfield search highlight rings
         selLayer,       // selection highlight rings (under markers)
         historyLayer,   // GCI track-history trails (under markers, above rings)
         clusterLayer,   // ground units (clustered)
@@ -1122,7 +1285,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       if (!chip) return;
       if (!hover || !hover.position) { chip.style.display = 'none'; return; }
       // Build the chip text block: callsign · alt · hdg · spd · BE · BRA-from-anchor.
-      const callsign = hover.unitName || hover.name || '—';
+      const ov = hover.olympusID != null ? unitLabelsRef.current[hover.olympusID] : undefined;
+      const callsign = ov || hover.unitName || hover.name || '—';
       const cat = String(hover.category || '').toLowerCase();
       const altFt = hover.position.alt != null ? hover.position.alt * 3.28084 : null;
       const altStr = altFt != null ? `${Math.round(altFt / 1000)}K` : '—';
@@ -1149,9 +1313,37 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       }
     });
     mapRef.current = map;
+    // Right-click → track context menu (Phase 7). Hit-test the unit/cluster
+    // layer at the cursor; if a single unit is under it, open the rename UI.
+    const ctxTarget = map.getTargetElement() as HTMLElement | null;
+    const onContext = (e: MouseEvent) => {
+      if (!ctxTarget) return;
+      const rect = ctxTarget.getBoundingClientRect();
+      const px: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+      const f = map.forEachFeatureAtPixel(px, (ft) => ft, {
+        hitTolerance: 8,
+        layerFilter: (l) => l === unitsLayer || l === clusterLayer,
+      });
+      let u: UnitT | null = null;
+      if (f) {
+        const clustered = f.get('features') as Feature[] | undefined;
+        u = Array.isArray(clustered) ? (clustered.length === 1 ? (clustered[0]?.get('unit') as UnitT) : null) : (f.get('unit') as UnitT) ?? null;
+      }
+      if (u) {
+        e.preventDefault();
+        setTrackMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, unit: u });
+      } else {
+        setTrackMenu(null);
+      }
+    };
+    ctxTarget?.addEventListener('contextmenu', onContext);
     const onResize = () => map.updateSize();
     window.addEventListener('resize', onResize);
-    return () => { window.removeEventListener('resize', onResize); map.setTarget(undefined); mapRef.current = null; };
+    return () => {
+      window.removeEventListener('resize', onResize);
+      ctxTarget?.removeEventListener('contextmenu', onContext);
+      map.setTarget(undefined); mapRef.current = null;
+    };
   }, []);
 
   // Poll units.
@@ -1215,7 +1407,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   }, [group.id, profile.id]);
 
   // Re-render instantly when a visibility filter toggles (don't wait for poll).
-  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, showLabels, selectedIds, bullseyePin]);
+  useEffect(() => { renderRef.current(); }, [showHuman, showOlympus, showDcs, showRed, showBlue, showNeutral, showAircraft, showHelicopter, showSam, showGround, showNavy, showDead, showEng, showAcq, showLabels, selectedIds, bullseyePin, unitLabels]);
 
   // Load the unit databases once: classify SAM/air-defense ground units (Olympus
   // splits GroundUnit into SAM vs other ground by blueprint type) and build the
@@ -1275,7 +1467,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
 
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
 
-  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || tool === 'be' || tool === 'marker' || mode === 'iads';
+  const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || tool === 'be' || tool === 'marker' || tool === 'draw' || mode === 'iads';
   const selSide = selected ? (SIDE_COLOR[selected.coalition ?? -1] ?? C.neutral) : C.neutral;
   // Live copy of the selected unit (refreshed each poll) for current-state highlights.
   const sUnit = selected ? (unitsRef.current[String(selected.olympusID)]?.u ?? selected) : null;
@@ -1382,6 +1574,16 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <button onClick={() => setMarkers([])} title="Clear all markers"
                 disabled={markers.length === 0}
                 style={{ ...toolBtn, opacity: markers.length === 0 ? 0.4 : 1 }}>🗑</button>
+        <button onClick={() => { setTool('draw'); setArmed(null); }}
+                title={`Draw on the scope (${drawKind}). Click the prompt panel to swap line / arrow / freehand.`}
+                style={{ ...toolBtn, ...(tool === 'draw' ? toolOn : {}) }}>🖊</button>
+        <button onClick={() => setDrawings([])}
+                title="Clear all drawings"
+                disabled={drawings.length === 0}
+                style={{ ...toolBtn, opacity: drawings.length === 0 ? 0.4 : 1 }}>🩹</button>
+        <button onClick={() => setAirfieldSearchOpen((o) => !o)}
+                title="Search airfields — filter visible field markers and highlight matches"
+                style={{ ...toolBtn, ...(airfieldSearchOpen ? toolOn : {}) }}>🔍</button>
         <button onClick={cycleTrailSec}
                 title={`Track history trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s window`} — click to cycle off → 30s → 60s → 120s`}
                 style={{ ...toolBtn, ...(trailSec > 0 ? toolOn : {}), position: 'relative' }}>
@@ -1764,6 +1966,121 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {tool === 'be' && (
         <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '6px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid #f0b840`, color: '#f0b840', fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: '0 0 14px rgba(240,184,64,0.25)' }}>
           🎯 Click the map to drop the bullseye reference
+        </div>
+      )}
+
+      {/* ── Drawing tool prompt + kind/colour controls ───────────────────── */}
+      {tool === 'draw' && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 4, padding: '7px 12px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${drawColor}`, color: drawColor, fontSize: 12, fontWeight: 600, letterSpacing: 0.5, boxShadow: `0 0 14px ${drawColor}40`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>🖊 {drawKind === 'line' ? 'Click two points' : drawKind === 'arrow' ? 'Click start → end' : 'Click + drag to draw'}</span>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['line', 'arrow', 'freehand'] as const).map((k) => (
+              <button key={k} onClick={() => setDrawKind(k)}
+                      style={{ padding: '3px 7px', fontSize: 10, letterSpacing: 0.5, fontWeight: 700, border: `1px solid ${drawKind === k ? drawColor : C.border}`, borderRadius: 3, cursor: 'pointer', background: drawKind === k ? `${drawColor}22` : 'transparent', color: drawKind === k ? drawColor : C.textDim }}>
+                {k.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['#ffd24a', '#5a9fd4', '#e0554f', '#3fb950', '#c090d0', '#bbbbbb'] as const).map((c) => (
+              <button key={c} onClick={() => setDrawColor(c)}
+                      title={c}
+                      style={{ width: 16, height: 16, padding: 0, background: c, border: drawColor === c ? '2px solid #fff' : '1px solid rgba(0,0,0,0.5)', borderRadius: 2, cursor: 'pointer' }} />
+            ))}
+          </div>
+          <span style={{ color: C.textDim, fontWeight: 400, fontSize: 10 }}>{drawings.length} on map</span>
+        </div>
+      )}
+
+      {/* ── Airfield search panel (left, below the tool rail) ────────────── */}
+      {airfieldSearchOpen && (
+        <div style={{ position: 'absolute', top: 56, left: 56, width: 280, zIndex: 4, background: 'rgba(9,13,20,0.96)', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: C.accentDim, borderBottom: `1px solid ${C.border}`, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text }}>
+            <span>🔍 AIRFIELDS</span>
+            <span onClick={() => setAirfieldSearchOpen(false)} style={{ cursor: 'pointer', color: C.textDim, fontWeight: 400 }}>×</span>
+          </div>
+          <div style={{ padding: 8 }}>
+            <input value={airfieldQuery} onChange={(e) => setAirfieldQuery(e.target.value)}
+                   placeholder={`Filter ${airfieldList.length} fields…`}
+                   style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}`, color: C.text, padding: '5px 8px', fontSize: 12, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }} />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto', borderTop: `1px solid ${C.border}` }}>
+            {airfieldList
+              .filter((a) => !airfieldQuery.trim() || a.name.toLowerCase().includes(airfieldQuery.trim().toLowerCase()))
+              .slice(0, 80)
+              .map((a, i) => (
+                <div key={i}
+                     onClick={() => {
+                       const v = mapRef.current?.getView();
+                       if (v) v.animate({ center: fromLonLat([a.lng, a.lat]), zoom: 11, duration: 350 });
+                     }}
+                     style={{ padding: '5px 10px', fontSize: 12, color: C.text, cursor: 'pointer', borderTop: i > 0 ? `1px solid rgba(36,51,73,0.5)` : 'none' }}>
+                  {a.name}
+                  <span style={{ color: C.textDim, marginLeft: 6, fontSize: 10 }}>
+                    {a.lat.toFixed(3)}, {a.lng.toFixed(3)}
+                  </span>
+                </div>
+              ))}
+            {airfieldList.length === 0 && (
+              <div style={{ padding: 12, fontSize: 11, color: C.textDim, textAlign: 'center' }}>
+                Waiting for the airbase feed…
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Right-click track context menu (rename / clear override) ──────── */}
+      {trackMenu && (
+        <div style={{ position: 'absolute', left: trackMenu.x, top: trackMenu.y, zIndex: 10, minWidth: 220, background: 'rgba(9,13,20,0.98)', border: `1px solid ${C.border}`, borderRadius: 5, boxShadow: '0 4px 14px rgba(0,0,0,0.6)', padding: 8 }}>
+          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6, letterSpacing: 0.5 }}>
+            Track: <span style={{ color: C.text, fontWeight: 600 }}>{(trackMenu.unit.olympusID != null && unitLabels[trackMenu.unit.olympusID]) || trackMenu.unit.unitName || trackMenu.unit.name || '—'}</span>
+          </div>
+          {trackMenu.unit.olympusID != null && (
+            <>
+              <input
+                autoFocus
+                defaultValue={unitLabels[trackMenu.unit.olympusID] || trackMenu.unit.unitName || trackMenu.unit.name || ''}
+                placeholder="Override label (e.g. BANDIT-1)"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const v = (e.target as HTMLInputElement).value.trim();
+                    const id = trackMenu.unit.olympusID!;
+                    setUnitLabels((p) => {
+                      const n = { ...p };
+                      if (v) n[id] = v;
+                      else delete n[id];
+                      return n;
+                    });
+                    setTrackMenu(null);
+                  } else if (e.key === 'Escape') {
+                    setTrackMenu(null);
+                  }
+                }}
+                style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}`, color: C.text, padding: '5px 7px', fontSize: 12, borderRadius: 3, outline: 'none', fontFamily: 'inherit' }}
+              />
+              <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                <button onClick={() => {
+                  const id = trackMenu.unit.olympusID!;
+                  setUnitLabels((p) => { const n = { ...p }; delete n[id]; return n; });
+                  setTrackMenu(null);
+                }}
+                        style={{ flex: 1, background: 'transparent', border: `1px solid ${C.border}`, color: C.textDim, padding: '4px 8px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>
+                  Reset
+                </button>
+                <button onClick={() => setTrackMenu(null)}
+                        style={{ flex: 1, background: 'transparent', border: `1px solid ${C.border}`, color: C.text, padding: '4px 8px', fontSize: 11, borderRadius: 3, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: C.textDim, marginTop: 6, lineHeight: 1.45 }}>
+                Enter to save. Persists across reloads, scoped to this Olympus ID.
+              </div>
+            </>
+          )}
+          {trackMenu.unit.olympusID == null && (
+            <div style={{ fontSize: 11, color: C.textDim }}>This track has no stable ID — can't be renamed.</div>
+          )}
         </div>
       )}
 
