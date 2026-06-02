@@ -365,6 +365,34 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       });
   };
 
+  // Staggered variant — for commands that DCS chokes on when fired in parallel
+  // (deleteUnit is the worst offender; firing 50+ at once freezes the sim for
+  // 5–15 seconds). Fires sequentially with a small delay between calls so the
+  // game gets to chew each one. Progress chip updates while running so the DM
+  // sees the operation hasn't hung. v1.19.11.
+  const cmdSelStaggered = async (
+    command: string,
+    paramsFor: (id: number) => Record<string, unknown>,
+    label: string,
+    delayMs = 120,
+  ) => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (anyProtected && !window.confirm(`Selection includes protected Mission Editor unit(s).\n\nCommanding unlocks them and abandons their scripted mission. Continue?`)) return;
+    let ok = 0;
+    for (let i = 0; i < ids.length; i++) {
+      setCmdMsg(`${label} ${i + 1}/${ids.length}…`);
+      try {
+        const r = await sendCommand(group.id, profile.id, command, paramsFor(ids[i]));
+        if (r.ok) ok++;
+      } catch { /* tolerate; keep going */ }
+      // Don't sleep after the last item — wastes time.
+      if (i < ids.length - 1) await new Promise((res) => setTimeout(res, delayMs));
+    }
+    const n = ids.length;
+    setCmdMsg(ok < n ? `✗ ${label}: ${ok}/${n} ok` : `✓ ${label}${n > 1 ? ` ×${n}` : ''} sent`);
+  };
+
   // Selection tool (filter-based batch select). Criteria default to "everything".
   const [selToolOpen, setSelToolOpen] = useState(false);
   const [selFilter, setSelFilter] = useState<Record<string, boolean>>({
@@ -1971,6 +1999,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                    style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', borderRadius: 4, outline: 'none' }} />
             <button onClick={runSelectByFilter} style={{ ...mbtn, background: C.accentDim, borderColor: C.accent, color: '#cfe6ff', padding: '8px', fontWeight: 700 }}>Select units</button>
             {selCount > 0 && <button onClick={() => setSelectedIds(new Set())} style={{ ...mbtn, padding: '6px' }}>Clear selection ({selCount})</button>}
+            {/* Mass delete — gated on canDelete + non-empty selection. Uses
+                the staggered command path because DCS freezes on parallel
+                delete waves; the chip at the bottom of the status bar shows
+                running progress. */}
+            {selCount > 0 && canDelete && (
+              <button onClick={() => {
+                const warn = selCount > 30
+                  ? `\n\nWith ${selCount} units the delete will run STAGGERED (~${Math.ceil(selCount * 0.15)} s) so DCS doesn't freeze. Don't refresh until the progress chip clears.`
+                  : '';
+                if (!window.confirm(`Mass-delete ${selCount} unit${selCount === 1 ? '' : 's'} from the LIVE mission?${warn}`)) return;
+                const paramsFor = (id: number) => ({ ID: id, explosion: false, explosionType: '', immediate: true });
+                if (selCount > 10) cmdSelStaggered('deleteUnit', paramsFor, 'Mass delete', 150);
+                else cmdSel('deleteUnit', paramsFor, 'Mass delete');
+              }}
+              style={{ ...mbtn, padding: '8px', fontWeight: 700, color: C.red, borderColor: '#5a2a2a', background: 'rgba(224,85,79,0.06)' }}>
+                ✕ Mass delete ({selCount})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -2248,7 +2294,28 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                   )}
                   {canDelete && (
                     <button style={{ ...cardBtn, color: C.red, borderColor: '#5a2a2a' }}
-                            onClick={() => { if (window.confirm(`Delete ${selCount === 1 ? `"${selected?.unitName || selected?.name}"` : `${selCount} units`} from the LIVE mission?`)) cmdSel('deleteUnit', (id) => ({ ID: id, explosion: false, explosionType: '', immediate: true }), 'Delete'); }}>✕ Delete</button>
+                            onClick={() => {
+                              // Mass-delete protection: parallel deleteUnit
+                              // calls freeze DCS hard at 30+. Stagger via
+                              // cmdSelStaggered with a 150 ms gap once the
+                              // selection is non-trivial. Singles still go
+                              // through the simple cmdSel path so the UX
+                              // stays fast.
+                              const label = selCount === 1
+                                ? `"${selected?.unitName || selected?.name}"`
+                                : `${selCount} units`;
+                              const warn = selCount > 30
+                                ? `\n\nWith ${selCount} units the delete will run STAGGERED (~${Math.ceil(selCount * 0.15)} s) so DCS doesn't freeze. Don't refresh the page until the progress chip clears.`
+                                : '';
+                              if (!window.confirm(`Delete ${label} from the LIVE mission?${warn}`)) return;
+                              const paramsFor = (id: number) => ({ ID: id, explosion: false, explosionType: '', immediate: true });
+                              if (selCount > 10) {
+                                // Stagger threshold = 10. Above that, sequential w/ delay.
+                                cmdSelStaggered('deleteUnit', paramsFor, 'Delete', 150);
+                              } else {
+                                cmdSel('deleteUnit', paramsFor, 'Delete');
+                              }
+                            }}>✕ Delete{selCount > 1 ? ` (${selCount})` : ''}</button>
                   )}
                 </div>
               </div>
