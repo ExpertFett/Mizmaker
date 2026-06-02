@@ -150,12 +150,22 @@ def _normalize_slpp_keys(obj):
 def parse_mission_text(text: str) -> dict:
     """Parse Lua mission text into a Python dict using slpp.
 
+    Handles BOTH DCS mission Lua formats:
+      A. Single literal:   `mission = { theatre = "X", date = {...}, ... }`
+      B. Successive set:   `mission = {}`
+                           `mission["theatre"] = "X"`
+                           `mission["date"] = {...}`
+                           ...
+    Format B is what DCS emits for some user-edited / template missions
+    (notably "THE GULF WAR TEMPLATE.miz" reported 2026-06-XX). Earlier
+    parser only handled A — it stopped at the empty `{}` and the rest of
+    the file was ignored, producing an empty dict + "theatre = None".
+
     Uses a fresh SLPP() instance per call — the default `slpp.slpp` is a
-    module-level singleton with mutable parser state, which is NOT thread-safe
-    under Flask's default threaded request handler.
+    module-level singleton with mutable parser state, which is NOT thread-
+    safe under Flask's default threaded request handler.
     """
-    # DCS mission files look like: mission = { ... }
-    # Strip the variable assignment to get just the table
+    # Locate `mission = ` (anchor for both formats).
     match = re.search(r'^mission\s*=\s*', text, re.MULTILINE)
     if not match:
         raise ValueError("No 'mission' table found in Lua text")
@@ -164,7 +174,52 @@ def parse_mission_text(text: str) -> dict:
     mission = lua.decode(table_text)
     if mission is None:
         raise ValueError("Failed to parse mission Lua table")
+    # Format B detection: if the initial decode returned an empty/near-empty
+    # dict but the file continues with `mission["key"] = ...` assignments,
+    # parse those individually and merge them in.
+    if isinstance(mission, dict) and not mission:
+        mission = _parse_mission_indexed_form(text)
     return _normalize_slpp_keys(mission)
+
+
+# Each `mission["key"] = <value>` assignment, top-level only. Value spans
+# from the `=` to the start of the next `mission["..."]` assignment or EOF.
+_MISSION_INDEXED_RE = re.compile(
+    r'^mission\["([^"]+)"\]\s*=\s*',
+    re.MULTILINE,
+)
+
+
+def _parse_mission_indexed_form(text: str) -> dict:
+    """Parse the `mission["key"] = value` assignment form (Format B).
+
+    For each top-level `mission["key"] = ` anchor, slice the value text from
+    after the `=` to just before the next `mission[...]` anchor (or EOF),
+    decode it with slpp, and store under the key. Falls back to skipping any
+    assignment whose value can't be decoded — better than failing the whole
+    mission for one unparseable field.
+    """
+    matches = list(_MISSION_INDEXED_RE.finditer(text))
+    if not matches:
+        # Nothing to do — return empty so the caller gets a usable dict and
+        # downstream code can fail clearly on missing 'theatre' etc.
+        return {}
+    out: dict = {}
+    for i, m in enumerate(matches):
+        key = m.group(1)
+        value_start = m.end()
+        value_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        value_text = text[value_start:value_end].rstrip()
+        # Trim trailing newlines + the `mission` of the next assignment.
+        # SLPP.decode is tolerant of trailing content but cleaner to strip.
+        try:
+            lua = SLPP()
+            value = lua.decode(value_text)
+        except Exception:
+            value = None
+        if value is not None:
+            out[key] = value
+    return out
 
 
 def extract_full_mission_data(mission_dict: dict, theater: str, options_text: str | None = None) -> dict:
