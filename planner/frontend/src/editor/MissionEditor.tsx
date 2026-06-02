@@ -37,6 +37,7 @@ import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
 import { MetarReadout } from '../panels/MetarReadout';
 import { LiveTerminal } from './live/LiveTerminal';
+import { LiveErrorBoundary } from './live/LiveErrorBoundary';
 import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode } from '../plannerMode';
 
 // Sidebar layout — workflow phases. Each tab is a top-level destination;
@@ -529,7 +530,7 @@ export function MissionEditor() {
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {/* Live mode — the multi-tenant DM terminal (login → group → server
             profile → terminal). Self-contained; doesn't touch Editor/Plan. */}
-        {mode === 'live' && <LiveTerminal />}
+        {mode === 'live' && <LiveErrorBoundary><LiveTerminal /></LiveErrorBoundary>}
         {mode !== 'live' && (
         <>
         {/* Map tab — map + floating panel */}

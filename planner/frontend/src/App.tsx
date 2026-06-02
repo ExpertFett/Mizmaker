@@ -7,6 +7,7 @@ import { MissionEditor } from './editor/MissionEditor';
 import { JoinSession } from './session/JoinSession';
 import { DiscordButton } from './panels/DiscordButton';
 import { LiveTerminal } from './editor/live/LiveTerminal';
+import { LiveErrorBoundary } from './editor/live/LiveErrorBoundary';
 import { GuidePanel } from './panels/GuidePanel';
 import { HelpButton } from './panels/HelpButton';
 
@@ -104,7 +105,9 @@ function LiveStandalone() {
         <button onClick={back} style={{ background: 'transparent', border: '1px solid #4a4a4a', color: '#cccccc', padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, borderRadius: 4 }}>← Back to Upload</button>
         <span style={{ fontSize: 13, color: '#888' }}>Live mode · no mission loaded</span>
       </div>
-      <LiveTerminal />
+      <LiveErrorBoundary>
+        <LiveTerminal />
+      </LiveErrorBoundary>
     </div>
   );
 }

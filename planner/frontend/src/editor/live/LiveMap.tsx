@@ -50,7 +50,7 @@ import { NineLineBuilder } from './NineLineBuilder';
 import { TriggersPanel } from './TriggersPanel';
 import { postComms } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
-import { useAiStore, getActiveAiCreds } from '../../ai/aiStore';
+import { useAiStore } from '../../ai/aiStore';
 import { identifyAirfieldFromImage } from './chartAiIdentify';
 
 // ── Olympus-style palette ──────────────────────────────────────────────────
@@ -650,16 +650,25 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // AI airfield identification for chart placement. Reads the active BYOK
   // creds — Anthropic or Gemini — and calls the vision identifier helper.
   // Available when there's a key configured AND we have airfield candidates.
-  const aiCreds = useAiStore((s) => getActiveAiCreds(s));
-  const chartAiAvailable = !!aiCreds.key && airfieldList.length > 0;
+  // Individual primitive selectors (vs a single object selector) so Zustand
+  // can short-circuit re-renders — returning a fresh object every render was
+  // forcing the useCallback dep array to thrash.
+  const aiProvider = useAiStore((s) => s.provider);
+  const aiAnthropicKey = useAiStore((s) => s.anthropicKey);
+  const aiGeminiKey = useAiStore((s) => s.geminiKey);
+  const aiAnthropicModel = useAiStore((s) => s.anthropicModel);
+  const aiGeminiModel = useAiStore((s) => s.geminiModel);
+  const aiKey = aiProvider === 'anthropic' ? aiAnthropicKey : aiGeminiKey;
+  const aiModel = aiProvider === 'anthropic' ? aiAnthropicModel : aiGeminiModel;
+  const chartAiAvailable = !!aiKey && airfieldList.length > 0;
   const chartAiIdentify = useCallback(async (dataUrl: string) => {
-    if (!aiCreds.key) return { match: null as string | null, reason: 'No AI key configured.' };
+    if (!aiKey) return { match: null as string | null, reason: 'No AI key configured.' };
     const r = await identifyAirfieldFromImage({
-      provider: aiCreds.provider, apiKey: aiCreds.key, model: aiCreds.model,
+      provider: aiProvider, apiKey: aiKey, model: aiModel,
       dataUrl, candidates: airfieldList,
     });
     return { match: r.match, reason: r.reason };
-  }, [aiCreds.provider, aiCreds.key, aiCreds.model, airfieldList]);
+  }, [aiProvider, aiKey, aiModel, airfieldList]);
   const [measurePts, setMeasurePts] = useState<number[][]>([]);  // [lon,lat] vertices
   // Track-history trail window in seconds. 0 = off. Persisted across reloads.
   const [trailSec, setTrailSec] = useState<0 | 30 | 60 | 120>(() => {
@@ -1083,6 +1092,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     // at small extents — earlier code lat-corrected only width, which squashed
     // images vertically at higher latitudes. Fixed v1.19.8.
     for (const c of charts) {
+      // Defensive guards (v1.19.10): a malformed chart in localStorage used
+      // to throw on `new ImageStatic({imageExtent: [NaN,...]})` which crashed
+      // the whole Live UI. Skip silently when essentials are missing or NaN.
+      if (
+        !c || typeof c.dataUrl !== 'string' || !c.dataUrl ||
+        !Number.isFinite(c.centerLat) || !Number.isFinite(c.centerLng) ||
+        !Number.isFinite(c.widthNm) || !Number.isFinite(c.heightNm) ||
+        c.widthNm <= 0 || c.heightNm <= 0
+      ) continue;
       const center = fromLonLat([c.centerLng, c.centerLat]);
       const cosLat = Math.max(0.15, Math.cos(c.centerLat * Math.PI / 180));
       const halfW = (c.widthNm * 1852) / cosLat / 2;
