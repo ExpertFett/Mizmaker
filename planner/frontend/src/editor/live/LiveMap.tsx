@@ -559,6 +559,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawKind', drawKind); } catch { /* ignore */ } }, [drawKind]);
   const [drawColor, setDrawColor] = useState<string>(() => localStorage.getItem('dcsopt.live.drawColor') || '#ffd24a');
   useEffect(() => { try { localStorage.setItem('dcsopt.live.drawColor', drawColor); } catch { /* ignore */ } }, [drawColor]);
+  // Basemap (Phase Live + editor parity). 4 tile sources matching the editor's
+  // map options: Dark (CARTO dark_all), Voyager (CARTO street labels),
+  // Satellite (Esri), Topo (OpenTopoMap). Persisted per browser. v1.19.13.
+  type Basemap = 'dark' | 'voyager' | 'satellite' | 'topo';
+  const [basemap, setBasemap] = useState<Basemap>(() => (localStorage.getItem('dcsopt.live.basemap') as Basemap) || 'dark');
+  useEffect(() => { try { localStorage.setItem('dcsopt.live.basemap', basemap); } catch { /* ignore */ } }, [basemap]);
+  const baseLayersRef = useRef<{ dark: TileLayer<XYZ>; voyager: TileLayer<XYZ>; satellite: TileLayer<XYZ>; topo: TileLayer<XYZ> } | null>(null);
   // Stroke thickness in CSS px. Persisted; new drawings inherit. Existing
   // drawings keep whatever width they were drawn at — width is stored on
   // each DrawnFeature so the prompt slider doesn't restyle history.
@@ -1483,7 +1490,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       target: elRef.current,
       controls: [],  // hide default OL zoom/attribution; we float our own chrome
       layers: [
-        new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attributions: '© OpenStreetMap, © CARTO' }) }),
+        // Four basemap tile layers, only one visible at a time — matches the
+        // editor's map options so the DM can pick the same view they're used
+        // to. Dark default; switcher in the left sidebar swaps visibility.
+        ...((() => {
+          const dark = new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 20, attributions: '© CARTO' }), visible: basemap === 'dark' });
+          const voyager = new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 20, attributions: '© OpenStreetMap, © CARTO' }), visible: basemap === 'voyager' });
+          const satellite = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 19, attributions: 'Tiles © Esri' }), visible: basemap === 'satellite' });
+          const topo = new TileLayer({ source: new XYZ({ url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZoom: 17, attributions: 'Map data: OpenTopoMap (CC-BY-SA)' }), visible: basemap === 'topo' });
+          baseLayersRef.current = { dark, voyager, satellite, topo };
+          return [dark, voyager, satellite, topo];
+        })()),
         abLayer,        // airbases under units
         ringLayer,      // threat rings under units
         iadsLayer,      // IADS generator area circle (under markers)
@@ -1828,6 +1845,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Enable/disable ground-unit clustering by setting the cluster distance.
   useEffect(() => { clusterSrcRef.current?.setDistance(clusterGround ? 42 : 0); }, [clusterGround]);
 
+  // Toggle basemap visibility when the user picks a new one in the sidebar.
+  useEffect(() => {
+    const b = baseLayersRef.current; if (!b) return;
+    b.dark.setVisible(basemap === 'dark');
+    b.voyager.setVisible(basemap === 'voyager');
+    b.satellite.setVisible(basemap === 'satellite');
+    b.topo.setVisible(basemap === 'topo');
+  }, [basemap]);
+
   const sideLabel = (c?: number) => (c === 1 ? 'RED' : c === 2 ? 'BLUE' : 'NEU');
 
   const armedActive = armed != null || (mode === 'spawn' && placeLabel !== '') || tool === 'measure' || tool === 'bra' || tool === 'gci' || tool === 'be' || tool === 'marker' || tool === 'draw' || mode === 'iads';
@@ -1883,115 +1909,121 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     return { call: buildPictureCall(anchor, tracks, bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : undefined), anchorLabel };
   })();
 
-  return (
-    <div style={{ position: 'relative', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
-      <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
+  // Sidebar tool row — icon + text, with optional active-state + counter
+  // badge + secondary "clear" button. Refactor (v1.19.13) of the old icon-
+  // only floating rail. The sidebar sits OUTSIDE the map square; text labels
+  // remove guesswork about which tool does what.
+  const SidebarBtn = ({ icon, label, active, onClick, hint, badge, clear }: {
+    icon: string; label: string; active?: boolean; onClick: () => void; hint?: string;
+    badge?: string | number; clear?: { onClick: () => void; disabled?: boolean; title?: string };
+  }) => (
+    <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+      <button onClick={onClick} title={hint || label}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 10px', fontSize: 12,
+                background: active ? C.accentDim : 'transparent',
+                border: `1px solid ${active ? C.borderHi : 'transparent'}`,
+                borderLeft: `2px solid ${active ? C.accent : 'transparent'}`,
+                color: active ? C.text : C.text,
+                cursor: 'pointer', borderRadius: 0, textAlign: 'left', fontFamily: 'inherit',
+              }}>
+        <span style={{ width: 16, textAlign: 'center', fontSize: 14 }}>{icon}</span>
+        <span style={{ flex: 1 }}>{label}</span>
+        {badge != null && (
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', background: C.bgSolid, color: active ? C.accent : C.textDim, border: `1px solid ${C.border}`, borderRadius: 2 }}>{badge}</span>
+        )}
+      </button>
+      {clear && (
+        <button onClick={clear.onClick} disabled={clear.disabled}
+                title={clear.title || 'Clear'}
+                style={{
+                  width: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'transparent', border: '1px solid transparent', borderLeft: `1px solid ${C.border}`,
+                  color: clear.disabled ? C.textDim : C.text, cursor: clear.disabled ? 'not-allowed' : 'pointer',
+                  opacity: clear.disabled ? 0.35 : 1, fontSize: 11, fontFamily: 'inherit',
+                }}>×</button>
+      )}
+    </div>
+  );
+  const SidebarSection = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ padding: '6px 10px 2px', fontSize: 9, fontWeight: 700, letterSpacing: 1.2, color: C.textDim, textTransform: 'uppercase' }}>{children}</div>
+  );
 
-      {/* ── Map tools rail (left edge) ───────────────────────────────────── */}
-      <div style={{ position: 'absolute', top: 56, left: 12, zIndex: 4, display: 'flex', flexDirection: 'column', gap: 5, padding: 5, ...glass }}>
-        <button onClick={() => zoomBy(1)} title="Zoom in" style={toolBtn}>＋</button>
-        <button onClick={() => zoomBy(-1)} title="Zoom out" style={toolBtn}>－</button>
-        <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
-        <button onClick={() => setTool('select')} title="Pointer — click a unit (shift-click to multi-select)" style={{ ...toolBtn, ...(tool === 'select' ? toolOn : {}) }}>⊹</button>
+  return (
+    <div style={{ display: 'flex', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
+      {/* ── Left sidebar — tool buttons with text labels (outside the map) ── */}
+      <div style={{ width: 200, flexShrink: 0, background: C.bgSolid, borderRight: `1px solid ${C.border}`, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <SidebarSection>View</SidebarSection>
+        <SidebarBtn icon="＋" label="Zoom in" onClick={() => zoomBy(1)} />
+        <SidebarBtn icon="－" label="Zoom out" onClick={() => zoomBy(-1)} />
+        {/* Basemap segmented control (v1.19.13) */}
+        <div style={{ padding: '4px 8px 6px' }}>
+          <div style={{ fontSize: 9, color: C.textDim, letterSpacing: 0.5, marginBottom: 3 }}>BASEMAP</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+            {(['dark', 'voyager', 'satellite', 'topo'] as const).map((b) => (
+              <button key={b} onClick={() => setBasemap(b)}
+                      style={{
+                        padding: '4px 6px', fontSize: 10, fontWeight: 600, letterSpacing: 0.3,
+                        background: basemap === b ? C.accentDim : 'transparent',
+                        border: `1px solid ${basemap === b ? C.accent : C.border}`,
+                        color: basemap === b ? C.text : C.textDim, cursor: 'pointer', borderRadius: 3,
+                        fontFamily: 'inherit',
+                      }}>
+                {b === 'dark' ? '🌑 Dark' : b === 'voyager' ? '🗺 Street' : b === 'satellite' ? '🛰 Sat' : '⛰ Topo'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <SidebarBtn icon="🏷" label={`Labels: ${labelsMode === 0 ? 'OFF' : labelsMode === 1 ? 'Basic' : 'Rich'}`} active={labelsMode > 0} onClick={cycleLabels} hint="Cycle off → basic → rich" />
+        <SidebarBtn icon="🛤" label={`Trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s`}`} active={trailSec > 0} onClick={cycleTrailSec} hint="Track history + leader-lines window" />
+
+        <SidebarSection>Select</SidebarSection>
+        <SidebarBtn icon="⊹" label="Pointer" active={tool === 'select'} onClick={() => setTool('select')} hint="Click units to select; shift-click multi-select" />
         {canControl && (
-          <button onClick={() => setSelToolOpen((o) => !o)} title="Selection tool — batch-select by type / coalition / control" style={{ ...toolBtn, ...(selToolOpen ? toolOn : {}) }}>▦</button>
+          <SidebarBtn icon="▦" label="Selection tool" active={selToolOpen} onClick={() => setSelToolOpen((o) => !o)} hint="Batch-select by type / coalition / control mode" />
         )}
-        <button onClick={() => { setTool(tool === 'measure' ? 'select' : 'measure'); setArmed(null); }} title="Measure tool (range / bearing) — click again to exit" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
-        <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
-                style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
-        <button onClick={() => { setTool(tool === 'bra' ? 'select' : 'bra'); setArmed(null); }}
-                title="BRA tool — click anchor then target for a controller-style bearing/range/altitude call (click a live unit to capture its altitude + track). Click the tool again to exit."
-                style={{ ...toolBtn, ...(tool === 'bra' ? toolOn : {}) }}>📐</button>
-        <button onClick={() => { setBraAnchor(null); setBraTarget(null); }}
-                title="Clear BRA call"
-                disabled={!braAnchor && !braTarget}
-                style={{ ...toolBtn, opacity: (!braAnchor && !braTarget) ? 0.4 : 1 }}>✕</button>
-        <button onClick={() => { setTool(tool === 'gci' ? 'select' : 'gci'); setArmed(null); }}
-                title={`GCI range rings — click the map to drop a ${gciDefaultNm} NM ring. Click the tool again to exit.`}
-                style={{ ...toolBtn, ...(tool === 'gci' ? toolOn : {}) }}>◎</button>
-        <button onClick={() => setGciRings([])} title="Clear all GCI rings"
-                disabled={gciRings.length === 0}
-                style={{ ...toolBtn, opacity: gciRings.length === 0 ? 0.4 : 1 }}>🧹</button>
-        <button onClick={() => { setTool(tool === 'be' ? 'select' : 'be'); setArmed(null); }}
-                title={`Bullseye — click the map to (re)set the bullseye reference${missionBullseye?.lat != null ? ' (mission has a bullseye seeded)' : ''}. Click the tool again to exit.`}
-                style={{ ...toolBtn, ...(tool === 'be' ? toolOn : {}), position: 'relative' }}>
-          🎯
-          {bullseyePin?.source === 'manual' && (
-            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: '#f0b840', border: `1px solid #f0b840`, borderRadius: 2 }}>M</span>
-          )}
-        </button>
-        <button onClick={() => {
-          // Reset to mission bullseye, or clear when no mission BE exists.
-          if (missionBullseye?.lat != null && missionBullseye?.lon != null) {
-            setBullseyePin({ lat: missionBullseye.lat, lng: missionBullseye.lon, source: 'mission' });
-          } else {
-            setBullseyePin(null);
-          }
-        }}
-                title="Reset bullseye to mission default (or clear)"
-                disabled={bullseyePin == null}
-                style={{ ...toolBtn, opacity: bullseyePin == null ? 0.4 : 1 }}>↺</button>
-        <button onClick={() => { setTool(tool === 'marker' ? 'select' : 'marker'); setArmed(null); }}
-                title="Drop a named marker pin (label/colour set in the floating panel). Click the tool again to exit."
-                style={{ ...toolBtn, ...(tool === 'marker' ? toolOn : {}) }}>📌</button>
-        <button onClick={() => setMarkers([])} title="Clear all markers"
-                disabled={markers.length === 0}
-                style={{ ...toolBtn, opacity: markers.length === 0 ? 0.4 : 1 }}>🗑</button>
-        <button onClick={() => { setTool(tool === 'draw' ? 'select' : 'draw'); setArmed(null); }}
-                title={`Draw on the scope (${drawKind}). Click the prompt panel to swap line / arrow / freehand. Click the tool again to exit.`}
-                style={{ ...toolBtn, ...(tool === 'draw' ? toolOn : {}) }}>🖊</button>
-        <button onClick={() => setDrawings([])}
-                title="Clear all drawings"
-                disabled={drawings.length === 0}
-                style={{ ...toolBtn, opacity: drawings.length === 0 ? 0.4 : 1 }}>🩹</button>
-        <button onClick={() => setAirfieldSearchOpen((o) => !o)}
-                title="Search airfields — filter visible field markers and highlight matches"
-                style={{ ...toolBtn, ...(airfieldSearchOpen ? toolOn : {}) }}>🔍</button>
-        <button onClick={() => setChartsPanelOpen((o) => !o)}
-                title="Chart overlays — upload approach plates / kill boxes / sector maps and pin them to the map"
-                style={{ ...toolBtn, ...(chartsPanelOpen ? toolOn : {}), position: 'relative' }}>
-          🗺
-          {charts.length > 0 && (
-            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: C.text, border: `1px solid ${C.border}`, borderRadius: 2 }}>{charts.length}</span>
-          )}
-        </button>
-        <button onClick={cycleTrailSec}
-                title={`Track history trails: ${trailSec === 0 ? 'OFF' : `${trailSec}s window`} — click to cycle off → 30s → 60s → 120s`}
-                style={{ ...toolBtn, ...(trailSec > 0 ? toolOn : {}), position: 'relative' }}>
-          🛤
-          {trailSec > 0 && (
-            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: C.text, border: `1px solid ${C.border}`, borderRadius: 2 }}>{trailSec}</span>
-          )}
-        </button>
-        <button onClick={cycleLabels}
-                title={`Labels: ${labelsMode === 0 ? 'OFF' : labelsMode === 1 ? 'BASIC (callsign)' : 'RICH (callsign · ALT · HDG · SPD)'} — click to cycle`}
-                style={{ ...toolBtn, ...(labelsMode > 0 ? toolOn : {}), position: 'relative' }}>
-          🏷
-          {labelsMode === 2 && (
-            <span style={{ position: 'absolute', bottom: -1, right: -1, fontSize: 8, lineHeight: 1, padding: '1px 2px', background: C.bgSolid, color: '#ffd24a', border: `1px solid #ffd24a`, borderRadius: 2 }}>+</span>
-          )}
-        </button>
-        <span style={{ height: 1, background: C.border, margin: '1px 2px' }} />
-        <button onClick={toggleSrs}
-                title="SRS frequency directory — every flight's radio freq + TACAN, with copy buttons"
-                style={{ ...toolBtn, ...(srsOpen ? toolOn : {}) }}>📻</button>
-        <button onClick={toggleComms}
-                title="Controller text comms — typed broadcast lane (canCommand-only composer)"
-                style={{ ...toolBtn, ...(commsOpen ? toolOn : {}) }}>💬</button>
-        <button onClick={toggleBrevity}
-                title="Brevity quick-reference (NATO / USN GCI vocabulary)"
-                style={{ ...toolBtn, ...(brevityOpen ? toolOn : {}) }}>📖</button>
+
+        <SidebarSection>Measure / Math</SidebarSection>
+        <SidebarBtn icon="📏" label="Measure" active={tool === 'measure'} onClick={() => { setTool(tool === 'measure' ? 'select' : 'measure'); setArmed(null); }} hint="Click points to drop range + bearing labels"
+                    clear={{ onClick: () => setMeasurePts([]), disabled: measurePts.length === 0, title: 'Clear measurements' }} />
+        <SidebarBtn icon="📐" label="BRA" active={tool === 'bra'} onClick={() => { setTool(tool === 'bra' ? 'select' : 'bra'); setArmed(null); }} hint="Click anchor → target for a controller-style call"
+                    clear={{ onClick: () => { setBraAnchor(null); setBraTarget(null); }, disabled: !braAnchor && !braTarget, title: 'Clear BRA call' }} />
+
+        <SidebarSection>Reference</SidebarSection>
+        <SidebarBtn icon="🎯" label={`Bullseye${bullseyePin?.source === 'manual' ? ' (manual)' : ''}`} active={tool === 'be'} onClick={() => { setTool(tool === 'be' ? 'select' : 'be'); setArmed(null); }} hint="Click the map to (re)set the bullseye reference"
+                    clear={{ onClick: () => {
+                      if (missionBullseye?.lat != null && missionBullseye?.lon != null) setBullseyePin({ lat: missionBullseye.lat, lng: missionBullseye.lon, source: 'mission' });
+                      else setBullseyePin(null);
+                    }, disabled: bullseyePin == null, title: 'Reset bullseye to mission default (or clear)' }} />
+        <SidebarBtn icon="◎" label={`GCI ring (${gciDefaultNm} NM)`} active={tool === 'gci'} onClick={() => { setTool(tool === 'gci' ? 'select' : 'gci'); setArmed(null); }} hint="Drop a station ring at the click position"
+                    badge={gciRings.length || undefined} clear={{ onClick: () => setGciRings([]), disabled: gciRings.length === 0, title: 'Clear all GCI rings' }} />
+        <SidebarBtn icon="📌" label="Marker pin" active={tool === 'marker'} onClick={() => { setTool(tool === 'marker' ? 'select' : 'marker'); setArmed(null); }} hint="Drop a labelled coloured pin"
+                    badge={markers.length || undefined} clear={{ onClick: () => setMarkers([]), disabled: markers.length === 0, title: 'Clear all markers' }} />
+        <SidebarBtn icon="🖊" label={`Draw (${drawKind})`} active={tool === 'draw'} onClick={() => { setTool(tool === 'draw' ? 'select' : 'draw'); setArmed(null); }} hint="Draw lines / arrows / freehand on the scope"
+                    badge={drawings.length || undefined} clear={{ onClick: () => setDrawings([]), disabled: drawings.length === 0, title: 'Clear all drawings' }} />
+        <SidebarBtn icon="🔍" label="Airfield search" active={airfieldSearchOpen} onClick={() => setAirfieldSearchOpen((o) => !o)} hint="Filter + highlight airbases on the map" />
+        <SidebarBtn icon="🗺" label="Chart overlays" active={chartsPanelOpen} onClick={() => setChartsPanelOpen((o) => !o)} hint="Upload approach plates / sector maps and pin them"
+                    badge={charts.length || undefined} />
+
+        <SidebarSection>Comms</SidebarSection>
+        <SidebarBtn icon="📻" label="SRS directory" active={srsOpen} onClick={toggleSrs} hint="Every flight's freq + TACAN, with copy buttons" />
+        <SidebarBtn icon="💬" label="Comms log" active={commsOpen} onClick={toggleComms} hint="Typed broadcast lane (canCommand-only composer)" />
+        <SidebarBtn icon="📖" label="Brevity reference" active={brevityOpen} onClick={toggleBrevity} hint="NATO / USN GCI brevity quick lookup" />
         {canCommand && (
-          <button onClick={() => setNineLineOpen(true)}
-                  title="CAS 9-line builder — fill the form, send as a comms broadcast"
-                  style={{ ...toolBtn }}>📋</button>
+          <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
-        <button onClick={toggleTriggers}
-                title="Mission triggers — fire any DM-tagged trigger from the scope (replaces the F10 menu)"
-                style={{ ...toolBtn, ...(triggersOpen ? toolOn : {}) }}>🎬</button>
-        <button onClick={() => setDbgOpen((o) => !o)} title="Inspect decoded units (debug)"
-                style={{ ...toolBtn, ...(dbgOpen ? toolOn : {}) }}>🐛</button>
+
+        <SidebarSection>Mission</SidebarSection>
+        <SidebarBtn icon="🎬" label="Triggers" active={triggersOpen} onClick={toggleTriggers} hint="Fire DM-tagged triggers from the scope" />
+
+        <SidebarSection>Util</SidebarSection>
+        <SidebarBtn icon="🐛" label="Debug" active={dbgOpen} onClick={() => setDbgOpen((o) => !o)} hint="Inspect decoded units" />
       </div>
+
+      {/* ── Right side — the actual map + floating panels/chips ───────────── */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div ref={elRef} style={{ position: 'absolute', inset: 0, cursor: armedActive ? 'crosshair' : 'default' }} />
 
       {/* ── Selection tool (filter-based batch select) ───────────────────── */}
       {canControl && selToolOpen && (
@@ -2754,6 +2786,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <span>{ROLE_LABEL[group.role] || group.role}</span>
         <span>{profile.name}</span>
       </div>
+      </div>{/* end map area */}
     </div>
   );
 }
@@ -3079,8 +3112,8 @@ function Seg({ options, active, onPick }: { options: string[]; active?: number; 
 const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
 const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
 const fGroup: React.CSSProperties = { display: 'flex', gap: 5 };
-const toolBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 5, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.text, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', lineHeight: 1 };
-const toolOn: React.CSSProperties = { borderColor: C.accent, background: C.accentDim, color: '#cfe6ff' };
+// Legacy icon-only tool styles dropped in v1.19.13 — sidebar refactor
+// replaced the floating rail with text-labelled rows inside SidebarBtn.
 const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
 const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
