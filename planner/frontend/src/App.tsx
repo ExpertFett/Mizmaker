@@ -7,6 +7,8 @@ import { MissionEditor } from './editor/MissionEditor';
 import { JoinSession } from './session/JoinSession';
 import { DiscordButton } from './panels/DiscordButton';
 import { LiveTerminal } from './editor/live/LiveTerminal';
+import { GuidePanel } from './panels/GuidePanel';
+import { HelpButton } from './panels/HelpButton';
 
 export default function App() {
   const sessionId = useMissionStore((s) => s.sessionId);
@@ -20,6 +22,8 @@ export default function App() {
   // reliably surface a login error.
   const [authError] = useState(() => new URLSearchParams(window.location.search).get('auth_error'));
   const [authDetail] = useState(() => new URLSearchParams(window.location.search).get('detail'));
+  // Guide overlay — opens on `?guide=1` or via the floating Help button.
+  const [guideOpen, setGuideOpen] = useState(() => new URLSearchParams(window.location.search).get('guide') === '1');
 
   useEffect(() => {
     checkMe();
@@ -62,10 +66,24 @@ export default function App() {
     view = <MissionEditor />;
   }
 
+  // Strip `?guide=1` from the URL once we've consumed it so it doesn't keep
+  // reopening on every refresh.
+  useEffect(() => {
+    if (guideOpen) {
+      const u = new URL(window.location.href);
+      if (u.searchParams.has('guide')) {
+        u.searchParams.delete('guide');
+        window.history.replaceState({}, '', u.toString());
+      }
+    }
+  }, [guideOpen]);
+
   return (
     <>
       {view}
       <DiscordButton />
+      <HelpButton onClick={() => setGuideOpen(true)} />
+      {guideOpen && <GuidePanel onClose={() => setGuideOpen(false)} />}
     </>
   );
 }
