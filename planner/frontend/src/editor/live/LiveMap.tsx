@@ -1825,24 +1825,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         {canControl && (
           <button onClick={() => setSelToolOpen((o) => !o)} title="Selection tool — batch-select by type / coalition / control" style={{ ...toolBtn, ...(selToolOpen ? toolOn : {}) }}>▦</button>
         )}
-        <button onClick={() => { setTool('measure'); setArmed(null); }} title="Measure tool (range / bearing)" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
+        <button onClick={() => { setTool(tool === 'measure' ? 'select' : 'measure'); setArmed(null); }} title="Measure tool (range / bearing) — click again to exit" style={{ ...toolBtn, ...(tool === 'measure' ? toolOn : {}) }}>📏</button>
         <button onClick={() => setMeasurePts([])} title="Clear measurements" disabled={measurePts.length === 0}
                 style={{ ...toolBtn, opacity: measurePts.length === 0 ? 0.4 : 1 }}>🧽</button>
-        <button onClick={() => { setTool('bra'); setArmed(null); }}
-                title="BRA tool — click anchor then target for a controller-style bearing/range/altitude call (click a live unit to capture its altitude + track)"
+        <button onClick={() => { setTool(tool === 'bra' ? 'select' : 'bra'); setArmed(null); }}
+                title="BRA tool — click anchor then target for a controller-style bearing/range/altitude call (click a live unit to capture its altitude + track). Click the tool again to exit."
                 style={{ ...toolBtn, ...(tool === 'bra' ? toolOn : {}) }}>📐</button>
         <button onClick={() => { setBraAnchor(null); setBraTarget(null); }}
                 title="Clear BRA call"
                 disabled={!braAnchor && !braTarget}
                 style={{ ...toolBtn, opacity: (!braAnchor && !braTarget) ? 0.4 : 1 }}>✕</button>
-        <button onClick={() => { setTool('gci'); setArmed(null); }}
-                title={`GCI range rings — click the map to drop a ${gciDefaultNm} NM ring`}
+        <button onClick={() => { setTool(tool === 'gci' ? 'select' : 'gci'); setArmed(null); }}
+                title={`GCI range rings — click the map to drop a ${gciDefaultNm} NM ring. Click the tool again to exit.`}
                 style={{ ...toolBtn, ...(tool === 'gci' ? toolOn : {}) }}>◎</button>
         <button onClick={() => setGciRings([])} title="Clear all GCI rings"
                 disabled={gciRings.length === 0}
                 style={{ ...toolBtn, opacity: gciRings.length === 0 ? 0.4 : 1 }}>🧹</button>
-        <button onClick={() => { setTool('be'); setArmed(null); }}
-                title={`Bullseye — click the map to (re)set the bullseye reference${missionBullseye?.lat != null ? ' (mission has a bullseye seeded)' : ''}`}
+        <button onClick={() => { setTool(tool === 'be' ? 'select' : 'be'); setArmed(null); }}
+                title={`Bullseye — click the map to (re)set the bullseye reference${missionBullseye?.lat != null ? ' (mission has a bullseye seeded)' : ''}. Click the tool again to exit.`}
                 style={{ ...toolBtn, ...(tool === 'be' ? toolOn : {}), position: 'relative' }}>
           🎯
           {bullseyePin?.source === 'manual' && (
@@ -1860,14 +1860,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                 title="Reset bullseye to mission default (or clear)"
                 disabled={bullseyePin == null}
                 style={{ ...toolBtn, opacity: bullseyePin == null ? 0.4 : 1 }}>↺</button>
-        <button onClick={() => { setTool('marker'); setArmed(null); }}
-                title="Drop a named marker pin (label/colour set in the floating panel)"
+        <button onClick={() => { setTool(tool === 'marker' ? 'select' : 'marker'); setArmed(null); }}
+                title="Drop a named marker pin (label/colour set in the floating panel). Click the tool again to exit."
                 style={{ ...toolBtn, ...(tool === 'marker' ? toolOn : {}) }}>📌</button>
         <button onClick={() => setMarkers([])} title="Clear all markers"
                 disabled={markers.length === 0}
                 style={{ ...toolBtn, opacity: markers.length === 0 ? 0.4 : 1 }}>🗑</button>
-        <button onClick={() => { setTool('draw'); setArmed(null); }}
-                title={`Draw on the scope (${drawKind}). Click the prompt panel to swap line / arrow / freehand.`}
+        <button onClick={() => { setTool(tool === 'draw' ? 'select' : 'draw'); setArmed(null); }}
+                title={`Draw on the scope (${drawKind}). Click the prompt panel to swap line / arrow / freehand. Click the tool again to exit.`}
                 style={{ ...toolBtn, ...(tool === 'draw' ? toolOn : {}) }}>🖊</button>
         <button onClick={() => setDrawings([])}
                 title="Clear all drawings"
