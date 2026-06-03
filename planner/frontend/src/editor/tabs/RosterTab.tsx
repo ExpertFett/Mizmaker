@@ -202,6 +202,12 @@ export function RosterTab() {
         Sets each slot's voice callsign + pilot name; flows into Comms/Flight kneeboards & briefs.
       </p>
 
+      {/* Generate signup sheet — produces a fillable XLSX / CSV / MD pre-
+          populated from the mission's player slots. Pilots fill the Pilot
+          column, the runner uploads the result back via the "Upload CSV /
+          XLSX" button below. (v1.19.15) */}
+      <SignupSheetRow />
+
       {/* Upload / paste */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         <label style={btn}>
@@ -291,6 +297,70 @@ export function RosterTab() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ───── Signup sheet generator ─────────────────────────────────────────────
+// Pulls the mission's player slots from the backend and serves a fillable
+// XLSX / CSV / Markdown sheet. Pilots fill the Pilot column, the event
+// runner uploads the result back via the file-picker above — column
+// headers match what autoDetectCols expects so the round-trip works.
+function SignupSheetRow() {
+  const sessionId = useMissionStore((s) => s.sessionId);
+  const [format, setFormat] = useState<'xlsx' | 'csv' | 'md'>('xlsx');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const download = async () => {
+    if (!sessionId || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}/signup_sheet?format=${format}`);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ error: 'failed' }));
+        throw new Error(j.error || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      // Pull the filename out of Content-Disposition for the suggested name.
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename="?([^";]+)"?/);
+      const name = m?.[1] || `signup.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setMsg(`✓ Downloaded ${name}`);
+    } catch (e) {
+      setMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14, padding: '10px 14px', background: '#1d2530', border: `1px solid ${BORDER}`, borderRadius: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Generate signup sheet</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
+            Pre-populated from this mission's player slots. Post for sign-ups, then upload the filled file back above to assign pilots.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['xlsx', 'csv', 'md'] as const).map((f) => (
+            <button key={f} onClick={() => setFormat(f)}
+                    style={{ background: format === f ? '#3a5a82' : '#2a2a2a', border: `1px solid ${format === f ? '#4a8fd4' : BORDER}`, color: format === f ? '#cfe6ff' : '#aaa', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 3, fontFamily: 'inherit', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button onClick={download} disabled={!sessionId || busy} style={{ ...btn, opacity: !sessionId || busy ? 0.5 : 1, cursor: !sessionId || busy ? 'not-allowed' : 'pointer' }}>
+          {busy ? 'Generating…' : '⬇ Download'}
+        </button>
+      </div>
+      {msg && <div style={{ fontSize: 11, marginTop: 6, color: msg.startsWith('✓') ? '#3fb950' : '#e0554f' }}>{msg}</div>}
     </div>
   );
 }
