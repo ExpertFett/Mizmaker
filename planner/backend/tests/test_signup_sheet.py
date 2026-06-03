@@ -1,14 +1,13 @@
-"""Tests for the signup-sheet generator (services/signup_sheet.py).
+"""Tests for the ATO-style signup sheet generator (services/signup_sheet.py).
 
-Three output formats — XLSX (openpyxl), CSV, Markdown — all driven off the
-same player-slot extraction logic. The column headers in every format have
-to match what RosterTab's autoDetectCols expects so a filled sheet round-
-trips back into the editor:
-    Pilot · Callsign · Flight · Seat
-
-We use a small synthetic mission dict so the tests don't depend on a .miz
-fixture, plus one quick round-trip through the real parser to cover the
-shape extract_full_mission_data emits.
+Validates that:
+  - Player slots are extracted per coalition with correct seat sequencing
+  - All three formats (XLSX / CSV / MD) emit the new flight-block layout
+  - "Callsign" header still matches the Roster importer's auto-detect
+    (so a filled XLSX can be uploaded back via the existing flow)
+  - Coalition section labels (BLUEFOR / OPFOR) appear in the body
+  - Auto-derived flight fields (Task, MSNACFT, PFREQ) land on the first
+    seat row only
 """
 
 from __future__ import annotations
@@ -19,206 +18,229 @@ import io
 import pytest
 
 
-# --------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------
-
 def _two_flight_mission() -> dict:
-    """Synthetic mission with two flights — one all-player, one mixed."""
+    """Synthetic mission — one all-player blue strike flight (4 seats),
+    one mixed blue SEAD flight (1 player + 1 AI), one red CAP (1 client)."""
     return {
-        "overview": {"date": "2018-06-01", "start_time": 21600, "sortie": ""},
+        "overview": {"date": "2018-06-01", "start_time": 30600, "sortie": ""},  # 8:30Z
         "groups": [
             {
-                "groupName": "Uzi 1", "coalition": "blue", "task": "CAP",
-                "frequency": 305.0, "tacan": {"channel": 73, "band": "X", "callsign": "UZI"},
+                "groupName": "Camelot 1", "coalition": "blue", "task": "CAS",
+                "frequency": 305.0, "tacan": {"channel": 73, "band": "X"},
+                "waypoints": [
+                    {"airdromeName": "Nellis"}, {}, {}, {"airdromeName": "Nellis"},
+                ],
                 "units": [
-                    {"name": "Uzi 1-1", "type": "FA-18C_hornet", "skill": "Player"},
-                    {"name": "Uzi 1-2", "type": "FA-18C_hornet", "skill": "Client"},
+                    {"name": "Camelot 1-1", "type": "FA-18C_hornet", "skill": "Player"},
+                    {"name": "Camelot 1-2", "type": "FA-18C_hornet", "skill": "Client"},
+                    {"name": "Camelot 1-3", "type": "FA-18C_hornet", "skill": "Player"},
+                    {"name": "Camelot 1-4", "type": "FA-18C_hornet", "skill": "Player"},
                 ],
             },
             {
-                "groupName": "Springfield 1", "coalition": "blue", "task": "SEAD",
+                "groupName": "Bengal 1", "coalition": "blue", "task": "SEAD",
+                "frequency": 332.1, "tacan": None,
+                "waypoints": [
+                    {"airdromeName": "Nellis"}, {}, {"airdromeName": "Nellis"},
+                ],
+                "units": [
+                    {"name": "Bengal 1-1", "type": "F-16C_50", "skill": "Player"},
+                    {"name": "Bengal 1-2", "type": "F-16C_50", "skill": "High"},  # AI
+                ],
+            },
+            {
+                "groupName": "Jackal 1", "coalition": "red", "task": "CAP",
                 "frequency": 264.0, "tacan": None,
+                "waypoints": [],
                 "units": [
-                    {"name": "Springfield 1-1", "type": "F-16C_50", "skill": "Player"},
-                    {"name": "Springfield 1-2", "type": "F-16C_50", "skill": "High"},  # AI
-                ],
-            },
-            {
-                "groupName": "Su-27 patrol", "coalition": "red", "task": "CAP",
-                "frequency": 251.0, "tacan": None,
-                "units": [
-                    {"name": "Bandit-1", "type": "Su-27", "skill": "Client"},
+                    {"name": "Jackal 1-1", "type": "MiG-29S", "skill": "Client"},
                 ],
             },
         ],
     }
 
 
-# --------------------------------------------------------------------------
-# Slot extraction
-# --------------------------------------------------------------------------
+# ── Slot extraction ────────────────────────────────────────────────────────
 
 class TestSlotExtraction:
-    def test_only_player_slots_included(self):
-        from services.signup_sheet import _slot_rows
-        rows = _slot_rows(_two_flight_mission())
-        # 2 Uzi player slots + 1 Springfield player + 1 red Bandit = 4
-        assert len(rows) == 4
-        types = {r["Aircraft"] for r in rows}
-        assert "FA-18C_hornet" in types
-        assert "F-16C_50" in types
-        assert "Su-27" in types  # red coalition included
-        # Skill=High slot (AI) dropped
-        assert all(r["Aircraft"] != "" for r in rows)
+    def test_player_groups_per_coalition(self):
+        from services.signup_sheet import _player_groups
+        m = _two_flight_mission()
+        blue = _player_groups(m, "blue")
+        red = _player_groups(m, "red")
+        assert [g["groupName"] for g in blue] == ["Camelot 1", "Bengal 1"]
+        assert [g["groupName"] for g in red] == ["Jackal 1"]
 
-    def test_columns_match_roster_importer(self):
-        """The headers MUST match what RosterTab's autoDetectCols expects so
-        a filled sheet round-trips. The hint sets cover: pilot, callsign,
-        flight, seat. Our header names hit each hint."""
-        from services.signup_sheet import _slot_rows
-        rows = _slot_rows(_two_flight_mission())
-        if not rows: return
-        for h in ("Pilot", "Callsign", "Flight", "Seat"):
-            assert h in rows[0]
+    def test_per_seat_callsigns(self):
+        from services.signup_sheet import _per_seat_callsigns
+        m = _two_flight_mission()
+        cs = _per_seat_callsigns(m["groups"][0])  # Camelot 1
+        # All 4 (all Player/Client)
+        assert cs == ["Camelot 1-1", "Camelot 1-2", "Camelot 1-3", "Camelot 1-4"]
 
-    def test_seat_is_sequential_per_flight(self):
-        from services.signup_sheet import _slot_rows
-        rows = _slot_rows(_two_flight_mission())
-        # Uzi 1 has slots 1, 2; Springfield has slot 1; Bandit has slot 1.
-        uzi = [r for r in rows if r["Flight"] == "Uzi 1"]
-        assert [r["Seat"] for r in uzi] == ["1", "2"]
+    def test_skill_high_excluded(self):
+        from services.signup_sheet import _per_seat_callsigns
+        m = _two_flight_mission()
+        cs = _per_seat_callsigns(m["groups"][1])  # Bengal 1 — 1 player + 1 AI
+        assert cs == ["Bengal 1-1"]
 
-    def test_tacan_format(self):
-        from services.signup_sheet import _slot_rows
-        rows = _slot_rows(_two_flight_mission())
-        uzi = next(r for r in rows if r["Flight"] == "Uzi 1")
-        assert uzi["TACAN"] == "73X (UZI)"
-        spring = next(r for r in rows if r["Flight"] == "Springfield 1")
-        assert spring["TACAN"] == ""
-
-    def test_neutral_coalition_excluded(self):
-        from services.signup_sheet import _slot_rows
-        mission = {
-            "groups": [
-                {"groupName": "Neutral", "coalition": "neutral", "task": "Transport",
-                 "units": [{"name": "x", "type": "C-130", "skill": "Player"}]},
-            ],
-        }
-        rows = _slot_rows(mission)
-        assert rows == []
+    def test_flight_aux_pulls_task_aircraft_freq(self):
+        from services.signup_sheet import _flight_aux
+        m = _two_flight_mission()
+        aux = _flight_aux(m["groups"][0])
+        assert aux["Task"] == "CAS"
+        assert aux["Aircraft"] == "FA-18C_hornet"
+        assert aux["Freq"] == "305.000"
+        assert aux["DepLoc"] == "Nellis"
+        assert aux["ArrLoc"] == "Nellis"
+        assert aux["ControlFreq"] == "73X"
 
 
-# --------------------------------------------------------------------------
-# CSV output
-# --------------------------------------------------------------------------
+# ── CSV ────────────────────────────────────────────────────────────────────
 
 class TestCsv:
-    def test_csv_round_trips_via_csv_reader(self):
+    def test_csv_header_includes_callsign_and_pilot(self):
+        """The importer's auto-detect looks for 'callsign' + 'pilot' (case-
+        insensitive substring). Both columns must be present so a filled
+        CSV round-trips through RosterTab.upload."""
         from services.signup_sheet import build_csv
-        data = build_csv(_two_flight_mission(), mission_name="Test Op", theater="PersianGulf")
+        data = build_csv(_two_flight_mission(), mission_name="Test", theater="NTTR")
         text = data.decode("utf-8")
-        # Skip the # comment block + blank lines.
+        # Find the header line — first line that isn't a comment/blank.
+        lines = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
+        headers = next(csv.reader([lines[0]]))
+        lower = [h.lower() for h in headers]
+        assert any("callsign" in h for h in lower)
+        assert any("pilot" in h for h in lower)
+
+    def test_csv_emits_coalition_section_rows(self):
+        from services.signup_sheet import build_csv
+        text = build_csv(_two_flight_mission(), mission_name="X", theater="Y").decode("utf-8")
+        assert "--- BLUEFOR ---" in text
+        assert "--- OPFOR ---" in text
+
+    def test_csv_one_row_per_player_seat(self):
+        from services.signup_sheet import build_csv
+        text = build_csv(_two_flight_mission(), mission_name="X", theater="Y").decode("utf-8")
         lines = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
         reader = csv.reader(lines)
         headers = next(reader)
-        assert headers[0] == "Pilot"
-        assert "Callsign" in headers
-        body_rows = list(reader)
-        assert len(body_rows) == 4
+        cs_idx = headers.index("Callsign")
+        callsigns = [r[cs_idx] for r in reader if cs_idx < len(r) and r[cs_idx] and not r[cs_idx].startswith("---")]
+        # 4 (Camelot) + 1 (Bengal player) + 1 (Jackal) = 6
+        assert len(callsigns) == 6
+        assert "Camelot 1-1" in callsigns
+        assert "Jackal 1-1" in callsigns
 
-    def test_csv_mission_summary_present(self):
+    def test_csv_task_and_aircraft_only_on_first_seat(self):
+        """Task/Aircraft/Freq are flight-level — should land on the first
+        seat row only, with the following seats empty in those columns."""
         from services.signup_sheet import build_csv
-        data = build_csv(_two_flight_mission(), mission_name="Test Op", theater="PersianGulf")
-        text = data.decode("utf-8")
-        assert "# Mission: Test Op" in text
-        assert "# Theater: PersianGulf" in text
-        # 4 player slots — totals reflect that.
-        assert "# Player slots total: 4" in text
-
-    def test_csv_blank_pilot_column(self):
-        """The Pilot column ships empty so signups can fill it in."""
-        from services.signup_sheet import build_csv
-        data = build_csv(_two_flight_mission(), mission_name="X", theater="Y")
-        text = data.decode("utf-8")
+        text = build_csv(_two_flight_mission(), mission_name="X", theater="Y").decode("utf-8")
         lines = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
         reader = csv.reader(lines)
         headers = next(reader)
-        pilot_idx = headers.index("Pilot")
-        for row in reader:
-            assert row[pilot_idx] == ""
+        rows = [r for r in reader if r and r[0] != "" or len(r) > 1]
+        # Find Camelot block (after BLUEFOR section)
+        body = [r for r in rows if not r[0].startswith("---")]
+        # Camelot's 4 rows are the first 4 in body
+        cs_idx = headers.index("Callsign")
+        task_idx = headers.index("TASK")
+        camelot = [r for r in body if cs_idx < len(r) and r[cs_idx].startswith("Camelot")]
+        assert camelot[0][task_idx] == "CAS"  # first seat carries it
+        # subsequent seats: task column empty
+        for r in camelot[1:]:
+            assert r[task_idx] == ""
 
 
-# --------------------------------------------------------------------------
-# Markdown output
-# --------------------------------------------------------------------------
+# ── Markdown ───────────────────────────────────────────────────────────────
 
 class TestMarkdown:
-    def test_markdown_has_table_header(self):
+    def test_markdown_per_flight_subheaders(self):
         from services.signup_sheet import build_markdown
-        data = build_markdown(_two_flight_mission(), mission_name="Test Op", theater="PersianGulf")
-        text = data.decode("utf-8")
-        assert "| Pilot | Callsign | Flight | Seat |" in text
-        # Each pipe row should follow with a separator
-        assert "|---|---|---|---|---|---|---|" in text
+        text = build_markdown(_two_flight_mission(), mission_name="X", theater="NTTR").decode("utf-8")
+        # Section headers
+        assert "## BLUEFOR" in text
+        assert "## OPFOR" in text
+        # Per-flight title block uses Task · lead-callsign · aircraft
+        assert "CAS · Camelot 1-1 flight · FA-18C_hornet" in text
+        assert "SEAD · Bengal 1-1 flight · F-16C_50" in text
 
-    def test_markdown_open_marker_for_blank_pilots(self):
+    def test_markdown_open_placeholder(self):
         from services.signup_sheet import build_markdown
-        data = build_markdown(_two_flight_mission(), mission_name="X", theater="Y")
-        text = data.decode("utf-8")
-        # Pilot column blank → "_(open)_" placeholder so the cell isn't
-        # visually collapsed in Discord.
+        text = build_markdown(_two_flight_mission(), mission_name="X", theater="Y").decode("utf-8")
+        # Empty pilot cells render as _(open)_
         assert "_(open)_" in text
 
+    def test_markdown_includes_seat_table(self):
+        from services.signup_sheet import build_markdown
+        text = build_markdown(_two_flight_mission(), mission_name="X", theater="Y").decode("utf-8")
+        # Camelot's 4 seats appear as rows in a table.
+        for cs in ("Camelot 1-1", "Camelot 1-2", "Camelot 1-3", "Camelot 1-4"):
+            assert f"| {cs} |" in text
 
-# --------------------------------------------------------------------------
-# XLSX output
-# --------------------------------------------------------------------------
+
+# ── XLSX ───────────────────────────────────────────────────────────────────
 
 class TestXlsx:
-    def test_xlsx_renders(self):
+    def test_xlsx_has_signup_and_mission_sheets(self):
         try:
             import openpyxl  # noqa: F401
         except ImportError:
-            pytest.skip("openpyxl not installed")
+            pytest.skip("openpyxl missing")
         from services.signup_sheet import build_xlsx
-        data = build_xlsx(_two_flight_mission(), mission_name="Test Op", theater="PersianGulf")
-        # Re-open via openpyxl to verify the workbook is valid.
+        data = build_xlsx(_two_flight_mission(), mission_name="Test Op", theater="NTTR")
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(data))
-        assert "Mission" in wb.sheetnames
         assert "Signup" in wb.sheetnames
+        assert "Mission" in wb.sheetnames
 
-    def test_xlsx_signup_headers(self):
+    def test_xlsx_column_headers_at_row_17(self):
         try:
             import openpyxl  # noqa: F401
         except ImportError:
-            pytest.skip("openpyxl not installed")
-        from services.signup_sheet import build_xlsx
+            pytest.skip("openpyxl missing")
+        from services.signup_sheet import build_xlsx, HEADERS
         data = build_xlsx(_two_flight_mission(), mission_name="X", theater="Y")
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(data))
         ws = wb["Signup"]
-        # Row 3 holds the column headers (rows 1 = title, 2 = blank).
-        headers = [ws.cell(row=3, column=c).value for c in range(1, 11)]
-        assert headers[0] == "Pilot"
-        assert "Callsign" in headers
-        assert "Flight" in headers
-        assert "Seat" in headers
+        actual = [ws.cell(row=17, column=i + 1).value for i in range(len(HEADERS))]
+        assert actual == HEADERS
 
-    def test_xlsx_body_row_count(self):
+    def test_xlsx_flight_blocks_4_rows_per_camelot(self):
         try:
             import openpyxl  # noqa: F401
         except ImportError:
-            pytest.skip("openpyxl not installed")
-        from services.signup_sheet import build_xlsx
+            pytest.skip("openpyxl missing")
+        from services.signup_sheet import build_xlsx, HEADERS
         data = build_xlsx(_two_flight_mission(), mission_name="X", theater="Y")
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(data))
         ws = wb["Signup"]
-        # Body starts at row 4; count non-empty rows.
-        count = 0
-        for r in ws.iter_rows(min_row=4, values_only=True):
-            if any(c is not None and str(c).strip() for c in r):
-                count += 1
-        assert count == 4
+        cs_col = HEADERS.index("Callsign") + 1
+        # Body starts row 18; row 18 should be BLUEFOR section label,
+        # rows 19-22 = Camelot 1-1..1-4.
+        bluefor = ws.cell(row=18, column=1).value
+        assert bluefor == "BLUEFOR"
+        callsigns = [ws.cell(row=19 + i, column=cs_col).value for i in range(4)]
+        assert callsigns == ["Camelot 1-1", "Camelot 1-2", "Camelot 1-3", "Camelot 1-4"]
+
+    def test_xlsx_flight_level_fields_first_seat_only(self):
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            pytest.skip("openpyxl missing")
+        from services.signup_sheet import build_xlsx, HEADERS
+        data = build_xlsx(_two_flight_mission(), mission_name="X", theater="Y")
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(data))
+        ws = wb["Signup"]
+        task_col = HEADERS.index("TASK") + 1
+        ac_col = HEADERS.index("MSNACFT") + 1
+        # Camelot first row = 19
+        assert ws.cell(row=19, column=task_col).value == "CAS"
+        assert ws.cell(row=19, column=ac_col).value == "FA-18C_hornet"
+        # Camelot seat 2 (row 20) — flight-level fields empty
+        assert ws.cell(row=20, column=task_col).value in (None, "")
+        assert ws.cell(row=20, column=ac_col).value in (None, "")
