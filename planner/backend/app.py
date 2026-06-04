@@ -233,6 +233,92 @@ def session_signup_sheet(sid):
         return jsonify({"error": f"Signup sheet generation failed: {e}"}), 500
 
 
+@app.route("/api/sessions/<sid>/aar", methods=["POST"])
+def session_aar(sid):
+    """Generate an After-Action Review for the loaded mission.
+
+    POST body (JSON):
+      {format: "md"|"csv"|"xlsx", signups: {callsign: pilot},
+       events: [{time_min, type, ...}], notes: str, duration_min: int}
+
+    Everything is optional. With no events + no signups + no notes the AAR
+    ships as a skeleton (participant table + empty engagement log + an
+    "(add narrative)" notes placeholder) the runner fills in by hand.
+
+    The route is POST-only on purpose: the events log can be sizeable for
+    long missions, and we want the signups dict to be free-form rather
+    than crammed into a GET querystring.
+    """
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+
+    body = request.get_json(silent=True) or {}
+    fmt = (body.get("format") or "md").lower()
+    if fmt not in ("xlsx", "csv", "md"):
+        return jsonify({"error": "format must be xlsx, csv, or md"}), 400
+
+    try:
+        mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
+        mission_data = extract_full_mission_data(mission_dict, session.get("theater", "Unknown"))
+    except Exception as e:
+        return jsonify({"error": f"Failed to parse mission: {e}"}), 500
+
+    # Mission-name resolution (same as signup sheet).
+    overview = mission_data.get("overview") or {}
+    sortie = overview.get("sortie") or ""
+    try:
+        from services.miz_editor import extract_dictionary_from_miz
+        from services.brief_builder import parse_dictionary, resolve_dict_key
+        dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
+        dictionary = parse_dictionary(dictionary_text)
+        resolved = str(resolve_dict_key(sortie, dictionary)).strip() if sortie else ""
+        if resolved and not resolved.startswith("DictKey_"):
+            mission_name = resolved
+        else:
+            mission_name = session.get("filename") or "Untitled Mission"
+    except Exception:
+        mission_name = session.get("filename") or "Untitled Mission"
+    theater = session.get("theater", "Unknown")
+
+    signups = body.get("signups") or {}
+    events = body.get("events") or []
+    notes = str(body.get("notes") or "")
+    duration_min = body.get("duration_min")
+
+    try:
+        from services import aar
+        kw = dict(mission_name=mission_name, theater=theater,
+                  signups=signups, events=events, notes=notes, duration_min=duration_min)
+        if fmt == "xlsx":
+            try:
+                data = aar.build_xlsx(mission_data, **kw)
+            except ImportError:
+                return jsonify({"error": "XLSX support not installed (openpyxl missing). Use format=csv instead."}), 503
+            return send_file(
+                io.BytesIO(data),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                as_attachment=True,
+                download_name=f"{_safe_filename(mission_name)}_aar.xlsx",
+            )
+        if fmt == "csv":
+            data = aar.build_csv(mission_data, **kw)
+            return send_file(
+                io.BytesIO(data), mimetype="text/csv", as_attachment=True,
+                download_name=f"{_safe_filename(mission_name)}_aar.csv",
+            )
+        data = aar.build_markdown(mission_data, **kw)
+        return send_file(
+            io.BytesIO(data), mimetype="text/markdown", as_attachment=True,
+            download_name=f"{_safe_filename(mission_name)}_aar.md",
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"AAR generation failed: {e}"}), 500
+
+
 def _safe_filename(name: str) -> str:
     """Replace anything that's not a-z / 0-9 / dash / underscore with '_'."""
     import re as _re

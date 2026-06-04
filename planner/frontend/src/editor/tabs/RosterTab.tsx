@@ -207,6 +207,7 @@ export function RosterTab() {
           column, the runner uploads the result back via the "Upload CSV /
           XLSX" button below. (v1.19.15) */}
       <SignupSheetRow />
+      <AarRow />
 
       {/* Upload / paste */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
@@ -359,6 +360,117 @@ function SignupSheetRow() {
         <button onClick={download} disabled={!sessionId || busy} style={{ ...btn, opacity: !sessionId || busy ? 0.5 : 1, cursor: !sessionId || busy ? 'not-allowed' : 'pointer' }}>
           {busy ? 'Generating…' : '⬇ Download'}
         </button>
+      </div>
+      {msg && <div style={{ fontSize: 11, marginTop: 6, color: msg.startsWith('✓') ? '#3fb950' : '#e0554f' }}>{msg}</div>}
+    </div>
+  );
+}
+
+// ───── After-Action Review download row ──────────────────────────────────
+// Generates a post-flight debrief skeleton (markdown / CSV / XLSX) pre-
+// filled with the mission's participants + any pilot names already
+// applied via the roster edits above. Empty engagement log + notes
+// blocks for the runner to fill in by hand. Backend: services/aar.py.
+function AarRow() {
+  const sessionId = useMissionStore((s) => s.sessionId);
+  const clientUnits = useMissionStore((s) => s.clientUnits);
+  const edits = useEditStore((s) => s.edits);
+  const [format, setFormat] = useState<'md' | 'csv' | 'xlsx'>('md');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [notes, setNotes] = useState('');
+  const [durationMin, setDurationMin] = useState('');
+
+  // Build signups dict from in-flight edits: callsign (unit name) → pilot name.
+  // The roster Apply step writes `unitRename` edits per unitId, so we map
+  // each unitId → display callsign + use the latest rename value.
+  const signups = useMemo(() => {
+    const idToCallsign = new Map<string, string>();
+    for (const u of clientUnits) {
+      idToCallsign.set(String(u.unitId), u.name || '');
+    }
+    const out: Record<string, string> = {};
+    for (const ed of edits as Array<{ unitId?: string | number; field: string; value: string }>) {
+      if (ed.field === 'unitRename' && ed.unitId != null) {
+        const cs = idToCallsign.get(String(ed.unitId));
+        if (cs) out[cs] = String(ed.value || '');
+      }
+    }
+    return out;
+  }, [edits, clientUnits]);
+
+  const download = async () => {
+    if (!sessionId || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      const body = {
+        format,
+        signups,
+        events: [],  // populated by Live session loop in a future iteration
+        notes,
+        duration_min: durationMin ? Number(durationMin) : null,
+      };
+      const r = await fetch(`/api/sessions/${sessionId}/aar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({ error: 'failed' }));
+        throw new Error(j.error || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename="?([^";]+)"?/);
+      const name = m?.[1] || `aar.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setMsg(`✓ Downloaded ${name}`);
+    } catch (e) {
+      setMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pilotCount = Object.values(signups).filter((p) => (p || '').trim()).length;
+
+  return (
+    <div style={{ marginBottom: 14, padding: '10px 14px', background: '#1d2530', border: `1px solid ${BORDER}`, borderRadius: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Generate AAR / debrief</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
+            Post-mission debrief skeleton — pre-filled with participants
+            {pilotCount > 0 ? ` + ${pilotCount} signed-up pilot${pilotCount === 1 ? '' : 's'}` : ''}.
+            Engagement log + notes are blank for the runner to fill in.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['md', 'csv', 'xlsx'] as const).map((f) => (
+            <button key={f} onClick={() => setFormat(f)}
+                    style={{ background: format === f ? '#3a5a82' : '#2a2a2a', border: `1px solid ${format === f ? '#4a8fd4' : BORDER}`, color: format === f ? '#cfe6ff' : '#aaa', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 3, fontFamily: 'inherit', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button onClick={download} disabled={!sessionId || busy} style={{ ...btn, opacity: !sessionId || busy ? 0.5 : 1, cursor: !sessionId || busy ? 'not-allowed' : 'pointer' }}>
+          {busy ? 'Generating…' : '⬇ Download'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'flex-start' }}>
+        <input
+          type="number" min={0} step={5}
+          value={durationMin} onChange={(e) => setDurationMin(e.target.value)}
+          placeholder="Duration (min)"
+          style={{ ...sel, width: 130 }} />
+        <textarea
+          value={notes} onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional debrief notes — what went well, what to fix, lessons learned…"
+          style={{ ...sel, flex: 1, minHeight: 50, fontFamily: 'inherit', resize: 'vertical' }} />
       </div>
       {msg && <div style={{ fontSize: 11, marginTop: 6, color: msg.startsWith('✓') ? '#3fb950' : '#e0554f' }}>{msg}</div>}
     </div>
