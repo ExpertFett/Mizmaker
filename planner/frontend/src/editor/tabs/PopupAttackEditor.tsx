@@ -9,6 +9,7 @@
  */
 
 import { computePopupAttack, defaultPopupAttack, ATTACK_TYPE_LABEL, ATTACK_TYPE_DESC, type PopupAttackInput, type AttackType } from '../../utils/popupAttack';
+import { AIRCRAFT_PRESET_LABEL, AIRCRAFT_NOTES, applyAircraftPreset, type AircraftPreset } from '../../utils/popupAttackPresets';
 
 interface Props {
   profiles: PopupAttackInput[];
@@ -62,7 +63,7 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
   const prof = computePopupAttack(profile);
   return (
     <div style={{ border: '1px solid #3a3a3a', borderRadius: 4, padding: 8, background: '#1d1d1d' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
         <span style={{ color: '#e8833a', fontSize: 11, fontWeight: 700 }}>#{idx + 1}</span>
         <input
           value={profile.name || ''} placeholder={`Attack ${idx + 1}`}
@@ -74,29 +75,53 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
             <option key={k} value={k}>{ATTACK_TYPE_LABEL[k]}</option>
           ))}
         </select>
+        <select
+          value={profile.aircraft || ''}
+          onChange={(e) => onPatch({ aircraft: e.target.value || undefined })}
+          title="Airframe preset — sets ingress/apex/release per NATOPS bracket"
+          style={{ ...inp, width: 170 }}>
+          <option value="">— Generic NATO —</option>
+          {(Object.keys(AIRCRAFT_PRESET_LABEL) as AircraftPreset[]).map((k) => (
+            <option key={k} value={k}>{AIRCRAFT_PRESET_LABEL[k]}</option>
+          ))}
+        </select>
         <button
           onClick={() => {
-            const d = defaultPopupAttack(profile.name || `Attack ${idx + 1}`, profile.attackType);
-            // Preserve the few "scenario" fields the planner has likely tuned to
-            // the target (elev, run-in distance, offset, speeds) — only blow
-            // away the geometry the type controls.
+            // "Load airframe defaults" — bake the per-aircraft preset into the
+            // editable fields so the planner sees the numbers update. Falls
+            // back to the generic per-type baseline when no aircraft chosen.
+            const seed = defaultPopupAttack(profile.name || `Attack ${idx + 1}`, profile.attackType, profile.aircraft);
+            const d = applyAircraftPreset(seed, profile.aircraft as AircraftPreset | undefined);
+            // Preserve the few "scenario" fields the planner has likely tuned
+            // to the target (elev, run-in distance, offset) — only blow away
+            // the geometry / speeds the airframe controls.
             onPatch({
               popupAltitudeFtMsl: d.popupAltitudeFtMsl,
               popupAngleDeg: d.popupAngleDeg,
               diveAngleDeg: d.diveAngleDeg,
               releaseAltitudeFtAgl: d.releaseAltitudeFtAgl,
+              releaseSpeedKts: d.releaseSpeedKts,
               ingressAltitudeFtAgl: d.ingressAltitudeFtAgl,
+              ingressSpeedKts: d.ingressSpeedKts,
               recoveryAltitudeFtAgl: d.recoveryAltitudeFtAgl,
+              vipDistanceNm: d.vipDistanceNm,
             });
           }}
-          title={`Reset altitudes/angles to defaults for ${ATTACK_TYPE_LABEL[profile.attackType]}`}
+          title={profile.aircraft
+            ? `Reset altitudes/angles/speeds to ${AIRCRAFT_PRESET_LABEL[profile.aircraft as AircraftPreset] || profile.aircraft} ${ATTACK_TYPE_LABEL[profile.attackType]} defaults`
+            : `Reset altitudes/angles to generic defaults for ${ATTACK_TYPE_LABEL[profile.attackType]}`}
           style={{ ...btn, padding: '4px 7px', fontSize: 11 }}>↺</button>
-        <span style={{ flex: 1, fontSize: 11, color: '#888', textAlign: 'right' }}>
+        <span style={{ flex: 1, fontSize: 11, color: '#888', textAlign: 'right', minWidth: 200 }}>
           TTT ~{Math.round(prof.totals.timeToTargetSec)}s · popup {prof.totals.popupDistanceNm.toFixed(1)} NM · dive {prof.totals.diveDistanceNm.toFixed(1)} NM
         </span>
         <button onClick={onRemove} style={btnDel} title="Remove profile">×</button>
       </div>
       <div style={{ fontSize: 10, color: '#888', marginBottom: 6, paddingLeft: 2 }}>{ATTACK_TYPE_DESC[profile.attackType]}</div>
+      {profile.aircraft && AIRCRAFT_NOTES[profile.aircraft as AircraftPreset] && (
+        <div style={{ fontSize: 10, color: '#7ab87a', marginBottom: 6, paddingLeft: 2, fontStyle: 'italic' }}>
+          ✈ {AIRCRAFT_PRESET_LABEL[profile.aircraft as AircraftPreset]}: {AIRCRAFT_NOTES[profile.aircraft as AircraftPreset]}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
         <Field label="TGT elev (ft MSL)" v={profile.targetElevationFt} onChange={(n) => onPatch({ targetElevationFt: n })} />
         <Field label="VIP dist (NM)" v={profile.vipDistanceNm} onChange={(n) => onPatch({ vipDistanceNm: n })} step={0.5} />

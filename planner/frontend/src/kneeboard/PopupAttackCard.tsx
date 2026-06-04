@@ -13,6 +13,7 @@
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, footerStyle, BORDER, TEXT, DIM, ACCENT, FONT, MissionDateLine } from './cardStyles';
 import type { MissionOverviewData } from '../types/mission';
 import { computePopupAttack, ATTACK_TYPE_LABEL, ATTACK_TYPE_DESC, type PopupAttackInput, type AttackPoint } from '../utils/popupAttack';
+import { AIRCRAFT_PRESET_LABEL, type AircraftPreset } from '../utils/popupAttackPresets';
 
 const POINT_COLOR: Record<string, string> = {
   IP:  '#4a9eff',
@@ -79,6 +80,11 @@ export function PopupAttackCard({ input, overview, index, total }: PopupAttackCa
           <span style={{ fontSize: 14, color: ACCENT, marginLeft: 10, fontWeight: 700, border: `1px solid ${ACCENT}`, borderRadius: 3, padding: '1px 7px' }}>
             {ATTACK_TYPE_LABEL[input.attackType]}
           </span>
+          {input.aircraft && AIRCRAFT_PRESET_LABEL[input.aircraft as AircraftPreset] && (
+            <span style={{ fontSize: 13, color: '#7ab87a', marginLeft: 8, fontWeight: 600, border: '1px solid #2e5a2e', borderRadius: 3, padding: '1px 7px' }}>
+              ✈ {AIRCRAFT_PRESET_LABEL[input.aircraft as AircraftPreset]}
+            </span>
+          )}
         </div>
         <div style={subtitleStyle}>
           {input.name || 'Attack profile'} · TGT elev {input.targetElevationFt.toLocaleString()} ft ·

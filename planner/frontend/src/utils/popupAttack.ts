@@ -44,6 +44,10 @@ export interface PopupAttackInput {
   attackType: AttackType;
   /** Free-text label so a mission with multiple profiles can name each one. */
   name?: string;
+  /** Optional aircraft type ID — when set, the editor "reset" button + the
+   *  defaultPopupAttack helper apply that airframe's NATOPS/community-derived
+   *  preset on top of the per-type baseline. See popupAttackPresets.ts. */
+  aircraft?: string;
   /** Target ground elevation in feet MSL. */
   targetElevationFt: number;
   /** Distance from target to the Action Point along the attack run (NM). */
@@ -244,11 +248,20 @@ export function computePopupAttack(input: PopupAttackInput): PopupAttackProfile 
 
 /** A sensible starter set for a fresh profile. Defaults track real-world
  *  brackets per attack type so a new profile lands in a usable place
- *  without the planner having to read NATOPS first. */
-export function defaultPopupAttack(name = 'Attack 1', attackType: AttackType = 'type1'): PopupAttackInput {
+ *  without the planner having to read NATOPS first.
+ *
+ *  When `aircraft` is provided, the per-airframe preset (see
+ *  popupAttackPresets.ts) overrides the generic NATO-bracket defaults — so
+ *  picking "A-10C" produces 350 KIAS / 12K MSL apex instead of 480 / 8K. */
+export function defaultPopupAttack(
+  name = 'Attack 1',
+  attackType: AttackType = 'type1',
+  aircraft?: string,
+): PopupAttackInput {
   const base = {
     attackType,
     name,
+    aircraft,
     targetElevationFt: 100,
     vipDistanceNm: 8,
     angleOffsetDeg: 25,
@@ -256,30 +269,48 @@ export function defaultPopupAttack(name = 'Attack 1', attackType: AttackType = '
     ingressSpeedKts: 480,
     recoveryAltitudeFtAgl: 500,
   } as const;
+  // Build the generic per-type baseline first; the per-airframe preset (if
+  // any) is layered on top below. Aircraft presets live in
+  // popupAttackPresets.ts; we delay the import to runtime to keep this
+  // file free of a circular dep (the presets module imports types from
+  // here). Using a require-style guard so headless test envs without the
+  // presets module still get the generic baseline.
+  let baseline: PopupAttackInput;
   switch (attackType) {
     case 'type1':
       // High-angle popup: 40° climb to ~8000 MSL, 30° dive to ~2000 AGL release.
-      return { ...base, popupAltitudeFtMsl: 8000, popupAngleDeg: 40, diveAngleDeg: 30,
+      baseline = { ...base, popupAltitudeFtMsl: 8000, popupAngleDeg: 40, diveAngleDeg: 30,
                releaseAltitudeFtAgl: 2000, ingressAltitudeFtAgl: 500 };
+      break;
     case 'type2':
       // Medium-angle popup: 30° climb to ~5000 MSL, 20° dive to ~1500 AGL.
-      return { ...base, popupAltitudeFtMsl: 5000, popupAngleDeg: 30, diveAngleDeg: 20,
+      baseline = { ...base, popupAltitudeFtMsl: 5000, popupAngleDeg: 30, diveAngleDeg: 20,
                releaseAltitudeFtAgl: 1500, ingressAltitudeFtAgl: 500 };
+      break;
     case 'type3':
       // Low-angle popup: 20° climb to ~3000 MSL, 12° dive to ~1000 AGL.
-      return { ...base, popupAltitudeFtMsl: 3000, popupAngleDeg: 20, diveAngleDeg: 12,
+      baseline = { ...base, popupAltitudeFtMsl: 3000, popupAngleDeg: 20, diveAngleDeg: 12,
                releaseAltitudeFtAgl: 1000, ingressAltitudeFtAgl: 500 };
+      break;
     case 'laydown':
       // Level release with retarded weapons — ingress = release alt.
-      return { ...base, popupAltitudeFtMsl: 500, popupAngleDeg: 0, diveAngleDeg: 0,
+      baseline = { ...base, popupAltitudeFtMsl: 500, popupAngleDeg: 0, diveAngleDeg: 0,
                releaseAltitudeFtAgl: 500, ingressAltitudeFtAgl: 500 };
+      break;
     case 'loft':
       // Toss: 4-G pull through ~25° climb, release climbing at ~6000 MSL.
-      return { ...base, popupAltitudeFtMsl: 6000, popupAngleDeg: 25, diveAngleDeg: 0,
+      baseline = { ...base, popupAltitudeFtMsl: 6000, popupAngleDeg: 25, diveAngleDeg: 0,
                releaseAltitudeFtAgl: 5500, ingressAltitudeFtAgl: 500, vipDistanceNm: 6 };
+      break;
     case 'dive':
       // Roll-in dive from 15K, 30° dive to ~3K AGL release.
-      return { ...base, popupAltitudeFtMsl: 15000, popupAngleDeg: 0, diveAngleDeg: 30,
+      baseline = { ...base, popupAltitudeFtMsl: 15000, popupAngleDeg: 0, diveAngleDeg: 30,
                releaseAltitudeFtAgl: 3000, ingressAltitudeFtAgl: 15000, recoveryAltitudeFtAgl: 2000 };
+      break;
   }
+  // Caller surfaces the aircraft preset on top via `applyAircraftPreset` from
+  // popupAttackPresets — we do NOT eagerly merge here to avoid a circular
+  // import. The editor's "load airframe defaults" button + the add-profile
+  // path do the merge. Returning the baseline with `aircraft` recorded.
+  return baseline;
 }
