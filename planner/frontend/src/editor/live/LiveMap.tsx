@@ -2839,11 +2839,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {!pictureOpen ? (
         <button onClick={togglePicture}
                 title="Open the PICTURE call (auto bogey-dope summary)"
-                style={{ position: 'absolute', bottom: 36, right: 12, zIndex: 4, padding: '6px 10px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.border}`, color: C.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
+                style={{ position: 'absolute', bottom: 130, right: 12, zIndex: 4, padding: '6px 10px', borderRadius: 6, background: 'rgba(9,13,20,0.95)', border: `1px solid ${C.border}`, color: C.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: 'pointer' }}>
           📡 PICTURE{pictureCall.call ? ` · ${pictureCall.call.totalBandits}` : ''}
         </button>
       ) : (
-        <div style={{ position: 'absolute', bottom: 36, right: 12, width: 280, zIndex: 4, background: 'rgba(9,13,20,0.96)', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', bottom: 130, right: 12, width: 280, zIndex: 4, background: 'rgba(9,13,20,0.96)', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'rgba(74,158,255,0.10)', borderBottom: `1px solid ${C.border}`, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text }}>
             <span>📡 PICTURE</span>
             <span onClick={togglePicture} style={{ cursor: 'pointer', color: C.textDim, fontWeight: 400 }}>×</span>
