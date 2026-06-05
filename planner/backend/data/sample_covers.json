@@ -1,0 +1,20 @@
+{
+  "_about": [
+    "Seed manifest of public-domain / Creative-Commons aviation imagery",
+    "for the Brief cover-image picker + Upload-page hero gallery.",
+    "",
+    "Curation rules:",
+    "  - US Government works (DOD / NASA / USDA) are public domain by",
+    "    17 USC §105 — safe to redistribute. Source URL must trace back",
+    "    to a .mil / .gov host or DVIDS.",
+    "  - Wikimedia Commons entries must be CC0 or US-Gov-PD. Skip any",
+    "    'fair use' or 'screenshot' tags — we lose redistribution.",
+    "  - Each entry MUST cite a source URL so the next pair of eyes can",
+    "    re-verify the licensing.",
+    "",
+    "URLs not yet baked in — populate this file with verified entries.",
+    "The frontend silently hides broken thumbnails so a partial manifest",
+    "won't crash anything; just shows fewer tiles."
+  ],
+  "covers": []
+}

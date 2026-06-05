@@ -3280,6 +3280,57 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
             matched ones at the field's coords. Unmatched ones are
             surfaced so the user can re-upload those individually with
             cursor placement. (v1.19.31) */}
+        {/* Public-domain FAA chart fetcher (v1.19.35) — for US-managed
+            airfields with a published FAA airport diagram (KLSV /
+            KINS / KLAS / KBVU / KTPH / KBTY / KMLF / KVGT for NTTR;
+            PGUA / PGUM for Marianas; FAA cycle env var controls
+            currency). Hits aeronav.faa.gov server-side, converts
+            PDF→PNG if Poppler's installed, then drops the result into
+            the existing single-file flow. */}
+        <label style={{ fontSize: 10, color: '#8aa0ba', letterSpacing: 1, marginTop: 4 }}>
+          FETCH FAA CHART (public domain, US fields only)
+        </label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input id="faa-icao" type="text" placeholder="ICAO (e.g. KLSV)"
+                 maxLength={5}
+                 style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid #243349',
+                          color: '#dce6f2', padding: '4px 7px', fontSize: 11, borderRadius: 3,
+                          outline: 'none', fontFamily: 'inherit', textTransform: 'uppercase' }}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter') (document.getElementById('faa-fetch-btn') as HTMLButtonElement)?.click();
+                 }} />
+          <button id="faa-fetch-btn"
+                  onClick={async () => {
+                    const inp = document.getElementById('faa-icao') as HTMLInputElement | null;
+                    const icao = (inp?.value || '').trim().toUpperCase();
+                    if (!icao) return;
+                    try {
+                      const r = await fetch(`/api/charts/fetch_faa/${icao}`);
+                      if (!r.ok) {
+                        const err = await r.json().catch(() => ({ error: 'fetch failed' }));
+                        alert(`FAA chart for ${icao}: ${err.error || `HTTP ${r.status}`}`);
+                        return;
+                      }
+                      const fmt = r.headers.get('X-Chart-Format') || 'png';
+                      if (fmt !== 'png') {
+                        alert(`Server returned ${fmt.toUpperCase()} (Poppler not installed). ` +
+                              `${r.headers.get('X-Chart-Note') || ''}`);
+                        return;
+                      }
+                      const blob = await r.blob();
+                      const file = new File([blob], `${icao}_FAA_Airport_Diagram.png`, { type: 'image/png' });
+                      onUpload(file);
+                      if (inp) inp.value = '';
+                    } catch (e) {
+                      alert(`FAA chart fetch error: ${e instanceof Error ? e.message : 'failed'}`);
+                    }
+                  }}
+                  style={{ padding: '4px 10px', fontSize: 11, fontWeight: 700, color: '#cfe6ff',
+                           background: 'rgba(74,158,255,0.18)', border: '1px solid #4a9eff',
+                           borderRadius: 3, cursor: 'pointer' }}>
+            ⬇ FETCH
+          </button>
+        </div>
         <label style={{ fontSize: 10, color: '#8aa0ba', letterSpacing: 1, marginTop: 4 }}>
           BULK IMPORT (auto-match by filename)
         </label>

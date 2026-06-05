@@ -143,6 +143,64 @@ _cleanup_sessions = _store.cleanup
 # `curl /api/health` is useful for eyeballing server state.
 # --------------------------------------------------------------------------
 
+@app.route("/api/sample_covers", methods=["GET"])
+def sample_covers():
+    """Curated list of public-domain / CC0 imagery for the Brief cover-
+    image picker + Upload-page hero gallery. Source manifest lives at
+    data/sample_covers.json — entries are vetted for redistribution
+    (DOD / NASA / USGS / Wikimedia CC0 only). Frontend silently hides
+    broken thumbnails so a partial manifest is fine. (v1.19.35)"""
+    try:
+        import json as _json, os as _os
+        manifest_path = _os.path.join(_os.path.dirname(__file__), "data", "sample_covers.json")
+        with open(manifest_path, "r", encoding="utf-8") as _f:
+            data = _json.load(_f)
+        covers = data.get("covers", []) or []
+        return jsonify({"covers": covers, "count": len(covers)})
+    except Exception as e:
+        return jsonify({"covers": [], "count": 0, "error": str(e)})
+
+
+@app.route("/api/charts/fetch_faa/<icao>", methods=["GET"])
+def fetch_faa_chart(icao):
+    """Best-effort FAA airport-diagram fetcher for US fields covered by
+    the Nevada / Marianas / Normandy theaters. FAA charts are PD (17
+    USC §105). Hits aeronav.faa.gov for the current cycle's airport
+    diagram, converts PDF→PNG if Poppler is available, returns the
+    PNG bytes. Fails soft when the chart isn't published or PDF
+    conversion isn't installed. (v1.19.35)"""
+    from services import chart_fetcher
+    icao = (icao or "").upper().strip()
+    if not icao or len(icao) > 5:
+        return jsonify({"error": "ICAO required (4 chars)"}), 400
+    result = chart_fetcher.fetch_faa_airport_diagram(icao)
+    if not result.get("ok"):
+        return jsonify({"error": result.get("error", "fetch failed")}), 404
+    fmt = result.get("format", "png")
+    if fmt == "pdf":
+        # No Poppler installed — hand off the raw PDF so the frontend
+        # can fall back to PDF.js or just save it. Hint the caller via
+        # the response header so they don't try to overlay it directly.
+        resp = send_file(
+            io.BytesIO(result["pdf"]),
+            mimetype="application/pdf",
+            as_attachment=False,
+            download_name=f"{icao}_airport_diagram.pdf",
+        )
+        resp.headers["X-Chart-Format"] = "pdf"
+        resp.headers["X-Chart-Note"] = result.get("note", "")
+        return resp
+    img_bytes = result["png"]
+    resp = send_file(
+        io.BytesIO(img_bytes),
+        mimetype="image/png",
+        as_attachment=False,
+        download_name=f"{icao}_airport_diagram.png",
+    )
+    resp.headers["X-Chart-Format"] = "png"
+    return resp
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
     with _lock:

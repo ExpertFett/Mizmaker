@@ -20,6 +20,7 @@ import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
 import { useEditStore } from '../../store/editStore';
 import { computePopupAttack, ATTACK_TYPE_LABEL, type PopupAttackInput } from '../../utils/popupAttack';
+import { SampleCoversGallery } from '../../panels/SampleCoversGallery';
 import { formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 import { captureRouteImage, captureOverviewImage } from '../../kneeboard/captureRoute';
@@ -796,6 +797,32 @@ export function BriefGenTab() {
                 previewAspect="square"
               />
             </div>
+            {/* Public-domain sample picker (v1.19.35) — fed from
+                /api/sample_covers. Operator-curated, attribution shown
+                per tile. No tiles render until the manifest at
+                data/sample_covers.json gets verified entries; the
+                gallery prints a clear "no samples available yet"
+                line in that state so callers don't see a dead UI. */}
+            <details style={{ marginTop: 10, padding: '6px 12px', background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: '#cfe6ff', fontWeight: 600 }}>
+                Or pick a sample cover (public-domain library)
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <SampleCoversGallery
+                  onPick={async (blob, title) => {
+                    // Convert Blob → base64 data URL for the brief
+                    // store, which round-trips through PPTX rendering.
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = String(reader.result || '');
+                      set('cover_image_base64', result);
+                    };
+                    reader.onerror = () => setError(`Couldn't load ${title}: read failed`);
+                    reader.readAsDataURL(blob);
+                  }}
+                />
+              </div>
+            </details>
           </Card>
 
           <Card title="Theatre Overview">
