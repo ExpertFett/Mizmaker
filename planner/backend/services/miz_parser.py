@@ -60,7 +60,53 @@ def _load_pydcs_airports(theater: str) -> list:
             lat, lon = dcs_to_latlon(pos.x, pos.y, theater)
         except Exception:
             continue
-        out.append({"name": ap.name, "lat": lat, "lon": lon, "coalition": "neutral"})
+
+        # Enrich with the LotATC-style detail the Airbase Reference card
+        # wants: runway names + magnetic headings, and the four ATC radio
+        # channels in MHz. Older/static-only airbases may lack one or
+        # more of these — leave them out rather than emit None so the
+        # frontend can treat absence as "unknown" cleanly. (v1.19.28)
+        entry: dict = {"name": ap.name, "lat": lat, "lon": lon, "coalition": "neutral"}
+        try:
+            entry["id"] = int(getattr(ap, "id"))
+        except Exception:
+            pass
+        atc = getattr(ap, "atc_radio", None)
+        if atc is not None:
+            radios = {}
+            for src, dst in (("hf_hz", "hf_mhz"), ("vhf_low_hz", "vhf_low_mhz"),
+                             ("vhf_high_hz", "vhf_high_mhz"), ("uhf_hz", "uhf_mhz")):
+                v = getattr(atc, src, None)
+                if isinstance(v, (int, float)) and v > 0:
+                    radios[dst] = round(v / 1_000_000.0, 3)
+            if radios:
+                entry["atc_radio"] = radios
+        runways = getattr(ap, "runways", None)
+        if runways:
+            rw_out = []
+            for rw in runways:
+                main = getattr(rw, "main", None)
+                opp = getattr(rw, "opposite", None)
+                names = []
+                hdgs = []
+                if main is not None:
+                    nm = str(getattr(main, "name", "") or "").strip()
+                    hd = getattr(main, "heading", None)
+                    if nm: names.append(nm)
+                    if isinstance(hd, (int, float)): hdgs.append(int(hd))
+                if opp is not None:
+                    nm = str(getattr(opp, "name", "") or "").strip()
+                    hd = getattr(opp, "heading", None)
+                    if nm: names.append(nm)
+                    if isinstance(hd, (int, float)): hdgs.append(int(hd))
+                rw_out.append({
+                    "name": str(getattr(rw, "name", "") or "").strip() or "/".join(names),
+                    "ends": names,
+                    "headings": hdgs,
+                })
+            if rw_out:
+                entry["runways"] = rw_out
+        out.append(entry)
     return out
 
 

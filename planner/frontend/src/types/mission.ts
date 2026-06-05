@@ -79,6 +79,26 @@ export interface Airbase {
   y: number;
   lat?: number;
   lon?: number;
+  /** Numeric airfield ID from pydcs — stable per-theater. Optional
+   *  because the JSON / LotATC fallbacks don't carry it. */
+  id?: number;
+  /** ATC tower / approach / departure radio channels in MHz, sourced
+   *  from pydcs's atc_radio. Any of the four may be absent on small
+   *  fields. (v1.19.28) */
+  atc_radio?: {
+    hf_mhz?: number;
+    vhf_low_mhz?: number;
+    vhf_high_mhz?: number;
+    uhf_mhz?: number;
+  };
+  /** Runway list per pydcs. `ends` is the two-end naming (e.g. ["22",
+   *  "04"]) and `headings` is the matching magnetic headings in degrees.
+   *  (v1.19.28) */
+  runways?: Array<{
+    name: string;
+    ends: string[];
+    headings: number[];
+  }>;
 }
 
 export interface MissionWeather {

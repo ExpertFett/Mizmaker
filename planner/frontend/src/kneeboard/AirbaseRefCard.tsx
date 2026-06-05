@@ -132,6 +132,28 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
                   : role === 'RTB'  ? '#4a8fd4'
                   : DIM;
 
+  // Pick the single best ATC channel to surface in the table row —
+  // UHF takes priority because that's what most fast-jet pilots tune
+  // first. Falls back through VHF-high (civ), VHF-low (mil low), HF.
+  // Full list is shown in the per-airfield detail block below the
+  // table when not collapsed. (v1.19.28)
+  const primaryAtc = (atc?: Airbase['atc_radio']): string => {
+    if (!atc) return '—';
+    if (atc.uhf_mhz) return `${atc.uhf_mhz.toFixed(3)} UHF`;
+    if (atc.vhf_high_mhz) return `${atc.vhf_high_mhz.toFixed(3)} VHF`;
+    if (atc.vhf_low_mhz) return `${atc.vhf_low_mhz.toFixed(3)} VHF`;
+    if (atc.hf_mhz) return `${atc.hf_mhz.toFixed(3)} HF`;
+    return '—';
+  };
+
+  // Compact runway summary: "22 / 04" with the LOWER-numbered end first
+  // and headings concatenated when both ends are known. Multiple
+  // runways collapse to "22/04 · 16/34" so a row stays one line.
+  const primaryRunways = (rws?: Airbase['runways']): string => {
+    if (!rws || rws.length === 0) return '—';
+    return rws.map((rw) => rw.ends.join('/')).join(' · ');
+  };
+
   const renderRow = (ab: AbWithRole, i: number) => (
     <tr key={ab.name + i} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
       <td style={{ ...cell, fontWeight: 500, padding: '5px 8px' }}>{ab.name}</td>
@@ -142,8 +164,15 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
         {ab._role || '—'}
       </td>
       <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px',
-        fontSize: coordFormat === 'mgrs' ? 19 : 14 }}>
+        fontSize: coordFormat === 'mgrs' ? 17 : 13 }}>
         {formatCoord(ab.lat, ab.lon, coordFormat, 3)}
+      </td>
+      <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px', fontSize: 13 }}>
+        {primaryRunways(ab.runways)}
+      </td>
+      <td style={{ ...cell, textAlign: 'center', color: DIM, padding: '5px 8px',
+        fontSize: 13, fontFamily: "'B612 Mono', monospace" }}>
+        {primaryAtc(ab.atc_radio)}
       </td>
     </tr>
   );
@@ -153,8 +182,10 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
       <thead>
         <tr>
           <th style={{ ...th, textAlign: 'left', padding: '6px 8px' }}>AIRFIELD</th>
-          <th style={{ ...th, width: 60, padding: '6px 8px' }}>ROLE</th>
-          <th style={{ ...th, width: useTwoColumns ? 110 : 140, padding: '6px 8px' }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
+          <th style={{ ...th, width: 50, padding: '6px 6px' }}>ROLE</th>
+          <th style={{ ...th, width: useTwoColumns ? 100 : 130, padding: '6px 6px' }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
+          <th style={{ ...th, width: useTwoColumns ? 80 : 100, padding: '6px 6px' }}>RWY</th>
+          <th style={{ ...th, width: useTwoColumns ? 95 : 115, padding: '6px 6px' }}>ATC</th>
         </tr>
       </thead>
       <tbody>{rows.map(renderRow)}</tbody>
