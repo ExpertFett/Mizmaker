@@ -14,7 +14,7 @@
  * on the backend — flagged as a follow-up.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 
@@ -380,6 +380,35 @@ function AarRow() {
   const [msg, setMsg] = useState('');
   const [notes, setNotes] = useState('');
   const [durationMin, setDurationMin] = useState('');
+  // Live event count — refreshed when this row mounts + each download.
+  // Surfaces feedback that the Live mode recorder is actually capturing
+  // losses, so the planner knows the AAR will auto-populate.
+  const [eventCount, setEventCount] = useState<number | null>(null);
+
+  const refreshEventCount = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}/events`);
+      if (!r.ok) return;
+      const j = await r.json();
+      setEventCount(Array.isArray(j.events) ? j.events.length : 0);
+    } catch { /* swallow */ }
+  }, [sessionId]);
+
+  useEffect(() => { refreshEventCount(); }, [refreshEventCount]);
+
+  const clearEvents = async () => {
+    if (!sessionId) return;
+    if (!window.confirm(`Clear ${eventCount ?? 0} recorded live event(s)? The AAR will fall back to manual entry.`)) return;
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}/events`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setEventCount(0);
+      setMsg('✓ Live event log cleared');
+    } catch (e) {
+      setMsg(`✗ Clear failed: ${e instanceof Error ? e.message : ''}`);
+    }
+  };
 
   // Build signups dict from in-flight edits: callsign (unit name) → pilot name.
   // The roster Apply step writes `unitRename` edits per unitId, so we map
@@ -429,6 +458,7 @@ function AarRow() {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setMsg(`✓ Downloaded ${name}`);
+      refreshEventCount();
     } catch (e) {
       setMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`);
     } finally {
@@ -445,8 +475,18 @@ function AarRow() {
           <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Generate AAR / debrief</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
             Post-mission debrief skeleton — pre-filled with participants
-            {pilotCount > 0 ? ` + ${pilotCount} signed-up pilot${pilotCount === 1 ? '' : 's'}` : ''}.
-            Engagement log + notes are blank for the runner to fill in.
+            {pilotCount > 0 ? ` + ${pilotCount} signed-up pilot${pilotCount === 1 ? '' : 's'}` : ''}
+            {eventCount !== null && eventCount > 0 ? (
+              <>
+                {' '}+ <span style={{ color: '#3fb950', fontWeight: 600 }}>{eventCount} live event{eventCount === 1 ? '' : 's'}</span>
+                {' '}<button onClick={clearEvents} title="Clear the recorded live event log"
+                             style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 10, padding: 0, textDecoration: 'underline' }}>
+                  clear
+                </button>
+              </>
+            ) : (
+              <>{' '}<span style={{ color: '#888', fontStyle: 'italic' }}>(no live events recorded yet — Live mode logs losses automatically)</span></>
+            )}.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>

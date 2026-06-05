@@ -131,6 +131,12 @@ class InMemorySessionStore:
                 "status": "planning",
                 "sse_clients": [],
                 "planner_drawings": [],
+                # Live session event log — appended-to by /events POST as
+                # Live mode detects kills/losses/RTBs/notes. Consumed by the
+                # AAR generator. Each entry: {time_min, type, recorded_at,
+                # ...kind-specific fields}. See services/aar.py event schema.
+                "events": [],
+                "live_started_at": None,  # epoch seconds, set on first event
             }
         return sid, host_token
 

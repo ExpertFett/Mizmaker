@@ -748,6 +748,24 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // valuable enough to survive a tab refresh.
   type BullseyePin = { lat: number; lng: number; source: 'mission' | 'manual' };
   const missionBullseye = useMissionStore((s) => s.overview?.bullseye?.blue);
+
+  // ── Live session event recorder (feeds the AAR generator) ──────────────
+  // On each telemetry poll we diff against the previous-poll alive state per
+  // unit; alive→dead transitions are POSTed to /api/sessions/{sid}/events as
+  // "loss" entries. The DM can re-attribute kill credit later in the AAR
+  // editor. Wired here (not in a separate hook) so the diff has direct
+  // access to the polled units before they're aged out.
+  //
+  // - prevAliveRef holds the last `alive` flag per unit key.
+  // - liveStartedAtRef is the client-local epoch of the first detected event;
+  //   we compute time_min from this so the AAR's chronology is anchored to
+  //   when the DM started Live mode rather than when the .miz launched.
+  // - When sessionId is null (Live-without-upload flow, Task #17), recording
+  //   is silently skipped — the AAR feature only makes sense with a session.
+  const sessionId = useMissionStore((s) => s.sessionId);
+  const prevAliveRef = useRef<Map<string, number>>(new Map());
+  const liveStartedAtRef = useRef<number | null>(null);
+  const eventsPostFailRef = useRef<number>(0);  // back off after repeated failures
   const [bullseyePin, setBullseyePin] = useState<BullseyePin | null>(() => {
     try {
       const raw = localStorage.getItem('dcsopt.live.bullseyeManual');
@@ -1736,6 +1754,57 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           seen.add(key);
           store[key] = { u: { ...(store[key]?.u || {}), ...u }, miss: 0 };  // merge
         });
+        // ── Loss detection (Live event recorder) ──────────────────────
+        // Compare each unit's `alive` flag against the previous poll. A 1→0
+        // transition (or "alive last time, absent now AND we last saw it
+        // alive but dead this poll") is logged as a "loss" event. Units
+        // that simply disappear (out of detection range) DON'T fire — only
+        // explicit alive→0 transitions, which Olympus reports when a unit
+        // is destroyed. Kill attribution is intentionally not attempted
+        // here: even Olympus doesn't reliably know who shot whom; the DM
+        // edits the AAR afterwards to fix up credit.
+        if (sessionId && eventsPostFailRef.current < 5) {
+          const lossEvents: Array<Record<string, unknown>> = [];
+          const prev = prevAliveRef.current;
+          const eventEpoch = Date.now();
+          for (const u of units) {
+            const key = u.olympusID != null ? String(u.olympusID) : (u.unitName || u.name || '');
+            if (!key) continue;
+            const wasAlive = prev.get(key);
+            const isAlive = typeof u.alive === 'number' ? u.alive : (u.alive === undefined ? 1 : 0);
+            if (wasAlive === 1 && isAlive === 0) {
+              if (liveStartedAtRef.current == null) liveStartedAtRef.current = eventEpoch;
+              const tMin = Math.round((eventEpoch - liveStartedAtRef.current) / 60000);
+              lossEvents.push({
+                time_min: tMin,
+                type: 'loss',
+                unit: u.unitName || u.name || key,
+                killer: 'unknown',
+                coalition: u.coalition,
+                category: u.category,
+              });
+            }
+            prev.set(key, isAlive);
+          }
+          // Prune the prev map of keys that disappeared from the feed,
+          // bounded to keep memory from growing on very long sessions.
+          if (prev.size > 1000) {
+            for (const k of Array.from(prev.keys())) if (!seen.has(k)) prev.delete(k);
+          }
+          if (lossEvents.length) {
+            // Fire-and-forget — losses recorded best-effort. Don't block
+            // the rest of the poll; back off after repeated failures so a
+            // dead backend doesn't spam the network.
+            fetch(`/api/sessions/${sessionId}/events`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ events: lossEvents }),
+            }).then((r) => {
+              if (!r.ok) eventsPostFailRef.current += 1;
+              else eventsPostFailRef.current = 0;
+            }).catch(() => { eventsPostFailRef.current += 1; });
+          }
+        }
         // Age out units absent this poll; drop after ~3 consecutive misses.
         for (const k of Object.keys(store)) {
           if (!seen.has(k)) { if (++store[k].miss >= 3) delete store[k]; }

@@ -233,6 +233,72 @@ def session_signup_sheet(sid):
         return jsonify({"error": f"Signup sheet generation failed: {e}"}), 500
 
 
+@app.route("/api/sessions/<sid>/events", methods=["GET", "POST"])
+def session_events(sid):
+    """Live session event log — append (POST) and read (GET).
+
+    Each event is a free-form dict; the AAR renderer recognises a handful
+    of known `type` values (kill / loss / weapon / rtb / note) and surfaces
+    unknown types via a generic fallback. See services/aar.py for the
+    schema. Every appended event is stamped with `recorded_at` (server
+    epoch) so the order stays stable across client clock drift.
+
+    POST body shapes:
+      { "event": {...} }      — append a single event
+      { "events": [...] }     — append a batch
+
+    Frontend Live mode is responsible for computing `time_min` (minutes
+    since the Live session start) — the server doesn't try to compute it
+    because the "live start" notion is client-local (multiple members
+    may connect at different real-world times).
+
+    GET returns: {events: [...], live_started_at: <epoch|null>}
+    """
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    session.setdefault("events", [])
+    if request.method == "GET":
+        return jsonify({
+            "events": list(session.get("events", [])),
+            "live_started_at": session.get("live_started_at"),
+        })
+    body = request.get_json(silent=True) or {}
+    raw = body.get("events")
+    if raw is None and body.get("event") is not None:
+        raw = [body.get("event")]
+    if not isinstance(raw, list):
+        return jsonify({"error": "events must be a list (or pass event: <obj>)"}), 400
+    now = time.time()
+    added = 0
+    with _lock:
+        if session.get("live_started_at") is None and raw:
+            session["live_started_at"] = now
+        for ev in raw:
+            if not isinstance(ev, dict):
+                continue
+            ev = dict(ev)
+            ev.setdefault("recorded_at", now)
+            session["events"].append(ev)
+            added += 1
+    return jsonify({"appended": added, "total": len(session["events"])})
+
+
+@app.route("/api/sessions/<sid>/events", methods=["DELETE"])
+def session_events_clear(sid):
+    """Clear the live event log for this session — used after a mission
+    scrub or before starting a new run on the same .miz."""
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    with _lock:
+        session["events"] = []
+        session["live_started_at"] = None
+    return jsonify({"cleared": True})
+
+
 @app.route("/api/sessions/<sid>/aar", methods=["POST"])
 def session_aar(sid):
     """Generate an After-Action Review for the loaded mission.
@@ -283,7 +349,13 @@ def session_aar(sid):
     theater = session.get("theater", "Unknown")
 
     signups = body.get("signups") or {}
-    events = body.get("events") or []
+    # Fall back to the session's live-recorded events when the caller
+    # doesn't supply any in the request — covers the common case where
+    # the DM clicks "Generate AAR" after a Live session has been
+    # populating events automatically.
+    events = body.get("events")
+    if not events:
+        events = list(session.get("events") or [])
     notes = str(body.get("notes") or "")
     duration_min = body.get("duration_min")
 
