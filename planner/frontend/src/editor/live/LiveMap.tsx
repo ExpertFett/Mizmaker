@@ -348,7 +348,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // it's first commanded, after which it flips to 1 ("becomes an Olympus unit").
   // When protection is ON (default), commanding such a unit asks for confirmation.
   const [protectMode, toggleProtect] = usePersistedToggle('dcsopt.live.protect');
-  const [showLockHelp, setShowLockHelp] = useState(false);
+  // showLockHelp was the hover-tooltip for the floating 🔒/🔓 button in
+  // the top bar. With the lock moved to the sidebar (v1.19.24), the
+  // SidebarBtn's `hint` (native title attribute) carries the same info.
+  // Kept here as a no-op so any external setShowLockHelp call would
+  // still compile; remove next clean-up pass.
+  const [, setShowLockHelp] = useState(false);
+  void setShowLockHelp;
 
   // Selection derived from the live unit store (refreshes each poll).
   const selUnits = Array.from(selectedIds).map((id) => unitsRef.current[String(id)]?.u).filter(Boolean) as UnitT[];
@@ -2169,6 +2175,33 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
 
+        {canSpawn && (
+          <>
+            <SidebarSection>Olympus</SidebarSection>
+            {/* Modes (v1.19.24) — promoted from a floating top-bar
+                segmented control into proper sidebar buttons with text
+                labels, matching the LotATC / tools refactor. The user-
+                facing label spells out the action so the role isn't
+                guessed from a glyph. */}
+            <SidebarBtn icon="⊹" label="Control mode" active={mode === 'select'}
+                        onClick={() => { setMode('select'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
+                        hint="Click units to select / command them; the default" />
+            <SidebarBtn icon="✛" label="Spawn mode" active={mode === 'spawn'}
+                        onClick={() => { setMode('spawn'); setArmed(null); setTool('select'); }}
+                        hint="Browse Olympus's unit DB → click the map to spawn" />
+            <SidebarBtn icon="◎" label="IADS generator" active={mode === 'iads'}
+                        onClick={() => { setMode('iads'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
+                        hint="Draw an area → spawn a layered air-defence net" />
+            {canCommand && (
+              <SidebarBtn icon={protectMode ? '🔒' : '🔓'} label={`Protected: ${protectMode ? 'LOCKED' : 'OPEN'}`}
+                          active={protectMode} onClick={toggleProtect}
+                          hint={protectMode
+                            ? 'Mission Editor units ask for confirmation before being commanded'
+                            : 'Mission Editor units are commanded without prompting (DEFAULT OPEN)'} />
+            )}
+          </>
+        )}
+
         <SidebarSection>Mission</SidebarSection>
         <SidebarBtn icon="🎬" label="Triggers" active={triggersOpen} onClick={toggleTriggers} hint="Fire DM-tagged triggers from the scope" />
 
@@ -2240,37 +2273,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, color: C.text }}>LIVE TACTICAL</span>
         </div>
 
-        {canSpawn && (
-          <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
-            {(['select', 'spawn', 'iads'] as const).map((m) => (
-              <button key={m} onClick={() => { setMode(m); setArmed(null); setTool('select'); if (m !== 'spawn') handlePlace(null, ''); }}
-                      style={{ ...seg, ...(mode === m ? segOn : {}) }}>{m === 'select' ? '⊹ Control' : m === 'spawn' ? '✛ Spawn' : '◎ IADS'}</button>
-            ))}
-          </div>
-        )}
-
-        {/* Lock/unlock protected (Mission Editor) units */}
-        {canCommand && (
-          <div style={{ position: 'relative' }} onMouseEnter={() => setShowLockHelp(true)} onMouseLeave={() => setShowLockHelp(false)}>
-            <button onClick={toggleProtect} aria-label="Lock/unlock protected units"
-                    style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                             border: `1px solid ${protectMode ? C.red : C.border}`,
-                             background: protectMode ? 'rgba(224,85,79,0.2)' : 'rgba(255,255,255,0.04)',
-                             color: protectMode ? C.red : C.textDim }}>
-              {protectMode ? '🔒' : '🔓'}
-            </button>
-            {showLockHelp && (
-              <div style={{ position: 'absolute', top: 38, left: 0, width: 308, zIndex: 6, padding: 12, ...glass, fontSize: 12, lineHeight: 1.55, color: C.textDim }}>
-                <div style={{ color: C.text, fontWeight: 700, marginBottom: 6 }}>Lock / unlock protected units</div>
-                Mission Editor units are protected from being commanded or deleted by default.
-                Protection is <b style={{ color: protectMode ? C.red : C.green }}>{protectMode ? 'ON' : 'OFF'}</b> — {protectMode
-                  ? 'commanding a protected unit asks for confirmation first.'
-                  : 'protected units can be commanded with no prompt.'}
-                <div style={{ marginTop: 6 }}>Once a unit is commanded it unlocks and becomes an Olympus unit, abandoning its scripted mission.</div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Olympus mode switcher + protected-units lock moved to the
+            left sidebar in v1.19.24 — see SidebarBtn block above.
+            (Was a floating segmented control + a round button here.) */}
 
         {/* Controller filters */}
         <div style={fGroup}>
@@ -3280,8 +3285,8 @@ const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, font
 const fGroup: React.CSSProperties = { display: 'flex', gap: 5 };
 // Legacy icon-only tool styles dropped in v1.19.13 — sidebar refactor
 // replaced the floating rail with text-labelled rows inside SidebarBtn.
-const seg: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '5px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
-const segOn: React.CSSProperties = { background: C.accentDim, color: '#cfe6ff' };
+// `seg`/`segOn` removed v1.19.24 along with the top-bar mode segmented
+// control (now lives in the left sidebar as proper SidebarBtns).
 const mbtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const cardBtn: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, padding: '5px 9px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' };
 const segBtn: React.CSSProperties = { background: 'transparent', border: 'none', color: C.textDim, padding: '4px 6px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' };

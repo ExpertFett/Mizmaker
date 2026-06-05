@@ -187,7 +187,7 @@ export function DmpiMapPanel({ height = 380 }: { height?: number }) {
       style: (f) => dmpiStyle(String(f.get('label') || ''), !!f.get('isPickTarget')),
     });
 
-    const initialCenter = THEATER_CENTERS[theater] ?? [0, 0];
+    const initialCenter = (theater ? THEATER_CENTERS[theater] : undefined) ?? [0, 0];
     const map = new Map({
       target: mapElRef.current,
       layers: [baseLayer, threatLayer, airbaseLayer, bullseyeLayer, dmpiLayer],
