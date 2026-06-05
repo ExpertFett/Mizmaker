@@ -2175,6 +2175,33 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
 
+        <SidebarSection>Filters · Controllers</SidebarSection>
+        <SidebarBtn icon="👤" label="Human units" active={showHuman} onClick={toggleHuman}
+                    hint="Player-piloted (human) units" />
+        <SidebarBtn icon="🛰" label="Olympus units" active={showOlympus} onClick={toggleOlympus}
+                    hint="Units spawned or commanded through this terminal" />
+        <SidebarBtn icon="🤖" label="DCS units" active={showDcs} onClick={toggleDcs}
+                    hint="Mission Editor AI not (yet) under Olympus control" />
+
+        <SidebarSection>Filters · Coalitions</SidebarSection>
+        <SidebarBtn icon="●" label="Red" active={showRed} onClick={toggleRed} hint="Red coalition units" />
+        <SidebarBtn icon="●" label="Blue" active={showBlue} onClick={toggleBlue} hint="Blue coalition units" />
+        <SidebarBtn icon="●" label="Neutral" active={showNeutral} onClick={toggleNeutral} hint="Neutral / unaligned units" />
+
+        <SidebarSection>Filters · Categories</SidebarSection>
+        <SidebarBtn icon="✈" label="Aircraft" active={showAircraft} onClick={toggleAircraft} hint="Fixed-wing aircraft" />
+        <SidebarBtn icon="🚁" label="Helicopters" active={showHelicopter} onClick={toggleHelicopter} hint="Rotary-wing aircraft" />
+        <SidebarBtn icon="📡" label="SAM / AD" active={showSam} onClick={toggleSam} hint="SAM sites, AAA, MANPADS, radars" />
+        <SidebarBtn icon="🪖" label="Ground" active={showGround} onClick={toggleGround} hint="Armor, vehicles, infantry, arty" />
+        <SidebarBtn icon="🚢" label="Navy" active={showNavy} onClick={toggleNavy} hint="Naval units / ships" />
+        <SidebarBtn icon="🛬" label="Airbases" active={showAirbase} onClick={toggleAirbase} hint="Airfields + carriers" />
+        <SidebarBtn icon="💀" label="Dead units" active={showDead} onClick={toggleDead} hint="Destroyed units (history)" />
+
+        <SidebarSection>Filters · Overlays</SidebarSection>
+        <SidebarBtn icon="◎" label="Engagement rings" active={showEng} onClick={toggleEng} hint="Weapons-engagement range rings around SAMs/AAA" />
+        <SidebarBtn icon="◌" label="Acquisition rings" active={showAcq} onClick={toggleAcq} hint="Detection / acquisition rings (radar pickup)" />
+        <SidebarBtn icon="❖" label="Cluster ground" active={clusterGround} onClick={toggleCluster} hint="Group nearby ground units when zoomed out" />
+
         {canSpawn && (
           <>
             <SidebarSection>Olympus</SidebarSection>
@@ -2273,79 +2300,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, color: C.text }}>LIVE TACTICAL</span>
         </div>
 
-        {/* Olympus mode switcher + protected-units lock moved to the
-            left sidebar in v1.19.24 — see SidebarBtn block above.
-            (Was a floating segmented control + a round button here.) */}
-
-        {/* Controller filters */}
-        <div style={fGroup}>
-          <IconToggle icon="👤" active={showHuman} onClick={toggleHuman}
-            helpTitle="Hide / show human units"
-            helpBody={<>Toggles map visibility of player-piloted (human) units. Currently <b style={{ color: showHuman ? C.green : C.red }}>{showHuman ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🛰" active={showOlympus} onClick={toggleOlympus}
-            helpTitle="Hide / show Olympus units"
-            helpBody={<>Toggles map visibility of Olympus-controlled units — those spawned or commanded through this terminal. Currently <b style={{ color: showOlympus ? C.green : C.red }}>{showOlympus ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🤖" active={showDcs} onClick={toggleDcs}
-            helpTitle="Hide / show DCS units"
-            helpBody={<>Toggles map visibility of DCS-controlled units — Mission Editor AI not (yet) under Olympus control. Currently <b style={{ color: showDcs ? C.green : C.red }}>{showDcs ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        </div>
-
-        <span style={{ width: 1, height: 22, background: C.border }} />
-
-        {/* Coalition filters */}
-        <div style={fGroup}>
-          <IconToggle icon="●" accent={C.red} active={showRed} onClick={toggleRed}
-            helpTitle="Hide / show RED units"
-            helpBody={<>Toggles map visibility of red-coalition units. Currently <b style={{ color: showRed ? C.green : C.red }}>{showRed ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="●" accent={C.blue} active={showBlue} onClick={toggleBlue}
-            helpTitle="Hide / show BLUE units"
-            helpBody={<>Toggles map visibility of blue-coalition units. Currently <b style={{ color: showBlue ? C.green : C.red }}>{showBlue ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="●" accent={C.neutral} active={showNeutral} onClick={toggleNeutral}
-            helpTitle="Hide / show NEUTRAL units"
-            helpBody={<>Toggles map visibility of neutral / unaligned units. Currently <b style={{ color: showNeutral ? C.green : C.red }}>{showNeutral ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        </div>
-
-        <span style={{ width: 1, height: 22, background: C.border }} />
-
-        {/* Type filters */}
-        <div style={fGroup}>
-          <IconToggle icon="✈" active={showAircraft} onClick={toggleAircraft}
-            helpTitle="Hide / show aircraft"
-            helpBody={<>Toggles map visibility of fixed-wing aircraft. Currently <b style={{ color: showAircraft ? C.green : C.red }}>{showAircraft ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🚁" active={showHelicopter} onClick={toggleHelicopter}
-            helpTitle="Hide / show helicopters"
-            helpBody={<>Toggles map visibility of helicopters. Currently <b style={{ color: showHelicopter ? C.green : C.red }}>{showHelicopter ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="📡" active={showSam} onClick={toggleSam}
-            helpTitle="Hide / show SAM units"
-            helpBody={<>Toggles map visibility of SAM / air-defense ground units — SAM sites, launchers, radars, AAA and MANPADS. Currently <b style={{ color: showSam ? C.green : C.red }}>{showSam ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🪖" active={showGround} onClick={toggleGround}
-            helpTitle="Hide / show ground units"
-            helpBody={<>Toggles map visibility of non-air-defense ground units — armor, vehicles, infantry, artillery. Currently <b style={{ color: showGround ? C.green : C.red }}>{showGround ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🚢" active={showNavy} onClick={toggleNavy}
-            helpTitle="Hide / show navy units"
-            helpBody={<>Toggles map visibility of naval units / ships. Currently <b style={{ color: showNavy ? C.green : C.red }}>{showNavy ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="🛬" active={showAirbase} onClick={toggleAirbase}
-            helpTitle="Hide / show airbases"
-            helpBody={<>Toggles map markers for airbases and carriers (name + coalition ring). Currently <b style={{ color: showAirbase ? C.green : C.red }}>{showAirbase ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="💀" active={showDead} onClick={toggleDead}
-            helpTitle="Hide / show dead units"
-            helpBody={<>Toggles map visibility of destroyed / dead units. Currently <b style={{ color: showDead ? C.green : C.red }}>{showDead ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-        </div>
-
-        <span style={{ width: 1, height: 22, background: C.border }} />
-
-        {/* Overlay filters */}
-        <div style={fGroup}>
-          <IconToggle icon="◎" active={showEng} onClick={toggleEng}
-            helpTitle="Hide / show engagement rings"
-            helpBody={<>Weapons-engagement range rings around units that have them (SAMs, AAA, etc.), from the unit blueprint. Currently <b style={{ color: showEng ? C.green : C.red }}>{showEng ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="◌" active={showAcq} onClick={toggleAcq}
-            helpTitle="Hide / show acquisition rings"
-            helpBody={<>Detection / acquisition range rings (radar pickup) around units that have them. Currently <b style={{ color: showAcq ? C.green : C.red }}>{showAcq ? 'SHOWING' : 'HIDDEN'}</b>.</>} />
-          <IconToggle icon="❖" active={clusterGround} onClick={toggleCluster}
-            helpTitle="Ground unit clustering"
-            helpBody={<>Groups nearby ground units into a single counted marker when zoomed out, to declutter the map. Click a cluster to zoom in. Currently <b style={{ color: clusterGround ? C.green : C.red }}>{clusterGround ? 'ON' : 'OFF'}</b>.</>} />
-        </div>
+        {/* v1.19.26: every filter toggle (controllers / coalitions /
+            categories / overlays) moved to the left sidebar as text-
+            labelled SidebarBtns. The top bar now only shows status —
+            the green/red dot, LIVE TACTICAL header, and the counts. */}
 
         <div style={{ flex: 1 }} />
 
@@ -3233,30 +3191,9 @@ function Glyph({ side }: { side: number }) {
   return <span style={{ color: SIDE_COLOR[side] ?? C.neutral, fontSize: 10 }}>◆</span>;
 }
 
-// Round top-bar toggle (visibility filters) with an Olympus-style hover-help.
-// `accent` (optional) tints the active state to a coalition color.
-function IconToggle({ icon, active, onClick, helpTitle, helpBody, accent }: {
-  icon: string; active: boolean; onClick: () => void; helpTitle: string; helpBody: React.ReactNode; accent?: string;
-}) {
-  const [hover, setHover] = useState(false);
-  return (
-    <div style={{ position: 'relative' }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-      <button onClick={onClick} aria-label={helpTitle}
-              style={{ width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                       border: `1px solid ${active ? (accent || C.borderHi) : C.border}`,
-                       background: active ? (accent ? `${accent}22` : C.accentDim) : 'rgba(255,255,255,0.04)',
-                       color: active ? (accent || C.text) : C.textDim, opacity: active ? 1 : 0.5 }}>
-        {icon}
-      </button>
-      {hover && (
-        <div style={{ position: 'absolute', top: 38, left: 0, width: 300, zIndex: 6, padding: 12, ...glass, fontSize: 12, lineHeight: 1.55, color: C.textDim }}>
-          <div style={{ color: C.text, fontWeight: 700, marginBottom: 6 }}>{helpTitle}</div>
-          {helpBody}
-        </div>
-      )}
-    </div>
-  );
-}
+// `IconToggle` (round filter button with hover-help) removed v1.19.26 —
+// every filter now lives in the sidebar as a SidebarBtn with a real
+// text label and a `title` hint replacing the popover help.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, letterSpacing: 1, color: C.textDim, textTransform: 'uppercase', margin: '10px 0 5px' }}>{children}</div>;
 }
@@ -3282,7 +3219,8 @@ function Seg({ options, active, onPick }: { options: string[]; active?: number; 
 
 const glass: React.CSSProperties = { background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, boxShadow: '0 6px 20px rgba(0,0,0,0.45)', overflow: 'hidden' };
 const panelHead: React.CSSProperties = { padding: '8px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.text, background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${C.border}` };
-const fGroup: React.CSSProperties = { display: 'flex', gap: 5 };
+// `fGroup` (the icon-row container style) removed v1.19.26 — no more
+// icon rows in the top bar; everything is sidebar SidebarBtn now.
 // Legacy icon-only tool styles dropped in v1.19.13 — sidebar refactor
 // replaced the floating rail with text-labelled rows inside SidebarBtn.
 // `seg`/`segOn` removed v1.19.24 along with the top-bar mode segmented
