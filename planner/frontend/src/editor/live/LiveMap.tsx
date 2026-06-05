@@ -170,6 +170,11 @@ interface UnitT {
   heading?: number; track?: number;  // radians (0=N, CW) — for the heading arrow
   speed?: number;  // m/s — shipped by the decoder for moving units
   position?: { lat: number; lng: number; alt?: number };
+  /** Olympus ID of the unit this one is currently engaging — used by the
+   *  Live event recorder for best-effort kill attribution: if A.targetID
+   *  pointed at B and B dies, A is the most likely killer. Not always set
+   *  (BVR locks drop, ground units may not surface a target). */
+  targetID?: number;
 }
 
 // 0 = off, 1 = basic (unit name), 2 = rich (CALLSIGN / ALT·HDG / SPD)
@@ -763,7 +768,19 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // - When sessionId is null (Live-without-upload flow, Task #17), recording
   //   is silently skipped — the AAR feature only makes sense with a session.
   const sessionId = useMissionStore((s) => s.sessionId);
+  // Most-recent loss/kill, surfaced as a small chip on the Live panel so
+  // the DM sees the recorder firing in real time. Useful as proof that
+  // attribution is working — and as a visible "AAR is capturing this"
+  // signal during long sessions.
+  const [lastLoss, setLastLoss] = useState<{ unit: string; killer: string; tMin: number; at: number } | null>(null);
   const prevAliveRef = useRef<Map<string, number>>(new Map());
+  // Per-target attacker-candidate index from the previous poll, used for
+  // best-effort kill attribution when a unit dies. Keyed by
+  // targetOlympusID → set of olympusIDs that were locking it last poll.
+  // Olympus's `targetID` field is reasonably reliable for AI engagements
+  // (they hold a target through the merge); BVR locks can drop before
+  // weapon impact, so attribution is best-effort, not guaranteed.
+  const prevTargetingRef = useRef<Map<number, Set<number>>>(new Map());
   const liveStartedAtRef = useRef<number | null>(null);
   const eventsPostFailRef = useRef<number>(0);  // back off after repeated failures
   const [bullseyePin, setBullseyePin] = useState<BullseyePin | null>(() => {
@@ -1574,15 +1591,21 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         }
         // Diagnostic — surface what the click is doing. The 🐛 debug panel
         // shows the most recent entry; console gives a fuller trace for the
-        // "I can't click AI units" class of bug.
+        // "I can't click AI units" class of bug. Gated behind a localStorage
+        // flag (v1.19.20) so production consoles stay quiet by default;
+        // flip with `localStorage.setItem('dcsopt.debug.liveClicks', '1')`.
         if (typeof console !== 'undefined') {
-          // eslint-disable-next-line no-console
-          console.debug('[LiveMap click]', {
-            tool: c.tool, mode: c.mode, armed: c.armed,
-            targetID: target?.olympusID, targetName: target?.unitName || target?.name,
-            human: target?.human, controlled: target?.controlled, coalition: target?.coalition,
-            hadFeature: !!f, hadCluster: Array.isArray(f?.get('features')),
-          });
+          let debugClicks = false;
+          try { debugClicks = localStorage.getItem('dcsopt.debug.liveClicks') === '1'; } catch { /* swallow */ }
+          if (debugClicks) {
+            // eslint-disable-next-line no-console
+            console.debug('[LiveMap click]', {
+              tool: c.tool, mode: c.mode, armed: c.armed,
+              targetID: target?.olympusID, targetName: target?.unitName || target?.name,
+              human: target?.human, controlled: target?.controlled, coalition: target?.coalition,
+              hadFeature: !!f, hadCluster: Array.isArray(f?.get('features')),
+            });
+          }
         }
         // Tool-armed branches use the unit hit-test result.
         if (c.tool === 'bra') { c.onBra(lat, lng, target); return; }  // BRA uses hit-test (unit alt/track)
@@ -1767,6 +1790,27 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           const lossEvents: Array<Record<string, unknown>> = [];
           const prev = prevAliveRef.current;
           const eventEpoch = Date.now();
+          // Build a name+coalition lookup keyed by olympusID so we can
+          // resolve attacker IDs from the previous poll into readable
+          // killer strings — and to filter same-coalition "candidates"
+          // (a friendly that happened to lock the bandit shouldn't get
+          // tagged as the killer if a different hostile actually shot
+          // it down). The CURRENT poll's units are the freshest naming
+          // we have for any unit still on the feed.
+          const idLookup = new Map<number, { name: string; coalition?: number }>();
+          for (const u of units) {
+            if (u.olympusID != null) {
+              idLookup.set(u.olympusID, {
+                name: u.unitName || u.name || `id ${u.olympusID}`,
+                coalition: u.coalition,
+              });
+            }
+          }
+          // Previous-poll attacker-candidates index: targetOlympusID →
+          // [attackerOlympusID, ...]. Rebuilt every poll from the PRIOR
+          // map (set up at the end of this block). Stored on the ref so
+          // the next poll can read what was targeted-this-poll.
+          const prevCandidates = prevTargetingRef.current;
           for (const u of units) {
             const key = u.olympusID != null ? String(u.olympusID) : (u.unitName || u.name || '');
             if (!key) continue;
@@ -1775,17 +1819,59 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             if (wasAlive === 1 && isAlive === 0) {
               if (liveStartedAtRef.current == null) liveStartedAtRef.current = eventEpoch;
               const tMin = Math.round((eventEpoch - liveStartedAtRef.current) / 60000);
+              // Attribute the kill. Best-effort: look up previous-poll
+              // candidates that were targeting this unit; prefer one
+              // whose coalition differs from the victim's. If none
+              // matches, fall back to "unknown".
+              let killer = 'unknown';
+              const attackers = u.olympusID != null ? prevCandidates.get(u.olympusID) : undefined;
+              if (attackers && attackers.size) {
+                const victimCoa = u.coalition;
+                let best: number | null = null;
+                for (const aid of attackers) {
+                  const info = idLookup.get(aid);
+                  if (!info) continue;
+                  // Prefer opposite-coalition attackers; only fall back to
+                  // a same-coalition lock if no enemy candidate exists.
+                  if (info.coalition !== undefined && victimCoa !== undefined && info.coalition !== victimCoa) {
+                    best = aid; break;
+                  }
+                  if (best == null) best = aid;
+                }
+                if (best != null) {
+                  const info = idLookup.get(best);
+                  if (info) killer = info.name;
+                }
+              }
+              const victimName = u.unitName || u.name || key;
               lossEvents.push({
                 time_min: tMin,
                 type: 'loss',
-                unit: u.unitName || u.name || key,
-                killer: 'unknown',
+                unit: victimName,
+                killer,
                 coalition: u.coalition,
                 category: u.category,
               });
+              // Surface the most recent kill on the Live panel; let the
+              // older one stick around until the next death so the DM
+              // has a moment to read it.
+              setLastLoss({ unit: victimName, killer, tMin, at: eventEpoch });
             }
             prev.set(key, isAlive);
           }
+          // Rebuild the targeting candidates index for the NEXT poll's
+          // attribution pass. Only count units that are alive — dead
+          // units shouldn't survive into the candidate list. Bounded to
+          // prevent memory growth.
+          const nextCandidates = new Map<number, Set<number>>();
+          for (const u of units) {
+            if (u.alive === 0) continue;
+            if (u.olympusID == null || u.targetID == null || u.targetID === 0) continue;
+            const set = nextCandidates.get(u.targetID) ?? new Set<number>();
+            set.add(u.olympusID);
+            nextCandidates.set(u.targetID, set);
+          }
+          prevTargetingRef.current = nextCandidates;
           // Prune the prev map of keys that disappeared from the feed,
           // bounded to keep memory from growing on very long sessions.
           if (prev.size > 1000) {
@@ -2831,6 +2917,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             <span>{formatBra(braCall)}</span>
             {braAnchor?.label && <span style={{ color: C.textDim, fontWeight: 400 }}>from {braAnchor.label}</span>}
             {braTarget?.label && <span style={{ color: C.textDim, fontWeight: 400 }}>→ {braTarget.label}</span>}
+          </span>
+        )}
+        {/* Most-recent loss/kill chip — proof that the AAR event recorder
+            is firing in real time. Faded out after 60 s so it doesn't
+            stick around forever; clears on Live mode unmount. */}
+        {lastLoss && Date.now() - lastLoss.at < 60_000 && (
+          <span title={`T+${lastLoss.tMin}m · auto-logged to AAR`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#d95050', fontWeight: 600 }}>
+            <span style={{ opacity: 0.75 }}>💥</span>
+            <span>{lastLoss.killer === 'unknown' ? `${lastLoss.unit} destroyed` : `${lastLoss.killer} → ${lastLoss.unit}`}</span>
+            <span style={{ color: C.textDim, fontWeight: 400 }}>T+{lastLoss.tMin}m</span>
           </span>
         )}
         <div style={{ flex: 1 }} />

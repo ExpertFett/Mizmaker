@@ -160,6 +160,13 @@ export function MissionEditor() {
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
   const theater = useMissionStore((s) => s.theater);
+  // Detect unmapped theater: a mission loaded successfully (has groups) but
+  // the airbase loader returned nothing — usually means the theatre name
+  // from the .miz didn't match a known map. Surfaced as a sidebar banner
+  // so the planner knows the map won't show airfields. (v1.19.20 audit #2)
+  const airbaseCount = useMissionStore((s) => s.airbases.length);
+  const groupCount = useMissionStore((s) => s.groups.length);
+  const showUnmappedTheaterBanner = groupCount > 0 && airbaseCount === 0;
 
   // Active SOP — shown as a green indicator on the SOP tab + the SOP
   // name under theater/filename in the sidebar header. Visible from any
@@ -283,6 +290,29 @@ export function MissionEditor() {
                     }}
                   />
                   SOP: {activeSop.name}
+                </div>
+              )}
+              {showUnmappedTheaterBanner && (
+                <div
+                  title={`No airfield data shipped for theater "${theater}". The map won't show airbases, and brief slides that reference airfields will read "—". You can still plan routes manually; this only affects auto-populated airfield references.`}
+                  style={{
+                    fontSize: 11,
+                    color: '#d29922',
+                    marginTop: 4,
+                    fontWeight: 600,
+                    letterSpacing: 0.3,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ flexShrink: 0 }}>⚠</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    No airfields for "{theater}"
+                  </span>
                 </div>
               )}
             </div>

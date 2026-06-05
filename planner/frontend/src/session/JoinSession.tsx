@@ -5,14 +5,24 @@
 
 import { useState, useEffect } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { useAuthStore } from '../store/authStore';
 import { setActiveTheater } from '../projection/dcsProjection';
 
 export function JoinSession({ sessionId, token }: { sessionId: string; token: string }) {
   const loadMission = useMissionStore((s) => s.loadMission);
+  const enterGuest = useAuthStore((s) => s.enterGuest);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Invite links bypass the landing/login gate per design. Without
+    // this, the join fetch races against App.tsx's render: once
+    // sessionId is set, the joinMatch branch falls through and the
+    // `!user && !enteredAsGuest` check sends a fresh-tab visitor back
+    // to LandingPage instead of into the MissionEditor. Mark the
+    // session as guest entry immediately so the next render lands
+    // in the editor. (v1.19.20 — audit fix #1)
+    enterGuest();
     async function join() {
       try {
         const res = await fetch(`/api/sessions/${sessionId}/join?token=${token}`);
@@ -30,7 +40,7 @@ export function JoinSession({ sessionId, token }: { sessionId: string; token: st
       }
     }
     join();
-  }, [sessionId, token, loadMission]);
+  }, [sessionId, token, loadMission, enterGuest]);
 
   if (loading) {
     return (
