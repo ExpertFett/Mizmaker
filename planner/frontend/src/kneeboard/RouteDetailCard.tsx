@@ -183,13 +183,25 @@ function RouteMap({ group }: { group: MissionGroup }) {
               );
             })}
 
-            {/* Waypoint markers — DEP (green) / ARR (red) / mid (amber) */}
+            {/* Waypoint markers — first green / last red / mid amber.
+                Labels prefer the user's actual waypoint name; only fall
+                back to DEP/ARR/WPn when the name is blank or matches the
+                generic auto-generated default (e.g. "WP0", "Point 1").
+                Earlier code unconditionally relabeled the last waypoint
+                "ARR" — but it's often a TGT or a fence point, not an
+                arrival. (v1.19.22 — Fett reported "Neon" overwritten as
+                "ARR" on a DEVIL 1 PP2 strike kneeboard.) */}
             {projected.map((p, i) => {
               const isFirst = i === 0;
               const isLast = i === projected.length - 1;
               const color = isFirst ? '#3fb950' : isLast ? '#d95050' : '#ffb24a';
-              const label = isFirst ? 'DEP' : isLast ? 'ARR'
-                : (p.wp.waypoint_name || `WP${p.wp.waypoint_number}`).substring(0, 6);
+              const rawName = (p.wp.waypoint_name || '').trim();
+              const isDefaultName = !rawName
+                || /^WP\s*\d+$/i.test(rawName)
+                || /^Point\s+\d+$/i.test(rawName)
+                || /^Waypoint\s*\d*$/i.test(rawName);
+              const fallback = isFirst ? 'DEP' : isLast ? 'ARR' : `WP${p.wp.waypoint_number}`;
+              const label = (isDefaultName ? fallback : rawName).substring(0, 6);
               const big = isFirst || isLast;
               return (
                 <g key={`wp-${i}`}>
