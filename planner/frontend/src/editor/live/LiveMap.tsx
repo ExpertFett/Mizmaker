@@ -1661,7 +1661,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
             if (coord) {
               const [fLon, fLat] = toLonLat(coord);
               let best: { name: string; dKm: number } | null = null;
-              for (const a of airfieldList) {
+              // Read the latest list via the ref — the OL singleclick
+              // handler is registered once on mount and would otherwise
+              // see the empty initial airfieldList. Bug fix v1.19.34.
+              for (const a of airfieldListRef.current ?? []) {
                 const d = Math.hypot((a.lat - fLat), (a.lng - fLon));
                 if (!best || d < best.dKm) best = { name: a.name, dKm: d };
               }

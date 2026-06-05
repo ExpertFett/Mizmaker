@@ -33,7 +33,15 @@ import { formatLatLon } from '../../utils/conversions';
 
 type CoalitionFilter = 'all' | 'blue' | 'red' | 'neutral';
 
-export function AirfieldsTab() {
+interface AirfieldsTabProps {
+  /** When set, the tab snaps to this airbase on every tick change.
+   *  Used by the parent so a map-click that fires twice for the same
+   *  field still re-focuses (the tick increments on every pick). */
+  focusName?: string;
+  focusTick?: number;
+}
+
+export function AirfieldsTab({ focusName, focusTick }: AirfieldsTabProps = {}) {
   const airbases = useMissionStore((s) => s.airbases);
   const theater = useMissionStore((s) => s.theater);
 
@@ -41,6 +49,19 @@ export function AirfieldsTab() {
   const [coa, setCoa] = useState<CoalitionFilter>('all');
   const [selectedName, setSelectedName] = useState<string>('');
   const [elevationFt, setElevationFt] = useState<number | null>(null);
+
+  // Snap to the externally-requested airbase whenever the parent says
+  // so. Watching `focusTick` (not just `focusName`) so a re-click on
+  // the same field still re-fires the selection. (v1.19.34)
+  useEffect(() => {
+    if (focusName) {
+      setSelectedName(focusName);
+      // Clear any active filter that would hide the selection so the
+      // user sees it land in the list.
+      setQuery('');
+      setCoa('all');
+    }
+  }, [focusName, focusTick]);
 
   // Filter + sort the airbase list. Skip entries with no lat/lon so the
   // detail panel never picks something we can't render.

@@ -161,6 +161,11 @@ export function MissionEditor() {
   // switches — the previous pattern (`{activeTab === 'x' && <Tab />}`) unmounted
   // the tab on switch and discarded any in-progress edits.
   const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(() => new Set(['map']));
+  // When the user clicks an airbase marker on the map, this stores the
+  // name so the AirfieldsTab snaps its detail card to that field. The
+  // tick increments on every pick so re-clicking the same field still
+  // triggers the focus effect downstream. (v1.19.34)
+  const [airfieldFocus, setAirfieldFocus] = useState<{ name: string; tick: number }>({ name: '', tick: 0 });
   const sessionId = useMissionStore((s) => s.sessionId);
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
@@ -572,7 +577,13 @@ export function MissionEditor() {
         {isMap && (
           <>
             <ParticipantBar />
-            <MapContainer onDmpiPicked={() => selectTab('dmpi')} />
+            <MapContainer
+              onDmpiPicked={() => selectTab('dmpi')}
+              onAirfieldPicked={(name) => {
+                setAirfieldFocus((prev) => ({ name, tick: prev.tick + 1 }));
+                selectTab('airfields');
+              }}
+            />
             {selectedGroupId && <FloatingFlightPanel />}
           </>
         )}
@@ -655,7 +666,7 @@ export function MissionEditor() {
             )}
             {visitedTabs.has('airfields') && (
               <div style={{ display: activeTab === 'airfields' ? 'block' : 'none' }}>
-                <AirfieldsTab />
+                <AirfieldsTab focusName={airfieldFocus.name} focusTick={airfieldFocus.tick} />
               </div>
             )}
             {visitedTabs.has('visibility') && (

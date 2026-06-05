@@ -116,9 +116,18 @@ interface MapContainerProps {
    *  unset, picking still completes and writes coordinates, the user
    *  just stays on the map. */
   onDmpiPicked?: () => void;
+  /** When the user clicks an airbase marker, the parent jumps to the
+   *  Airfields tab with this name pre-selected. (v1.19.34) */
+  onAirfieldPicked?: (name: string) => void;
 }
 
-export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
+export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerProps = {}) {
+  // Callback refs — OL click handler is registered once on mount; refs
+  // let it always read the latest parent callbacks. (v1.19.34)
+  const onAirfieldPickedRef = useRef(onAirfieldPicked);
+  useEffect(() => { onAirfieldPickedRef.current = onAirfieldPicked; }, [onAirfieldPicked]);
+  const onDmpiPickedRef = useRef(onDmpiPicked);
+  useEffect(() => { onDmpiPickedRef.current = onDmpiPicked; }, [onDmpiPicked]);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const baseLayers = useRef<{ dark: TileLayer; osm: TileLayer; satellite: TileLayer; topo: TileLayer } | null>(null);
@@ -355,7 +364,7 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
       if (pickingForId) {
         const [lon, lat] = toLonLat(e.coordinate);
         finishPicking(lat, lon);
-        onDmpiPicked?.();
+        onDmpiPickedRef.current?.();
         return;
       }
 
@@ -379,6 +388,21 @@ export function MapContainer({ onDmpiPicked }: MapContainerProps = {}) {
         selectGroup(groupHit.get('groupId'));
         setSelectedWpIndex(null);
         return;
+      }
+
+      // Airbase hit — populateAirbaseLayer stores the full Airbase
+      // object on the feature under the "airbase" key. Hand the name to
+      // the parent so it can flip to the Airfields tab and focus the
+      // detail card. Lower priority than units / waypoints because
+      // those are smaller targets and the user clicked them on purpose.
+      // (v1.19.34)
+      const abHit = hits.find((f) => f.get('airbase'));
+      if (abHit && onAirfieldPickedRef.current) {
+        const ab = abHit.get('airbase');
+        if (ab?.name) {
+          onAirfieldPickedRef.current(ab.name);
+          return;
+        }
       }
 
       // Clicked empty space — deselect waypoint
