@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMissionStore } from './store/missionStore';
+import { useEditStore } from './store/editStore';
 import { useAuthStore } from './store/authStore';
 import { UploadPanel } from './panels/UploadPanel';
 import { LandingPage } from './panels/LandingPage';
@@ -37,6 +38,31 @@ export default function App() {
       window.history.replaceState({}, '', u.pathname + u.search + u.hash);
     }
   }, [checkMe]);
+
+  // Adopt the new session into the editStore whenever sessionId changes.
+  // This restores any persisted edits keyed to that session (so an
+  // accidental browser refresh no longer wipes pending work) and prunes
+  // stale localStorage entries for missions the user has moved on from.
+  // (v1.19.21 audit fix #B)
+  useEffect(() => {
+    useEditStore.getState().setSessionForEdits(sessionId);
+  }, [sessionId]);
+
+  // beforeunload guard — if the user has staged edits, warn before
+  // refresh / tab-close. Browsers ignore the message string in modern
+  // versions but still show a generic "leave site?" dialog when
+  // preventDefault() runs. (v1.19.21 audit fix #B)
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      const { edits } = useEditStore.getState();
+      if (edits.length === 0) return;
+      e.preventDefault();
+      // Older browsers honor returnValue; modern browsers show a generic.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   // Check if this is a join URL: /join/{sessionId}?token={token}
   const path = window.location.pathname;

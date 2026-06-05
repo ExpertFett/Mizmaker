@@ -214,6 +214,11 @@ export function BriefingTab() {
   const overview = useMissionStore((s) => s.overview);
   const sessionId = useMissionStore((s) => s.sessionId);
   const addEdit = useEditStore((s) => s.addEdit);
+  // Watch the editStore for the staged briefing edit (if any). Used by
+  // the "revert on edit-removal" effect below — when the user removes
+  // the briefing edit on the Edits tab, this becomes undefined and we
+  // sync the local fields back to overview. (v1.19.21 audit fix #A)
+  const briefingEdit = useEditStore((s) => s.edits.find((e: any) => e.field === 'briefing'));
 
   // Local edit state. Initialized from overview on every NEW session
   // (see sync effect below) — useState alone fires only on first
@@ -230,17 +235,52 @@ export function BriefingTab() {
   // Sync local state from the mission overview on first arrival per
   // session. Only fires when sessionId changes — once the user starts
   // editing within a session, we don't clobber their typing.
+  //
+  // When a briefing edit was restored from localStorage (audit fix #B),
+  // we initialise the fields from the EDIT's values instead of the raw
+  // overview so the input reflects the queued change. Without this,
+  // refresh + restore would show the original mission values while the
+  // queue badge said "1 pending" — confusing and wrong.
   const lastSyncedSessionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!overview || !sessionId) return;
     if (lastSyncedSessionRef.current === sessionId) return;
-    setSortie(overview.sortie || '');
-    setDescription((overview.description || '').replace(/\\n/g, '\n'));
-    setBlueTask((overview.descriptionBlueTask || '').replace(/\\n/g, '\n'));
-    setRedTask((overview.descriptionRedTask || '').replace(/\\n/g, '\n'));
+    const restored = (briefingEdit as any)?.value;
+    if (restored && typeof restored === 'object') {
+      setSortie(restored.sortie ?? overview.sortie ?? '');
+      setDescription((restored.description ?? overview.description ?? '').replace(/\\n/g, '\n'));
+      setBlueTask((restored.descriptionBlueTask ?? overview.descriptionBlueTask ?? '').replace(/\\n/g, '\n'));
+      setRedTask((restored.descriptionRedTask ?? overview.descriptionRedTask ?? '').replace(/\\n/g, '\n'));
+    } else {
+      setSortie(overview.sortie || '');
+      setDescription((overview.description || '').replace(/\\n/g, '\n'));
+      setBlueTask((overview.descriptionBlueTask || '').replace(/\\n/g, '\n'));
+      setRedTask((overview.descriptionRedTask || '').replace(/\\n/g, '\n'));
+    }
     setApplied(false);
     lastSyncedSessionRef.current = sessionId;
-  }, [overview, sessionId]);
+  }, [overview, sessionId, briefingEdit]);
+
+  // Revert local state when the staged briefing edit is removed externally
+  // (e.g. user clicks × on the Edits tab). Without this, the input fields
+  // keep showing the typed text after the edit is gone — the user thinks
+  // their change is still in effect but the download won't include it.
+  // (v1.19.21 audit fix #A)
+  const prevBriefingPresentRef = useRef(false);
+  useEffect(() => {
+    const present = !!briefingEdit;
+    // Only act on the present→absent transition. present→present or
+    // absent→absent transitions are normal typing flow and shouldn't
+    // touch the local fields.
+    if (prevBriefingPresentRef.current && !present && overview) {
+      setSortie(overview.sortie || '');
+      setDescription((overview.description || '').replace(/\\n/g, '\n'));
+      setBlueTask((overview.descriptionBlueTask || '').replace(/\\n/g, '\n'));
+      setRedTask((overview.descriptionRedTask || '').replace(/\\n/g, '\n'));
+      setApplied(false);
+    }
+    prevBriefingPresentRef.current = present;
+  }, [briefingEdit, overview]);
 
   const hasChanges = useMemo(() => {
     return sortie !== (overview?.sortie || '') ||
@@ -278,9 +318,22 @@ export function BriefingTab() {
   // the "I typed it but it didn't save" trap. Debounce 800 ms so we
   // don't queue an edit per keystroke; that keeps the Edits tab
   // count sane (one briefing edit batched at a time).
+  //
+  // On restore from localStorage (audit fix #B), the queued briefing
+  // edit may already match the local state — in that case re-staging
+  // would create a duplicate, doubling the Edits badge. Skip when the
+  // queued edit's value mirrors the current inputs.
   const stageRef = useRef<number | null>(null);
   useEffect(() => {
     if (!hasChanges) return;
+    const queued = (briefingEdit as any)?.value;
+    if (queued
+        && queued.sortie === sortie
+        && queued.description === description.replace(/\n/g, '\\n')
+        && queued.descriptionBlueTask === blueTask.replace(/\n/g, '\\n')
+        && queued.descriptionRedTask === redTask.replace(/\n/g, '\\n')) {
+      return;  // already represented in the queue — no re-stage needed
+    }
     if (stageRef.current != null) window.clearTimeout(stageRef.current);
     stageRef.current = window.setTimeout(() => {
       handleApply();
@@ -288,7 +341,7 @@ export function BriefingTab() {
     return () => {
       if (stageRef.current != null) window.clearTimeout(stageRef.current);
     };
-  }, [hasChanges, handleApply]);
+  }, [hasChanges, handleApply, briefingEdit, sortie, description, blueTask, redTask]);
 
   return (
     <div style={{ maxWidth: 750 }}>

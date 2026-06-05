@@ -98,6 +98,11 @@ export interface KneeboardSettings {
 interface EditState {
   edits: (WaypointEdit | UnitEdit)[];
   isDirty: boolean;
+  /** Session ID this edit list belongs to. Tracked so the localStorage
+   *  persistence layer can key entries per-session — and so that if
+   *  the user uploads a different mission, we don't restore the prior
+   *  mission's edits onto the new groups. (v1.19.21 audit fix #B) */
+  sessionId: string | null;
   injectKneeboards: boolean;
   /** When true, the download path empties the .miz's
    *  `["requiredModules"]` block so anyone can load the mission
@@ -113,6 +118,13 @@ interface EditState {
    *  need to know about indices. */
   removeEditAt: (index: number) => void;
   clearEdits: () => void;
+  /** Adopt a new session. Loads any persisted edits for that session
+   *  from localStorage (so a browser refresh / accidental F5 doesn't
+   *  wipe pending work) and prunes stale entries for missions the
+   *  user is no longer working on. Called by the App / JoinSession
+   *  pipeline whenever the missionStore.sessionId changes.
+   *  (v1.19.21 audit fix #B) */
+  setSessionForEdits: (sid: string | null) => void;
   setInjectKneeboards: (v: boolean) => void;
   setStripRequiredModules: (v: boolean) => void;
   setKneeboardSettings: (s: Partial<KneeboardSettings>) => void;
@@ -138,9 +150,53 @@ function savePopupAttacks(p: PopupAttackInput[]): void {
   catch { /* quota / private mode — best effort */ }
 }
 
+// ── Edit-queue persistence (audit fix #B, v1.19.21) ────────────────────
+// Without this, a browser refresh / accidental F5 wipes every pending
+// edit silently — no warning, no recovery. Edits are keyed by sessionId
+// so a planner working on Mission A then uploading Mission B doesn't
+// see ghost edits from Mission A leak onto the new groups.
+const EDITS_LS_PREFIX = 'dcsopt.edits.';
+const EDITS_LS_KEY = (sid: string) => `${EDITS_LS_PREFIX}${sid}`;
+
+function loadEditsForSession(sid: string): (WaypointEdit | UnitEdit)[] {
+  if (!sid || typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(EDITS_LS_KEY(sid));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function saveEditsForSession(sid: string, edits: (WaypointEdit | UnitEdit)[]): void {
+  if (!sid || typeof localStorage === 'undefined') return;
+  try {
+    if (edits.length === 0) localStorage.removeItem(EDITS_LS_KEY(sid));
+    else localStorage.setItem(EDITS_LS_KEY(sid), JSON.stringify(edits));
+  } catch { /* quota / private mode — best-effort */ }
+}
+
+/** Drop any persisted edit queues for sessions other than the current
+ *  one. Keeps localStorage from accumulating 50-KB chunks for every
+ *  mission the user has touched. Called on session adoption. */
+function pruneStaleEditQueues(currentSid: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(EDITS_LS_PREFIX)) continue;
+      if (currentSid && k === EDITS_LS_KEY(currentSid)) continue;
+      stale.push(k);
+    }
+    stale.forEach((k) => localStorage.removeItem(k));
+  } catch { /* swallow */ }
+}
+
 export const useEditStore = create<EditState>((set) => ({
   edits: [],
   isDirty: false,
+  sessionId: null,
   injectKneeboards: false,
   stripRequiredModules: true,  // squadron-friendly default (v0.9.32)
   kneeboardSettings: {
@@ -178,6 +234,22 @@ export const useEditStore = create<EditState>((set) => ({
 
   clearEdits: () => set({ edits: [], isDirty: false }),
 
+  setSessionForEdits: (sid) =>
+    set((s) => {
+      // Adopting a new session — load its persisted queue (if any) and
+      // prune any old session blobs we no longer need. If sid is null
+      // (logout / mission close) we keep the current edits in memory
+      // for the user but stop persisting; next session adoption resets.
+      if (sid === s.sessionId) return s;
+      pruneStaleEditQueues(sid);
+      const restored = sid ? loadEditsForSession(sid) : [];
+      return {
+        sessionId: sid,
+        edits: restored,
+        isDirty: restored.length > 0,
+      };
+    }),
+
   setInjectKneeboards: (v) => set({ injectKneeboards: v }),
 
   setStripRequiredModules: (v) => set({ stripRequiredModules: v }),
@@ -190,10 +262,18 @@ export const useEditStore = create<EditState>((set) => ({
 // page reloads + mission re-uploads. Selector subscription (vs. a full
 // subscribe) means we only write when the array reference actually
 // changes — not on every unrelated edit-store mutation.
+//
+// Same subscribe also mirrors the edit queue to localStorage keyed by
+// session — covers the audit-fix-#B case where a browser refresh would
+// silently wipe pending edits. Writes are skipped when sessionId isn't
+// set (e.g. between mission unload + new upload).
 if (typeof window !== 'undefined') {
   useEditStore.subscribe((s, prev) => {
     if (s.kneeboardSettings.popupAttacks !== prev.kneeboardSettings.popupAttacks) {
       savePopupAttacks(s.kneeboardSettings.popupAttacks);
+    }
+    if (s.edits !== prev.edits && s.sessionId) {
+      saveEditsForSession(s.sessionId, s.edits);
     }
   });
 }
