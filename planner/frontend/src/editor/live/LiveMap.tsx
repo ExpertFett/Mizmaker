@@ -39,6 +39,7 @@ import {
 } from '../../api/groups';
 import { SpawnPanel } from './SpawnPanel';
 import { IadsPanel } from './IadsPanel';
+import { AtcPanel } from './AtcPanel';
 import type { IadsArea } from './iadsRecipes';
 import { computeBra, formatBra, metresToFeet, type LL } from './braCalc';
 import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictureCall';
@@ -690,6 +691,9 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // airbases. Phase 7. The abSrc layer always renders; the search panel just
   // controls a separate "highlight" overlay.
   const [airfieldSearchOpen, setAirfieldSearchOpen] = useState(false);
+  // ATC panel (v1.19.29) — opens an inline LotATC-equivalent airport
+  // view + precision approach radar scope.
+  const [atcOpen, setAtcOpen] = useState(false);
   const [airfieldQuery, setAirfieldQuery] = useState('');
   const [airfieldList, setAirfieldList] = useState<Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }>>([]);
   const airfieldHighlightRef = useRef<VectorSource | null>(null);
@@ -2164,6 +2168,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <SidebarBtn icon="🖊" label={`Draw (${drawKind})`} active={tool === 'draw'} onClick={() => { setTool(tool === 'draw' ? 'select' : 'draw'); setArmed(null); }} hint="Draw lines / arrows / freehand on the scope"
                     badge={drawings.length || undefined} clear={{ onClick: () => setDrawings([]), disabled: drawings.length === 0, title: 'Clear all drawings' }} />
         <SidebarBtn icon="🔍" label="Airfield search" active={airfieldSearchOpen} onClick={() => setAirfieldSearchOpen((o) => !o)} hint="Filter + highlight airbases on the map" />
+        <SidebarBtn icon="🛬" label="ATC / approach" active={atcOpen} onClick={() => setAtcOpen((o) => !o)} hint="Airport view + Precision Approach Radar (PAR) — like LotATC's airport window" />
         <SidebarBtn icon="🗺" label="Chart overlays" active={chartsPanelOpen} onClick={() => setChartsPanelOpen((o) => !o)} hint="Upload approach plates / sector maps and pin them"
                     badge={charts.length || undefined} />
 
@@ -2533,6 +2538,14 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           </div>
           <span style={{ color: C.textDim, fontWeight: 400, fontSize: 10 }}>{drawings.length} on map</span>
         </div>
+      )}
+
+      {/* ── ATC / approach panel (left dock) — v1.19.29 ───────────────────── */}
+      {atcOpen && (
+        <AtcPanel
+          trackedUnit={selected ? { unitName: selected.unitName, name: selected.name, position: selected.position } : null}
+          onClose={() => setAtcOpen(false)}
+        />
       )}
 
       {/* ── Airfield search panel (left, below the tool rail) ────────────── */}
