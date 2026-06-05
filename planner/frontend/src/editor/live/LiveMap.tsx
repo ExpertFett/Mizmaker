@@ -700,6 +700,11 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const [atcFocusName, setAtcFocusName] = useState<string>('');
   const [airfieldQuery, setAirfieldQuery] = useState('');
   const [airfieldList, setAirfieldList] = useState<Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }>>([]);
+  // Ref mirror — the OL map's dblclick handler is registered once on
+  // mount but airfieldList only populates after the airbase poll. Keep
+  // a ref so the handler always reads the latest list. (v1.19.33)
+  const airfieldListRef = useRef(airfieldList);
+  useEffect(() => { airfieldListRef.current = airfieldList; }, [airfieldList]);
   const airfieldHighlightRef = useRef<VectorSource | null>(null);
   // AI airfield identification for chart placement. Reads the active BYOK
   // creds — Anthropic or Gemini — and calls the vision identifier helper.
@@ -1692,6 +1697,40 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         // Surface unexpected click handler errors instead of silently dropping.
         // eslint-disable-next-line no-console
         console.error('[LiveMap click handler] threw', err);
+      }
+    });
+    // Double-click → AIRPORT VIEW (v1.19.33). When the dblclick lands
+    // on an airbase marker, we zoom in tight, open the ATC panel, and
+    // pre-focus it on that field. This is the LotATC-style "I want to
+    // see the runway diagram" shortcut. Single-click still opens the
+    // panel without zooming (so the controller can peek without
+    // disturbing their current scope view).
+    map.on('dblclick', (e) => {
+      if (!abLayerRef.current) return;
+      const abFeat = map.forEachFeatureAtPixel(
+        e.pixel,
+        (ft) => ft,
+        { hitTolerance: 10, layerFilter: (l) => l === abLayerRef.current },
+      ) as Feature | undefined;
+      if (!abFeat) return;
+      const coord = (abFeat.getGeometry() as Point | undefined)?.getCoordinates();
+      if (!coord) return;
+      // Prevent OL's built-in DoubleClickZoom from also firing — we're
+      // doing the zoom ourselves with a smoother animation.
+      e.originalEvent?.preventDefault();
+      e.stopPropagation();
+      const [fLon, fLat] = toLonLat(coord);
+      let best: { name: string; dKm: number } | null = null;
+      for (const a of airfieldListRef.current ?? []) {
+        const d = Math.hypot((a.lat - fLat), (a.lng - fLon));
+        if (!best || d < best.dKm) best = { name: a.name, dKm: d };
+      }
+      // Tight zoom — runway diagram readable, individual taxiways start
+      // to resolve at z=14 on most basemaps.
+      map.getView().animate({ center: coord, zoom: 14, duration: 450 });
+      if (best) {
+        setAtcFocusName(best.name);
+        setAtcOpen(true);
       }
     });
     // Live cursor coordinate readout + track-hover info chip (Phase 6).

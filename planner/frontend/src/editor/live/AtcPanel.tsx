@@ -304,6 +304,21 @@ export function AtcPanel({ trackedUnit, onClose, focusName }: AtcPanelProps) {
         })}
       </div>
 
+      {/* Airport view — runway schematic from the runway list. Shown
+          whenever the selected field has at least one runway with a
+          heading. Highlights the active end in green when an approach
+          is armed. (v1.19.33) */}
+      {runwayEnds.length > 0 && (
+        <>
+          <div style={sectionLabel}>AIRPORT VIEW</div>
+          <AirportSchematic
+            airbaseName={selected.name}
+            runwayEnds={runwayEnds}
+            activeEnd={activeEnd}
+          />
+        </>
+      )}
+
       {/* PAR scope — only when an approach is active */}
       {activeRwy && (
         <>
@@ -317,6 +332,125 @@ export function AtcPanel({ trackedUnit, onClose, focusName }: AtcPanelProps) {
         </>
       )}
     </div>
+  );
+}
+
+// ── Airport schematic ───────────────────────────────────────────────────
+//
+// Top-down runway diagram drawn from the runway-end list. Each end's
+// label is positioned where a pilot landing on that runway would
+// touch down (i.e. at the opposite side of the field from the
+// heading vector). North is up. Active end (when an approach is
+// armed in the panel) is highlighted green. (v1.19.33)
+//
+// Coordinate math: the end labeled "X" with magnetic heading h sits
+// at the bearing (h + 180°) from center, so on a north-up canvas:
+//   endX = cx - sin(h°) * L/2
+//   endY = cy + cos(h°) * L/2
+// The opposite end (the take-off side / threshold for the other
+// direction) is just the reciprocal — we draw a single line between
+// the two ends per runway.
+
+function AirportSchematic({ airbaseName, runwayEnds, activeEnd }: {
+  airbaseName: string;
+  runwayEnds: { name: string; heading: number }[];
+  activeEnd: string;
+}) {
+  // Pair the ends into runways. ends with reciprocal heading (±180°
+  // within 5°) belong to the same physical runway and share a line.
+  type RunwayPair = { a: { name: string; heading: number }; b?: { name: string; heading: number } };
+  const used = new Set<number>();
+  const pairs: RunwayPair[] = [];
+  for (let i = 0; i < runwayEnds.length; i++) {
+    if (used.has(i)) continue;
+    const a = runwayEnds[i];
+    used.add(i);
+    let mate: { name: string; heading: number } | undefined;
+    for (let j = i + 1; j < runwayEnds.length; j++) {
+      if (used.has(j)) continue;
+      const b = runwayEnds[j];
+      const diff = Math.abs(((a.heading - b.heading + 540) % 360) - 180);
+      if (diff <= 5) { mate = b; used.add(j); break; }
+    }
+    pairs.push({ a, b: mate });
+  }
+
+  const W = 280, H = 200, MARGIN = 24;
+  const cx = W / 2, cy = H / 2;
+  const RUNWAY_LEN = Math.min(W, H) - MARGIN * 2;
+  const HALF = RUNWAY_LEN / 2;
+  const RUNWAY_WIDTH = 10;
+
+  // For each end's heading h, the END POSITION (touchdown for a pilot
+  // landing on that end) is at bearing (h+180°) from center.
+  const endPos = (h: number) => ({
+    x: cx - Math.sin((h * Math.PI) / 180) * HALF,
+    y: cy + Math.cos((h * Math.PI) / 180) * HALF,
+  });
+
+  return (
+    <div style={{ padding: '0 10px 10px' }}>
+      <svg width={W} height={H} style={{ display: 'block', background: 'rgba(0,0,0,0.45)', border: `1px solid ${C.border}`, borderRadius: 4 }}>
+        {/* North arrow + compass rose */}
+        <g opacity={0.6}>
+          <line x1={W - 18} y1={6} x2={W - 18} y2={20} stroke={C.textDim} strokeWidth={1.2} />
+          <polygon points={`${W - 18},2 ${W - 22},9 ${W - 14},9`} fill={C.textDim} />
+          <text x={W - 18} y={30} fontSize={9} textAnchor="middle" fill={C.textDim} fontFamily="'B612 Mono', monospace">N</text>
+        </g>
+
+        {/* Airbase name as caption */}
+        <text x={MARGIN} y={H - 8} fontSize={9} fill={C.textDim} fontFamily="'B612 Mono', monospace">
+          {airbaseName.toUpperCase()}
+        </text>
+        <text x={W - MARGIN} y={H - 8} fontSize={9} fill={C.textDim} textAnchor="end" fontFamily="'B612 Mono', monospace">
+          TOP-DOWN · N↑
+        </text>
+
+        {/* Runways */}
+        {pairs.map((pair, i) => {
+          const e1 = endPos(pair.a.heading);
+          const e2 = pair.b ? endPos(pair.b.heading)
+                            : { x: 2 * cx - e1.x, y: 2 * cy - e1.y };
+          // Perpendicular offset for the runway "stripe" — rotate the
+          // direction vector 90°.
+          const dx = e2.x - e1.x, dy = e2.y - e1.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const px = (-dy / len) * (RUNWAY_WIDTH / 2);
+          const py = (dx / len) * (RUNWAY_WIDTH / 2);
+          // Asphalt rectangle as a closed polygon.
+          const poly = `${e1.x + px},${e1.y + py} ${e1.x - px},${e1.y - py} ${e2.x - px},${e2.y - py} ${e2.x + px},${e2.y + py}`;
+          // Centerline.
+          return (
+            <g key={i}>
+              <polygon points={poly} fill="#3a3a3a" stroke="#1a1a1a" strokeWidth={0.5} />
+              <line x1={e1.x} y1={e1.y} x2={e2.x} y2={e2.y}
+                    stroke="#e0e0e0" strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7} />
+              {/* End A label */}
+              <EndLabel end={pair.a} pos={e1} activeEnd={activeEnd} />
+              {pair.b && <EndLabel end={pair.b} pos={e2} activeEnd={activeEnd} />}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function EndLabel({ end, pos, activeEnd }: {
+  end: { name: string; heading: number };
+  pos: { x: number; y: number };
+  activeEnd: string;
+}) {
+  const isActive = end.name === activeEnd;
+  return (
+    <g>
+      <circle cx={pos.x} cy={pos.y} r={9}
+              fill={isActive ? 'rgba(63,185,80,0.22)' : 'rgba(0,0,0,0.5)'}
+              stroke={isActive ? C.green : '#cfe6ff'} strokeWidth={1.2} />
+      <text x={pos.x} y={pos.y + 3.5} fontSize={10} fontWeight={700}
+            textAnchor="middle" fill={isActive ? C.green : '#cfe6ff'}
+            fontFamily="'B612 Mono', monospace">{end.name}</text>
+    </g>
   );
 }
 
