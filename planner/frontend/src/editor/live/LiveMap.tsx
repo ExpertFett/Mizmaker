@@ -2972,6 +2972,10 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
   const [pendingHeightNm, setPendingHeightNm] = useState(20);
   const [pendingOpacity, setPendingOpacity] = useState(0.7);
   const [autoAirfield, setAutoAirfield] = useState('');  // dropdown choice
+  // Bulk-import result summary (v1.19.31) — shown after the user drops
+  // a whole folder so they see what landed and what needs manual help.
+  const [bulkResult, setBulkResult] = useState<{ placed: number; unmatched: string[]; skipped: number } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const onUpload = (file: File) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
@@ -3015,6 +3019,130 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
     });
     setPendingFile(null); setPendingLabel('');
   };
+  // ── Bulk import (v1.19.31) ──────────────────────────────────────────
+  // Drop a folder of charts → for each PNG/JPG, fuzzy-match the filename
+  // against the airbase list and auto-place at the matched field's
+  // coords. Files that can't be matched land in the "unmatched" list and
+  // the user re-uploads those one-at-a-time with the existing flow.
+  //
+  // Match strategies, tried in order:
+  //   1. ICAO 4-letter code in filename (KLSV → Nellis, UGGG → Tbilisi,
+  //      OIIE → IKA / Tehran, etc.). We carry a small per-theater table
+  //      with the high-traffic entries; missing ICAOs just fall through.
+  //   2. Full airbase name as a substring of the filename
+  //      ("Anapa-Vityazevo.png" → Anapa-Vityazevo).
+  //   3. First word of the airbase name as a substring of the filename
+  //      ("Anapa Approach.png" → Anapa-Vityazevo).
+  //   4. Same in reverse — filename first word inside the airbase name.
+  // Returns null when nothing matches.
+  const ICAO_TO_NAME: Record<string, string> = {
+    // Nevada (NTTR) — FAA codes
+    klsv: 'nellis', kins: 'creech', klas: 'mccarran', kbvu: 'boulder',
+    kvgt: 'north las vegas', ktph: 'tonopah', kbty: 'beatty',
+    kp68: 'echo bay', kl06: 'jean', kdra: 'desert rock', kmlf: 'mesquite',
+    // Persian Gulf — ICAO codes
+    omdb: 'dubai', omam: 'al maktoum', omsj: 'sharjah', omal: 'al ain',
+    omaa: 'abu dhabi', omdw: 'al dhafra', omfj: 'fujairah', omra: 'ras al khaimah',
+    oman: 'al minhad', omkv: 'kish', oiba: 'abu musa', oibk: 'kish',
+    oibq: 'khasab', oiii: 'mehrabad', oibs: 'sirri',
+    // Caucasus — ICAO
+    ugkn: 'kobuleti', ugkt: 'kutaisi', ugkb: 'batumi', ugsb: 'batumi',
+    ugsa: 'sukhumi', ugnw: 'gudauta', urka: 'anapa',
+    urkk: 'krasnodar', urkm: 'maykop', urmo: 'mineralnye',
+    urss: 'sochi', urmn: 'nalchik',
+    urok: 'krymsk', uron: 'novorossiysk', urma: 'sochi',
+    urww: 'volgograd', urws: 'sochi',
+    // Syria — ICAO
+    osap: 'aleppo', oski: 'incirlik', ossl: 'latakia', osdi: 'damascus',
+    oslk: 'jirah', osps: 'palmyra', oste: 'tabqa',
+    llbg: 'ben gurion', llba: 'akrotiri', llha: 'haifa', llra: 'ramat david',
+    lcra: 'ramat david', lclk: 'larnaca', lcph: 'paphos', lclu: 'akrotiri',
+    // Marianas — FAA codes
+    pgua: 'andersen', pgum: 'guam',
+    // Normandy / Channel — ICAO
+    egup: 'hawkinge', egua: 'biggin', egmb: 'manston', eqkk: 'biggin',
+    ldcf: 'le mans', lflc: 'caen', lfop: 'cherbourg',
+  };
+
+  function normaliseName(s: string): string {
+    return s.toLowerCase().replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function matchAirfield(filename: string, candidates: typeof airfields): typeof airfields[number] | null {
+    const base = filename.replace(/\.[^.]+$/, '');
+    const norm = normaliseName(base);
+    // 1. ICAO 4-letter code anywhere in filename
+    const icao = norm.match(/\b([a-z]{4})\b/);
+    if (icao && ICAO_TO_NAME[icao[1]]) {
+      const hint = ICAO_TO_NAME[icao[1]];
+      const hit = candidates.find((a) => normaliseName(a.name).includes(hint));
+      if (hit) return hit;
+    }
+    // 2. Full airbase name substring of filename
+    for (const a of candidates) {
+      const an = normaliseName(a.name);
+      if (norm.includes(an)) return a;
+    }
+    // 3. First word of airbase name inside filename
+    for (const a of candidates) {
+      const first = normaliseName(a.name).split(' ')[0];
+      if (first.length >= 4 && norm.includes(first)) return a;
+    }
+    // 4. First word of filename inside airbase name
+    const fileFirst = norm.split(' ')[0];
+    if (fileFirst.length >= 4) {
+      for (const a of candidates) {
+        if (normaliseName(a.name).includes(fileFirst)) return a;
+      }
+    }
+    return null;
+  }
+
+  // Bulk import — iterate every file, attempt auto-match, place when
+  // matched, collect unmatched names so the user knows what needs help.
+  const onBulkUpload = async (files: File[]) => {
+    if (!files.length) return;
+    setBulkBusy(true); setBulkResult(null);
+    let placed = 0;
+    let skipped = 0;
+    const unmatched: string[] = [];
+    for (const file of files) {
+      if (!/\.(png|jpe?g|webp)$/i.test(file.name)) { skipped++; continue; }
+      if (file.size > 5 * 1024 * 1024) { unmatched.push(`${file.name} (>5 MB)`); continue; }
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const dims: { w: number; h: number } = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth || 200, h: img.naturalHeight || 200 });
+        img.onerror = () => resolve({ w: 200, h: 200 });
+        img.src = dataUrl;
+      });
+      const match = matchAirfield(file.name, airfields);
+      const aspect = dims.h / dims.w;
+      const widthNm = 20;
+      const heightNm = Math.max(1, Math.round(widthNm * aspect));
+      const label = file.name.replace(/\.[^.]+$/, '');
+      if (match) {
+        onAdd({
+          label,
+          dataUrl,
+          centerLat: match.lat, centerLng: match.lng,
+          widthNm, heightNm,
+          aspectRatio: aspect, aspectLocked: true,
+          opacity: 0.7, visible: true,
+        });
+        placed++;
+      } else {
+        unmatched.push(file.name);
+      }
+    }
+    setBulkBusy(false);
+    setBulkResult({ placed, unmatched, skipped });
+  };
+
   const placeOnAirfield = () => {
     if (!pendingFile || !autoAirfield) return;
     const a = airfields.find((x) => x.name === autoAirfield);
@@ -3067,6 +3195,47 @@ function ChartsPanel({ charts, airfields, onStartPlacement, onAdd, onUpdate, onR
         <input type="file" accept="image/png,image/jpeg,image/webp"
                onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
                style={{ fontSize: 11, color: '#dce6f2' }} />
+        {/* Bulk import — drop a whole folder (or multi-select) and the
+            panel auto-matches each filename to an airbase, placing the
+            matched ones at the field's coords. Unmatched ones are
+            surfaced so the user can re-upload those individually with
+            cursor placement. (v1.19.31) */}
+        <label style={{ fontSize: 10, color: '#8aa0ba', letterSpacing: 1, marginTop: 4 }}>
+          BULK IMPORT (auto-match by filename)
+        </label>
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple
+               disabled={bulkBusy}
+               onChange={(e) => {
+                 const files = e.target.files ? Array.from(e.target.files) : [];
+                 if (files.length) void onBulkUpload(files);
+                 // Reset the input so re-selecting the same set fires onChange.
+                 e.target.value = '';
+               }}
+               title="Pick multiple chart files (or a whole folder). Each file's name is matched to an airbase (Nellis.png, KLSV.jpg, Anapa-Vityazevo.png all work)."
+               style={{ fontSize: 11, color: '#dce6f2' }} />
+        {bulkBusy && (
+          <div style={{ fontSize: 10, color: '#ffd24a' }}>Importing…</div>
+        )}
+        {bulkResult && (
+          <div style={{ fontSize: 10, color: '#dce6f2', padding: '6px 8px', background: 'rgba(0,0,0,0.32)', border: '1px solid #243349', borderRadius: 3, lineHeight: 1.5 }}>
+            <div>
+              <span style={{ color: '#3fb950', fontWeight: 700 }}>✓ {bulkResult.placed} placed</span>
+              {bulkResult.skipped > 0 && <span style={{ color: '#8aa0ba', marginLeft: 8 }}>· {bulkResult.skipped} skipped (non-image)</span>}
+            </div>
+            {bulkResult.unmatched.length > 0 && (
+              <div style={{ marginTop: 4, color: '#ffd24a' }}>
+                {bulkResult.unmatched.length} need manual placement:
+                <div style={{ marginTop: 2, fontSize: 9, color: '#cfe6ff', maxHeight: 80, overflowY: 'auto', paddingLeft: 8 }}>
+                  {bulkResult.unmatched.map((n, i) => <div key={i}>• {n}</div>)}
+                </div>
+              </div>
+            )}
+            <button onClick={() => setBulkResult(null)}
+                    style={{ marginTop: 4, background: 'transparent', border: 'none', color: '#8aa0ba', cursor: 'pointer', fontSize: 10, padding: 0, textDecoration: 'underline' }}>
+              dismiss
+            </button>
+          </div>
+        )}
         {pendingFile && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #3a6ea5', borderRadius: 4, background: 'rgba(74,158,255,0.06)' }}>
             <img src={pendingFile.dataUrl} alt="preview" style={{ maxWidth: '100%', maxHeight: 80, objectFit: 'contain', background: 'rgba(0,0,0,0.4)' }} />
