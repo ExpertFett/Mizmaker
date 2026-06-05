@@ -19,6 +19,7 @@ import { LiveryTab } from './tabs/LiveryTab';
 import { MissionEditTab } from './tabs/MissionEditTab';
 import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
+import { AirfieldsTab } from './tabs/AirfieldsTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
@@ -87,6 +88,10 @@ const SIDEBAR: SidebarItem[] = [
   // weapons.
   { kind: 'section', label: 'PLANNING' },
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
+  // Airfields — name / ATC freqs / runways. Lives under PLANNING because
+  // the planner pulls home-plate + divert info while building the
+  // Comms / DTC sections. (v1.19.30)
+  { kind: 'tab', id: 'airfields',   label: 'Airfields',   icon: '🛬' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
   // Visibility — mission-maker-controlled per-group intel filter.
   // Lives in PLANNING because it's a planning-time decision: what
@@ -646,6 +651,11 @@ export function MissionEditor() {
             {visitedTabs.has('dmpi') && (
               <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
                 <DmpiTab onPickOnMap={() => selectTab('map')} />
+              </div>
+            )}
+            {visitedTabs.has('airfields') && (
+              <div style={{ display: activeTab === 'airfields' ? 'block' : 'none' }}>
+                <AirfieldsTab />
               </div>
             )}
             {visitedTabs.has('visibility') && (
