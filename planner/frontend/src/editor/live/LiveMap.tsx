@@ -2175,59 +2175,13 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
 
-        <SidebarSection>Filters · Controllers</SidebarSection>
-        <SidebarBtn icon="👤" label="Human units" active={showHuman} onClick={toggleHuman}
-                    hint="Player-piloted (human) units" />
-        <SidebarBtn icon="🛰" label="Olympus units" active={showOlympus} onClick={toggleOlympus}
-                    hint="Units spawned or commanded through this terminal" />
-        <SidebarBtn icon="🤖" label="DCS units" active={showDcs} onClick={toggleDcs}
-                    hint="Mission Editor AI not (yet) under Olympus control" />
-
-        <SidebarSection>Filters · Coalitions</SidebarSection>
-        <SidebarBtn icon="●" label="Red" active={showRed} onClick={toggleRed} hint="Red coalition units" />
-        <SidebarBtn icon="●" label="Blue" active={showBlue} onClick={toggleBlue} hint="Blue coalition units" />
-        <SidebarBtn icon="●" label="Neutral" active={showNeutral} onClick={toggleNeutral} hint="Neutral / unaligned units" />
-
-        <SidebarSection>Filters · Categories</SidebarSection>
-        <SidebarBtn icon="✈" label="Aircraft" active={showAircraft} onClick={toggleAircraft} hint="Fixed-wing aircraft" />
-        <SidebarBtn icon="🚁" label="Helicopters" active={showHelicopter} onClick={toggleHelicopter} hint="Rotary-wing aircraft" />
-        <SidebarBtn icon="📡" label="SAM / AD" active={showSam} onClick={toggleSam} hint="SAM sites, AAA, MANPADS, radars" />
-        <SidebarBtn icon="🪖" label="Ground" active={showGround} onClick={toggleGround} hint="Armor, vehicles, infantry, arty" />
-        <SidebarBtn icon="🚢" label="Navy" active={showNavy} onClick={toggleNavy} hint="Naval units / ships" />
-        <SidebarBtn icon="🛬" label="Airbases" active={showAirbase} onClick={toggleAirbase} hint="Airfields + carriers" />
-        <SidebarBtn icon="💀" label="Dead units" active={showDead} onClick={toggleDead} hint="Destroyed units (history)" />
-
-        <SidebarSection>Filters · Overlays</SidebarSection>
-        <SidebarBtn icon="◎" label="Engagement rings" active={showEng} onClick={toggleEng} hint="Weapons-engagement range rings around SAMs/AAA" />
-        <SidebarBtn icon="◌" label="Acquisition rings" active={showAcq} onClick={toggleAcq} hint="Detection / acquisition rings (radar pickup)" />
-        <SidebarBtn icon="❖" label="Cluster ground" active={clusterGround} onClick={toggleCluster} hint="Group nearby ground units when zoomed out" />
-
-        {canSpawn && (
-          <>
-            <SidebarSection>Olympus</SidebarSection>
-            {/* Modes (v1.19.24) — promoted from a floating top-bar
-                segmented control into proper sidebar buttons with text
-                labels, matching the LotATC / tools refactor. The user-
-                facing label spells out the action so the role isn't
-                guessed from a glyph. */}
-            <SidebarBtn icon="⊹" label="Control mode" active={mode === 'select'}
-                        onClick={() => { setMode('select'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
-                        hint="Click units to select / command them; the default" />
-            <SidebarBtn icon="✛" label="Spawn mode" active={mode === 'spawn'}
-                        onClick={() => { setMode('spawn'); setArmed(null); setTool('select'); }}
-                        hint="Browse Olympus's unit DB → click the map to spawn" />
-            <SidebarBtn icon="◎" label="IADS generator" active={mode === 'iads'}
-                        onClick={() => { setMode('iads'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
-                        hint="Draw an area → spawn a layered air-defence net" />
-            {canCommand && (
-              <SidebarBtn icon={protectMode ? '🔒' : '🔓'} label={`Protected: ${protectMode ? 'LOCKED' : 'OPEN'}`}
-                          active={protectMode} onClick={toggleProtect}
-                          hint={protectMode
-                            ? 'Mission Editor units ask for confirmation before being commanded'
-                            : 'Mission Editor units are commanded without prompting (DEFAULT OPEN)'} />
-            )}
-          </>
-        )}
+        {/* v1.19.27 — Olympus modes + protected lock + every filter
+            (controllers / coalitions / categories / overlays) live on
+            the RIGHT sidebar now. The left sidebar keeps the tools the
+            controller reaches for constantly (zoom, basemap, labels,
+            measure, draw, etc.) so a JTAC/GCI flow doesn't have to
+            cross the map mid-action. See the right pane below the
+            map block. */}
 
         <SidebarSection>Mission</SidebarSection>
         <SidebarBtn icon="🎬" label="Triggers" active={triggersOpen} onClick={toggleTriggers} hint="Fire DM-tagged triggers from the scope" />
@@ -2916,6 +2870,63 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <span>{profile.name}</span>
       </div>
       </div>{/* end map area */}
+
+      {/* ── Right sidebar — Olympus controls + visibility filters ────────
+          v1.19.27 — moved here from the left sidebar so the controller
+          can keep the action-flow tools (zoom, measure, draw, BRA) on
+          one hand and the visibility / Olympus commands on the other.
+          Mirrors the left sidebar's structure: SidebarBtn rows under
+          short uppercase section headers, scrollable when long. */}
+      <div style={{ width: 200, flexShrink: 0, background: C.bgSolid, borderLeft: `1px solid ${C.border}`, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {canSpawn && (
+          <>
+            <SidebarSection>Olympus</SidebarSection>
+            <SidebarBtn icon="⊹" label="Control mode" active={mode === 'select'}
+                        onClick={() => { setMode('select'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
+                        hint="Click units to select / command them; the default" />
+            <SidebarBtn icon="✛" label="Spawn mode" active={mode === 'spawn'}
+                        onClick={() => { setMode('spawn'); setArmed(null); setTool('select'); }}
+                        hint="Browse Olympus's unit DB → click the map to spawn" />
+            <SidebarBtn icon="◎" label="IADS generator" active={mode === 'iads'}
+                        onClick={() => { setMode('iads'); setArmed(null); setTool('select'); handlePlace(null, ''); }}
+                        hint="Draw an area → spawn a layered air-defence net" />
+            {canCommand && (
+              <SidebarBtn icon={protectMode ? '🔒' : '🔓'} label={`Protected: ${protectMode ? 'LOCKED' : 'OPEN'}`}
+                          active={protectMode} onClick={toggleProtect}
+                          hint={protectMode
+                            ? 'Mission Editor units ask for confirmation before being commanded'
+                            : 'Mission Editor units are commanded without prompting (DEFAULT OPEN)'} />
+            )}
+          </>
+        )}
+
+        <SidebarSection>Filters · Controllers</SidebarSection>
+        <SidebarBtn icon="👤" label="Human units" active={showHuman} onClick={toggleHuman}
+                    hint="Player-piloted (human) units" />
+        <SidebarBtn icon="🛰" label="Olympus units" active={showOlympus} onClick={toggleOlympus}
+                    hint="Units spawned or commanded through this terminal" />
+        <SidebarBtn icon="🤖" label="DCS units" active={showDcs} onClick={toggleDcs}
+                    hint="Mission Editor AI not (yet) under Olympus control" />
+
+        <SidebarSection>Filters · Coalitions</SidebarSection>
+        <SidebarBtn icon="●" label="Red" active={showRed} onClick={toggleRed} hint="Red coalition units" />
+        <SidebarBtn icon="●" label="Blue" active={showBlue} onClick={toggleBlue} hint="Blue coalition units" />
+        <SidebarBtn icon="●" label="Neutral" active={showNeutral} onClick={toggleNeutral} hint="Neutral / unaligned units" />
+
+        <SidebarSection>Filters · Categories</SidebarSection>
+        <SidebarBtn icon="✈" label="Aircraft" active={showAircraft} onClick={toggleAircraft} hint="Fixed-wing aircraft" />
+        <SidebarBtn icon="🚁" label="Helicopters" active={showHelicopter} onClick={toggleHelicopter} hint="Rotary-wing aircraft" />
+        <SidebarBtn icon="📡" label="SAM / AD" active={showSam} onClick={toggleSam} hint="SAM sites, AAA, MANPADS, radars" />
+        <SidebarBtn icon="🪖" label="Ground" active={showGround} onClick={toggleGround} hint="Armor, vehicles, infantry, arty" />
+        <SidebarBtn icon="🚢" label="Navy" active={showNavy} onClick={toggleNavy} hint="Naval units / ships" />
+        <SidebarBtn icon="🛬" label="Airbases" active={showAirbase} onClick={toggleAirbase} hint="Airfields + carriers" />
+        <SidebarBtn icon="💀" label="Dead units" active={showDead} onClick={toggleDead} hint="Destroyed units (history)" />
+
+        <SidebarSection>Filters · Overlays</SidebarSection>
+        <SidebarBtn icon="◎" label="Engagement rings" active={showEng} onClick={toggleEng} hint="Weapons-engagement range rings around SAMs/AAA" />
+        <SidebarBtn icon="◌" label="Acquisition rings" active={showAcq} onClick={toggleAcq} hint="Detection / acquisition rings (radar pickup)" />
+        <SidebarBtn icon="❖" label="Cluster ground" active={clusterGround} onClick={toggleCluster} hint="Group nearby ground units when zoomed out" />
+      </div>
     </div>
   );
 }

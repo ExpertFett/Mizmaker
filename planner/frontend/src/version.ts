@@ -13,4 +13,4 @@
  * behaviour, bump the patch number. The patch number resets when the
  * minor bumps (e.g. v0.4.5 → v0.5.0).
  */
-export const VERSION = 'v1.19.26-beta';
+export const VERSION = 'v1.19.27-beta';
