@@ -14,6 +14,7 @@ import { forward as toMGRS } from 'mgrs';
 import { useDmpiStore, type Dmpi } from '../../store/dmpiStore';
 import { TextInput } from '../../components/TextInput';
 import { Select } from '../../components/Select';
+import { DmpiMapPanel } from './DmpiMapPanel';
 
 interface Props {
   /** Map-tab navigator. Set when the user starts picking on map so we
@@ -40,24 +41,34 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
 
   const handlePickOnMap = (id: string) => {
     startPicking(id);
-    onPickOnMap?.();
+    // We don't auto-switch to the main Map tab anymore — the embedded
+    // DmpiMapPanel above accepts the pick click directly. The
+    // onPickOnMap callback stays as an escape hatch for callers who
+    // still want the old behavior (e.g. main-Map context menus that
+    // hand off to DMPI), but the in-tab flow stays on this tab.
+    // (v1.19.23)
+    void onPickOnMap; // unused now, kept for prop-shape stability
   };
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 1200 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#e0e0e0' }}>
             DMPI — Designated Mean Points of Impact
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
-            Define target designation points for strike missions. Use the 📍
-            button to pick coordinates on the map. Data is session-only (not
-            saved to .miz).
+            Define target designation points for strike missions. Pick
+            coordinates by clicking the map below — armed when you hit the
+            📍 button on a row. Threats + airbases + bullseye are shown for
+            reference.
           </p>
         </div>
         <button onClick={add} style={addBtn}>+ Add DMPI</button>
       </div>
+
+      {/* Inline map (v1.19.23) — pick coords without leaving the tab. */}
+      <DmpiMapPanel />
 
       {/* Picking-mode banner — only shows when a row is armed for map pick.
           Lets the user cancel from the DMPI tab too in case they want to
