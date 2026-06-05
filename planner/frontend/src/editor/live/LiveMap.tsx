@@ -694,6 +694,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // ATC panel (v1.19.29) — opens an inline LotATC-equivalent airport
   // view + precision approach radar scope.
   const [atcOpen, setAtcOpen] = useState(false);
+  // When the user clicks an airbase marker on the map, focus the ATC
+  // panel on that specific field. Cleared when the panel closes so the
+  // next manual open doesn't snap back to a stale selection. (v1.19.32)
+  const [atcFocusName, setAtcFocusName] = useState<string>('');
   const [airfieldQuery, setAirfieldQuery] = useState('');
   const [airfieldList, setAirfieldList] = useState<Array<{ name: string; lat: number; lng: number; coalition: unknown; unitId?: number }>>([]);
   const airfieldHighlightRef = useRef<VectorSource | null>(null);
@@ -1631,6 +1635,39 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           c.onClickSelect(target, !!(e.originalEvent as MouseEvent)?.shiftKey);
           return;
         }
+        // Airbase click — opens the ATC panel focused on this field
+        // (v1.19.32). Hit-tests the airbase layer specifically since the
+        // earlier hit-test deliberately excluded it. Only runs in select
+        // mode + when no unit was hit so we don't fight unit-selection
+        // or tool flows. The popup feels like LotATC's airport-properties
+        // window: click → name lookup → ATC panel slides in.
+        if (c.tool === 'select' && !target && abLayerRef.current) {
+          const abFeat = map.forEachFeatureAtPixel(
+            e.pixel,
+            (ft) => ft,
+            { hitTolerance: 8, layerFilter: (l) => l === abLayerRef.current },
+          ) as Feature | undefined;
+          if (abFeat) {
+            // The airbase marker's name lives only on the rendered style
+            // (set in the poll loop above). Cross-reference the click
+            // coords against the in-memory airfieldList to recover it —
+            // O(N) but N ≤ ~50 per theater.
+            const coord = (abFeat.getGeometry() as Point | undefined)?.getCoordinates();
+            if (coord) {
+              const [fLon, fLat] = toLonLat(coord);
+              let best: { name: string; dKm: number } | null = null;
+              for (const a of airfieldList) {
+                const d = Math.hypot((a.lat - fLat), (a.lng - fLon));
+                if (!best || d < best.dKm) best = { name: a.name, dKm: d };
+              }
+              if (best) {
+                setAtcFocusName(best.name);
+                setAtcOpen(true);
+                return;
+              }
+            }
+          }
+        }
         // In select mode with no unit hit, hit-test the drawing layer for
         // the BRA/BE reveal flow.
         if (c.tool === 'select') {
@@ -2544,7 +2581,8 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {atcOpen && (
         <AtcPanel
           trackedUnit={selected ? { unitName: selected.unitName, name: selected.name, position: selected.position } : null}
-          onClose={() => setAtcOpen(false)}
+          focusName={atcFocusName}
+          onClose={() => { setAtcOpen(false); setAtcFocusName(''); }}
         />
       )}
 

@@ -104,12 +104,23 @@ interface AtcPanelProps {
   trackedUnit: AtcPanelTrackedUnit | null;
   /** Close handler from the parent LiveMap. */
   onClose: () => void;
+  /** When set, the panel jumps to this airbase (used when the parent
+   *  knows the click came from a specific airfield marker). Changes
+   *  later still let the user pick a different field manually. */
+  focusName?: string;
 }
 
-export function AtcPanel({ trackedUnit, onClose }: AtcPanelProps) {
+export function AtcPanel({ trackedUnit, onClose, focusName }: AtcPanelProps) {
   const airbases = useMissionStore((s) => s.airbases);
 
   const [selectedName, setSelectedName] = useState<string>('');
+
+  // External focus — when the parent sends a `focusName`, snap to it.
+  // We watch the prop directly so a re-click on the same airbase still
+  // re-focuses (e.g. user moved off and clicked back). (v1.19.32)
+  useEffect(() => {
+    if (focusName) setSelectedName(focusName);
+  }, [focusName]);
   const [activeEnd, setActiveEnd] = useState<string>('');  // e.g. "22"
   const [filter, setFilter] = useState('');
   const [elevationFt, setElevationFt] = useState<number | null>(null);
