@@ -185,10 +185,15 @@ export function SrsDirectory({ groupId, onClose }: { groupId?: string; onClose?:
     }
 
     // Sort: facility → AWACS → JTAC → tanker → strike, then by freq.
+    // (v1.19.45) ga/gb were previously non-null asserted, but a stale
+    // `clientUnit.groupName` (mission swapped while panel mounted) would
+    // return undefined from find() and crash roleTier on the next access.
+    // Treat unknown groups as the lowest tier so they sort to the bottom.
     out.sort((a, b) => {
-      const ga = groups.find((g) => g.groupName === a.groupName)!;
-      const gb = groups.find((g) => g.groupName === b.groupName)!;
-      const ta = roleTier(ga), tb = roleTier(gb);
+      const ga = groups.find((g) => g.groupName === a.groupName);
+      const gb = groups.find((g) => g.groupName === b.groupName);
+      const ta = ga ? roleTier(ga) : 99;
+      const tb = gb ? roleTier(gb) : 99;
       if (ta !== tb) return ta - tb;
       return a.freqMhz - b.freqMhz;
     });
