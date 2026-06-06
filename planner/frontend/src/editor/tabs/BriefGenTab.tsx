@@ -29,6 +29,7 @@ import { generateCommandersIntent } from '../../ai/commandersIntent';
 import { generateThreatNarrative } from '../../ai/threatNarrative';
 import { generateFullBrief } from '../../ai/briefWriter';
 import { generateSpeakerNotes, speakerNotesToBriefMap } from '../../ai/speakerNotes';
+import { generateTemplateMapping } from '../../ai/templateMapper';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
 // ---------------------------------------------------------------------------
@@ -1390,6 +1391,17 @@ function CustomTemplateFlow() {
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // v1.19.x BYOK: AI-suggest mapping for unresolved tokens. Reads aiStore
+  // directly — same pattern as the parent BriefGenTab.
+  const aiProvider = useAiStore((s) => s.provider);
+  const aiKey = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicKey : s.geminiKey,
+  );
+  const aiModel = useAiStore((s) =>
+    s.provider === 'anthropic' ? s.anthropicModel : s.geminiModel,
+  );
+  const [aiMapBusy, setAiMapBusy] = useState(false);
+  const [aiMapNote, setAiMapNote] = useState<string | null>(null);
   // Inline preview pane — renders the token-filled TEMPLATE to PNG slides
   // (was previously missing; the only "Preview" was the auto-build one,
   // which showed the auto brief, not the uploaded template). (v0.9.77)
@@ -1428,7 +1440,7 @@ function CustomTemplateFlow() {
   }, [scan, store, overrides, rebuildAt]);
 
   const handleUpload = async (file: File) => {
-    setError(null); setOverrides({});
+    setError(null); setOverrides({}); setAiMapNote(null);
     const fd = new FormData(); fd.append('file', file);
     try {
       const res = await fetch('/api/brief/scan', { method: 'POST', body: fd });
@@ -1436,6 +1448,75 @@ function CustomTemplateFlow() {
       const data = await res.json();
       setScan({ filename: data.filename, tokens: data.tokens, templateBytes: await file.arrayBuffer() });
     } catch (e: any) { setError(e.message); }
+  };
+
+  // v1.19.x: AI-suggest mappings for tokens the auto-resolver couldn't
+  // figure out. Takes the snapshot of brief-relevant mission data + the
+  // unresolved tokens, asks Claude for a best-guess mapping. Result lands
+  // in `overrides` so the user can review + edit before render.
+  const handleAiSuggestMapping = async () => {
+    if (!scan) return;
+    if (!aiKey) { setError('No AI key configured. Open the brief tab\'s AI Settings to add one.'); return; }
+    setAiMapBusy(true);
+    setError(null);
+    setAiMapNote(null);
+    try {
+      // Build the brief snapshot from the missionStore. Reuse the same
+      // shape the tokenMapper module expects.
+      const st = store;
+      const overview = st.overview as any;
+      const briefSnapshot = {
+        mission_name: overview?.name || '',
+        theater: overview?.theater || '',
+        date: overview?.date || '',
+        time_zulu: overview?.start_time_zulu || '',
+        coalition: 'blue',
+        scenario: overview?.description || '',
+        commanders_intent: '',
+        threats: ((st as any).threats || []).map((t: any) => ({
+          name: t.name, type: t.type || '', coalition: t.coalition || 'red',
+          range_km: t.range_km, location: t.location,
+        })),
+        flights: ((st as any).groups || [])
+          .filter((g: any) => g.is_player || (g.units || []).some((u: any) => u.client))
+          .map((g: any) => ({
+            callsign: g.groupName || '',
+            aircraft: g.units?.[0]?.type || '',
+            count: (g.units || []).length,
+            role: g.task || '',
+            frequency: g.frequency ? String(g.frequency) : '',
+          })),
+      };
+      // Only ask the AI about tokens we couldn't auto-resolve and the user
+      // hasn't already overridden — don't waste tokens re-confirming wins.
+      const unresolved = tokenRows
+        .filter((r) => !r.isAutoResolved && !r.isOverridden)
+        .map((r) => r.token);
+      if (unresolved.length === 0) {
+        setAiMapNote('Nothing to suggest — every token is either auto-resolved or already overridden.');
+        return;
+      }
+      const result = await generateTemplateMapping(aiProvider, aiKey, aiModel, {
+        unresolvedTokens: unresolved,
+        brief: briefSnapshot,
+      });
+      // Apply only non-empty suggestions — empty strings would clobber the
+      // existing auto-resolution if the AI was uncertain.
+      setOverrides((prev) => {
+        const next = { ...prev };
+        for (const [tok, val] of Object.entries(result.mapping)) {
+          if (val) next[tok] = val;
+        }
+        return next;
+      });
+      setAiMapNote(
+        `AI suggested ${result.filled}/${unresolved.length} (${result.blank} blank) via ${result.model} · ${result.usage.input_tokens} in / ${result.usage.output_tokens} out tokens.`,
+      );
+    } catch (e: any) {
+      setError(`AI template mapping failed: ${e.message}`);
+    } finally {
+      setAiMapBusy(false);
+    }
   };
 
   const buildValues = (): Record<string, string> => {
@@ -1523,9 +1604,26 @@ function CustomTemplateFlow() {
                 mission store changes, but cross-store reads (goals,
                 DMPIs, SOP) need the explicit nudge — clicking forces
                 a full re-resolution against the current state. */}
+            {aiKey && (
+              <button
+                onClick={handleAiSuggestMapping}
+                disabled={aiMapBusy || rendering}
+                style={{
+                  ...btnSecondary,
+                  marginLeft: 'auto',
+                  background: '#2a2418',
+                  borderColor: '#fbb941',
+                  color: '#fbb941',
+                  opacity: aiMapBusy ? 0.6 : 1,
+                }}
+                title="Ask AI to fill in any unmapped tokens by guessing from mission data. Review + edit the values before render."
+              >
+                {aiMapBusy ? '✨ Thinking…' : '✨ AI-suggest mapping'}
+              </button>
+            )}
             <button
               onClick={() => setRebuildAt(Date.now())}
-              style={{ ...btnSecondary, marginLeft: 'auto' }}
+              style={{ ...btnSecondary, marginLeft: aiKey ? 0 : 'auto' }}
               title="Re-resolve tokens against the current mission state"
             >
               ↻ Rebuild
@@ -1537,6 +1635,14 @@ function CustomTemplateFlow() {
               </span>
             </span>
           </div>
+          {aiMapNote && (
+            <div style={{
+              marginBottom: 8, fontSize: 11, color: '#fbb941',
+              fontFamily: "'B612 Mono', monospace",
+            }}>
+              {aiMapNote}
+            </div>
+          )}
           <table style={tableStyle}>
             <thead><tr><th style={th}>Token</th><th style={th}>Source</th><th style={th}>Value</th></tr></thead>
             <tbody>
