@@ -444,7 +444,12 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
   const [mission, setMission] = useState<Feed<unknown>>({ loading: true });
   const [live, setLive] = useState(false);
   const [units, setUnits] = useState<Feed<any> | null>(null);
-  const [view, setView] = useState<'table' | 'map'>('table');
+  // v1.19.46 — default to the map view. The 'table' view is a low-level
+  // mission-fields dump + raw telemetry inspector that was useful for
+  // debugging the Olympus bridge in Phase A but reads as "debug screen"
+  // to a controller who just clicked Enter terminal. Map is what they
+  // actually want; Table is still one click away on the toggle.
+  const [view, setView] = useState<'table' | 'map'>('map');
 
   // Heartbeat: poll the mission resource (small JSON) every 5s.
   useEffect(() => {

@@ -95,7 +95,12 @@ export function loadInitialMode(): AppMode {
   if (LOCK_TO_PLANNING) return 'planning';
   try {
     const m = localStorage.getItem(MODE_LS_KEY);
-    if (m === 'planning' || m === 'editing' || m === 'live') return m;
+    // v1.19.46 — Live is no longer a sticky default. A user who last
+    // closed the tab in Live mode shouldn't be dropped back into Live
+    // when they upload a new mission; Live is intentional per-session.
+    // Editor + Plan still stick (they're authoring modes the user wants
+    // to resume). 'live' → 'editing' fall-through.
+    if (m === 'planning' || m === 'editing') return m;
   } catch {
     /* ignore */
   }
