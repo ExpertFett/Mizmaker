@@ -8,7 +8,7 @@
 import { createRoot } from 'react-dom/client';
 import html2canvas from 'html2canvas';
 import type { ReactElement } from 'react';
-import { applyKbTheme, type KneeboardTheme } from './cardStyles';
+import { applyKbTheme, type KneeboardTheme, type KbVarMap } from './cardStyles';
 
 const CARD_W = 600;
 const CARD_H = 850;
@@ -38,7 +38,11 @@ export async function captureElementToBlob(element: HTMLElement): Promise<Blob> 
  * The container is placed in a clipped wrapper so it's in the document
  * flow (html2canvas needs computed styles) but not visible to the user.
  */
-export async function renderCardToBlob(element: ReactElement, theme: KneeboardTheme = 'night'): Promise<Blob> {
+export async function renderCardToBlob(
+  element: ReactElement,
+  theme: KneeboardTheme = 'night',
+  customThemeVars?: KbVarMap,
+): Promise<Blob> {
   // Position off-screen but fully visible — html2canvas needs computed styles
   // and skips elements that are clipped/hidden/zero-opacity
   const wrapper = document.createElement('div');
@@ -58,7 +62,7 @@ export async function renderCardToBlob(element: ReactElement, theme: KneeboardTh
   // Set the theme's CSS variables on the captured container so the card's
   // var(--kb-*) colors resolve to the chosen palette. html2canvas reads
   // computed styles, which resolve these. (v0.9.74)
-  applyKbTheme(container, theme);
+  applyKbTheme(container, theme, customThemeVars);
 
   wrapper.appendChild(container);
   document.body.appendChild(wrapper);

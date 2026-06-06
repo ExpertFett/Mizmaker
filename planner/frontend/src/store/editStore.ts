@@ -90,9 +90,15 @@ export interface KneeboardSettings {
    *  when cards.popupAttack is on). Empty = card produces nothing. */
   popupAttacks: PopupAttackInput[];
   /** Kneeboard color scheme. 'night' = dark background (default,
-   *  cockpit-at-night), 'day' = white background (daylight / printing).
-   *  Drives the --kb-* CSS variables the cards resolve. (v0.9.74) */
-  theme: 'night' | 'day';
+   *  cockpit-at-night), 'day' = white background (daylight / printing),
+   *  'custom' = use the customThemeVars map. Drives the --kb-* CSS
+   *  variables the cards resolve. (v0.9.74, custom mode v1.19.37) */
+  theme: 'night' | 'day' | 'custom';
+  /** Effective CSS-variable map when theme === 'custom'. Keys match
+   *  KB_VAR_NAMES from kneeboard/cardStyles.ts. Empty / missing keys
+   *  fall through to the dark-mode fallbacks built into each var()
+   *  expression, so a partial custom theme degrades gracefully. */
+  customThemeVars?: Record<string, string>;
 }
 
 interface EditState {
