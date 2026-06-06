@@ -14,6 +14,8 @@ WORKDIR /app
 # PPTX → PDF/PNG/JPG conversion in the brief generator. We use the impress
 # component only (smaller than the full suite) plus the JRE that pptx
 # import requires. Ghostscript helps with PDF→PNG raster conversion.
+# poppler-utils backs services/chart_fetcher.py — pdf2image needs it to
+# rasterize FAA airport-diagram PDFs into PNG.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc make libc6-dev \
         libreoffice-impress \
@@ -21,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         default-jre-headless \
         fonts-liberation \
         ghostscript \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps

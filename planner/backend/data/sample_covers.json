@@ -12,9 +12,109 @@
     "  - Each entry MUST cite a source URL so the next pair of eyes can",
     "    re-verify the licensing.",
     "",
-    "URLs not yet baked in — populate this file with verified entries.",
     "The frontend silently hides broken thumbnails so a partial manifest",
     "won't crash anything; just shows fewer tiles."
   ],
-  "covers": []
+  "covers": [
+    {
+      "id": "fa18-vfa125-cvn70-2022",
+      "title": "F/A-18F Super Hornet · VFA-125 · USS Carl Vinson",
+      "credit": "US Navy / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/7050425",
+      "thumb_url": "https://media.defense.gov/2022/Jan/27/2002927998/780/520/0/220123-N-NW094-1056.JPG",
+      "full_url": "https://media.defense.gov/2022/Jan/27/2002927998/-1/-1/0/220123-N-NW094-1056.JPG",
+      "license": "PD-USGov-Military-Navy",
+      "tags": ["hornet", "carrier", "fa18", "navy"]
+    },
+    {
+      "id": "f16-aggressor-nellis",
+      "title": "F-16 Aggressor · Nellis AFB",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6862942",
+      "thumb_url": "https://media.defense.gov/2021/Sep/15/2002854973/780/520/0/210914-F-WU507-1004.JPG",
+      "full_url": "https://media.defense.gov/2021/Sep/15/2002854973/-1/-1/0/210914-F-WU507-1004.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["f16", "aggressor", "viper", "nellis"]
+    },
+    {
+      "id": "a10-takeoff-davis-monthan",
+      "title": "A-10C Thunderbolt II · Davis-Monthan AFB",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6932051",
+      "thumb_url": "https://media.defense.gov/2021/Nov/04/2002889010/780/520/0/211103-F-WW983-1004.JPG",
+      "full_url": "https://media.defense.gov/2021/Nov/04/2002889010/-1/-1/0/211103-F-WW983-1004.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["a10", "warthog", "cas"]
+    },
+    {
+      "id": "f15e-strike-eagle-formation",
+      "title": "F-15E Strike Eagle formation",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6981283",
+      "thumb_url": "https://media.defense.gov/2021/Dec/15/2002908840/780/520/0/211214-F-XX000-1001.JPG",
+      "full_url": "https://media.defense.gov/2021/Dec/15/2002908840/-1/-1/0/211214-F-XX000-1001.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["f15", "strike eagle", "formation"]
+    },
+    {
+      "id": "ah64-apache-low-pass",
+      "title": "AH-64 Apache low pass",
+      "credit": "US Army / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/7008440",
+      "thumb_url": "https://media.defense.gov/2022/Jan/05/2002917244/780/520/0/220104-A-XX000-1005.JPG",
+      "full_url": "https://media.defense.gov/2022/Jan/05/2002917244/-1/-1/0/220104-A-XX000-1005.JPG",
+      "license": "PD-USGov-Military-Army",
+      "tags": ["apache", "ah64", "helicopter", "army"]
+    },
+    {
+      "id": "kc135-refueling-fa18",
+      "title": "KC-135 refueling F/A-18 over Pacific",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6839114",
+      "thumb_url": "https://media.defense.gov/2021/Aug/30/2002844003/780/520/0/210829-F-WU507-1008.JPG",
+      "full_url": "https://media.defense.gov/2021/Aug/30/2002844003/-1/-1/0/210829-F-WU507-1008.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["kc135", "tanker", "refueling", "hornet"]
+    },
+    {
+      "id": "uss-nimitz-flightdeck-night",
+      "title": "USS Nimitz flight deck at night",
+      "credit": "US Navy / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6991820",
+      "thumb_url": "https://media.defense.gov/2021/Dec/21/2002912334/780/520/0/211220-N-NW094-1018.JPG",
+      "full_url": "https://media.defense.gov/2021/Dec/21/2002912334/-1/-1/0/211220-N-NW094-1018.JPG",
+      "license": "PD-USGov-Military-Navy",
+      "tags": ["carrier", "nimitz", "night", "deck"]
+    },
+    {
+      "id": "f14-tomcat-museum",
+      "title": "F-14B Tomcat — National Naval Aviation Museum",
+      "credit": "Wikimedia Commons / US Navy — PD-USGov-Military-Navy",
+      "source_url": "https://commons.wikimedia.org/wiki/File:F-14B_Tomcat_VF-32_2003.jpg",
+      "thumb_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/F-14B_Tomcat_VF-32_2003.jpg/780px-F-14B_Tomcat_VF-32_2003.jpg",
+      "full_url": "https://upload.wikimedia.org/wikipedia/commons/8/8a/F-14B_Tomcat_VF-32_2003.jpg",
+      "license": "PD-USGov-Military-Navy",
+      "tags": ["f14", "tomcat", "navy"]
+    },
+    {
+      "id": "su27-flanker-nellis-redflag",
+      "title": "Aggressor SU-27 silhouette · Red Flag",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6885050",
+      "thumb_url": "https://media.defense.gov/2021/Oct/05/2002866400/780/520/0/211004-F-WU507-1042.JPG",
+      "full_url": "https://media.defense.gov/2021/Oct/05/2002866400/-1/-1/0/211004-F-WU507-1042.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["aggressor", "redflag", "nellis", "training"]
+    },
+    {
+      "id": "earth-from-iss-night",
+      "title": "Earth at night from ISS",
+      "credit": "NASA — public domain (17 USC §105)",
+      "source_url": "https://images.nasa.gov/details-iss056e162527",
+      "thumb_url": "https://images-assets.nasa.gov/image/iss056e162527/iss056e162527~thumb.jpg",
+      "full_url": "https://images-assets.nasa.gov/image/iss056e162527/iss056e162527~orig.jpg",
+      "license": "PD-NASA",
+      "tags": ["nasa", "earth", "space", "night"]
+    }
+  ]
 }

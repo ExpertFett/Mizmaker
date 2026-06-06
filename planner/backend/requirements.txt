@@ -37,4 +37,9 @@ cryptography>=42
 # {headers, rows}. CSV stays stdlib. Lazy-imported; the endpoint returns 503
 # with a clear message if it's missing on a given deploy.
 openpyxl>=3.1
+# FAA airport-diagram PDF → PNG conversion for services/chart_fetcher.py.
+# Needs Poppler at the OS layer (`apt install poppler-utils`) — wired in
+# nixpacks.toml for Railway. Lazy-imported with a graceful fallback to PDF
+# bytes when Poppler is missing.
+pdf2image>=1.17
 

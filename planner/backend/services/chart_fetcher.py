@@ -36,12 +36,15 @@ import urllib.request
 
 
 # Default cycle is "best guess at build time" — operators should override
-# via env var. Picking an obvious-fake placeholder so a missed override
-# fails loudly rather than silently fetching the wrong cycle. The format
-# is YYMM where YY is the year and MM is the month of the AIRAC cycle
-# start. Real production cycles are published at
+# via env var. The format is YYMM where YY is the year and MM is the
+# month of the AIRAC cycle start (FAA d-tpp publishes 13 cycles/year
+# approximately one a month). Real production cycles are published at
 # https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/
-DEFAULT_CYCLE = os.environ.get("FAA_DTPP_CYCLE", "2412")
+#
+# Refreshed 2026-06-06 → "2606" (Jun 2026). Operators on Railway should
+# bump FAA_DTPP_CYCLE env var every ~28 days; missing/stale cycles return
+# a "FAA chart not found" error that points at the env var to update.
+DEFAULT_CYCLE = "2606"
 
 # Polite identification — the FAA host returns 403 to anonymous fetchers
 # in some cycles. Marking this as a public-domain-charts-only fetcher
