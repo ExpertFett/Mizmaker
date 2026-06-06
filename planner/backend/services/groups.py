@@ -107,11 +107,26 @@ def role_in_group(sb, user_id: str, group_id: str) -> Optional[str]:
 # Mission roles → capabilities. 'admin' = Game Master (also the only role that
 # manages the group); 'operator' = Observer (view only). Stored in
 # group_members.role (free text column — no DB migration needed).
+#
+# Capability glossary:
+#   manage     — group settings, member roles, invite codes (admin only)
+#   spawn      — Olympus spawn / IADS draw-tool / SAM placement
+#   command    — vector / route / engage existing units (cmdSel path)
+#   delete     — Olympus deleteUnit
+#   effects    — smoke, explosion, flare markers (low-risk visual cues)
+#   markers    — map annotations / drawings
+#   tools_jtac — 9-line builder, brevity reference highlighted, LASE coord
+#   tools_atc  — ATC panel + PAR scope highlighted, runway picker
+#
+# JTAC + ATC roles get their named tool set PLUS effects/markers. They never
+# get spawn/command/delete — those stay with admin + commander only. (Matches
+# the DM model in immutable-scribbling-flurry plan: vectoring AI stays under
+# canCommand; role splits only change which UI tools each user reaches for.)
 ROLE_CAPS: dict[str, set[str]] = {
-    "admin":     {"manage", "spawn", "command", "delete", "effects", "markers"},
-    "commander": {"spawn", "command", "delete", "effects", "markers"},
-    "jtac":      {"effects", "markers"},
-    "atc":       {"effects", "markers"},
+    "admin":     {"manage", "spawn", "command", "delete", "effects", "markers", "tools_jtac", "tools_atc"},
+    "commander": {"spawn", "command", "delete", "effects", "markers", "tools_jtac", "tools_atc"},
+    "jtac":      {"effects", "markers", "tools_jtac"},
+    "atc":       {"effects", "markers", "tools_atc"},
     "operator":  set(),
 }
 VALID_ROLES = set(ROLE_CAPS)

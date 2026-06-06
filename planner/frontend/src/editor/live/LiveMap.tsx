@@ -329,6 +329,12 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   const canCommand = can(group.role, 'command');
   const canDelete = can(group.role, 'delete');
   const canEffects = can(group.role, 'effects');
+  // v1.19.42: tool-visibility caps. A JTAC sees the 9-line builder; an ATC
+  // sees the runway-picker / PAR window. Both are SA tools — they don't
+  // grant the ability to vector AI (that still needs canCommand on the
+  // cmdSel path). admin + commander get BOTH so the GM keeps full visibility.
+  const canToolsJtac = can(group.role, 'tools_jtac');
+  const canToolsAtc = can(group.role, 'tools_atc');
   const canControl = canSpawn || canCommand || canDelete || canEffects;
 
   const [counts, setCounts] = useState({ red: 0, blue: 0, other: 0 });
@@ -2198,6 +2204,41 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     <div style={{ display: 'flex', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
       {/* ── Left sidebar — tool buttons with text labels (outside the map) ── */}
       <div style={{ width: 200, flexShrink: 0, background: C.bgSolid, borderRight: `1px solid ${C.border}`, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {/* v1.19.42: prominent role chip so the user sees their access level
+            without hunting the bottom status bar. Colour-coded by tier:
+            admin/commander = blue (commands AI); jtac = green (CAS coord);
+            atc = amber (approach); operator = grey. */}
+        <div style={{
+          margin: '8px 8px 0', padding: '5px 8px', borderRadius: 4,
+          fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textAlign: 'center',
+          background: (
+            group.role === 'admin' || group.role === 'commander' ? 'rgba(74,158,255,0.15)' :
+            group.role === 'jtac' ? 'rgba(63,185,80,0.15)' :
+            group.role === 'atc' ? 'rgba(255,165,0,0.15)' :
+            'rgba(187,187,187,0.10)'
+          ),
+          border: `1px solid ${(
+            group.role === 'admin' || group.role === 'commander' ? '#4a9eff' :
+            group.role === 'jtac' ? '#3fb950' :
+            group.role === 'atc' ? '#ffa500' :
+            '#666'
+          )}`,
+          color: (
+            group.role === 'admin' || group.role === 'commander' ? '#4a9eff' :
+            group.role === 'jtac' ? '#3fb950' :
+            group.role === 'atc' ? '#ffa500' :
+            C.textDim
+          ),
+        }} title={
+          group.role === 'admin' ? 'Game Master — full access (spawn, vector, delete)' :
+          group.role === 'commander' ? 'Commander — same tools as GM but no member admin' :
+          group.role === 'jtac' ? 'JTAC — 9-line builder, effects, markers (no AI vectoring)' :
+          group.role === 'atc' ? 'ATC — PAR window, effects, markers (no AI vectoring)' :
+          'Observer — view only'
+        }>
+          👤 {ROLE_LABEL[group.role] || group.role}
+        </div>
+
         <SidebarSection>View</SidebarSection>
         <SidebarBtn icon="＋" label="Zoom in" onClick={() => zoomBy(1)} />
         <SidebarBtn icon="－" label="Zoom out" onClick={() => zoomBy(-1)} />
@@ -2247,7 +2288,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <SidebarBtn icon="🖊" label={`Draw (${drawKind})`} active={tool === 'draw'} onClick={() => { setTool(tool === 'draw' ? 'select' : 'draw'); setArmed(null); }} hint="Draw lines / arrows / freehand on the scope"
                     badge={drawings.length || undefined} clear={{ onClick: () => setDrawings([]), disabled: drawings.length === 0, title: 'Clear all drawings' }} />
         <SidebarBtn icon="🔍" label="Airfield search" active={airfieldSearchOpen} onClick={() => setAirfieldSearchOpen((o) => !o)} hint="Filter + highlight airbases on the map" />
-        <SidebarBtn icon="🛬" label="ATC / approach" active={atcOpen} onClick={() => setAtcOpen((o) => !o)} hint="Airport view + Precision Approach Radar (PAR) — like LotATC's airport window" />
+        <SidebarBtn icon="🛬" label={canToolsAtc ? "ATC / approach ★" : "ATC / approach"} active={atcOpen} onClick={() => setAtcOpen((o) => !o)} hint={canToolsAtc ? "Your role's primary tool — PAR + airport view (like LotATC)" : "Airport view + Precision Approach Radar (PAR) — like LotATC's airport window"} />
         <SidebarBtn icon="🗺" label="Chart overlays" active={chartsPanelOpen} onClick={() => setChartsPanelOpen((o) => !o)} hint="Upload approach plates / sector maps and pin them"
                     badge={charts.length || undefined} />
 
@@ -2255,7 +2296,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <SidebarBtn icon="📻" label="SRS directory" active={srsOpen} onClick={toggleSrs} hint="Every flight's freq + TACAN, with copy buttons" />
         <SidebarBtn icon="💬" label="Comms log" active={commsOpen} onClick={toggleComms} hint="Typed broadcast lane (canCommand-only composer)" />
         <SidebarBtn icon="📖" label="Brevity reference" active={brevityOpen} onClick={toggleBrevity} hint="NATO / USN GCI brevity quick lookup" />
-        {canCommand && (
+        {(canToolsJtac || canCommand) && (
           <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
 

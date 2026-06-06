@@ -13,11 +13,15 @@ export type LiveRole = 'admin' | 'commander' | 'jtac' | 'atc' | 'operator';
 export const ROLE_LABEL: Record<string, string> = {
   admin: 'Game Master', commander: 'Commander', jtac: 'JTAC', atc: 'ATC', operator: 'Observer',
 };
+// Mirrors backend services/groups.py ROLE_CAPS. tools_jtac / tools_atc are
+// UI hints — they unlock the 9-line builder / ATC PAR window for the named
+// roles even though those users still can't issue commands to AI units.
+// Backend still enforces command/spawn/delete; this only controls visibility.
 const ROLE_CAPS: Record<string, ReadonlySet<string>> = {
-  admin: new Set(['manage', 'spawn', 'command', 'delete', 'effects', 'markers']),
-  commander: new Set(['spawn', 'command', 'delete', 'effects', 'markers']),
-  jtac: new Set(['effects', 'markers']),
-  atc: new Set(['effects', 'markers']),
+  admin: new Set(['manage', 'spawn', 'command', 'delete', 'effects', 'markers', 'tools_jtac', 'tools_atc']),
+  commander: new Set(['spawn', 'command', 'delete', 'effects', 'markers', 'tools_jtac', 'tools_atc']),
+  jtac: new Set(['effects', 'markers', 'tools_jtac']),
+  atc: new Set(['effects', 'markers', 'tools_atc']),
   operator: new Set(),
 };
 /** Does a role grant a capability? (mirrors the backend; backend still enforces) */
