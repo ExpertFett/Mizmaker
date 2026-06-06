@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useTriggerStore } from '../../store/triggerStore';
+import { TriggerPresetsPanel } from './TriggerPresetsPanel';
 import {
   getTriggers, saveTriggers, uploadAudio, deleteAudio, audioStreamUrl,
 } from '../../api/client';
@@ -161,6 +162,21 @@ export function TriggerTab() {
         <span style={{ fontSize: 18 }}>&#x1F6A7;</span>
         Under Construction — This feature is still being developed.
       </div>
+
+      {/* Presets — save / load / export / import the current rule set
+          so it can be reused across missions. (v1.19.36) */}
+      <TriggerPresetsPanel
+        onStatus={(msg, kind) => {
+          if (kind === 'err') { setError(msg); setStatusMsg(null); }
+          else { setStatusMsg(msg); setError(null); }
+          // Clear after a few seconds so the chip doesn't linger.
+          window.setTimeout(() => {
+            setStatusMsg((cur) => (cur === msg ? null : cur));
+            setError((cur) => (cur === msg ? null : cur));
+          }, 4000);
+        }}
+      />
+
       {/* ── View Mode Toggle + Save ──────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12,
