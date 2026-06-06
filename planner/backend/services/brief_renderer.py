@@ -828,6 +828,14 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _top = 0.0
     _MY = Inches(_top)
 
+    # Speaker-notes injection (v1.19.x BYOK extra) — applied at the end of
+    # the function via _apply_speaker_notes(), which walks the freshly-added
+    # slides and matches each slide's section header against the keys in
+    # `speaker_notes`. Indirect identification keeps this completely
+    # decoupled from where slides are created — adding a new slide doesn't
+    # break this; only changing a section-header title does.
+    speaker_notes_map = brief.get("speaker_notes") or {}
+
     # Paginated-table budgets (v0.9.83). When a template top-margin pushes
     # content down, shrink the per-page row counts + table height so tables
     # keep a ~0.5" bottom margin instead of running off the slide. Default
@@ -1432,9 +1440,109 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         except Exception:
             pass
 
+    # Speaker-notes injection (v1.19.x BYOK extra). Walk only the slides we
+    # added (skipping any preserved template slides), look at each one's
+    # section-header text, and apply the matching speaker_notes value.
+    # Slides whose header doesn't match a known key are left untouched; if
+    # the user has no notes for a given slide it's a no-op. The header
+    # match is case- and whitespace-tolerant so a future rename to e.g.
+    # "Commander's Intent" vs "COMMANDERS INTENT" still resolves.
+    if speaker_notes_map:
+        _apply_speaker_notes(prs, n_template_slides, speaker_notes_map)
+
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue()
+
+
+# Map section-header text → speaker_notes dict key. Lowercased + stripped of
+# trailing punctuation for tolerant matching. Renamed slide-section headers
+# must keep this map in sync. (v1.19.x)
+_SLIDE_HEADER_TO_NOTE_KEY: Dict[str, str] = {
+    "theatre overview": "theatre",
+    "scenario": "scenario",
+    "commander's intent": "intent",
+    "commanders intent": "intent",
+    # Surface-threats slide title is "SURFACE THREATS"; "THREAT BRIEF" is
+    # the AI-prose paragraph slide. Both get the same "threats" note since
+    # the presenter usually talks once across both.
+    "surface threats": "threats",
+    "threat brief": "threats",
+    "friendly forces": "flights",
+    "force composition": "flights",
+    "comms": "comms",
+    "mission flow": "mission_flow",
+    "timeline": "timeline",
+    # The notes slide is titled "SPECIAL INSTRUCTIONS / NOTES" — match both
+    # the full header and a bare "notes" so a future rename doesn't break.
+    "special instructions / notes": "notes",
+    "notes": "notes",
+    "popup attack": "popup",
+    "popup attack profiles": "popup",
+    "weapon employment": "weapons",
+}
+
+
+def _apply_speaker_notes(prs, n_template_slides: int, notes_map: Dict[str, str]) -> None:
+    """Walk renderer-added slides and inject speaker notes by header match.
+
+    The first slide we added is the cover — it usually has no section
+    header; we apply notes["cover"] to it unconditionally if present. Every
+    subsequent slide we identify via the section-header text frame (the one
+    `_slide_header` writes near the top of each slide).
+
+    Safe: any missing key, any unidentifiable header, any python-pptx call
+    that throws → skipped. The brief still renders if speaker notes fail.
+    """
+    try:
+        slides = list(prs.slides)
+    except Exception:
+        return
+    added = slides[n_template_slides:]
+    if not added:
+        return
+
+    cover_note = (notes_map.get("cover") or "").strip()
+    if cover_note:
+        _write_slide_note(added[0], cover_note)
+
+    for slide in added[1:]:
+        header = _slide_section_header(slide)
+        if not header:
+            continue
+        key = _SLIDE_HEADER_TO_NOTE_KEY.get(header.lower().strip(" :."))
+        if not key:
+            continue
+        note = (notes_map.get(key) or "").strip()
+        if note:
+            _write_slide_note(slide, note)
+
+
+def _slide_section_header(slide) -> str:
+    """Read the first non-empty text run from the slide — that's the
+    section header the renderer wrote via `_slide_header()`. Returns "" if
+    the slide has no text shapes or all are empty."""
+    try:
+        for shape in slide.shapes:
+            if not getattr(shape, "has_text_frame", False):
+                continue
+            for para in shape.text_frame.paragraphs:
+                for run in para.runs:
+                    text = (run.text or "").strip()
+                    if text:
+                        return text
+    except Exception:
+        pass
+    return ""
+
+
+def _write_slide_note(slide, text: str) -> None:
+    """Set a slide's speaker note. python-pptx auto-creates the notes_slide
+    on access; we just write the text frame."""
+    try:
+        slide.notes_slide.notes_text_frame.text = text
+    except Exception:
+        pass
 
 
 def render_flight_brief(brief: Dict[str, Any]) -> bytes:

@@ -247,6 +247,16 @@ class WingBrief:
     # POPUP ATTACK slide with one row per profile; empty = no slide. Pure
     # passthrough — the frontend owns the schema; backend just renders.
     popup_attacks: List[Dict[str, Any]] = field(default_factory=list)
+    # Brief-presenter speaker notes (v1.19.x — BYOK AI extra).
+    # Map of slide-id → 1-4 sentences of plain-text talking points that
+    # python-pptx stuffs into each slide's notes pane. Slide IDs are the
+    # short identifiers the renderer uses internally (see
+    # SPEAKER_NOTE_SLIDES in brief_renderer.py): cover, theatre, scenario,
+    # intent, threats, air_threats, flights, comms, timeline, notes, popup.
+    # Empty default = no notes injected (renderer skips the per-slide note
+    # write entirely). Generated client-side by ai/speakerNotes.ts when the
+    # user clicks "✨ Generate speaker notes" — backend just renders.
+    speaker_notes: Dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

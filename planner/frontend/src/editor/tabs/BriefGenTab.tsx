@@ -28,6 +28,7 @@ import { useAiStore } from '../../ai/aiStore';
 import { generateCommandersIntent } from '../../ai/commandersIntent';
 import { generateThreatNarrative } from '../../ai/threatNarrative';
 import { generateFullBrief } from '../../ai/briefWriter';
+import { generateSpeakerNotes, speakerNotesToBriefMap } from '../../ai/speakerNotes';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,11 @@ interface WingBrief {
   air_threats: AirThreatRow[];
   flights: FlightRow[];
   comms: CommsRow[];
+  // v1.19.x BYOK extra: AI-generated speaker notes keyed by slide id
+  // (cover, theatre, scenario, intent, threats, flights, comms,
+  // mission_flow, timeline, notes, popup). Empty string for a key means
+  // "no note" — the backend renderer skips empties.
+  speaker_notes?: Record<string, string>;
 }
 
 type OutputFormat = 'pptx' | 'pdf' | 'png' | 'jpg';
@@ -137,6 +143,10 @@ export function BriefGenTab() {
    *  (writes scenario + intent + mission flow + notes from the story). */
   const [aiFullBusy, setAiFullBusy] = useState(false);
   const [aiFullNote, setAiFullNote] = useState<string | null>(null);
+  // Speaker notes — separate busy/note state so users can run the full-brief
+  // and the speaker-notes calls independently. (v1.19.x)
+  const [aiSpeakerBusy, setAiSpeakerBusy] = useState(false);
+  const [aiSpeakerNote, setAiSpeakerNote] = useState<string | null>(null);
   /** Last successful AI generation note for the toast under the
    *  intent card — model + token count, ephemeral. Cleared when the
    *  user edits the field or rebuilds the brief. */
@@ -478,6 +488,43 @@ export function BriefGenTab() {
       setError(`AI full-brief generation failed: ${e.message}`);
     } finally {
       setAiFullBusy(false);
+    }
+  };
+
+  // AI: speaker notes for the brief presenter (v1.19.x) -----------------------
+  // Generates 1-4 plain-prose sentences per slide and stuffs them into the
+  // brief's speaker_notes map. The backend renderer writes them into each
+  // slide's PPTX notes_text_frame so the presenter sees them during the
+  // brief. Independent of the full-brief call — runs against the same
+  // structured input + mission story.
+  const handleAiSpeakerNotes = async () => {
+    if (!brief) return;
+    if (!aiKey) { setAiOpen(true); return; }
+    setAiSpeakerBusy(true);
+    setError(null);
+    setAiSpeakerNote(null);
+    try {
+      const result = await generateSpeakerNotes(aiProvider, aiKey, aiModel, {
+        mission_name: brief.mission_name,
+        theater: brief.theater,
+        date: brief.date,
+        time_zulu: brief.time_zulu,
+        scenario: brief.scenario,
+        missionStory,
+        threats: brief.threats,
+        flights: brief.flights,
+        userSteer: aiSteer,
+      });
+      const map = speakerNotesToBriefMap(result.notes);
+      setBrief((b) => (b ? { ...b, speaker_notes: map } : null));
+      const slides = Object.keys(map).length;
+      setAiSpeakerNote(
+        `Wrote notes for ${slides} slide${slides === 1 ? '' : 's'} via ${result.model} · ${result.usage.input_tokens} in / ${result.usage.output_tokens} out tokens.`,
+      );
+    } catch (e: any) {
+      setError(`AI speaker-notes generation failed: ${e.message}`);
+    } finally {
+      setAiSpeakerBusy(false);
     }
   };
 
@@ -854,7 +901,7 @@ export function BriefGenTab() {
                 )}
                 <button
                   onClick={handleAiFullBrief}
-                  disabled={aiFullBusy || aiBusy}
+                  disabled={aiFullBusy || aiBusy || aiSpeakerBusy}
                   style={{
                     ...btnSmall,
                     background: aiKey ? '#2a2418' : '#2a2a2a',
@@ -871,6 +918,24 @@ export function BriefGenTab() {
                 >
                   {aiFullBusy ? 'Writing brief…' : aiKey ? '✨ Generate Full Brief' : '✨ Set up AI'}
                 </button>
+                {aiKey && (
+                  <button
+                    onClick={handleAiSpeakerNotes}
+                    disabled={aiFullBusy || aiBusy || aiSpeakerBusy}
+                    style={{
+                      ...btnSmall,
+                      background: '#1f2a18',
+                      borderColor: '#7cc66f',
+                      color: '#7cc66f',
+                      fontWeight: 600,
+                      opacity: aiSpeakerBusy ? 0.6 : 1,
+                      marginLeft: 6,
+                    }}
+                    title={`Write 1-4 sentences of speaker notes per slide and embed them in the PPTX notes pane (via ${aiProvider} ${aiModel}). Independent of Generate Full Brief.`}
+                  >
+                    {aiSpeakerBusy ? 'Writing notes…' : '🎤 Speaker notes'}
+                  </button>
+                )}
               </div>
             }
           >
@@ -904,6 +969,14 @@ export function BriefGenTab() {
                 fontFamily: "'B612 Mono', monospace",
               }}>
                 {aiFullNote}
+              </div>
+            )}
+            {aiSpeakerNote && (
+              <div style={{
+                marginTop: 4, fontSize: 11, color: '#7cc66f',
+                fontFamily: "'B612 Mono', monospace",
+              }}>
+                {aiSpeakerNote}
               </div>
             )}
             {error && error.startsWith('AI ') && (
