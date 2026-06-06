@@ -2444,6 +2444,14 @@ const SCRIPT_LIBRARY: ScriptEntry[] = [
     lua: '-- Adds a DO_SCRIPT_FILE trigger that loads aegis-iads-v0.9.0-beta-dynamic.lua\n-- (auto-bundled into the .miz on download). Dynamic variant of AEGIS:\n-- adopts SAM/EWR groups spawned at runtime (type-based discovery).\n-- Load order: TIME MORE > 1, AFTER MOOSE, BEFORE aegis-setup.\n-- Do NOT also load aegis-iads-v0.8.4-beta.lua — this file supersedes it.',
   },
   {
+    id: 'aegis-iads-networked',
+    name: 'AEGIS IADS (Networked Dynamic)',
+    category: 'framework',
+    description: 'AEGIS v0.9.1-beta-networked — same as v0.9.0 PLUS dynamic EW networking: a runtime-spawned EW radar creates a fresh sector and promotes any autonomous SAMs within dynamicEwRangeKm (default 80km) into it, so SAMs run on shared EW feed instead of solo EMCON. SAMs spawned NEXT to an existing dynamic EW go straight into its sector. UNTESTED — validate in DCS. Use INSTEAD of the v0.8.4 / v0.9.0 file, not alongside.',
+    bundledFile: 'aegis-iads-v0.9.1-beta-networked.lua',
+    lua: '-- Adds a DO_SCRIPT_FILE trigger that loads aegis-iads-v0.9.1-beta-networked.lua\n-- (auto-bundled into the .miz on download). Networked-dynamic variant:\n-- adopts SAM/EWR groups spawned at runtime AND networks them by proximity\n-- (dynamicEwRangeKm default 80 km). Load order: TIME MORE > 1, AFTER MOOSE,\n-- BEFORE aegis-setup. Do NOT also load v0.8.4 or v0.9.0 — this supersedes both.',
+  },
+  {
     id: 'aegis-setup',
     name: 'AEGIS Setup Example',
     category: 'framework',

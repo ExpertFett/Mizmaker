@@ -259,7 +259,7 @@ export function IadsPanel({ group, profile, area, shape, onShape, onRadius, onUn
           )}
         </div>
         <div style={{ fontSize: 10, color: C.dim, lineHeight: 1.4 }}>
-          Spawns functional groups that Dynamic AEGIS adopts. Requires aegis-iads-v0.9.0-beta-dynamic.lua running with dynamicDiscovery on.
+          Spawns functional groups that Dynamic AEGIS adopts. Requires aegis-iads-v0.9.0-beta-dynamic.lua (autonomous) or aegis-iads-v0.9.1-beta-networked.lua (networked sectors — recommended) running with dynamicDiscovery on.
         </div>
       </div>
     </div>
