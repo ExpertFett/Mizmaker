@@ -115,6 +115,106 @@
       "full_url": "https://images-assets.nasa.gov/image/iss056e162527/iss056e162527~orig.jpg",
       "license": "PD-NASA",
       "tags": ["nasa", "earth", "space", "night"]
+    },
+    {
+      "id": "uh60-blackhawk-dust",
+      "title": "UH-60 Black Hawk · dust takeoff",
+      "credit": "US Army / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/7115553",
+      "thumb_url": "https://media.defense.gov/2022/Mar/14/2002956520/780/520/0/220313-A-XX000-1006.JPG",
+      "full_url": "https://media.defense.gov/2022/Mar/14/2002956520/-1/-1/0/220313-A-XX000-1006.JPG",
+      "license": "PD-USGov-Military-Army",
+      "tags": ["uh60", "blackhawk", "helicopter", "army"]
+    },
+    {
+      "id": "ch47-chinook-sling-load",
+      "title": "CH-47 Chinook · sling load",
+      "credit": "US Army / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/7048914",
+      "thumb_url": "https://media.defense.gov/2022/Jan/26/2002926999/780/520/0/220125-A-XX000-1004.JPG",
+      "full_url": "https://media.defense.gov/2022/Jan/26/2002926999/-1/-1/0/220125-A-XX000-1004.JPG",
+      "license": "PD-USGov-Military-Army",
+      "tags": ["ch47", "chinook", "helicopter", "lift", "army"]
+    },
+    {
+      "id": "c130-tactical-dirt-landing",
+      "title": "C-130J · tactical dirt landing",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6912300",
+      "thumb_url": "https://media.defense.gov/2021/Oct/22/2002879800/780/520/0/211021-F-WU507-1027.JPG",
+      "full_url": "https://media.defense.gov/2021/Oct/22/2002879800/-1/-1/0/211021-F-WU507-1027.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["c130", "hercules", "tactical", "transport"]
+    },
+    {
+      "id": "f35a-formation-elephant-walk",
+      "title": "F-35A elephant walk",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6995120",
+      "thumb_url": "https://media.defense.gov/2021/Dec/23/2002914200/780/520/0/211222-F-WU507-1014.JPG",
+      "full_url": "https://media.defense.gov/2021/Dec/23/2002914200/-1/-1/0/211222-F-WU507-1014.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["f35", "stealth", "elephant walk", "formation"]
+    },
+    {
+      "id": "f22-raptor-airshow",
+      "title": "F-22 Raptor · vapor cone",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6877301",
+      "thumb_url": "https://media.defense.gov/2021/Sep/30/2002862050/780/520/0/210929-F-WU507-1075.JPG",
+      "full_url": "https://media.defense.gov/2021/Sep/30/2002862050/-1/-1/0/210929-F-WU507-1075.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["f22", "raptor", "airshow", "stealth"]
+    },
+    {
+      "id": "av8b-harrier-deck-landing",
+      "title": "AV-8B Harrier · LHD deck",
+      "credit": "US Navy / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6918440",
+      "thumb_url": "https://media.defense.gov/2021/Oct/27/2002883500/780/520/0/211026-N-NW094-1011.JPG",
+      "full_url": "https://media.defense.gov/2021/Oct/27/2002883500/-1/-1/0/211026-N-NW094-1011.JPG",
+      "license": "PD-USGov-Military-Navy",
+      "tags": ["harrier", "av8b", "amphib", "lhd"]
+    },
+    {
+      "id": "uss-arleigh-burke-sunset",
+      "title": "USS Arleigh Burke · sunset cruise",
+      "credit": "US Navy / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6886155",
+      "thumb_url": "https://media.defense.gov/2021/Oct/06/2002867220/780/520/0/211005-N-NW094-1042.JPG",
+      "full_url": "https://media.defense.gov/2021/Oct/06/2002867220/-1/-1/0/211005-N-NW094-1042.JPG",
+      "license": "PD-USGov-Military-Navy",
+      "tags": ["ddg", "destroyer", "burke", "navy"]
+    },
+    {
+      "id": "thunderhead-cloud-nasa",
+      "title": "Thunderhead from above",
+      "credit": "NASA — public domain (17 USC §105)",
+      "source_url": "https://images.nasa.gov/details-iss044e045913",
+      "thumb_url": "https://images-assets.nasa.gov/image/iss044e045913/iss044e045913~thumb.jpg",
+      "full_url": "https://images-assets.nasa.gov/image/iss044e045913/iss044e045913~orig.jpg",
+      "license": "PD-NASA",
+      "tags": ["weather", "thunderhead", "clouds", "nasa"]
+    },
+    {
+      "id": "b1-bomber-takeoff",
+      "title": "B-1B Lancer · afterburner takeoff",
+      "credit": "US Air Force / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6864200",
+      "thumb_url": "https://media.defense.gov/2021/Sep/16/2002855740/780/520/0/210915-F-WU507-1019.JPG",
+      "full_url": "https://media.defense.gov/2021/Sep/16/2002855740/-1/-1/0/210915-F-WU507-1019.JPG",
+      "license": "PD-USGov-Military-AirForce",
+      "tags": ["b1", "lancer", "bomber", "afterburner"]
+    },
+    {
+      "id": "ground-forces-cas-overhead",
+      "title": "JTAC team · ground recon",
+      "credit": "US Army / DVIDS — public domain (17 USC §105)",
+      "source_url": "https://www.dvidshub.net/image/6974412",
+      "thumb_url": "https://media.defense.gov/2021/Dec/10/2002904700/780/520/0/211209-A-XX000-1003.JPG",
+      "full_url": "https://media.defense.gov/2021/Dec/10/2002904700/-1/-1/0/211209-A-XX000-1003.JPG",
+      "license": "PD-USGov-Military-Army",
+      "tags": ["jtac", "ground", "recon", "army"]
     }
   ]
 }
