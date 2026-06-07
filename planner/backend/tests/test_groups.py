@@ -368,3 +368,150 @@ class TestDatabase:
         gid, pid = self._gp(client, monkeypatch)
         login(monkeypatch, "stranger")
         assert client.get(f"/api/groups/{gid}/profiles/{pid}/database/aircraft").status_code == 403
+
+
+class TestDiscordPost:
+    """v1.19.50 — POST /api/groups/<gid>/profiles/<pid>/discord/post relays a
+    rich-embed payload to the profile's encrypted webhook URL.
+
+    We stub urllib.request.urlopen so no actual HTTP fires. Admin login
+    creates a profile WITH a webhook URL; tests then exercise gating +
+    payload shape.
+    """
+
+    def _gp_with_webhook(self, client, monkeypatch, with_webhook=True):
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        body = {"name": "S", "olympusHost": "h", "olympusPort": 3000}
+        if with_webhook:
+            body["discordWebhookUrl"] = "https://discord.com/api/webhooks/12345/abc"
+        pid = client.post(f"/api/groups/{gid}/profiles", json=body).get_json()["id"]
+        return gid, pid
+
+    def test_hasDiscord_surfaces_in_profile_shape(self, client, fake_sb, monkeypatch):
+        """The serializer should report hasDiscord=True without ever leaking
+        the URL itself."""
+        gid, pid = self._gp_with_webhook(client, monkeypatch, with_webhook=True)
+        r = client.get(f"/api/groups/{gid}/profiles")
+        profiles = r.get_json()["profiles"]
+        assert profiles[0]["hasDiscord"] is True
+        # Critical: the raw URL is NEVER in the response.
+        assert "discord_webhook_enc" not in profiles[0]
+        assert "discordWebhookUrl" not in profiles[0]
+
+    def test_profile_without_webhook_has_hasDiscord_false(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp_with_webhook(client, monkeypatch, with_webhook=False)
+        r = client.get(f"/api/groups/{gid}/profiles")
+        assert r.get_json()["profiles"][0]["hasDiscord"] is False
+
+    def test_post_relays_embed_to_webhook(self, client, fake_sb, monkeypatch):
+        """Happy path: admin sends a 9-line, backend POSTs to Discord with
+        a rich embed."""
+        gid, pid = self._gp_with_webhook(client, monkeypatch)
+        captured = {}
+
+        class FakeResponse:
+            status = 204
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+
+        def fake_urlopen(req, timeout=8):
+            captured["url"] = req.full_url
+            import json as _j
+            captured["body"] = _j.loads(req.data.decode("utf-8"))
+            return FakeResponse()
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"title": "9-Line", "description": "test message",
+                  "color": 0xff8800, "footer": "via Main"},
+        )
+        assert r.status_code == 200 and r.get_json()["ok"] is True
+        assert captured["url"] == "https://discord.com/api/webhooks/12345/abc"
+        embed = captured["body"]["embeds"][0]
+        assert embed["title"] == "9-Line"
+        assert embed["description"] == "test message"
+        assert embed["color"] == 0xff8800
+        assert embed["footer"]["text"] == "via Main"
+
+    def test_empty_description_400(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp_with_webhook(client, monkeypatch)
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "  "},
+        )
+        assert r.status_code == 400
+
+    def test_no_webhook_on_profile_400(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp_with_webhook(client, monkeypatch, with_webhook=False)
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "test"},
+        )
+        assert r.status_code == 400
+        assert "No Discord webhook" in r.get_json()["error"]
+
+    def test_non_command_role_403(self, client, fake_sb, monkeypatch):
+        """JTAC/ATC roles get tools_* but not 'command', so they can't
+        broadcast via the Discord channel."""
+        gid, pid = self._gp_with_webhook(client, monkeypatch)
+        # Invite a jtac-role user.
+        invite = client.post(f"/api/groups/{gid}/invites",
+                             json={"role": "jtac"}).get_json()["code"]
+        login(monkeypatch, "jtac1", "Jtac")
+        client.post("/api/groups/join", json={"code": invite})
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "test"},
+        )
+        assert r.status_code == 403
+        assert "command" in r.get_json()["error"].lower()
+
+    def test_non_member_403(self, client, fake_sb, monkeypatch):
+        gid, pid = self._gp_with_webhook(client, monkeypatch)
+        login(monkeypatch, "stranger")
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "test"},
+        )
+        assert r.status_code == 403
+
+    def test_invalid_stored_url_400(self, client, fake_sb, monkeypatch):
+        """If the stored URL doesn't look like a Discord webhook, bail out
+        before we send any HTTP. Belt-and-braces against config drift."""
+        login(monkeypatch, "admin1", "Admin")
+        gid = client.post("/api/groups", json={"name": "G"}).get_json()["id"]
+        pid = client.post(f"/api/groups/{gid}/profiles", json={
+            "name": "S", "discordWebhookUrl": "https://evil.example.com/leaked",
+        }).get_json()["id"]
+        r = client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "test"},
+        )
+        assert r.status_code == 400
+        assert "invalid" in r.get_json()["error"].lower()
+
+    def test_description_truncated_to_4000_chars(self, client, fake_sb, monkeypatch):
+        """Discord's embed.description limit is 4096; we trim at 4000 to
+        leave headroom. Important: this is silent truncation, but a 4000+
+        char comms is already absurd."""
+        gid, pid = self._gp_with_webhook(client, monkeypatch)
+        captured = {}
+
+        class FakeResponse:
+            status = 204
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+
+        def fake_urlopen(req, timeout=8):
+            import json as _j
+            captured["body"] = _j.loads(req.data.decode("utf-8"))
+            return FakeResponse()
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        client.post(
+            f"/api/groups/{gid}/profiles/{pid}/discord/post",
+            json={"description": "A" * 5000},
+        )
+        assert len(captured["body"]["embeds"][0]["description"]) == 4000

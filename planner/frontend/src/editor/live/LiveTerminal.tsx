@@ -293,6 +293,7 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
     olympusPort: String(profile?.olympusPort ?? 3000),
     olympusPassword: '',
     lotatcUrl: profile?.lotatcUrl ?? '',
+    discordWebhookUrl: '',  // v1.19.50 — blank in edit mode (not returned by API)
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -309,6 +310,9 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
         lotatcUrl: f.lotatcUrl.trim() || undefined,
       };
       if (f.olympusPassword) data.olympusPassword = f.olympusPassword; // only if typed
+      // v1.19.50 — same pattern for webhook: only send when the field has
+      // a value, so editing other fields doesn't clear a stored webhook.
+      if (f.discordWebhookUrl.trim()) data.discordWebhookUrl = f.discordWebhookUrl.trim();
       if (isEdit) await updateProfile(gid, profile!.id, data);
       else await createProfile(gid, data);
       onDone();
@@ -332,6 +336,12 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
                onChange={(e) => up({ olympusPassword: e.target.value })} />
         <label style={lbl}>LotATC URL</label>
         <input style={input} value={f.lotatcUrl} placeholder="(optional) JSON export URL" onChange={(e) => up({ lotatcUrl: e.target.value })} />
+        <label style={lbl}>Discord webhook</label>
+        <input style={input} type="password" value={f.discordWebhookUrl}
+               placeholder={isEdit
+                 ? (profile?.hasDiscord ? '(set — leave blank to keep, type new to replace)' : 'https://discord.com/api/webhooks/...')
+                 : 'https://discord.com/api/webhooks/...'}
+               onChange={(e) => up({ discordWebhookUrl: e.target.value })} />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button style={btnPrimary} onClick={submit} disabled={busy || !f.name.trim()}>

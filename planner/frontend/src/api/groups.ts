@@ -42,6 +42,9 @@ export interface ServerProfile {
   olympusPort: number | null;
   lotatcUrl: string | null;
   hasPassword: boolean;
+  /** v1.19.50 — Discord webhook configured? URL itself is never returned
+   *  to the client; the backend has it encrypted. */
+  hasDiscord?: boolean;
   updatedAt?: string;
 }
 
@@ -137,6 +140,28 @@ export interface ProfileInput {
   olympusPort?: number;
   olympusPassword?: string;
   lotatcUrl?: string;
+  /** v1.19.50 — full https://discord.com/api/webhooks/... URL. Saving ""
+   *  clears it; omitting the key leaves the stored value unchanged.
+   *  Backend encrypts at rest; never returned to the client. */
+  discordWebhookUrl?: string;
+}
+
+/** Post a rich embed to the profile's Discord webhook. Gated by
+ *  `command` capability on the backend (commander / admin). */
+export interface DiscordPostInput {
+  title?: string;
+  description: string;
+  /** Decimal RGB color, e.g. 0xff8800 = orange. */
+  color?: number;
+  footer?: string;
+  fields?: Array<{ name: string; value: string; inline?: boolean }>;
+}
+
+export function postToDiscord(gid: string, pid: string, data: DiscordPostInput) {
+  return req<{ ok: true }>(`/api/groups/${gid}/profiles/${pid}/discord/post`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 export function createProfile(gid: string, data: ProfileInput) {

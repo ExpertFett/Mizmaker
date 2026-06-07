@@ -50,7 +50,7 @@ import { BrevityCard } from './BrevityCard';
 import { NineLineBuilder } from './NineLineBuilder';
 import { TriggersPanel } from './TriggersPanel';
 import { FloatingPanel, resetAllFloatingPositions } from './FloatingPanel';
-import { postComms } from '../../api/groups';
+import { postComms, postToDiscord } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
 import { useAiStore } from '../../ai/aiStore';
 import { identifyAirfieldFromImage } from './chartAiIdentify';
@@ -2904,9 +2904,20 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
           <NineLineBuilder
             onClose={() => setNineLineOpen(false)}
             onSubmit={(text) => {
+              // Internal comms broadcast always runs. Discord mirror is
+              // fire-and-forget when the profile has hasDiscord — keeps
+              // the in-app status terse on success.
               postComms(group.id, text)
                 .then(() => { setCmdMsg('✓ 9-line broadcast'); setNineLineOpen(false); })
                 .catch((e: unknown) => setCmdMsg(`✗ ${e instanceof Error ? e.message : 'send failed'}`));
+              if (profile.hasDiscord && canCommand) {
+                postToDiscord(group.id, profile.id, {
+                  title: '🎯 CAS 9-Line',
+                  description: '```' + text + '```',
+                  color: 0xff8800,  // CAS amber
+                  footer: `via ${profile.name}`,
+                }).catch((e: unknown) => setCmdMsg(`✗ Discord mirror failed: ${e instanceof Error ? e.message : 'error'}`));
+              }
             }}
           />
         </FloatingPanel>

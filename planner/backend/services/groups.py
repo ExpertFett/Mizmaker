@@ -30,6 +30,13 @@ from services.supabase_client import get_supabase
 from services import profile_crypto
 
 
+def _USER_AGENT_OR_DEFAULT() -> str:
+    """User-Agent string for outbound webhooks. Discord wants a descriptive
+    UA so they can identify our traffic + reach out if we hit rate limits.
+    Matches auth.py / chart_fetcher.py's convention."""
+    return "DCS-OPT/1.0 (Live Discord broadcast; +https://dcsopt.up.railway.app)"
+
+
 # --------------------------------------------------------------------------
 # Comms pubsub — in-memory, per-group. Survives requests via module globals.
 # --------------------------------------------------------------------------
@@ -148,7 +155,8 @@ def role_has(role: Optional[str], cap: str) -> bool:
 
 
 def _serialize_profile(p: dict) -> dict:
-    """Public profile shape — NEVER includes the encrypted password."""
+    """Public profile shape — NEVER includes the encrypted password OR
+    the encrypted Discord webhook URL. Only booleans for presence."""
     return {
         "id": p["id"],
         "name": p["name"],
@@ -156,6 +164,9 @@ def _serialize_profile(p: dict) -> dict:
         "olympusPort": p.get("olympus_port"),
         "lotatcUrl": p.get("lotatc_url"),
         "hasPassword": bool(p.get("olympus_password_enc")),
+        # v1.19.50 — Discord webhook presence (URL itself is encrypted and
+        # never returned to the client).
+        "hasDiscord": bool(p.get("discord_webhook_enc")),
         "updatedAt": p.get("updated_at"),
     }
 
@@ -342,6 +353,11 @@ def register_group_routes(app) -> None:
             return jsonify({"error": "Profile name required"}), 400
         try:
             pw_enc = profile_crypto.encrypt_secret(body.get("olympusPassword"))
+            # v1.19.50 — Discord webhook URL. Encrypted-at-rest because a
+            # leaked webhook lets anyone spam the channel as the bot user.
+            # Discord rate-limits per-webhook so a leak is bounded but
+            # still annoying.
+            webhook_enc = profile_crypto.encrypt_secret(body.get("discordWebhookUrl"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
         pid = _uuid()
@@ -351,6 +367,7 @@ def register_group_routes(app) -> None:
             "olympus_port": int(body.get("olympusPort") or 4512),
             "olympus_password_enc": pw_enc,
             "lotatc_url": body.get("lotatcUrl"),
+            "discord_webhook_enc": webhook_enc,
             "created_by": user["id"], "updated_at": _now_iso(),
         }).execute()
         return jsonify({"id": pid}), 201
@@ -376,6 +393,13 @@ def register_group_routes(app) -> None:
         if "olympusPassword" in body:
             try:
                 patch["olympus_password_enc"] = profile_crypto.encrypt_secret(body.get("olympusPassword"))
+            except profile_crypto.EncKeyMissing as e:
+                return jsonify({"error": str(e)}), 503
+        # v1.19.50 — same "only touch if explicitly sent" pattern for the
+        # Discord webhook. Saving "" clears it; absent key leaves it alone.
+        if "discordWebhookUrl" in body:
+            try:
+                patch["discord_webhook_enc"] = profile_crypto.encrypt_secret(body.get("discordWebhookUrl"))
             except profile_crypto.EncKeyMissing as e:
                 return jsonify({"error": str(e)}), 503
         sb.table("server_profiles").update(patch).eq("id", pid).eq("group_id", gid).execute()
@@ -414,6 +438,103 @@ def register_group_routes(app) -> None:
             return jsonify({"error": str(e)}), 503
         from services.olympus_bridge import status_check
         return jsonify(status_check(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or ""))
+
+    @app.route("/api/groups/<gid>/profiles/<pid>/discord/post", methods=["POST"])
+    def profile_discord_post(gid, pid):
+        """Post an embed to the profile's Discord webhook (v1.19.50).
+
+        Gated by canCommand (jtac/atc still get effects/markers but Discord
+        broadcast counts as a controller action — same gate as comms_post).
+        Webhook URL is decrypted server-side and never returned to the
+        browser. Request body: {title?, description, color?, footer?,
+        fields?: [{name, value, inline?}]}.
+
+        Response: {ok: True} on success or {error: str, status: int}
+        when the webhook returns non-2xx (Discord rate limit, deleted
+        webhook, etc.).
+        """
+        sb, user, err = _ctx()
+        if err:
+            return err
+        role = role_in_group(sb, user["id"], gid)
+        if role is None:
+            return jsonify({"error": "Not a member"}), 403
+        if not role_has(role, "command"):
+            return jsonify({"error": "Discord broadcast requires command capability"}), 403
+        rows = (
+            sb.table("server_profiles").select("*")
+            .eq("id", pid).eq("group_id", gid).execute().data
+        ) or []
+        if not rows:
+            return jsonify({"error": "Profile not found"}), 404
+        p = rows[0]
+        if not p.get("discord_webhook_enc"):
+            return jsonify({"error": "No Discord webhook configured on this server profile"}), 400
+        try:
+            url = profile_crypto.decrypt_secret(p.get("discord_webhook_enc"))
+        except profile_crypto.EncKeyMissing as e:
+            return jsonify({"error": str(e)}), 503
+        if not url or not url.startswith("https://discord.com/api/webhooks/"):
+            return jsonify({"error": "Stored webhook URL is invalid"}), 400
+
+        body = request.get_json(silent=True) or {}
+        description = (body.get("description") or "").strip()
+        if not description:
+            return jsonify({"error": "Empty description"}), 400
+        title = (body.get("title") or "").strip()
+        color = body.get("color")
+        footer = (body.get("footer") or "").strip()
+        fields = body.get("fields") or []
+        if not isinstance(fields, list):
+            fields = []
+
+        # Build Discord embed. Keep things ASCII-safe — Discord accepts
+        # UTF-8 but the urllib JSON encoder also will, so emoji + ° pass.
+        embed = {
+            "description": description[:4000],  # Discord max 4096
+            "type": "rich",
+        }
+        if title:
+            embed["title"] = title[:256]
+        if isinstance(color, int):
+            embed["color"] = color
+        if footer:
+            embed["footer"] = {"text": footer[:2048]}
+        if fields:
+            embed["fields"] = [
+                {"name": str(f.get("name", "?"))[:256],
+                 "value": str(f.get("value", ""))[:1024],
+                 "inline": bool(f.get("inline"))}
+                for f in fields if isinstance(f, dict)
+            ][:25]  # Discord max 25 fields
+
+        payload = {
+            "username": "DCS:OPT",
+            "embeds": [embed],
+        }
+        import json
+        import urllib.request, urllib.error
+        data = json.dumps(payload).encode("utf-8")
+        req_ = urllib.request.Request(
+            url, data=data, method="POST",
+            headers={"Content-Type": "application/json",
+                     "User-Agent": _USER_AGENT_OR_DEFAULT()},
+        )
+        try:
+            with urllib.request.urlopen(req_, timeout=8) as r:
+                # Discord returns 204 No Content on success.
+                if 200 <= r.status < 300:
+                    return jsonify({"ok": True})
+                return jsonify({"error": f"Discord returned HTTP {r.status}"}), 502
+        except urllib.error.HTTPError as he:
+            return jsonify({
+                "error": f"Discord HTTPError {he.code}",
+                "detail": he.reason or "",
+            }), 502
+        except urllib.error.URLError as ue:
+            return jsonify({"error": f"Network error reaching Discord: {ue.reason}"}), 502
+        except Exception as ex:  # pragma: no cover
+            return jsonify({"error": f"{type(ex).__name__}: {ex}"}), 500
 
     @app.route("/api/groups/<gid>/profiles/<pid>/telemetry/<resource>", methods=["GET"])
     def profile_telemetry(gid, pid, resource):
