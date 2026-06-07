@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { MissionWeather } from '../../types/mission';
+import { contrailAltitudeFt } from '../../utils/atmosphere';
 
 /* ------------------------------------------------------------------ */
 /* DCS Cloud Presets                                                   */
@@ -1138,6 +1139,14 @@ function AdvancedMode({
         <DensityAltitude weather={weather} />
       </Section>
 
+      {/* Contrail Altitude (v1.19.47) — ISA-based estimate of where
+          jets start leaving condensation trails. Useful for tactical
+          signature management: push above to deny visual / IR pickup,
+          stay below to remain "in the noise". */}
+      <Section title="Contrail Altitude" changed={hasChanges}>
+        <ContrailAltitude weather={weather} />
+      </Section>
+
       {/* Date/Time with quick buttons */}
       <Section title="Date / Time" changed={hasChanges}>
         <TimeOfDayButtons current={weather.start_time} onSelect={(s) => update({ start_time: s })} />
@@ -1566,6 +1575,89 @@ function DensityAltitude({ weather, fieldElevFt }: { weather: WeatherState; fiel
           High DA — degraded performance
         </div>
       )}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Contrail Altitude                                                   */
+/* ================================================================== */
+
+/**
+ * Contrail-formation altitude readout, ISA-anchored to the mission's
+ * surface temperature. We display the standard -40°C contrail floor
+ * (every flight-planning tool uses this since DCS doesn't model
+ * humidity for proper Schmidt-Appleman). User can flip to -38°C for
+ * high-bypass engines if they want a tighter call.
+ */
+function ContrailAltitude({ weather }: { weather: WeatherState }) {
+  const [thresholdC, setThresholdC] = useState<number>(-40);
+  const altFt = contrailAltitudeFt(weather.temperature_c, thresholdC);
+  // Round to nearest 100 ft for clean radio-call numbers.
+  const altRounded = altFt == null ? null : Math.round(altFt / 100) * 100;
+  const altLabel = altRounded == null
+    ? '—'
+    : altRounded === 0
+      ? 'Surface'
+      : altRounded >= 36000
+        ? '36,000+ ft'
+        : `${altRounded.toLocaleString()} ft`;
+
+  // Colour code: high contrail floor (>FL280) = green (lots of stealth
+  // altitude), mid = yellow, low = red (basically every cruise altitude
+  // leaves a trail). "Surface" = arctic op, anything contrails — also red.
+  const colour =
+    altRounded == null ? '#cccccc'
+    : altRounded === 0 ? '#d95050'
+    : altRounded < 20000 ? '#d95050'
+    : altRounded < 28000 ? '#d29922'
+    : '#60c080';
+
+  // Practical advisory line. We don't editorialise too hard — the
+  // pilot makes the tactical call; we just label the band.
+  const advisory =
+    altRounded == null ? ''
+    : altRounded === 0 ? 'Arctic conditions — contrails at any altitude.'
+    : altRounded >= 36000 ? 'Tropopause-capped; surface too warm for contrails below FL360.'
+    : altRounded < 20000 ? 'Low contrail floor — cruise above FL200 leaves a trail.'
+    : altRounded < 28000 ? 'Mid-band — push above FLnnn (see number) to stay clean.'
+    : 'High floor — most tactical cruise altitudes stay clean.';
+
+  return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex', gap: 20, padding: '8px 16px',
+        background: '#0a1218', borderRadius: 6, border: '1px solid #222222',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: colour }}>
+            {altLabel}
+          </div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>Contrail Floor</div>
+        </div>
+        <div style={{ width: 1, background: '#3a3a3a' }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#cccccc' }}>
+            {weather.temperature_c.toFixed(1)}°C
+          </div>
+          <div style={{ fontSize: 10, color: '#aaaaaa', textTransform: 'uppercase' }}>Surface Temp</div>
+        </div>
+      </div>
+      <label style={fieldLabelStyle}>
+        Threshold (°C)
+        <select
+          value={thresholdC}
+          onChange={(e) => setThresholdC(Number(e.target.value))}
+          style={{ ...numInputStyle, width: 80 }}
+          title="Contrail formation threshold. -40°C is the standard NAVMETOC value; -38°C reflects modern high-bypass turbofans (slightly easier to contrail)."
+        >
+          <option value={-40}>-40 (std)</option>
+          <option value={-38}>-38 (HB)</option>
+        </select>
+      </label>
+      <div style={{ fontSize: 11, color: '#aaaaaa', flexBasis: '100%', lineHeight: 1.5 }}>
+        {advisory} <span style={{ color: '#888' }}>ISA lapse rate · surface-anchored · ignores humidity (DCS doesn't model it).</span>
+      </div>
     </div>
   );
 }

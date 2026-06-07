@@ -56,6 +56,61 @@ export function speedOfSound(alt_m: number, groundTempC: number = 15): number {
   return Math.sqrt(GAMMA * R_AIR * isaTemperature(alt_m, groundTempC));
 }
 
+/**
+ * Contrail formation altitude (feet MSL).
+ *
+ * Contrails form when jet exhaust hits cold-enough ambient air for the
+ * water vapour to condense + freeze faster than it dissipates. The full
+ * Schmidt-Appleman criterion needs humidity (which DCS doesn't model),
+ * so we use the standard flight-planning simplification: contrails
+ * begin where ambient T ≤ -40°C (sometimes -38°C for high-bypass; -40
+ * is the widely-cited threshold and what NAVMETOC uses for tactical
+ * signature calls).
+ *
+ * Solves the ISA lapse-rate equation for the altitude at which:
+ *   T(h) = T_surface − 1.98 °C/1000 ft × h  =  contrailThresholdC
+ *
+ * Capped at the tropopause (≈36,089 ft ISA standard) — above that, ISA
+ * temp is flat at −56.5°C, so contrails are unavoidable. When the
+ * surface is already so cold the threshold is met at sea level (e.g.
+ * arctic ops), returns 0.
+ *
+ * @param surfaceTempC  Ambient surface temperature in °C.
+ * @param thresholdC    Optional override; defaults to -40°C.
+ * @returns Altitude in feet MSL where contrails start, or null if the
+ *          surface temp is non-numeric (callers should display "—").
+ */
+export function contrailAltitudeFt(
+  surfaceTempC: number | null | undefined,
+  thresholdC: number = -40,
+): number | null {
+  if (surfaceTempC == null || !Number.isFinite(surfaceTempC)) return null;
+  // ISA lapse rate in °C/ft (≈ -1.98 °C per 1000 ft, derived from
+  // 6.5 °C/km × 0.3048 m/ft).
+  const LAPSE_C_PER_FT = (ISA_LAPSE * 1000) * 0.3048 / 1000;  // 0.001981
+  // Tropopause ≈ 36,089 ft ISA standard. Above this, T stops decreasing
+  // and contrails are baked-in regardless of surface conditions.
+  const TROPOPAUSE_FT = 36089;
+  const TROPOPAUSE_T_C = -56.5;
+
+  // If the surface itself is already below threshold (e.g. arctic), the
+  // contrail layer starts at ground level — every altitude leaves a trail.
+  if (surfaceTempC <= thresholdC) return 0;
+
+  // Above the tropopause we're always in contrail land (T ≈ -56.5 < -40),
+  // so if the linear solution lands above 36,089 ft we cap there.
+  if (TROPOPAUSE_T_C > thresholdC) {
+    // The threshold itself is colder than the tropopause's floor — meaning
+    // contrails never form in the troposphere. Unusual (would need
+    // threshold below -56.5°C) but defensive math.
+    return TROPOPAUSE_FT;
+  }
+
+  // Linear ISA solution: h = (T_surface - threshold) / lapse_per_ft
+  const h_ft = (surfaceTempC - thresholdC) / LAPSE_C_PER_FT;
+  return Math.min(h_ft, TROPOPAUSE_FT);
+}
+
 function interpolateWind(alt_m: number, wind: Weather['wind']): { speed: number; fromDeg: number } {
   // Convert DCS "TO" direction to meteorological "FROM"
   const g = { speed: wind.atGround.speed, from: (wind.atGround.dir + 180) % 360 };
