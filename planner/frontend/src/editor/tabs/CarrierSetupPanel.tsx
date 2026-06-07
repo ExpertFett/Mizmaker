@@ -11,7 +11,7 @@ import type { MissionGroup } from '../../types/mission';
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-interface CarrierConfig {
+export interface CarrierConfig {
   groupId: number;
   groupName: string;
   unitType: string;
@@ -40,6 +40,15 @@ interface CarrierConfig {
   rescueModex: number;
   /** USERFLAG base number for beacon/light triggers */
   flagBase: number;
+  /** v1.19.49 — EMCON / Zip-Lip profile applied at mission start. The
+   *  generated script sets the level on every ship in this group AND
+   *  adds an F10 menu so the DM can toggle in/out mid-mission.
+   *  off      — normal emissions, no script changes (default).
+   *  alpha    — emissions OFF (radar dark) but ALARM RED + WEAPONS FREE,
+   *             so the group still engages if attacked. "EMCON Alpha".
+   *  zip_lip  — emissions OFF + ALARM GREEN + ROE WEAPON HOLD. Full
+   *             silence, won't engage unless toggled back on. */
+  emcon: 'off' | 'alpha' | 'zip_lip';
 }
 
 /* ------------------------------------------------------------------ */
@@ -179,7 +188,9 @@ function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
 /* Script generator                                                    */
 /* ------------------------------------------------------------------ */
 
-function generateMooseCarrierScript(configs: CarrierConfig[]): string {
+// Exported for unit testing. Pure function — given configs, returns the
+// Lua script string. No side effects.
+export function generateMooseCarrierScript(configs: CarrierConfig[]): string {
   const lines: string[] = [
     '-- MOOSE Carrier Control Script (Auto-Generated)',
     '-- Requires: MOOSE framework loaded via DO_SCRIPT_FILE BEFORE this script',
@@ -212,6 +223,55 @@ function generateMooseCarrierScript(configs: CarrierConfig[]): string {
     lines.push(`${varName} = NAVYGROUP:New("${c.groupName}")`);
     lines.push(`${varName}:Activate()`);
     lines.push('');
+
+    // ── EMCON / Zip-Lip (v1.19.49) ─────────────────────────────────
+    // Apply the configured EMCON profile at activation, plus an F10
+    // menu entry so the DM can toggle in/out mid-mission. The state
+    // is applied PER UNIT (not group-level) so every escort + CV in
+    // the carrier group goes dark together.
+    if (c.emcon !== 'off') {
+      const alarmState = c.emcon === 'zip_lip' ? 1 : 2;  // 1=GREEN, 2=RED
+      const roe = c.emcon === 'zip_lip' ? 4 : 2;          // 4=HOLD, 2=OPEN_FIRE
+      const profileLabel = c.emcon === 'zip_lip' ? 'ZIP-LIP' : 'EMCON ALPHA';
+      lines.push(`-- EMCON: applies ${profileLabel} to every unit in the carrier group`);
+      lines.push(`function ${varName}_emconOn()`);
+      lines.push(`  local grp = Group.getByName("${c.groupName}")`);
+      lines.push(`  if not grp then return end`);
+      lines.push(`  for _, u in ipairs(grp:getUnits()) do`);
+      lines.push(`    u:enableEmission(false)`);
+      lines.push(`  end`);
+      lines.push(`  local ctrl = grp:getController()`);
+      lines.push(`  if ctrl then`);
+      lines.push(`    ctrl:setOption(AI.Option.Ground.id.ALARM_STATE, ${alarmState})`);
+      lines.push(`    ctrl:setOption(AI.Option.Ground.id.ROE, ${roe})`);
+      lines.push(`  end`);
+      lines.push(`  MESSAGE:New("99 ${c.callsign} ${profileLabel} set — emissions secured"):ToAll()`);
+      lines.push(`end`);
+      lines.push('');
+      lines.push(`function ${varName}_emconOff()`);
+      lines.push(`  local grp = Group.getByName("${c.groupName}")`);
+      lines.push(`  if not grp then return end`);
+      lines.push(`  for _, u in ipairs(grp:getUnits()) do`);
+      lines.push(`    u:enableEmission(true)`);
+      lines.push(`  end`);
+      lines.push(`  local ctrl = grp:getController()`);
+      lines.push(`  if ctrl then`);
+      lines.push(`    ctrl:setOption(AI.Option.Ground.id.ALARM_STATE, 2)  -- ALARM RED`);
+      lines.push(`    ctrl:setOption(AI.Option.Ground.id.ROE, 2)          -- ROE OPEN_FIRE`);
+      lines.push(`  end`);
+      lines.push(`  MESSAGE:New("99 ${c.callsign} emissions live — EMCON lifted"):ToAll()`);
+      lines.push(`end`);
+      lines.push('');
+      // Apply at activation. 5s delay so the NAVYGROUP:Activate() above
+      // finishes spinning up its controllers first.
+      lines.push(`timer.scheduleFunction(${varName}_emconOn, nil, timer.getTime() + 5)`);
+      lines.push('');
+      // F10 menu so the DM can toggle. Submenu under the carrier's name.
+      lines.push(`local ${varName}_emconMenu = missionCommands.addSubMenu("EMCON · ${c.callsign}")`);
+      lines.push(`missionCommands.addCommand("Set ${profileLabel}", ${varName}_emconMenu, ${varName}_emconOn)`);
+      lines.push(`missionCommands.addCommand("Lift EMCON (emissions live)", ${varName}_emconMenu, ${varName}_emconOff)`);
+      lines.push('');
+    }
 
     // TIW functions
     const durations = [
@@ -430,6 +490,7 @@ export function CarrierSetupPanel() {
         rescueHeloGroup: '',
         rescueModex: 42,
         flagBase,
+        emcon: 'off',
       });
       // ICLS already tracked in usedIcls above — no separate counter needed.
       flagBase += 20; // 20 flags per carrier
@@ -840,6 +901,17 @@ export function CarrierSetupPanel() {
               onChange={(v) => updateConfig(c.groupId, 'rescueModex', v)} />
             <NumField label="Flag Base #" value={c.flagBase} min={1} max={9999}
               onChange={(v) => updateConfig(c.groupId, 'flagBase', v)} />
+            <SelectField
+              label="EMCON / Zip-Lip"
+              value={c.emcon}
+              onChange={(v) => updateConfig(c.groupId, 'emcon', v)}
+              title="Apply electronic-emission control to every ship in this carrier group at mission start. Generates a Lua trigger + F10 menu so the DM can toggle in/out mid-mission. OFF = normal emissions. EMCON ALPHA = radars OFF but ROE WEAPONS FREE (will still fire if attacked). ZIP-LIP = full silence (radars OFF, ALARM GREEN, ROE WEAPON HOLD)."
+              options={[
+                { value: 'off', label: 'Off (normal)' },
+                { value: 'alpha', label: 'EMCON Alpha (radar OFF, weapons free)' },
+                { value: 'zip_lip', label: 'Zip-Lip (full silence)' },
+              ]}
+            />
           </div>
         </div>
       ))}
@@ -909,6 +981,27 @@ function Field({ label, value, onChange, placeholder }: {
         placeholder={placeholder}
         style={inputStyle}
       />
+    </div>
+  );
+}
+
+function SelectField<T extends string>({ label, value, onChange, options, title }: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  title?: string;
+}) {
+  return (
+    <div title={title}>
+      <div style={fieldLabel}>{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        style={{ ...inputStyle, width: 200 }}
+      >
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   );
 }
