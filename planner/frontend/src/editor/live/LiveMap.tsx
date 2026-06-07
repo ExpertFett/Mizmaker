@@ -49,6 +49,7 @@ import { bullseyeBR, formatBullseye } from './bullseye';
 import { BrevityCard } from './BrevityCard';
 import { NineLineBuilder } from './NineLineBuilder';
 import { TriggersPanel } from './TriggersPanel';
+import { FloatingPanel, resetAllFloatingPositions } from './FloatingPanel';
 import { postComms } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
 import { useAiStore } from '../../ai/aiStore';
@@ -300,6 +301,27 @@ function usePersistedToggle(key: string): [boolean, () => void] {
 
 export function LiveMap({ group, profile }: { group: GroupSummary; profile: ServerProfile }) {
   const elRef = useRef<HTMLDivElement | null>(null);
+  // v1.19.48 — root container for the Fullscreen API. We fullscreen the
+  // entire Live surface (sidebar + map + right pane) so the controller
+  // can hide the browser chrome + DCS:OPT app shell during a recovery.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await rootRef.current?.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (e) {
+      console.warn('Fullscreen toggle failed:', e);
+    }
+  }, []);
   const coordRef = useRef<HTMLSpanElement | null>(null);
   const hoverRef = useRef<HTMLDivElement | null>(null);  // Phase 6 — track-hover info chip
   const mapRef = useRef<OlMap | null>(null);
@@ -2201,7 +2223,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   );
 
   return (
-    <div style={{ display: 'flex', height: 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
+    <div ref={rootRef} style={{ display: 'flex', height: isFullscreen ? '100vh' : 'clamp(440px, calc(100vh - 200px), 1040px)', border: `1px solid ${C.border}`, borderRadius: isFullscreen ? 0 : 8, overflow: 'hidden', background: C.bgSolid, fontFamily: 'inherit' }}>
       {/* ── Left sidebar — tool buttons with text labels (outside the map) ── */}
       <div style={{ width: 200, flexShrink: 0, background: C.bgSolid, borderRight: `1px solid ${C.border}`, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {/* v1.19.42: prominent role chip so the user sees their access level
@@ -2242,6 +2264,15 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         <SidebarSection>View</SidebarSection>
         <SidebarBtn icon="＋" label="Zoom in" onClick={() => zoomBy(1)} />
         <SidebarBtn icon="－" label="Zoom out" onClick={() => zoomBy(-1)} />
+        {/* v1.19.48 — fullscreen the whole Live surface; the OS hides the
+            browser chrome. Plus a manual escape valve to recover from a
+            dragged-offscreen FloatingPanel. */}
+        <SidebarBtn icon={isFullscreen ? '🗗' : '⛶'} label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                    onClick={toggleFullscreen}
+                    hint="Hide the browser chrome + app shell. Press Esc or this button again to exit." />
+        <SidebarBtn icon="🔄" label="Reset panel positions"
+                    onClick={() => { resetAllFloatingPositions(); window.location.reload(); }}
+                    hint="Move every floating panel (SRS, Comms, Brevity, Triggers, 9-line) back to its default spot. Reloads the page." />
         {/* Basemap segmented control (v1.19.13) */}
         <div style={{ padding: '4px 8px 6px' }}>
           <div style={{ fontSize: 9, color: C.textDim, letterSpacing: 0.5, marginBottom: 3 }}>BASEMAP</div>
@@ -2839,37 +2870,37 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
-      {/* ── SRS directory (left side, below the tool rail) ───────────────── */}
+      {/* ── SRS directory ─ FloatingPanel (v1.19.48: draggable + resizable) ── */}
       {srsOpen && (
-        <div style={{ position: 'absolute', top: 56, left: 56, width: 320, maxHeight: 'calc(100% - 90px)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
+        <FloatingPanel id="srs" zIndex={4} defaultRect={{ x: 56, y: 56, w: 320, h: 480 }}>
           <SrsDirectory groupId={group.id} onClose={toggleSrs} />
-        </div>
+        </FloatingPanel>
       )}
 
-      {/* ── Comms log drawer (bottom-left, above the status bar) ─────────── */}
+      {/* ── Comms log drawer ─ FloatingPanel ─────────────────────────────── */}
       {commsOpen && (
-        <div style={{ position: 'absolute', bottom: 36, left: 56, width: 360, height: 320, zIndex: 4, display: 'flex' }}>
+        <FloatingPanel id="comms" zIndex={4} defaultRect={{ x: 56, y: 380, w: 360, h: 320 }}>
           <CommsLog group={group} onClose={toggleComms} />
-        </div>
+        </FloatingPanel>
       )}
 
-      {/* ── Brevity card (right side, opposite of unit-control) ──────────── */}
+      {/* ── Brevity card ─ FloatingPanel ─────────────────────────────────── */}
       {brevityOpen && (
-        <div style={{ position: 'absolute', top: 56, right: 12, width: 360, maxHeight: 'calc(100% - 90px)', zIndex: 5, display: 'flex', flexDirection: 'column' }}>
+        <FloatingPanel id="brevity" zIndex={5} defaultRect={{ x: typeof window !== 'undefined' ? Math.max(56, window.innerWidth - 632) : 600, y: 56, w: 360, h: 540 }}>
           <BrevityCard onClose={toggleBrevity} />
-        </div>
+        </FloatingPanel>
       )}
 
-      {/* ── Triggers panel — DM fire control (Phase 9) ───────────────────── */}
+      {/* ── Triggers panel ─ FloatingPanel ───────────────────────────────── */}
       {triggersOpen && (
-        <div style={{ position: 'absolute', top: 56, right: brevityOpen ? 380 : 12, width: 360, maxHeight: 'calc(100% - 90px)', zIndex: 5, display: 'flex', flexDirection: 'column' }}>
+        <FloatingPanel id="triggers" zIndex={5} defaultRect={{ x: typeof window !== 'undefined' ? Math.max(56, window.innerWidth - 1000) : 230, y: 56, w: 360, h: 540 }}>
           <TriggersPanel group={group} profile={profile} onClose={toggleTriggers} />
-        </div>
+        </FloatingPanel>
       )}
 
-      {/* ── 9-line builder (centered modal-style) ────────────────────────── */}
+      {/* ── 9-line builder ─ FloatingPanel ───────────────────────────────── */}
       {nineLineOpen && (
-        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', width: 460, maxHeight: 'calc(100% - 90px)', zIndex: 6, display: 'flex', flexDirection: 'column' }}>
+        <FloatingPanel id="nineline" zIndex={6} defaultRect={{ x: typeof window !== 'undefined' ? Math.max(56, (window.innerWidth - 460) / 2) : 400, y: 56, w: 460, h: 600 }}>
           <NineLineBuilder
             onClose={() => setNineLineOpen(false)}
             onSubmit={(text) => {
@@ -2878,7 +2909,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                 .catch((e: unknown) => setCmdMsg(`✗ ${e instanceof Error ? e.message : 'send failed'}`));
             }}
           />
-        </div>
+        </FloatingPanel>
       )}
 
       {/* ── Picture-call panel (bottom-right; auto bogey-dope) ───────────── */}
