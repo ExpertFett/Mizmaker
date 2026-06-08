@@ -806,11 +806,18 @@ function UnitRow({
                         ...(isEmpty ? { color: '#4a4a4a' } : {}),
                       }}
                     >
-                      <option value="">(empty)</option>
+                      {/* v1.19.55 — explicit option styling. Without
+                          this the browser falls back to OS-default
+                          dropdown colours, which on Windows dark-mode
+                          render dark-grey text on dark-grey background
+                          (tester report: "the font is really dark and
+                          hard to read"). Forcing the colours here makes
+                          the dropdown readable on every OS theme. */}
+                      <option value="" style={optionStyle}>(empty)</option>
                       {Array.from(byCategory.entries()).map(([cat, opts]) => (
-                        <optgroup key={cat} label={cat}>
+                        <optgroup key={cat} label={cat} style={optgroupStyle}>
                           {opts.map((opt) => (
-                            <option key={opt.clsid} value={opt.clsid}>{opt.shortName}</option>
+                            <option key={opt.clsid} value={opt.clsid} style={optionStyle}>{opt.shortName}</option>
                           ))}
                         </optgroup>
                       ))}
@@ -887,6 +894,20 @@ const pylonSelectStyle: React.CSSProperties = {
   fontSize: 12,
   padding: '3px 6px',
   outline: 'none',
+};
+
+// v1.19.55 — option / optgroup styling applied inline on every <option>
+// in the pylon dropdown. Browsers ignore option styles from
+// stylesheets in some renderers but honour inline ones, so we set them
+// at the element level for reliable cross-OS dark-mode visibility.
+const optionStyle: React.CSSProperties = {
+  background: '#1a1a1a',
+  color: '#e0e0e0',
+};
+const optgroupStyle: React.CSSProperties = {
+  background: '#0d0d0d',
+  color: '#9cd0ff',
+  fontWeight: 700,
 };
 
 const smallActionBtn: React.CSSProperties = {

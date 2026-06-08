@@ -42,16 +42,53 @@ export function applyRenamerSop(groups: MissionGroup[], sop: SOP): AutoSetupActi
 
   const edits: UnitEdit[] = [];
   const details: string[] = [];
+  // v1.19.55 — track every newGroupName we emit so we can de-collide
+  // when two source groups would land on the same name. Previously the
+  // dup case silently shipped TWO flights both called "Vic-1" — DCS
+  // tolerates it but the planner / brief generator can't tell them
+  // apart. Tester report: "the group unit renamer isn't working
+  // properly, it's made two flights into vic-1 it's not adding the -
+  // in most the names, so it looks like vic1 etc"
+  const usedNames = new Set<string>();
 
   for (let i = 0; i < playerGroups.length; i++) {
     const g = playerGroups[i];
     const sopFlight = sopFlightsSorted[i];
     if (!sopFlight) break;  // ran out of SOP entries; remaining flights stay as-is
 
-    // Preserve trailing number suffix from existing name
-    const numMatch = g.groupName.match(/(\s*\d+)\s*$/);
-    const numSuffix = numMatch ? numMatch[1] : '';
-    const newGroupName = `${sopFlight.callsign}${numSuffix}`;
+    // v1.19.55 — Preserve the SEPARATOR + number suffix from the
+    // original name. The old regex was /(\s*\d+)\s*$/ which captured
+    // ONLY whitespace before digits, so "Bengal-1" produced suffix "1"
+    // (dash silently dropped) and newGroupName became "Vic1". Now the
+    // regex also accepts dash / underscore so "Bengal-1" → "Vic-1",
+    // "Bengal_2" → "Vic_2", "Bengal 3" → "Vic 3".
+    const numMatch = g.groupName.match(/([\s_-]*)(\d+)\s*$/);
+    const numSuffix = numMatch ? numMatch[2] : '';
+    let sep = numMatch ? numMatch[1] : '';
+    // If the original had a number with no separator at all
+    // ("Bengal1"), assume the user wants a dash — that's the
+    // squadron-callsign convention ("Vic-1", "Enfield-1") and was the
+    // shape Fett's testers expected.
+    if (numSuffix && !sep) sep = '-';
+    let newGroupName = numSuffix
+      ? `${sopFlight.callsign}${sep}${numSuffix}`
+      : sopFlight.callsign;
+
+    // v1.19.55 — de-collide. If "Vic-1" is already taken (two source
+    // groups had the same trailing number, or the SOP has two flights
+    // with the same callsign), append "-2", "-3", … until we find a
+    // free name. This keeps the planner + brief generator able to tell
+    // the flights apart and matches what a human would write by hand.
+    if (usedNames.has(newGroupName)) {
+      let bump = 2;
+      let candidate = `${newGroupName}-${bump}`;
+      while (usedNames.has(candidate)) {
+        bump++;
+        candidate = `${newGroupName}-${bump}`;
+      }
+      newGroupName = candidate;
+    }
+    usedNames.add(newGroupName);
 
     // Build per-unit name map (lead → "newName-1", wingman → "newName-2", ...)
     const unitNamesObj: Record<number, string> = {};

@@ -149,13 +149,41 @@ def sample_covers():
     image picker + Upload-page hero gallery. Source manifest lives at
     data/sample_covers.json — entries are vetted for redistribution
     (DOD / NASA / USGS / Wikimedia CC0 only). Frontend silently hides
-    broken thumbnails so a partial manifest is fine. (v1.19.35)"""
+    broken thumbnails so a partial manifest is fine. (v1.19.35)
+
+    v1.19.55 — remap JSON's snake_case keys into the camelCase shape the
+    frontend expects ({thumbnailUrl, fullUrl, attribution, source,
+    category}). Without this the thumbnails never loaded because the
+    field names didn't match. (Tester report: "previews aren't loading".)
+    """
     try:
         import json as _json, os as _os
         manifest_path = _os.path.join(_os.path.dirname(__file__), "data", "sample_covers.json")
         with open(manifest_path, "r", encoding="utf-8") as _f:
             data = _json.load(_f)
-        covers = data.get("covers", []) or []
+        raw_covers = data.get("covers", []) or []
+        # Field remap: snake_case (JSON authoring convention) → camelCase
+        # (frontend convention). Tolerant of either case so old + new
+        # manifests both work.
+        covers = []
+        for c in raw_covers:
+            if not isinstance(c, dict):
+                continue
+            covers.append({
+                "id": c.get("id") or "",
+                "title": c.get("title") or "",
+                # Category: optional — tag/group used by the gallery's
+                # filter chips. We don't enforce a controlled vocabulary.
+                "category": c.get("category") or (
+                    c.get("tags", [None])[0] if isinstance(c.get("tags"), list) else ""
+                ),
+                "thumbnailUrl": c.get("thumbnailUrl") or c.get("thumb_url") or "",
+                "fullUrl": c.get("fullUrl") or c.get("full_url") or "",
+                # "credit" is the field name in the v1.19.41 manifest;
+                # "attribution" is the older one the frontend reads.
+                "attribution": c.get("attribution") or c.get("credit") or "",
+                "source": c.get("source") or c.get("source_url") or "",
+            })
         return jsonify({"covers": covers, "count": len(covers)})
     except Exception as e:
         return jsonify({"covers": [], "count": 0, "error": str(e)})
