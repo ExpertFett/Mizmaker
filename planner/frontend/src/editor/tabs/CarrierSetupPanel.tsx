@@ -146,15 +146,24 @@ export function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
   // DCS reuses the `CVN_71` unit type across skin variants (Roosevelt /
   // Lincoln / Washington), so a group named "CVN-73" with unit type
   // `CVN_71_Washington` used to match `CVN-71` first (insertion order) and
-  // misset the TACAN to channel 71 + Rough Rider callsign. Reported by
-  // a tester 2026-06-09 against a CVN-73 War Fighter setup.
+  // misset the TACAN to channel 71 + Rough Rider callsign.
+  //
+  // v1.19.61 follow-up — Fett re-reported "the carrier tab is still
+  // making GW 71". Found the residual case: when the GROUP NAME doesn't
+  // identify the hull (e.g. just "Carrier-1") but the UNIT TYPE is
+  // "CVN_71_Washington", the old tier 3 (utype CVN-NN regex) hit
+  // "cvn-71" first and returned Roosevelt — the keyword "washington"
+  // that would have correctly identified the ship was in tier 4 and
+  // never reached. Swap: utype KEYWORD now runs before utype CVN-NN
+  // because the keyword identifies the actual ship, while the engine
+  // CVN-NN identifies the underlying hull-class model DCS reuses.
   //
   // Priority tiers (everything the GROUP says beats everything the
   // UNIT TYPE says — the user labels their group with intent):
-  //   1. CVN-NN regex in the GROUP NAME → look up that exact hull
-  //   2. Hull-keyword (washington, roosevelt, …) in GROUP NAME
-  //   3. CVN-NN regex in the UNIT TYPE → look up that hull
-  //   4. Hull-keyword in UNIT TYPE
+  //   1. CVN-NN regex in GROUP NAME    → look up that exact hull
+  //   2. Hull-keyword in GROUP NAME    (washington, roosevelt, …)
+  //   3. Hull-keyword in UNIT TYPE     (skin identifier — more specific)
+  //   4. CVN-NN regex in UNIT TYPE     (engine model — less specific)
   //   5. Generic CVN-NN fallback (no DB entry)
   //   6. LHA/LHD heuristic
   //   7. Generic CVN
@@ -174,17 +183,23 @@ export function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
     if (nameNorm.includes(key.toLowerCase())) return fromHullRow(data);
   }
 
-  // Tier 3: explicit hull number in the unit type.
+  // Tier 3: hull-keyword in UNIT TYPE. Runs BEFORE the utype CVN-NN
+  // regex because DCS's skin-variant unit types embed BOTH a CVN_NN
+  // engine-model number AND the actual hull keyword (e.g. CVN_71
+  // shared across "CVN_71_Roosevelt", "CVN_71_Washington"). The
+  // keyword is the more specific signal.
+  for (const [key, data] of Object.entries(HULL_DB)) {
+    if (/^CVN-?\d/.test(key)) continue;
+    if (utypeNorm.includes(key.toLowerCase())) return fromHullRow(data);
+  }
+
+  // Tier 4: explicit hull number in the unit type (last resort before
+  // synth — only reaches here when neither group name nor utype carry
+  // a hull-keyword we recognise).
   const utypeCvn = utypeNorm.match(/cvn-?(\d+)/);
   if (utypeCvn) {
     const key = `CVN-${utypeCvn[1]}`;
     if (HULL_DB[key]) return fromHullRow(HULL_DB[key]);
-  }
-
-  // Tier 4: hull-keyword in UNIT TYPE.
-  for (const [key, data] of Object.entries(HULL_DB)) {
-    if (/^CVN-?\d/.test(key)) continue;
-    if (utypeNorm.includes(key.toLowerCase())) return fromHullRow(data);
   }
 
   // Tier 5: hull number found in either string but no DB entry — synthesise.

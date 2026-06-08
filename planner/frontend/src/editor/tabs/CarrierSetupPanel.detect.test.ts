@@ -125,6 +125,42 @@ describe('detectCarrierInfo — hull priority (v1.19.53 fix)', () => {
     expect(info.label).toBe('CVN');
   });
 
+  it('v1.19.61 — CVN_71_Washington unit type lands on Washington (not Roosevelt)', () => {
+    // Tester re-report: "the carrier tab is still making the GW 71".
+    // Residual case from v1.19.53: when the GROUP NAME doesn't identify
+    // the hull, the unit type "CVN_71_Washington" used to match the
+    // CVN-71 regex in tier 3 BEFORE the "washington" keyword in tier 4
+    // → returned Rough Rider + tacan 71. Now the keyword runs first.
+    const info = detectCarrierInfo(group({
+      groupName: 'Carrier-1',  // no hull identifier — forces fall-through to utype
+      unitType: 'CVN_71_Washington',
+    }));
+    expect(info.tacanCh).toBe(73);
+    expect(info.callsign).toBe('War Fighter');
+  });
+
+  it('v1.19.61 — CVN_71_Roosevelt unit type still lands on Roosevelt', () => {
+    // Symmetric regression: the swap must not break the Roosevelt case.
+    const info = detectCarrierInfo(group({
+      groupName: 'Carrier-1',
+      unitType: 'CVN_71_Roosevelt',
+    }));
+    expect(info.tacanCh).toBe(71);
+    expect(info.callsign).toBe('Rough Rider');
+  });
+
+  it('v1.19.61 — bare CVN_71 unit type with no skin keyword still maps to Roosevelt', () => {
+    // When the utype carries ONLY the engine model number with no skin
+    // suffix, tier 3 (keyword) fails and tier 4 (CVN-NN regex) is the
+    // fallback. Should still resolve to CVN-71.
+    const info = detectCarrierInfo(group({
+      groupName: 'Carrier-1',
+      unitType: 'CVN_71',
+    }));
+    expect(info.tacanCh).toBe(71);
+    expect(info.callsign).toBe('Rough Rider');
+  });
+
   it('LHA/LHD detection still works', () => {
     const info = detectCarrierInfo(group({
       groupName: 'LHA-1 Tarawa',
