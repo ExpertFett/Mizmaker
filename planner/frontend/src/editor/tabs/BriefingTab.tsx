@@ -207,6 +207,63 @@ const btnApply: React.CSSProperties = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Auto-fill planner (v1.19.52)                                        */
+/* ------------------------------------------------------------------ */
+
+export interface AutoFillPlan {
+  /** Field → new value mapping for fields that WILL be filled. Apply
+   *  these via state setters in the component. */
+  fill: Partial<{ sortie: string; description: string; blueTask: string; redTask: string }>;
+  /** Display labels for fields that got filled this round. */
+  filled: string[];
+  /** Display labels for fields that already had content (skipped). */
+  skipped: string[];
+}
+
+interface AutoFillInputs {
+  current: { sortie: string; description: string; blueTask: string; redTask: string };
+  generated: { sortie: string; description: string; blueTask: string; redTask: string };
+}
+
+/**
+ * Pure helper exported for unit testing. Given the user's current field
+ * values + the auto-generated suggestions, return which fields to fill +
+ * which to skip. Empty (post-trim) fields get filled; non-empty are
+ * preserved unconditionally. Generated strings keep their literal "\\n"
+ * sequences — the caller is responsible for de-escaping (the component
+ * handler does this once the plan is applied).
+ *
+ * This replaces the v1.19.51-and-earlier behaviour where Auto-Fill
+ * unconditionally clobbered every field, erasing any work the user (or
+ * the original .miz) had in place. Tester report: "I don't want it to
+ * erase any work that anyone may have done."
+ */
+export function computeAutoFillPlan(inputs: AutoFillInputs): AutoFillPlan {
+  const filled: string[] = [];
+  const skipped: string[] = [];
+  const fill: AutoFillPlan['fill'] = {};
+
+  const consider = (
+    key: keyof AutoFillInputs['current'],
+    label: string,
+  ) => {
+    if (inputs.current[key].trim() === '') {
+      fill[key] = inputs.generated[key];
+      filled.push(label);
+    } else {
+      skipped.push(label);
+    }
+  };
+
+  consider('sortie', 'Sortie');
+  consider('description', 'Situation');
+  consider('blueTask', 'Blue Task');
+  consider('redTask', 'Red Task');
+
+  return { fill, filled, skipped };
+}
+
+/* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -231,6 +288,10 @@ export function BriefingTab() {
   const [blueTask, setBlueTask] = useState('');
   const [redTask, setRedTask] = useState('');
   const [applied, setApplied] = useState(false);
+  // v1.19.52 — status note from the last Auto-Fill click. Tells the user
+  // which fields were filled vs skipped (auto-fill no longer clobbers
+  // fields that already have content).
+  const [autoFillNote, setAutoFillNote] = useState<string | null>(null);
 
   // Sync local state from the mission overview on first arrival per
   // session. Only fires when sessionId changes — once the user starts
@@ -289,15 +350,41 @@ export function BriefingTab() {
       redTask !== (overview?.descriptionRedTask || '').replace(/\\n/g, '\n');
   }, [sortie, description, blueTask, redTask, overview]);
 
+  // v1.19.52 — Auto-Fill no longer overwrites fields with content. See
+  // computeAutoFillPlan above for the pure logic + tester rationale.
   const handleAutoFill = useCallback(() => {
     const state = useMissionStore.getState();
     const generated = generateBriefing(state);
-    setSortie(generated.sortie);
-    setDescription(generated.description.replace(/\\n/g, '\n'));
-    setBlueTask(generated.blueTask.replace(/\\n/g, '\n'));
-    setRedTask(generated.redTask.replace(/\\n/g, '\n'));
-    setApplied(false);
-  }, []);
+    const plan = computeAutoFillPlan({
+      current: { sortie, description, blueTask, redTask },
+      generated: {
+        sortie: generated.sortie,
+        description: generated.description,
+        blueTask: generated.blueTask,
+        redTask: generated.redTask,
+      },
+    });
+
+    // Apply each filled field. The plan stores the raw generated string;
+    // de-escape "\\n" → "\n" at the apply site so textareas render real
+    // newlines (matches what the other state-restore paths do).
+    if (plan.fill.sortie !== undefined) setSortie(plan.fill.sortie.replace(/\\n/g, '\n'));
+    if (plan.fill.description !== undefined) setDescription(plan.fill.description.replace(/\\n/g, '\n'));
+    if (plan.fill.blueTask !== undefined) setBlueTask(plan.fill.blueTask.replace(/\\n/g, '\n'));
+    if (plan.fill.redTask !== undefined) setRedTask(plan.fill.redTask.replace(/\\n/g, '\n'));
+
+    // Only un-apply if we actually changed something; pure no-op
+    // shouldn't dirty the apply state.
+    if (plan.filled.length > 0) setApplied(false);
+
+    if (plan.filled.length === 0) {
+      setAutoFillNote('No empty fields to fill — every field already has content. Clear a field manually to auto-fill just that one.');
+    } else if (plan.skipped.length === 0) {
+      setAutoFillNote(`Filled: ${plan.filled.join(', ')}.`);
+    } else {
+      setAutoFillNote(`Filled: ${plan.filled.join(', ')}. Skipped (already had content): ${plan.skipped.join(', ')}.`);
+    }
+  }, [sortie, description, blueTask, redTask]);
 
   const handleApply = useCallback(() => {
     addEdit({
@@ -351,20 +438,33 @@ export function BriefingTab() {
             Briefing & Situation
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#aaaaaa' }}>
-            Edit mission briefing text or auto-fill from mission data.
+            Edit mission briefing text or auto-fill empty fields from mission data.
           </p>
         </div>
-        <Button onClick={handleAutoFill} style={{ padding: '8px 16px' }}>
-          Auto-Fill from Mission
+        <Button
+          onClick={handleAutoFill}
+          style={{ padding: '8px 16px' }}
+          title="Fill EMPTY fields from mission data. Fields that already have text are left alone — clear a field manually if you want it regenerated."
+        >
+          Auto-Fill Empty Fields
         </Button>
       </div>
+      {autoFillNote && (
+        <div style={{
+          marginBottom: 12, padding: '8px 12px', fontSize: 12,
+          color: '#9cd0ff', background: 'rgba(74,158,255,0.08)',
+          border: '1px solid rgba(74,158,255,0.3)', borderRadius: 4,
+        }}>
+          {autoFillNote}
+        </div>
+      )}
 
       {/* Sortie Name */}
       <div style={cardStyle}>
         <label style={labelStyle}>Sortie Name</label>
         <input
           value={sortie}
-          onChange={(e) => { setSortie(e.target.value); setApplied(false); }}
+          onChange={(e) => { setSortie(e.target.value); setApplied(false); setAutoFillNote(null); }}
           placeholder="Mission sortie name"
           style={inputStyle}
         />
@@ -380,7 +480,7 @@ export function BriefingTab() {
         </label>
         <textarea
           value={description}
-          onChange={(e) => { setDescription(e.target.value); setApplied(false); }}
+          onChange={(e) => { setDescription(e.target.value); setApplied(false); setAutoFillNote(null); }}
           placeholder="Mission situation and overall briefing..."
           style={{ ...textareaStyle, minHeight: 180 }}
         />
@@ -398,7 +498,7 @@ export function BriefingTab() {
         </div>
         <textarea
           value={blueTask}
-          onChange={(e) => { setBlueTask(e.target.value); setApplied(false); }}
+          onChange={(e) => { setBlueTask(e.target.value); setApplied(false); setAutoFillNote(null); }}
           placeholder="Blue side task description and objectives..."
           style={textareaStyle}
         />
@@ -416,7 +516,7 @@ export function BriefingTab() {
         </div>
         <textarea
           value={redTask}
-          onChange={(e) => { setRedTask(e.target.value); setApplied(false); }}
+          onChange={(e) => { setRedTask(e.target.value); setApplied(false); setAutoFillNote(null); }}
           placeholder="Red side task description..."
           style={textareaStyle}
         />
