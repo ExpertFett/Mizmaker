@@ -1,23 +1,28 @@
 /**
- * SOP Check tab — read-only discrepancy report comparing the loaded
- * mission against the active SOP.
+ * SOP Check sub-tab — discrepancy report + Apply button.
  *
- * v1 is read-only: every row tells the pilot what the mission has,
- * what the SOP says, and a severity tag. v2 (next release) will add
- * per-row "Apply SOP" buttons that dispatch the right edits — we held
- * off until the heuristics here are validated on a real mission, since
- * a bad fuzzy-match plus auto-apply could quietly stomp values that
- * were intentionally different.
+ * Compares the loaded mission against the active SOP and shows every
+ * place they disagree. The Apply button (v1.19.57, tester ask) runs
+ * the autoSetup orchestrator — same engine as the sidebar's
+ * ⚡AUTO-SETUP button — so a single click stages edits for Renamer /
+ * Datalink / Radio / Carriers SOP areas. The user reviews on the
+ * Edits tab before downloading.
  *
- * The comparison engine itself (buildReport + per-category checks)
- * lives in src/sop/discrepancy.ts so it can be unit-tested without
- * mounting React. This file is just the UI layer over it.
+ * The comparison engine (buildReport + per-category checks) lives in
+ * src/sop/discrepancy.ts so it can be unit-tested without mounting
+ * React. This file is just the UI layer over it.
+ *
+ * History: pre-v1.19.57 this was a separate top-level "SOP Check" tab
+ * sibling to SOP. Fett folded it back as a sub-tab under SOP since
+ * "checking against SOP" is a SOP-tab activity.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useSopStore } from '../../sop/sopStore';
+import { useEditStore } from '../../store/editStore';
 import { buildReport, type DiscrepancyRow, type Severity } from '../../sop/discrepancy';
+import { runAutoSetup } from '../../sop/autoSetup';
 
 /* ------------------------------------------------------------------ */
 /* UI                                                                  */
@@ -52,12 +57,63 @@ const severityLabel: Record<Severity, string> = {
 
 export function SopCheckTab() {
   const groups = useMissionStore((s) => s.groups);
+  const clientUnits = useMissionStore((s) => s.clientUnits);
   const sops = useSopStore((s) => s.sops);
   const activeSopId = useSopStore((s) => s.activeId);
+  const addEdit = useEditStore((s) => s.addEdit);
   const activeSop = useMemo(
     () => (activeSopId ? sops.find((s) => s.id === activeSopId) ?? null : null),
     [activeSopId, sops],
   );
+
+  // v1.19.57 — Apply SOP. Reuses the autoSetup orchestrator (the same
+  // engine the sidebar's ⚡AUTO-SETUP button runs) so per-area
+  // appliers (Renamer / Datalink / Radio / Carriers) stay the single
+  // source of truth for "what does applying this SOP mean?". Each
+  // action's edits get dispatched into editStore. Status note tells
+  // the user what fired vs what was skipped vs how many discrepancies
+  // remain after the pass.
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyNote, setApplyNote] = useState<string | null>(null);
+  const handleApply = useCallback(() => {
+    if (!activeSop) return;
+    setApplyBusy(true);
+    setApplyNote(null);
+    try {
+      const report = runAutoSetup(groups, clientUnits, activeSop);
+      for (const action of report.actions) {
+        for (const edit of action.edits) {
+          addEdit(edit as never);
+        }
+      }
+      const fired = report.actions.filter((a) => a.edits.length > 0);
+      const skipped = report.actions.filter((a) => a.edits.length === 0);
+      const summary: string[] = [];
+      if (fired.length > 0) {
+        summary.push(
+          'Applied: '
+          + fired.map((a) => `${a.category} (${a.itemsAffected})`).join(', '),
+        );
+      }
+      if (skipped.length > 0) {
+        summary.push(
+          'Skipped: '
+          + skipped.map((a) => a.skippedReason
+            ? `${a.category} (${a.skippedReason})`
+            : a.category).join(', '),
+        );
+      }
+      summary.push(
+        `${report.totalEdits} edit${report.totalEdits === 1 ? '' : 's'} queued. Review on the Edits tab before downloading.`,
+      );
+      setApplyNote(summary.join(' · '));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Apply failed';
+      setApplyNote(`✗ ${msg}`);
+    } finally {
+      setApplyBusy(false);
+    }
+  }, [activeSop, groups, clientUnits, addEdit]);
 
   const rows = useMemo(() => {
     if (!activeSop) return [];
@@ -167,12 +223,50 @@ export function SopCheckTab() {
         </div>
       </div>
 
-      <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px', maxWidth: 720 }}>
-        Read-only report. Compares the loaded mission against the active SOP and
-        flags differences. Apply-on-click is coming in the next release; for now
-        the matching tabs (Radio, Datalink, Carriers, DTC, Renamer) carry the
-        write-back buttons.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, margin: '0 0 14px', flexWrap: 'wrap' }}>
+        <p style={{ color: '#888', fontSize: 12, margin: 0, maxWidth: 540, flex: 1 }}>
+          Discrepancy report. Compares the loaded mission against the active SOP.
+          Clicking <strong style={{ color: '#3fb950' }}>Apply SOP</strong> runs the
+          Renamer / Datalink / Radio / Carriers appliers and stages the edits —
+          review on the Edits tab before downloading.
+        </p>
+        <button
+          onClick={handleApply}
+          disabled={applyBusy || rows.length === 0}
+          style={{
+            padding: '8px 18px',
+            fontFamily: 'inherit',
+            fontSize: 13,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            background: applyBusy ? '#1a2a18' : 'rgba(63,185,80,0.18)',
+            color: applyBusy ? '#5a8a6a' : '#3fb950',
+            border: `1px solid ${applyBusy ? '#2a4a2a' : '#3fb95066'}`,
+            borderRadius: 4,
+            cursor: (applyBusy || rows.length === 0) ? 'not-allowed' : 'pointer',
+            opacity: rows.length === 0 ? 0.5 : 1,
+          }}
+          title={rows.length === 0
+            ? 'No discrepancies to apply — mission already matches SOP'
+            : 'Stage edits that bring the mission into agreement with this SOP'}
+        >
+          {applyBusy ? 'Applying…' : 'Apply SOP'}
+        </button>
+      </div>
+      {applyNote && (
+        <div style={{
+          marginBottom: 14,
+          padding: '8px 12px',
+          background: applyNote.startsWith('✗') ? 'rgba(217,80,80,0.10)' : 'rgba(63,185,80,0.10)',
+          border: `1px solid ${applyNote.startsWith('✗') ? '#5a2a2a' : '#2a5a2a'}`,
+          borderRadius: 4,
+          color: applyNote.startsWith('✗') ? '#d95050' : '#9cd0ff',
+          fontSize: 12,
+          lineHeight: 1.5,
+        }}>
+          {applyNote}
+        </div>
+      )}
 
       {/* Summary strip */}
       <div

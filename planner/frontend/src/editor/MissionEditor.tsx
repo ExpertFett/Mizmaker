@@ -21,8 +21,10 @@ import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
-import { SopTab } from './tabs/SopTab';
-import { SopCheckTab } from './tabs/SopCheckTab';
+// v1.19.57 — SopTab + SopCheckTab live behind SopTabContainer now (sub-
+// tab toggle). One sidebar entry, two sub-tabs (SOPs / Check). Apply
+// button lives on the Check sub-tab.
+import { SopTabContainer } from './tabs/SopTabContainer';
 import { EditsTab } from './tabs/EditsTab';
 import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
@@ -60,10 +62,7 @@ const SIDEBAR: SidebarItem[] = [
   // Loading the right SOP first means the downstream tabs start
   // pre-configured for the squadron / era you're flying.
   { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
-  // SOP Check sits next to SOP — read-only comparison panel that flags
-  // where the loaded mission disagrees with the active SOP. Empty
-  // state when no SOP active or no mission loaded.
-  { kind: 'tab', id: 'sopCheck',    label: 'SOP Check',   icon: '✓' },
+  // v1.19.57 — SOP Check folded under SOP as a sub-tab.
   { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
   { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
   // Mission Goals — squadron-style objective list. Sits next to
@@ -441,7 +440,9 @@ export function MissionEditor() {
             // loaded?" reads at a glance from any tab. Picked these two
             // because they're the SOP-domain tabs; other tabs still
             // show their inline SOP badges in their own headers.
-            const showSopDot = activeSop != null && (item.id === 'sop' || item.id === 'sopCheck');
+            // v1.19.57 — sopCheck no longer a top-level tab; the dot
+            // only needs to render on 'sop' now.
+            const showSopDot = activeSop != null && item.id === 'sop';
             // Edits-tab count badge — same spirit as the SOP dot but
             // shows a number so you can see at a glance how many edits
             // are queued without switching tabs.
@@ -689,12 +690,7 @@ export function MissionEditor() {
             )}
             {visitedTabs.has('sop') && (
               <div style={{ display: activeTab === 'sop' ? 'block' : 'none' }}>
-                <SopTab />
-              </div>
-            )}
-            {visitedTabs.has('sopCheck') && (
-              <div style={{ display: activeTab === 'sopCheck' ? 'block' : 'none' }}>
-                <SopCheckTab />
+                <SopTabContainer />
               </div>
             )}
             {visitedTabs.has('briefGen') && (
