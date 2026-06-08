@@ -31,7 +31,7 @@
  *   (v1.19.23)
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -50,8 +50,37 @@ import 'ol/ol.css';
 import { useDmpiStore } from '../../store/dmpiStore';
 import { useMissionStore } from '../../store/missionStore';
 
-// Match the kneeboard route maps for visual consistency.
-const TILE_URL = 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+// v1.19.58 — basemap options. Was hardcoded to CARTO dark to match the
+// kneeboard route maps; Fett asked for "at least map options" so the
+// planner can switch to a light or satellite view when picking DMPIs
+// on a detailed background. Keys persisted to localStorage so the
+// choice survives mission swaps.
+const BASEMAPS: { id: BasemapId; label: string; url: string; attribution: string }[] = [
+  { id: 'dark',  label: 'Dark',
+    url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+    attribution: '© CARTO © OpenStreetMap' },
+  { id: 'light', label: 'Light',
+    url: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+    attribution: '© CARTO © OpenStreetMap' },
+  { id: 'osm',   label: 'OSM',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors' },
+  { id: 'sat',   label: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri' },
+];
+type BasemapId = 'dark' | 'light' | 'osm' | 'sat';
+const BASEMAP_LS_KEY = 'dcsopt.editor.dmpiBasemap';
+function loadBasemap(): BasemapId {
+  try {
+    const v = localStorage.getItem(BASEMAP_LS_KEY);
+    if (v === 'dark' || v === 'light' || v === 'osm' || v === 'sat') return v;
+  } catch { /* ignore */ }
+  return 'dark';
+}
+
+// (Legacy TILE_URL constant removed in v1.19.58 — basemap is now
+// chosen at component mount via the BASEMAPS array + localStorage.)
 
 // Theater centers — copied from MapContainer so we can position the
 // view sensibly when there are no DMPIs yet.
@@ -155,10 +184,25 @@ function threatStyle(): Style {
 export function DmpiMapPanel({ height = 380 }: { height?: number }) {
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
+  const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const dmpiSrcRef = useRef<VectorSource>(new VectorSource());
   const threatSrcRef = useRef<VectorSource>(new VectorSource());
   const airbaseSrcRef = useRef<VectorSource>(new VectorSource());
   const bullseyeSrcRef = useRef<VectorSource>(new VectorSource());
+  // v1.19.58 — basemap state + persisted choice.
+  const [basemap, setBasemap] = useState<BasemapId>(() => loadBasemap());
+  useEffect(() => {
+    try { localStorage.setItem(BASEMAP_LS_KEY, basemap); } catch { /* ignore */ }
+    if (baseLayerRef.current) {
+      const cfg = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0];
+      baseLayerRef.current.setSource(new XYZ({
+        url: cfg.url,
+        crossOrigin: 'anonymous',
+        maxZoom: 19,
+        attributions: cfg.attribution,
+      }));
+    }
+  }, [basemap]);
 
   const dmpis = useDmpiStore((s) => s.dmpis);
   const pickingForId = useDmpiStore((s) => s.pickingForId);
@@ -173,9 +217,16 @@ export function DmpiMapPanel({ height = 380 }: { height?: number }) {
   useEffect(() => {
     if (!mapElRef.current || mapRef.current) return;
 
+    const initialCfg = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0];
     const baseLayer = new TileLayer({
-      source: new XYZ({ url: TILE_URL, crossOrigin: 'anonymous', maxZoom: 19 }),
+      source: new XYZ({
+        url: initialCfg.url,
+        crossOrigin: 'anonymous',
+        maxZoom: 19,
+        attributions: initialCfg.attribution,
+      }),
     });
+    baseLayerRef.current = baseLayer;
     const threatLayer = new VectorLayer({ source: threatSrcRef.current, style: threatStyle });
     const airbaseLayer = new VectorLayer({
       source: airbaseSrcRef.current,
@@ -286,17 +337,73 @@ export function DmpiMapPanel({ height = 380 }: { height?: number }) {
     mapElRef.current.style.cursor = pickingForId ? 'crosshair' : '';
   }, [pickingForId]);
 
+  // v1.19.58 — recenter on the active theater (or the world origin if
+  // we don't recognize the theater). Same fit-extent logic used by the
+  // editor's MapContainer.
+  const resetView = () => {
+    if (!mapRef.current) return;
+    const view = mapRef.current.getView();
+    const ctr = (theater ? THEATER_CENTERS[theater] : undefined) ?? [0, 0];
+    view.setCenter(fromLonLat(ctr));
+    view.setZoom(6);
+  };
+
   return (
-    <div
-      ref={mapElRef}
-      style={{
-        width: '100%',
-        height,
-        background: '#0d131d',
-        border: `1px solid ${pickingForId ? '#4a8fd4' : '#3a3a3a'}`,
-        borderRadius: 6,
-        marginBottom: 12,
-      }}
-    />
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      <div
+        ref={mapElRef}
+        style={{
+          width: '100%',
+          height,
+          background: '#0d131d',
+          border: `1px solid ${pickingForId ? '#4a8fd4' : '#3a3a3a'}`,
+          borderRadius: 6,
+        }}
+      />
+      {/* v1.19.58 — basemap toggle + reset view. Floating top-right
+          over the map. Honoured-low z-index so it doesn't sit over
+          OL's own attribution / scale-line. */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8, zIndex: 3,
+        display: 'flex', gap: 4, padding: 3,
+        background: 'rgba(13,19,29,0.92)',
+        border: '1px solid #2a3340',
+        borderRadius: 4,
+        fontFamily: 'inherit',
+      }}>
+        {BASEMAPS.map((b) => (
+          <button key={b.id}
+                  onClick={() => setBasemap(b.id)}
+                  title={`Basemap: ${b.label}`}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 11, fontWeight: 600,
+                    background: basemap === b.id ? 'rgba(74,158,255,0.15)' : 'transparent',
+                    border: `1px solid ${basemap === b.id ? '#4a9eff66' : 'transparent'}`,
+                    borderRadius: 3,
+                    color: basemap === b.id ? '#9cd0ff' : '#aaa',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}>
+            {b.label}
+          </button>
+        ))}
+        <span style={{ width: 1, background: '#2a3340', margin: '2px 1px' }} />
+        <button onClick={resetView}
+                title="Recenter on the active theater + reset zoom"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 11, fontWeight: 600,
+                  background: 'transparent',
+                  border: '1px solid transparent',
+                  borderRadius: 3,
+                  color: '#aaa',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}>
+          ↺ Reset
+        </button>
+      </div>
+    </div>
   );
 }

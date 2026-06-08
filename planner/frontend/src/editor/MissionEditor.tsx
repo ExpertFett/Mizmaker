@@ -36,6 +36,7 @@ import { BriefGenTab } from './tabs/BriefGenTab';
 // ScriptsTab as a sub-tab so it lives with the other auto-setup
 // panels (AEGIS / TIC / JTAC).
 import { ScriptsTab } from './tabs/ScriptsTab';
+import { JtacSetupPanel } from './tabs/JtacSetupPanel';
 import { RosterTab } from './tabs/RosterTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
@@ -97,6 +98,11 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'PLANNING' },
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
+  // v1.19.58 — JTAC moved out of Scripts. It's a target-designation
+  // mission-config concern (laser codes / freqs / ground-group renames
+  // for autolase scripts), not a scripting framework itself, and lives
+  // next to DMPI because both are target tools.
+  { kind: 'tab', id: 'jtac',        label: 'JTAC',        icon: '🔦' },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'roster',      label: 'Roster',      icon: '👥' },
@@ -666,6 +672,11 @@ export function MissionEditor() {
             {visitedTabs.has('dmpi') && (
               <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
                 <DmpiTab onPickOnMap={() => selectTab('map')} />
+              </div>
+            )}
+            {visitedTabs.has('jtac') && (
+              <div style={{ display: activeTab === 'jtac' ? 'block' : 'none' }}>
+                <JtacSetupPanel />
               </div>
             )}
             {visitedTabs.has('visibility') && (

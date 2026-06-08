@@ -9,20 +9,21 @@
  */
 
 import { useState } from 'react';
-import { JtacSetupPanel } from './JtacSetupPanel';
 import { TicSetupPanel } from './TicSetupPanel';
 import { AegisSetupPanel } from './AegisSetupPanel';
 import { CarrierSetupPanel } from './CarrierSetupPanel';
+import { AtisConfigTab } from './AtisConfigTab';
 
-// v1.19.54 — Carriers moved here from its own top-level tab. It belongs
-// alongside AEGIS / TIC / JTAC: all four are "auto-setup the mission for
-// a scripting framework" panels that emit groupRename edits + a chunk
-// of generated Lua to bundle into the .miz triggers.
+// v1.19.58 — JTAC moved OUT of Scripts (it isn't a scripting framework,
+// it's a mission-config / target-designation concern). It's now a
+// top-level tab in PLANNING next to DMPI. In its place: ATIS, which
+// IS a scripting framework (SRS-ATIS via STTS.lua + the per-airbase
+// trigger snippet generator).
 const SUB_TABS = [
   { id: 'carriers', label: 'Carriers',    color: '#4a9eff' },
   { id: 'aegis',    label: 'AEGIS IADS',  color: '#d95050' },
   { id: 'tic',      label: 'TIC',         color: '#d29922' },
-  { id: 'jtac',     label: 'JTAC',        color: '#3fb950' },
+  { id: 'atis',     label: 'ATIS',        color: '#9cd0ff' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -75,7 +76,7 @@ export function ScriptsTab() {
       {sub === 'carriers' && <CarrierSetupPanel />}
       {sub === 'aegis'    && <AegisSetupPanel />}
       {sub === 'tic'      && <TicSetupPanel />}
-      {sub === 'jtac'     && <JtacSetupPanel />}
+      {sub === 'atis'     && <AtisConfigTab />}
     </div>
   );
 }
