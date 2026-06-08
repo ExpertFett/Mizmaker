@@ -879,18 +879,29 @@ def session_invite(sid):
         return jsonify({"error": "Not authorized — host only"}), 403
 
     group_name = body.get("groupName")
+    role_hint = body.get("role")  # v1.19.63 — optional explicit role
     participant_name = body.get("participantName", "Flight Lead")
 
-    if not group_name or group_name not in session["group_waypoints"]:
-        return jsonify({"error": f"Group '{group_name}' not found"}), 404
+    # v1.19.63 — co-editor invites have no flight assignment. The host
+    # explicitly signals this with role="co_editor" (or by sending an
+    # empty groupName along with role hint). Treated as a peer of the
+    # mission maker: can edit everything, isn't pinned to one flight.
+    is_co_editor = role_hint == "co_editor" or (role_hint and not group_name)
 
-    invite_token = _make_invite_token(sid, group_name)
+    if not is_co_editor:
+        if not group_name or group_name not in session["group_waypoints"]:
+            return jsonify({"error": f"Group '{group_name}' not found"}), 404
 
-    # Register participant
+    invite_token = _make_invite_token(sid, group_name or "_co_editor")
+
+    # Register participant. Co-editors carry group=None so the
+    # role-resolution at join time picks "co_editor" instead of
+    # "flight_lead".
     with _lock:
         session["participants"][invite_token] = {
             "name": participant_name,
-            "group": group_name,
+            "group": None if is_co_editor else group_name,
+            "role": "co_editor" if is_co_editor else "flight_lead",
             "connected": False,
             "ready": False,
         }
@@ -899,6 +910,7 @@ def session_invite(sid):
         "inviteToken": invite_token,
         "joinUrl": f"/join/{sid}?token={invite_token}",
         "groupName": group_name,
+        "role": "co_editor" if is_co_editor else "flight_lead",
     })
 
 
@@ -926,9 +938,15 @@ def session_join(sid):
             participant["connected"] = True
         session["last_activity"] = time.time()
 
-    # Build response — filtered by role
+    # Build response — filtered by role. v1.19.63: respect the
+    # participant's stored role (mission_maker / co_editor /
+    # flight_lead). Co-editors are peers of the mission maker for edit
+    # purposes — same payload, no group assignment.
     assigned_group = participant["group"] if participant else None
-    role = "flight_lead" if participant else "mission_maker"
+    if participant:
+        role = participant.get("role") or "flight_lead"
+    else:
+        role = "mission_maker"
 
     # Return mission data + role info (same shape as upload response)
     theater = session["theater"]

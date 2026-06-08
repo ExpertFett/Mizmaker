@@ -10,7 +10,11 @@ interface MissionState {
   hostToken: string | null;
   sessionToken: string | null;       // current client's token (host or invite)
   assignedGroup: string | null;      // null = mission maker (can edit all)
-  role: 'mission_maker' | 'flight_lead' | 'pilot';
+  // v1.19.63 — 'co_editor' = an invited user who joined as a peer
+  // mission maker (full edit access, no flight assignment). Same edit
+  // capabilities as 'mission_maker' but distinct so UI can show the
+  // difference between the host and a guest editor in member lists.
+  role: 'mission_maker' | 'co_editor' | 'flight_lead' | 'pilot';
   filename: string | null;
   theater: string | null;
   overview: MissionOverviewData | null;

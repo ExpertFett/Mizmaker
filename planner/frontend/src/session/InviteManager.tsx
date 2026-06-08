@@ -7,6 +7,11 @@ import { useState, useCallback } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { isPlayerGroup } from '../utils/groups';
 
+// v1.19.63 — special select value used to flag "Co-Editor (no flight)"
+// instead of a real groupName. Distinct sentinel string so it can never
+// collide with a user-named group.
+const CO_EDITOR_OPTION = '__co_editor__';
+
 export function InviteManager() {
   const { sessionId, hostToken, groups } = useMissionStore();
   const [invites, setInvites] = useState<{ groupName: string; name: string; url: string; copied: boolean }[]>([]);
@@ -18,8 +23,9 @@ export function InviteManager() {
   const handleCreateInvite = useCallback(async () => {
     if (!sessionId || !hostToken || !selectedGroup) return;
 
+    const isCoEditor = selectedGroup === CO_EDITOR_OPTION;
     try {
-      console.log('Creating invite:', { sessionId, hostToken: hostToken?.slice(0, 8), selectedGroup });
+      console.log('Creating invite:', { sessionId, hostToken: hostToken?.slice(0, 8), selectedGroup, isCoEditor });
       const res = await fetch(`/api/sessions/${sessionId}/invite`, {
         method: 'POST',
         headers: {
@@ -27,8 +33,12 @@ export function InviteManager() {
           'Authorization': `Bearer ${hostToken}`,
         },
         body: JSON.stringify({
-          groupName: selectedGroup,
-          participantName: participantName || selectedGroup,
+          // Co-editor invites omit groupName and signal the role
+          // explicitly. Flight invites send the groupName as before.
+          ...(isCoEditor
+            ? { role: 'co_editor', participantName: participantName || 'Co-Editor' }
+            : { groupName: selectedGroup, participantName: participantName || selectedGroup }
+          ),
         }),
       });
       const data = await res.json();
@@ -36,8 +46,8 @@ export function InviteManager() {
       if (data.joinUrl) {
         const fullUrl = `${window.location.origin}${data.joinUrl}`;
         setInvites((prev) => [...prev, {
-          groupName: selectedGroup,
-          name: participantName || selectedGroup,
+          groupName: isCoEditor ? '🛠 Co-Editor' : selectedGroup,
+          name: participantName || (isCoEditor ? 'Co-Editor' : selectedGroup),
           url: fullUrl,
           copied: false,
         }]);
@@ -75,13 +85,22 @@ export function InviteManager() {
           onChange={(e) => setSelectedGroup(e.target.value)}
           style={selectStyle}
         >
-          <option value="">Select flight...</option>
+          <option value="">Select flight or role…</option>
+          {/* v1.19.63 — Co-Editor option for a second mission maker
+              who needs to co-edit the .miz but isn't taking a flight.
+              Pinned at the top of the list so it's easy to find. */}
+          <option value={CO_EDITOR_OPTION}>🛠 Co-Editor (no flight)</option>
+          {playerGroups.length > 0 && (
+            <option disabled>──── FLIGHTS ────</option>
+          )}
           {playerGroups.map((g) => (
             <option key={g.groupId} value={g.groupName}>{g.groupName}</option>
           ))}
         </select>
         <input
-          placeholder="Flight lead name (optional)"
+          placeholder={selectedGroup === CO_EDITOR_OPTION
+            ? 'Co-editor name (optional)'
+            : 'Flight lead name (optional)'}
           value={participantName}
           onChange={(e) => setParticipantName(e.target.value)}
           style={inputStyle}
