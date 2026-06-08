@@ -67,6 +67,10 @@ interface WingBrief {
   // mission_flow, timeline, notes, popup). Empty string for a key means
   // "no note" — the backend renderer skips empties.
   speaker_notes?: Record<string, string>;
+  // v1.19.59 — Brief theme colours (squadron palette override). Hex
+  // strings; missing keys fall through to renderer defaults.
+  // Roles: bg / text / bright / accent / dim / border / header_bg / cell_bg.
+  theme_colors?: Record<string, string>;
 }
 
 type OutputFormat = 'pptx' | 'pdf' | 'png' | 'jpg';
@@ -855,7 +859,18 @@ export function BriefGenTab() {
               <summary style={{ cursor: 'pointer', fontSize: 12, color: '#cfe6ff', fontWeight: 600 }}>
                 Or pick a sample cover (public-domain library)
               </summary>
-              <div style={{ marginTop: 8 }}>
+              {/* v1.19.59 — was: no overflow constraint + 140px min-tile,
+                  so a narrow form column squeezed the gallery into 2
+                  visible tiles with no scroll. Now: 420px max-height +
+                  scroll, 110px min-tile width fits 3 per column on a
+                  typical brief-form layout. */}
+              <div style={{
+                marginTop: 8,
+                maxHeight: 420,
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                paddingRight: 4,
+              }}>
                 <SampleCoversGallery
                   onPick={async (blob, title) => {
                     // Convert Blob → base64 data URL for the brief
@@ -871,6 +886,112 @@ export function BriefGenTab() {
                 />
               </div>
             </details>
+          </Card>
+
+          {/* v1.19.59 — Brief Colors. Squadron palette override for the
+              auto-rendered slides. Each picker maps to a renderer role
+              (BG / Text / Accent / Border / etc.). Blank = renderer
+              default (auto dark/light). Saved into brief.theme_colors. */}
+          <Card title="Brief Colors (optional)">
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#aaaaaa', lineHeight: 1.5 }}>
+              Override the auto-dark / auto-light palette with your squadron colours.
+              Leave any field blank to fall back to the renderer's default. Affects
+              auto-built slides only; custom-template renders keep their template theme.
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: 10,
+            }}>
+              {([
+                ['bg',        'Background',     '#1a1a1a', 'Slide background'],
+                ['text',      'Body text',      '#e0e0e0', 'Paragraph + table cells'],
+                ['bright',    'Headings',       '#ffffff', 'Section headers / titles'],
+                ['accent',    'Accent',         '#ffa500', 'Underline bar + tag chips'],
+                ['dim',       'Subtext',        '#aaaaaa', 'Attribution + metadata'],
+                ['border',    'Borders',        '#555555', 'Cell + chip outlines'],
+                ['header_bg', 'Table header',   '#333333', 'Table header row fill'],
+                ['cell_bg',   'Table cell',     '#1a1a1a', 'Table body cell fill'],
+              ] as const).map(([role, label, defHex, hint]) => {
+                const current = brief.theme_colors?.[role] ?? '';
+                return (
+                  <label key={role} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#cccccc' }}>
+                    <span style={{ fontWeight: 600 }}>{label}</span>
+                    <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        value={current || defHex}
+                        onChange={(e) => set('theme_colors', {
+                          ...(brief.theme_colors ?? {}),
+                          [role]: e.target.value,
+                        })}
+                        style={{ width: 32, height: 28, padding: 0, border: '1px solid #3a3a3a', borderRadius: 3, background: 'transparent', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={current}
+                        placeholder={defHex}
+                        onChange={(e) => set('theme_colors', {
+                          ...(brief.theme_colors ?? {}),
+                          [role]: e.target.value,
+                        })}
+                        style={{ flex: 1, fontFamily: "'B612 Mono', monospace", fontSize: 11, background: '#0a1218', color: '#e0e0e0', border: '1px solid #3a3a3a', borderRadius: 3, padding: '3px 6px' }}
+                      />
+                      {current && (
+                        <button
+                          onClick={() => {
+                            const next = { ...(brief.theme_colors ?? {}) };
+                            delete next[role];
+                            set('theme_colors', next);
+                          }}
+                          title="Clear — fall back to renderer default"
+                          style={{ background: 'transparent', border: '1px solid #3a3a3a', color: '#aaa', padding: '3px 6px', fontSize: 11, cursor: 'pointer', borderRadius: 3 }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                    <span style={{ color: '#666', fontSize: 10 }}>{hint}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => set('theme_colors', {})}
+                disabled={!brief.theme_colors || Object.keys(brief.theme_colors).length === 0}
+                style={{
+                  fontFamily: 'inherit', fontSize: 11,
+                  padding: '5px 12px',
+                  background: '#262626', border: '1px solid #3a3a3a',
+                  color: '#aaaaaa', borderRadius: 3,
+                  cursor: 'pointer',
+                  opacity: (!brief.theme_colors || Object.keys(brief.theme_colors).length === 0) ? 0.5 : 1,
+                }}
+              >
+                Reset all to defaults
+              </button>
+              <button
+                onClick={() => set('theme_colors', {
+                  bg: '#1a1a1a', text: '#e0e0e0', bright: '#ffffff',
+                  accent: '#ffa500', dim: '#aaaaaa', border: '#555555',
+                  header_bg: '#333333', cell_bg: '#1a1a1a',
+                })}
+                style={{ fontFamily: 'inherit', fontSize: 11, padding: '5px 12px', background: '#1a1f28', border: '1px solid #3a3a3a', color: '#cccccc', borderRadius: 3, cursor: 'pointer' }}
+              >
+                🌑 Dark preset
+              </button>
+              <button
+                onClick={() => set('theme_colors', {
+                  bg: '#ffffff', text: '#1a1a1a', bright: '#000000',
+                  accent: '#b8740c', dim: '#555555', border: '#999999',
+                  header_bg: '#d8d8d8', cell_bg: '#f3f3f3',
+                })}
+                style={{ fontFamily: 'inherit', fontSize: 11, padding: '5px 12px', background: '#262626', border: '1px solid #3a3a3a', color: '#cccccc', borderRadius: 3, cursor: 'pointer' }}
+              >
+                ☀ Light preset
+              </button>
+            </div>
           </Card>
 
           <Card title="Theatre Overview">

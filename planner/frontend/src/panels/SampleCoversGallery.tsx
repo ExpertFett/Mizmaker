@@ -114,7 +114,11 @@ export function SampleCoversGallery({ category, onPick, limit = 24 }: Props) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+      {/* v1.19.59 — was minmax(140px). Brief tab's form column is narrow,
+          which capped at 2 tiles per row. 110px lets a 280px column fit
+          3 across cleanly while still leaving the upload page's wider
+          gallery comfortable. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
         {filtered.map((c) => {
           const busy = pickingId === c.id;
           return (

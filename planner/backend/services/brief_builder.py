@@ -257,6 +257,23 @@ class WingBrief:
     # write entirely). Generated client-side by ai/speakerNotes.ts when the
     # user clicks "✨ Generate speaker notes" — backend just renders.
     speaker_notes: Dict[str, str] = field(default_factory=dict)
+    # v1.19.59 — Brief theme colours (squadron palette override).
+    # Hex strings (e.g. "#1a1a1a") for each role. Empty / missing keys
+    # fall back to the renderer's auto-dark or auto-light defaults.
+    # Mirrors the kneeboard theme customizer's CSS-var shape but uses
+    # PPTX-flavoured names since the brief renderer works in RGBColor.
+    # Roles:
+    #   bg          slide background
+    #   text        body text + table cells
+    #   bright      titles + section headers (defaults to text+pop)
+    #   accent      bottom bar + section underlines + tag chips
+    #   dim         attribution + secondary metadata
+    #   border      table cell + chip borders
+    #   header_bg   table header row background
+    #   cell_bg     table body cell background
+    # Brief renderer applies each key when present; absent keys leave the
+    # default. (See render_wing_brief in brief_renderer.py.)
+    theme_colors: Dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

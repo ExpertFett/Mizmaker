@@ -818,6 +818,46 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         TABLE_HEADER_BG = RGBColor(0xD8, 0xD8, 0xD8)
         CELL_BG = RGBColor(0xF3, 0xF3, 0xF3)
 
+    # v1.19.59 — squadron palette override. brief.theme_colors is a
+    # {role: "#RRGGBB"} map; each role replaces the auto-default. Falls
+    # through to the auto-dark / auto-light values when a role is missing
+    # or its value can't be parsed. Tolerant of "#RGB" / "RRGGBB" / leading
+    # "#" or not — anything Python's int(hex, 16) chokes on stays default.
+    def _hex_to_rgb(h):
+        try:
+            s = str(h).strip().lstrip("#")
+            if len(s) == 3:
+                s = "".join(c + c for c in s)
+            if len(s) != 6:
+                return None
+            return RGBColor(int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+        except Exception:
+            return None
+    theme_overrides = brief.get("theme_colors") or {}
+    if isinstance(theme_overrides, dict) and theme_overrides:
+        for role, target_var in (
+            ("bg", "BG"), ("text", "LIGHT"), ("bright", "BRIGHT"),
+            ("accent", "ACCENT"), ("dim", "DIM"), ("border", "BORDER"),
+            ("header_bg", "TABLE_HEADER_BG"), ("cell_bg", "CELL_BG"),
+        ):
+            v = theme_overrides.get(role)
+            if not v:
+                continue
+            rgb = _hex_to_rgb(v)
+            if rgb is None:
+                continue
+            # Assigning into the local scope so the rest of the renderer
+            # picks up the overridden palette transparently. Python's
+            # scoping lets us reassign these bindings here.
+            if target_var == "BG": BG = rgb
+            elif target_var == "LIGHT": LIGHT = rgb
+            elif target_var == "BRIGHT": BRIGHT = rgb
+            elif target_var == "ACCENT": ACCENT = rgb
+            elif target_var == "DIM": DIM = rgb
+            elif target_var == "BORDER": BORDER = rgb
+            elif target_var == "TABLE_HEADER_BG": TABLE_HEADER_BG = rgb
+            elif target_var == "CELL_BG": CELL_BG = rgb
+
     # Content top inset (v0.9.81) — only when building on a template, so
     # section headers + content drop below the template's branded header
     # band / logos instead of colliding with them. Caller-tunable (clamped
