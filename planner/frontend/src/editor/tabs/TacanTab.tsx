@@ -63,12 +63,41 @@ interface TacanRow {
 export function TacanTab() {
   const groups = useMissionStore((s) => s.groups);
   const addEdit = useEditStore((s) => s.addEdit);
+  // v1.19.62 — subscribe to staged tacan/icls edits so this tab
+  // reflects what the Carriers panel (Scripts → Carriers) auto-stages.
+  // Pre-v1.19.62 the carrier panel's TACAN dispatches DID land in the
+  // .miz on download, but this tab kept showing the original .miz
+  // value — cross-tab inconsistency that lost user trust.
+  const stagedTacanEdits = useEditStore((s) =>
+    s.edits.filter((e) => (e as { field?: string }).field === 'tacan'),
+  );
+  const stagedIclsEdits = useEditStore((s) =>
+    s.edits.filter((e) => (e as { field?: string }).field === 'icls'),
+  );
   const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
   const [overrides, setOverrides] = useState<Map<number, Partial<TacanRow>>>(new Map());
   const [result, setResult] = useState('');
 
-  // Find all tankers and carriers
+  // Find all tankers and carriers, overlaying any pending staged edits
+  // so the user sees the value that will land in the .miz on download.
+  // Edits append (no dedup), so a group with multiple TACAN dispatches
+  // takes the LAST one — same as the backend's apply order.
   const tacanGroups = useMemo<TacanRow[]>(() => {
+    const latestStagedTacan = new Map<number, { channel: number; band?: string; callsign?: string }>();
+    for (const e of stagedTacanEdits) {
+      const ev = e as unknown as { groupId?: number; value?: { channel?: number; band?: string; callsign?: string } };
+      if (ev.groupId != null && ev.value) {
+        latestStagedTacan.set(ev.groupId, ev.value as { channel: number; band?: string; callsign?: string });
+      }
+    }
+    const latestStagedIcls = new Map<number, number>();
+    for (const e of stagedIclsEdits) {
+      const ev = e as unknown as { groupId?: number; value?: { channel?: number } };
+      if (ev.groupId != null && ev.value?.channel != null) {
+        latestStagedIcls.set(ev.groupId, ev.value.channel);
+      }
+    }
+
     const rows: TacanRow[] = [];
     for (const g of groups) {
       const airRole = getAirRoleLabel(g);
@@ -76,22 +105,24 @@ export function TacanTab() {
       if (airRole === 'REFUEL' || carrier) {
         const existing = g.tacan;
         const isCarr = !!carrier;
+        const staged = latestStagedTacan.get(g.groupId);
+        const stagedIcls = latestStagedIcls.get(g.groupId);
         rows.push({
           groupId: g.groupId,
           groupName: g.groupName,
           type: g.units[0]?.type || g.category,
           role: isCarr ? 'carrier' : 'tanker',
           coalition: g.coalition,
-          channel: existing?.channel || 0,
-          band: existing?.band || 'X',
-          callsign: existing?.callsign || '',
-          iclsCh: isCarr ? (g.icls?.channel || 0) : 0,
+          channel: staged?.channel ?? existing?.channel ?? 0,
+          band: ((staged?.band ?? existing?.band) || 'X') as 'X' | 'Y',
+          callsign: staged?.callsign ?? existing?.callsign ?? '',
+          iclsCh: isCarr ? (stagedIcls ?? g.icls?.channel ?? 0) : 0,
           hasIcls: isCarr ? hasIclsCapability(g.units[0]?.type || '', g.groupName) : false,
         });
       }
     }
     return rows;
-  }, [groups]);
+  }, [groups, stagedTacanEdits, stagedIclsEdits]);
 
   const getRow = (groupId: number): TacanRow => {
     const base = tacanGroups.find((r) => r.groupId === groupId)!;
