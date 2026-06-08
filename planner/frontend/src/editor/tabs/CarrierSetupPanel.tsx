@@ -77,7 +77,10 @@ const HULL_DB: Record<string, HullData> = {
   'CVN-70':   { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, icls: 9,  tiwSpeed: 25, hasIcls: true},
   'CVN-71':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, icls: 9,  tiwSpeed: 25, hasIcls: true},
   'CVN-72':   { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, icls: 7,  tiwSpeed: 25, hasIcls: true},
-  'CVN-73':   { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
+  // v1.19.53 — CVN-73 USS George Washington callsign is "War Fighter", not
+  // "Blue Ghost". (Blue Ghost is CV-16 USS Lexington — a WWII Essex-class
+  // CV, not in DCS at all.) Tester report 2026-06-09.
+  'CVN-73':   { label: 'CVN', callsign: 'War Fighter',   tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
   'CVN-74':   { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, icls: 7,  tiwSpeed: 25, hasIcls: true},
   'CVN-75':   { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, icls: 11, tiwSpeed: 25, hasIcls: true},
   'CVN-76':   { label: 'CVN', callsign: 'Gipper',        tacan: 76, icls: 13, tiwSpeed: 25, hasIcls: true},
@@ -87,7 +90,7 @@ const HULL_DB: Record<string, HullData> = {
   stennis:    { label: 'CVN', callsign: 'Rough Rider',   tacan: 74, icls: 7,  tiwSpeed: 25, hasIcls: true},
   vinson:     { label: 'CVN', callsign: 'Golden Eagle',  tacan: 70, icls: 9,  tiwSpeed: 25, hasIcls: true},
   lincoln:    { label: 'CVN', callsign: 'Lucky Abe',     tacan: 72, icls: 7,  tiwSpeed: 25, hasIcls: true},
-  washington: { label: 'CVN', callsign: 'Blue Ghost',    tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
+  washington: { label: 'CVN', callsign: 'War Fighter',   tacan: 73, icls: 5,  tiwSpeed: 25, hasIcls: true},
   roosevelt:  { label: 'CVN', callsign: 'Rough Rider',   tacan: 71, icls: 9,  tiwSpeed: 25, hasIcls: true},
   truman:     { label: 'CVN', callsign: 'Lone Warrior',  tacan: 75, icls: 11, tiwSpeed: 25, hasIcls: true},
   eisenhower: { label: 'CVN', callsign: 'Ike',           tacan: 69, icls: 11, tiwSpeed: 25, hasIcls: true},
@@ -98,7 +101,10 @@ const HULL_DB: Record<string, HullData> = {
   'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
 };
 
-function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
+// Exported for unit testing — the hull-name lookup + tier priority is the
+// most regression-prone piece of carrier auto-detect, and unit tests cost
+// less than another live-mission misdetection.
+export function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
   // Step 1: pick up whatever the carrier's existing AWA tasks already
   // declare. The backend's miz_parser already walks the carrier's
   // waypoint tasks and parses ActivateBeacon → g.tacan and
@@ -117,32 +123,72 @@ function detectCarrierInfo(g: MissionGroup): Partial<CarrierConfig> {
     existing.hasIcls = true;
   }
 
-  const name = g.groupName.toLowerCase();
-  const utype = (g.units[0]?.type || '').toLowerCase();
-  const combined = name + ' ' + utype;
-  // Normalize separators: "CVN 73" and "CVN_73" both become "CVN-73" for matching
-  const normalized = combined.replace(/[\s_]/g, '-');
+  const nameNorm = g.groupName.toLowerCase().replace(/[\s_]/g, '-');
+  const utypeNorm = (g.units[0]?.type || '').toLowerCase().replace(/[\s_]/g, '-');
+  const combined = nameNorm + ' ' + utypeNorm;
 
-  // Step 2: hull-database lookup as fallback for fields the .miz didn't carry.
-  for (const [key, data] of Object.entries(HULL_DB)) {
-    if (normalized.includes(key.toLowerCase())) {
-      return {
-        label: data.label,
-        callsign: data.callsign,
-        // Existing AWA values override hull-DB defaults wherever set.
-        tacanCh: existing.tacanCh ?? data.tacan,
-        tacanCallsign: existing.tacanCallsign ?? data.label,
-        tacanBand: existing.tacanBand,
-        iclsCh: existing.iclsCh ?? data.icls,
-        tiwSpeed: data.tiwSpeed,
-        hasIcls: existing.hasIcls ?? data.hasIcls,
-        aclsEnabled: existing.hasIcls ?? data.hasIcls,
-      };
-    }
+  // Build a typed helper that returns the full Partial<CarrierConfig> from a
+  // HULL_DB row + the existing AWA overlay. Centralised so the priority
+  // tiers below all produce identical shapes.
+  const fromHullRow = (data: HullData): Partial<CarrierConfig> => ({
+    label: data.label,
+    callsign: data.callsign,
+    tacanCh: existing.tacanCh ?? data.tacan,
+    tacanCallsign: existing.tacanCallsign ?? data.label,
+    tacanBand: existing.tacanBand,
+    iclsCh: existing.iclsCh ?? data.icls,
+    tiwSpeed: data.tiwSpeed,
+    hasIcls: existing.hasIcls ?? data.hasIcls,
+    aclsEnabled: existing.hasIcls ?? data.hasIcls,
+  });
+
+  // v1.19.53 priority fix — the user-named GROUP wins over the unit type.
+  // DCS reuses the `CVN_71` unit type across skin variants (Roosevelt /
+  // Lincoln / Washington), so a group named "CVN-73" with unit type
+  // `CVN_71_Washington` used to match `CVN-71` first (insertion order) and
+  // misset the TACAN to channel 71 + Rough Rider callsign. Reported by
+  // a tester 2026-06-09 against a CVN-73 War Fighter setup.
+  //
+  // Priority tiers (everything the GROUP says beats everything the
+  // UNIT TYPE says — the user labels their group with intent):
+  //   1. CVN-NN regex in the GROUP NAME → look up that exact hull
+  //   2. Hull-keyword (washington, roosevelt, …) in GROUP NAME
+  //   3. CVN-NN regex in the UNIT TYPE → look up that hull
+  //   4. Hull-keyword in UNIT TYPE
+  //   5. Generic CVN-NN fallback (no DB entry)
+  //   6. LHA/LHD heuristic
+  //   7. Generic CVN
+  // Each tier inherits the existing-AWA overlay via fromHullRow.
+
+  // Tier 1: explicit hull number in the group name.
+  const nameCvn = nameNorm.match(/cvn-?(\d+)/);
+  if (nameCvn) {
+    const key = `CVN-${nameCvn[1]}`;
+    if (HULL_DB[key]) return fromHullRow(HULL_DB[key]);
   }
 
-  // Step 3: Dynamic CVN-NNN extraction.
-  const cvnMatch = normalized.match(/cvn-?(\d+)/);
+  // Tier 2: hull-keyword in GROUP NAME (washington / roosevelt / vinson / …).
+  // Skip CVN-* keys — already covered by tier 1.
+  for (const [key, data] of Object.entries(HULL_DB)) {
+    if (/^CVN-?\d/.test(key)) continue;
+    if (nameNorm.includes(key.toLowerCase())) return fromHullRow(data);
+  }
+
+  // Tier 3: explicit hull number in the unit type.
+  const utypeCvn = utypeNorm.match(/cvn-?(\d+)/);
+  if (utypeCvn) {
+    const key = `CVN-${utypeCvn[1]}`;
+    if (HULL_DB[key]) return fromHullRow(HULL_DB[key]);
+  }
+
+  // Tier 4: hull-keyword in UNIT TYPE.
+  for (const [key, data] of Object.entries(HULL_DB)) {
+    if (/^CVN-?\d/.test(key)) continue;
+    if (utypeNorm.includes(key.toLowerCase())) return fromHullRow(data);
+  }
+
+  // Tier 5: hull number found in either string but no DB entry — synthesise.
+  const cvnMatch = nameCvn ?? utypeCvn;
   if (cvnMatch) {
     const hull = parseInt(cvnMatch[1], 10);
     return {
