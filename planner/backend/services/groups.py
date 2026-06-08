@@ -355,21 +355,28 @@ def register_group_routes(app) -> None:
             pw_enc = profile_crypto.encrypt_secret(body.get("olympusPassword"))
             # v1.19.50 — Discord webhook URL. Encrypted-at-rest because a
             # leaked webhook lets anyone spam the channel as the bot user.
-            # Discord rate-limits per-webhook so a leak is bounded but
-            # still annoying.
-            webhook_enc = profile_crypto.encrypt_secret(body.get("discordWebhookUrl"))
+            # v1.19.55 — only encrypt + write the column when the user
+            # actually provided a URL. This makes the migration
+            # (0004_discord_webhook.sql) optional at ship time: if the
+            # column doesn't exist yet, profiles without a webhook still
+            # save fine. The column ONLY gets referenced when the user
+            # opts in to Discord mirroring.
+            webhook_url = (body.get("discordWebhookUrl") or "").strip()
+            webhook_enc = profile_crypto.encrypt_secret(webhook_url) if webhook_url else None
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
         pid = _uuid()
-        sb.table("server_profiles").insert({
+        row = {
             "id": pid, "group_id": gid, "name": name,
             "olympus_host": body.get("olympusHost"),
             "olympus_port": int(body.get("olympusPort") or 4512),
             "olympus_password_enc": pw_enc,
             "lotatc_url": body.get("lotatcUrl"),
-            "discord_webhook_enc": webhook_enc,
             "created_by": user["id"], "updated_at": _now_iso(),
-        }).execute()
+        }
+        if webhook_enc is not None:
+            row["discord_webhook_enc"] = webhook_enc
+        sb.table("server_profiles").insert(row).execute()
         return jsonify({"id": pid}), 201
 
     @app.route("/api/groups/<gid>/profiles/<pid>", methods=["PATCH"])
@@ -397,11 +404,17 @@ def register_group_routes(app) -> None:
                 return jsonify({"error": str(e)}), 503
         # v1.19.50 — same "only touch if explicitly sent" pattern for the
         # Discord webhook. Saving "" clears it; absent key leaves it alone.
+        # v1.19.55 — only reference the discord_webhook_enc column when
+        # the user explicitly typed a URL. Keeps existing edits working
+        # if the migration hasn't been applied yet (the column doesn't
+        # exist on Supabase until 0004_discord_webhook.sql runs).
         if "discordWebhookUrl" in body:
-            try:
-                patch["discord_webhook_enc"] = profile_crypto.encrypt_secret(body.get("discordWebhookUrl"))
-            except profile_crypto.EncKeyMissing as e:
-                return jsonify({"error": str(e)}), 503
+            url = (body.get("discordWebhookUrl") or "").strip()
+            if url:
+                try:
+                    patch["discord_webhook_enc"] = profile_crypto.encrypt_secret(url)
+                except profile_crypto.EncKeyMissing as e:
+                    return jsonify({"error": str(e)}), 503
         sb.table("server_profiles").update(patch).eq("id", pid).eq("group_id", gid).execute()
         return jsonify({"ok": True})
 
