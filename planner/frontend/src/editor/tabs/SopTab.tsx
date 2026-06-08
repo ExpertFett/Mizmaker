@@ -597,6 +597,7 @@ export function SopTab() {
               extractProgress={extractProgress}
               hasAiKey={!!aiKey}
               onOpenAiSettings={() => setAiOpen(true)}
+              onAddImages={handleAddImagesToSelected}
             />
           )}
         </div>
@@ -614,6 +615,7 @@ export function SopTab() {
 function SopDetail({
   sop, isActive, onRename, onActivate, onDeactivate, onDelete, onDownload, onUpdate,
   onExtractWithAi, extracting, extractProgress, hasAiKey, onOpenAiSettings,
+  onAddImages,
 }: {
   sop: SOP;
   isActive: boolean;
@@ -628,9 +630,21 @@ function SopDetail({
   extractProgress: { current: number; total: number } | null;
   hasAiKey: boolean;
   onOpenAiSettings: () => void;
+  /** v1.19.60 — append reference images to THIS SOP (existing-SOP path,
+   *  not the global "create a new SOP from these images" path the top
+   *  toolbar runs). */
+  onAddImages: (files: File[]) => void;
 }) {
   const [editName, setEditName] = useState<string | null>(null);
   const hasImages = !!sop.attachment || (sop.attachments && sop.attachments.length > 0);
+  // v1.19.60 — local file input for the inline "Add images" CTA.
+  // Tester report: "on the SOP page it's hard to find where I actually
+  // add images to the SOP without making a new SOP, can we make it a
+  // touch clearer". The top toolbar's "+ Add Images" was confusable
+  // with the create-new-SOP buttons next to it. This pulls the action
+  // INTO the SOP detail card so it's obviously about THIS SOP.
+  const addImagesInputRef = useRef<HTMLInputElement>(null);
+  const fireAdd = () => addImagesInputRef.current?.click();
 
   return (
     <div>
@@ -697,6 +711,30 @@ function SopDetail({
             </button>
           )
         )}
+        {/* v1.19.60 — inline "Add images" button, contextual to THIS SOP.
+            Replaces the top-toolbar version (which sat next to the
+            create-NEW-SOP buttons and was visually ambiguous). The
+            label includes the current image count so it's obviously
+            additive, not replacing. */}
+        <input
+          ref={addImagesInputRef}
+          type="file"
+          accept="image/*,.pdf"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) onAddImages(files);
+            e.target.value = '';
+          }}
+        />
+        <button
+          onClick={fireAdd}
+          style={btnGhost}
+          title="Append more reference images or PDFs to this SOP. Combine with ✨ Extract with AI to read structured fields off them."
+        >
+          📎 Add image{hasImages ? 's…' : 's'}
+        </button>
         {isActive ? (
           <button onClick={onDeactivate} style={btnGhost}>Deactivate</button>
         ) : (
@@ -720,6 +758,53 @@ function SopDetail({
       {/* Stats strip — at-a-glance summary so the user knows what's
           populated without scrolling through every section. */}
       <SopStatsStrip sop={sop} />
+
+      {/* v1.19.60 — empty-state image CTA. When the SOP has no
+          attachments, surface a prominent panel telling the user they
+          can drop kneeboard photos here for AI extraction. Replaces
+          the previous "where do I add images" confusion (tester
+          report). When images ARE attached, this collapses and the
+          📎 button in the header is the entry point instead. */}
+      {!hasImages && (
+        <div
+          onClick={fireAdd}
+          style={{
+            cursor: 'pointer',
+            margin: '10px 0 14px',
+            padding: '14px 16px',
+            background: 'rgba(74, 158, 255, 0.06)',
+            border: '1px dashed #2a5a8a',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+          }}
+        >
+          <span style={{ fontSize: 26 }}>📎</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: '#cfe6ff', fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
+              Add reference images to this SOP
+            </div>
+            <div style={{ color: '#8aa0ba', fontSize: 12, lineHeight: 1.45 }}>
+              Drop a screenshot of your squadron's comm card, callsign list, or
+              kneeboard pack — then click <strong style={{ color: '#cfe6ff' }}>✨ Extract with AI</strong>{' '}
+              to auto-fill the SOP fields. Images stay attached as reference
+              while you edit.
+            </div>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); fireAdd(); }}
+            style={{
+              ...btnPrimary,
+              padding: '7px 16px',
+              fontSize: 12,
+              flexShrink: 0,
+            }}
+          >
+            Browse files
+          </button>
+        </div>
+      )}
 
       {/* Side-by-side layout when the SOP has an attached image:
           editors on the left, image pinned on the right so the user
