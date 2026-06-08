@@ -12,17 +12,23 @@ import { useState } from 'react';
 import { JtacSetupPanel } from './JtacSetupPanel';
 import { TicSetupPanel } from './TicSetupPanel';
 import { AegisSetupPanel } from './AegisSetupPanel';
+import { CarrierSetupPanel } from './CarrierSetupPanel';
 
+// v1.19.54 — Carriers moved here from its own top-level tab. It belongs
+// alongside AEGIS / TIC / JTAC: all four are "auto-setup the mission for
+// a scripting framework" panels that emit groupRename edits + a chunk
+// of generated Lua to bundle into the .miz triggers.
 const SUB_TABS = [
-  { id: 'aegis', label: 'AEGIS IADS', color: '#d95050' },
-  { id: 'tic',   label: 'TIC',         color: '#d29922' },
-  { id: 'jtac',  label: 'JTAC',        color: '#3fb950' },
+  { id: 'carriers', label: 'Carriers',    color: '#4a9eff' },
+  { id: 'aegis',    label: 'AEGIS IADS',  color: '#d95050' },
+  { id: 'tic',      label: 'TIC',         color: '#d29922' },
+  { id: 'jtac',     label: 'JTAC',        color: '#3fb950' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
 
 export function ScriptsTab() {
-  const [sub, setSub] = useState<SubTab>('aegis');
+  const [sub, setSub] = useState<SubTab>('carriers');
 
   return (
     <div>
@@ -66,9 +72,10 @@ export function ScriptsTab() {
         ))}
       </div>
 
-      {sub === 'aegis' && <AegisSetupPanel />}
-      {sub === 'tic'   && <TicSetupPanel />}
-      {sub === 'jtac'  && <JtacSetupPanel />}
+      {sub === 'carriers' && <CarrierSetupPanel />}
+      {sub === 'aegis'    && <AegisSetupPanel />}
+      {sub === 'tic'      && <TicSetupPanel />}
+      {sub === 'jtac'     && <JtacSetupPanel />}
     </div>
   );
 }

@@ -238,9 +238,20 @@ function groupThreats(threats: ThreatRing[]): ThreatGroup[] {
 type ViewTab = 'threats' | 'exposure';
 type CoalFilter = 'all' | 'red' | 'blue';
 
-export function ThreatLibraryTab() {
+export function ThreatLibraryTab({ onGoToMap }: { onGoToMap?: () => void } = {}) {
   const groups = useMissionStore((s) => s.groups);
   const threats = useMissionStore((s) => s.threats);
+  const selectGroup = useMissionStore((s) => s.selectGroup);
+  // v1.19.54 — "Go to map" button per exposure row. Sets the selected
+  // group (so the FloatingFlightPanel pops + the map highlights), then
+  // switches the editor tab to Map. From a tester report: "if I see my
+  // tanker gonna be in the range of an SA-6 I can just click a button,
+  // it takes me to the map with that unit highlighted so I can change
+  // its waypoint easily."
+  const goToOnMap = useCallback((groupId: number) => {
+    selectGroup(groupId);
+    onGoToMap?.();
+  }, [selectGroup, onGoToMap]);
   const [viewTab, setViewTab] = useState<ViewTab>('threats');
   const [coalFilter, setCoalFilter] = useState<CoalFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -518,6 +529,22 @@ export function ThreatLibraryTab() {
                               {result.threatCount} threat{result.threatCount !== 1 ? 's' : ''}
                             </span>
                           </div>
+                        )}
+                        {/* v1.19.54 — Go to map button. Stop the row toggle
+                            from also firing when the user clicks this. */}
+                        {onGoToMap && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); goToOnMap(result.groupId); }}
+                            title="Open this flight on the map (select + center, then you can drag waypoints)"
+                            style={{
+                              marginLeft: 4, padding: '4px 8px', fontSize: 11,
+                              fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                              background: '#4a8fd420', color: '#4a8fd4',
+                              border: '1px solid #4a8fd440', borderRadius: 3,
+                            }}
+                          >
+                            🗺 Go to map
+                          </button>
                         )}
                       </div>
 

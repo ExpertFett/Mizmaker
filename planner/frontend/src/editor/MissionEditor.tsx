@@ -19,7 +19,6 @@ import { LiveryTab } from './tabs/LiveryTab';
 import { MissionEditTab } from './tabs/MissionEditTab';
 import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
-import { AirfieldsTab } from './tabs/AirfieldsTab';
 import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
 import { SopTab } from './tabs/SopTab';
@@ -29,9 +28,11 @@ import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
 import { DmpiTab } from './tabs/DmpiTab';
 import { VisibilityTab } from './tabs/VisibilityTab';
-import { RangePlanTab } from './tabs/RangePlanTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
-import { CarriersTab } from './tabs/CarriersTab';
+// v1.19.54 — AirfieldsTab + RangePlanTab + CarriersTab no longer
+// imported. Airfields/Range removed entirely; Carriers moved INSIDE
+// ScriptsTab as a sub-tab so it lives with the other auto-setup
+// panels (AEGIS / TIC / JTAC).
 import { ScriptsTab } from './tabs/ScriptsTab';
 import { RosterTab } from './tabs/RosterTab';
 import { TriggerTab } from './tabs/TriggerTab';
@@ -72,12 +73,15 @@ const SIDEBAR: SidebarItem[] = [
   { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
 
   { kind: 'section', label: 'ENTITIES' },
-  { kind: 'tab', id: 'carriers',    label: 'Carriers',    icon: '⚓' },
+  // v1.19.54 — Carriers moved INTO Scripts as a sub-tab (along with
+  // AEGIS / TIC / JTAC). All four are "auto-setup the mission for a
+  // scripting framework" panels — keeping them together cuts the
+  // sidebar by 1 row and makes the conceptual grouping obvious.
   { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: '📜' },
-  // Triggers comes AFTER Carriers + Scripts because both of those
-  // panels auto-append trigger rules (Carrier Control + 13 TIC rules
-  // from Carriers, framework load triggers from Scripts). By the time
-  // the user opens this tab the rules are already there — they're
+  // Triggers comes AFTER Scripts because Scripts panels auto-append
+  // trigger rules (Carrier Control + 13 TIC rules from Carriers,
+  // framework load triggers from AEGIS/TIC apply). By the time the
+  // user opens this tab the rules are already there — they're
   // verifying / tweaking, not authoring from scratch.
   { kind: 'tab', id: 'triggers',    label: 'Triggers',    icon: '⚡' },
 
@@ -86,21 +90,14 @@ const SIDEBAR: SidebarItem[] = [
   // for each player flight. Doing FLIGHTS first means you'd commit to a
   // loadout, then go look at threats and realize you brought the wrong
   // weapons.
+  // v1.19.54 — Airfields removed from sidebar entirely (the editor-side
+  // tab "doesn't add anything", per Fett; the planner-side reference
+  // surface lives elsewhere). Range plan removed too. Visibility moved
+  // to its own MISSION MAKER section near the bottom — it's a
+  // mission-maker intel filter, not a planning-time decision.
   { kind: 'section', label: 'PLANNING' },
   { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
-  // Airfields — name / ATC freqs / runways. Lives under PLANNING because
-  // the planner pulls home-plate + divert info while building the
-  // Comms / DTC sections. (v1.19.30)
-  { kind: 'tab', id: 'airfields',   label: 'Airfields',   icon: '🛬' },
   { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
-  // Visibility — mission-maker-controlled per-group intel filter.
-  // Lives in PLANNING because it's a planning-time decision: what
-  // does each flight lead get to see when they join the session?
-  { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: '👁' },
-  // 🎯 reads as "training range / target practice" — the previous 📐
-  // (set square / ruler) was reading as "measure distance" and pilots
-  // kept skipping past it expecting the map's measure tool.
-  { kind: 'tab', id: 'rangePlan',   label: 'Range',       icon: '🎯' },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'roster',      label: 'Roster',      icon: '👥' },
@@ -117,6 +114,14 @@ const SIDEBAR: SidebarItem[] = [
   // queued for the next download. Lives in OUTPUT because it's a
   // pre-download summary view, same as Kneeboard / Brief.
   { kind: 'tab', id: 'edits',       label: 'Edits',       icon: '✎' },
+
+  // MISSION MAKER — tools the mission AUTHOR uses to control what
+  // joining players see / can do. Distinct from PLANNING (which is what
+  // a flight lead does WITHIN the constraints the mission already sets).
+  // Visibility was previously under PLANNING but Fett moved it here
+  // because it's an authoring decision, not a planning one. (v1.19.54)
+  { kind: 'section', label: 'MISSION MAKER' },
+  { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: '👁' },
 
   { kind: 'section', label: 'UTIL' },
   { kind: 'tab', id: 'debug',       label: 'Debug',       icon: '🔍' },
@@ -165,7 +170,8 @@ export function MissionEditor() {
   // name so the AirfieldsTab snaps its detail card to that field. The
   // tick increments on every pick so re-clicking the same field still
   // triggers the focus effect downstream. (v1.19.34)
-  const [airfieldFocus, setAirfieldFocus] = useState<{ name: string; tick: number }>({ name: '', tick: 0 });
+  // v1.19.54 — AirfieldsTab removed from editor; the map's airbase click
+  // handler is now a no-op (airfield reference lives in planner mode only).
   const sessionId = useMissionStore((s) => s.sessionId);
   const selectedGroupId = useMissionStore((s) => s.selectedGroupId);
   const filename = useMissionStore((s) => s.filename);
@@ -579,10 +585,7 @@ export function MissionEditor() {
             <ParticipantBar />
             <MapContainer
               onDmpiPicked={() => selectTab('dmpi')}
-              onAirfieldPicked={(name) => {
-                setAirfieldFocus((prev) => ({ name, tick: prev.tick + 1 }));
-                selectTab('airfields');
-              }}
+              onAirfieldPicked={undefined}
             />
             {selectedGroupId && <FloatingFlightPanel />}
           </>
@@ -601,7 +604,7 @@ export function MissionEditor() {
             )}
             {visitedTabs.has('threats') && (
               <div style={{ display: activeTab === 'threats' ? 'block' : 'none' }}>
-                <ThreatLibraryTab />
+                <ThreatLibraryTab onGoToMap={() => selectTab('map')} />
               </div>
             )}
             {visitedTabs.has('datalink') && (
@@ -664,29 +667,14 @@ export function MissionEditor() {
                 <DmpiTab onPickOnMap={() => selectTab('map')} />
               </div>
             )}
-            {visitedTabs.has('airfields') && (
-              <div style={{ display: activeTab === 'airfields' ? 'block' : 'none' }}>
-                <AirfieldsTab focusName={airfieldFocus.name} focusTick={airfieldFocus.tick} />
-              </div>
-            )}
             {visitedTabs.has('visibility') && (
               <div style={{ display: activeTab === 'visibility' ? 'block' : 'none' }}>
                 <VisibilityTab />
               </div>
             )}
-            {visitedTabs.has('rangePlan') && (
-              <div style={{ display: activeTab === 'rangePlan' ? 'block' : 'none' }}>
-                <RangePlanTab />
-              </div>
-            )}
             {visitedTabs.has('tools') && (
               <div style={{ display: activeTab === 'tools' ? 'block' : 'none' }}>
                 <ToolsTab />
-              </div>
-            )}
-            {visitedTabs.has('carriers') && (
-              <div style={{ display: activeTab === 'carriers' ? 'block' : 'none' }}>
-                <CarriersTab />
               </div>
             )}
             {visitedTabs.has('scripts') && (

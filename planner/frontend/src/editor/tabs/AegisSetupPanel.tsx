@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { GroupRenamerData } from '../../types/mission';
+import { addFrameworkTriggers, AEGIS_BUNDLE } from './frameworkTriggers';
 
 /**
  * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
@@ -372,6 +373,11 @@ export function AegisSetupPanel() {
         addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) } as any);
       }
     }
+    // v1.19.54 — wire MOOSE + AEGIS framework load triggers automatically
+    // so the user doesn't have to bounce over to the Triggers tab and
+    // hand-add them. Idempotent: re-applying after a tweak doesn't add
+    // duplicates (the helper checks for existing DO_SCRIPT_FILE rules).
+    addFrameworkTriggers(AEGIS_BUNDLE);
     setApplied(true);
   }, [assignments, addEdit]);
 

@@ -51,8 +51,10 @@ export const PLANNER_MODE: boolean = detectPlannerMode();
 export const PLANNER_TAB_IDS: ReadonlySet<string> = new Set([
   // SETUP — map/routes + weather reference
   'map', 'weather',
-  // PLANNING — threats, target points, range planning
-  'threats', 'dmpi', 'rangePlan',
+  // PLANNING — threats + target points. (v1.19.54 — rangePlan and
+  // airfields removed app-wide; rangePlan was unused, airfields was
+  // editor-only and Fett pulled it.)
+  'threats', 'dmpi',
   // FLIGHTS — loadout + DTC
   'weapons', 'dtc',
   // OUTPUT — kneeboard preview/export (added 2026-05-27 per Fett: planners need

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { addFrameworkTriggers, TIC_BUNDLE } from './frameworkTriggers';
 
 /**
  * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
@@ -712,6 +713,10 @@ export function TicSetupPanel() {
       return next;
     });
     setDirtyGroups(new Set());
+    // v1.19.54 — auto-add MOOSE + MIST + TIC load triggers so the user
+    // doesn't have to hand-wire them on the Triggers tab. Idempotent —
+    // re-applying after a tweak doesn't duplicate.
+    addFrameworkTriggers(TIC_BUNDLE);
   }, [assignments, addEdit, taskAssignments]);
 
   // Summary stats — must be before any early return to satisfy Rules of Hooks
