@@ -266,11 +266,12 @@ without Fett's go-ahead.
   tasking, fuel ladder, notes before render. Wait until testers ask
   for it — they may be happy with the auto-build.
 
-- **Per-slide map images** (option #3 from the brief menu). Auto-embed
-  a route map (with threats + flight tracks) on the cover, plus a per-
-  flight route map on each flight brief. Uses the existing OL canvas
-  + html-to-canvas pipeline the kneeboard cards already use. Most
-  visually impressive single feature; medium-large effort.
+- **~~Per-slide map images~~ — SHIPPED.** Both the wing/cover route
+  overview map (`route_overview_base64` → brief_renderer.py:1106) and
+  the per-flight route map (`route_map_base64` → brief_renderer.py:
+  1723) are built client-side in BriefGenTab via captureOverviewImage
+  / captureRouteImage and rendered into PPTX slides. Discovered while
+  re-auditing the parked list 2026-06-09.
 
 - **Weapon-employment kneeboards** for newer pilots and training
   missions. Per-weapon reference cards modeled on the SAM threat-
