@@ -68,11 +68,25 @@ export function TacanTab() {
   // Pre-v1.19.62 the carrier panel's TACAN dispatches DID land in the
   // .miz on download, but this tab kept showing the original .miz
   // value — cross-tab inconsistency that lost user trust.
-  const stagedTacanEdits = useEditStore((s) =>
-    s.edits.filter((e) => (e as { field?: string }).field === 'tacan'),
+  //
+  // v1.19.68 — the previous version filtered inside the Zustand
+  // selector itself (s => s.edits.filter(...)), which returned a NEW
+  // array reference every render and tripped React's useSyncExternal-
+  // Store cache check ("getSnapshot should be cached to avoid an
+  // infinite loop"). The crash was hidden pre-v1.19.67 because the
+  // tab was conditionally rendered — only mounted when the user
+  // actually clicked the TACAN sub-tab. After Phase 3's display:none
+  // sweep TacanTab mounts as soon as Radio opens, exposing the bug.
+  // Fix: select the stable `edits` array reference, filter in a
+  // useMemo downstream.
+  const allEdits = useEditStore((s) => s.edits);
+  const stagedTacanEdits = useMemo(
+    () => allEdits.filter((e) => (e as { field?: string }).field === 'tacan'),
+    [allEdits],
   );
-  const stagedIclsEdits = useEditStore((s) =>
-    s.edits.filter((e) => (e as { field?: string }).field === 'icls'),
+  const stagedIclsEdits = useMemo(
+    () => allEdits.filter((e) => (e as { field?: string }).field === 'icls'),
+    [allEdits],
   );
   const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
   const [overrides, setOverrides] = useState<Map<number, Partial<TacanRow>>>(new Map());

@@ -6,6 +6,12 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", ".claude\\start-frontend.bat"],
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["planner/backend/app.py"],
+      "port": 5001
     }
   ]
 }
