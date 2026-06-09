@@ -4,6 +4,7 @@
  * when present.
  */
 
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import type { SOP } from './types';
 
@@ -118,3 +119,28 @@ export const useSopStore = create<SopState>((set, get) => ({
     set({ sops: [], activeId: null });
   },
 }));
+
+/**
+ * v1.19.69 — shared selector for the active SOP. Replaces 5 duplicate
+ * call sites that all did:
+ *
+ *   useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null)
+ *
+ * Two reasons to consolidate:
+ *
+ * 1. The inline ternary + `|| null` chain returns DIFFERENT references
+ *    on `undefined` vs `null` outcomes, which can trip React 18's
+ *    useSyncExternalStore "getSnapshot should be cached to avoid an
+ *    infinite loop" warning under StrictMode. Splitting into separate
+ *    scalar/array reads + a useMemo gives a stable identity guarantee.
+ *
+ * 2. Single place to add cached lookup-by-id later if perf matters.
+ */
+export function useActiveSop(): SOP | null {
+  const sops = useSopStore((s) => s.sops);
+  const activeId = useSopStore((s) => s.activeId);
+  return useMemo(
+    () => (activeId ? (sops.find((s) => s.id === activeId) ?? null) : null),
+    [sops, activeId],
+  );
+}

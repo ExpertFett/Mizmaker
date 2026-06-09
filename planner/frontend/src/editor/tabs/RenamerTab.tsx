@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { GroupRenamerData } from '../../types/mission';
 // Carrier / JTAC / TIC / AEGIS auto-setup panels moved to top-level
@@ -15,9 +15,7 @@ export function RenamerTab() {
   const allGroupsRenamer = useMissionStore((s) => s.allGroupsRenamer);
   const groups = useMissionStore((s) => s.groups);
   const addEdit = useEditStore((s) => s.addEdit);
-  const activeSop = useSopStore((s) => s.activeId
-    ? s.sops.find((x) => x.id === s.activeId) || null
-    : null);
+  const activeSop = useActiveSop();
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');

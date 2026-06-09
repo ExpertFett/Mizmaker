@@ -24,7 +24,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { MissionGroup, ClientUnit } from '../../types/mission';
 import type { SOP } from '../../sop/types';
@@ -219,9 +219,7 @@ export function RadioPresetsSection() {
   // Active SOP feeds tanker callsigns/freqs and mission-wide comm
   // frequencies (Strike Primary, Marshal, Tower, etc.) into the
   // auto-built preset list.
-  const activeSop = useSopStore((s) => s.activeId
-    ? s.sops.find((x) => x.id === s.activeId) || null
-    : null);
+  const activeSop = useActiveSop();
 
   // Convert a UI preset list to the backend radioPresets edit shape.
   // Strips placeholder rows (empty / 0 freq) so the .miz only carries

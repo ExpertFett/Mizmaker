@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import type { LaserCapableUnit } from '../../types/mission';
 
 /**
@@ -34,7 +34,7 @@ function clampToValidLaserCode(n: number): number {
 export function LaserTab() {
   const laserCapableUnits = useMissionStore((s) => s.laserCapableUnits);
   const addEdit = useEditStore((s) => s.addEdit);
-  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
+  const activeSop = useActiveSop();
   // Default base code prefers the active SOP's laserCodeBase, else 1511.
   const [baseCode, setBaseCode] = useState(() => activeSop?.laserCodeBase ?? 1511);
   const [autoResult, setAutoResult] = useState('');

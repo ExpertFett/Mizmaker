@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useEditStore } from '../../store/editStore';
 import { useEffectiveGroups } from '../../store/effectiveGroups';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import { RadioPresetsSection } from './RadioPresetsSection';
 
@@ -87,7 +87,7 @@ export function CommCardTab() {
   // reflects what's queued in editStore (was missionStore-only).
   const groups = useEffectiveGroups();
   const addEdit = useEditStore((s) => s.addEdit);
-  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
+  const activeSop = useActiveSop();
   const [overrides, setOverrides] = useState<Map<number, { frequency?: number; modulation?: number }>>(new Map());
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [result, setResult] = useState('');

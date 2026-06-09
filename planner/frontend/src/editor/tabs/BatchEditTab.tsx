@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 
 const SKILL_OPTIONS = ['', 'Average', 'Good', 'High', 'Excellent', 'Random'];
 
@@ -35,7 +35,7 @@ export function BatchEditTab() {
   const units = useMissionStore((s) => s.units);
   const liveryData = useMissionStore((s) => s.liveryData) as { type: string; units: { livery_id: string }[]; liveries: string[] }[];
   const addEdit = useEditStore((s) => s.addEdit);
-  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
+  const activeSop = useActiveSop();
 
   const [country, setCountry] = useState('');
   const [checkedTypes, setCheckedTypes] = useState<Set<string>>(new Set());

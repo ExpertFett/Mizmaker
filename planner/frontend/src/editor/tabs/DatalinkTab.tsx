@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import type { ClientUnit, DonorInfo } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
@@ -27,9 +27,7 @@ export function DatalinkTab() {
   // Active SOP drives callsign auto-assign — match player flights to
   // SOP-defined callsigns by first-word of group name. Falls back to
   // abbreviated group name when no SOP match.
-  const activeSop = useSopStore((s) => s.activeId
-    ? s.sops.find((x) => x.id === s.activeId) || null
-    : null);
+  const activeSop = useActiveSop();
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());

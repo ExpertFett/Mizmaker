@@ -4,7 +4,7 @@ import { useEditStore } from '../../store/editStore';
 import { isCarrierGroup } from '../../utils/groups';
 import { getTriggers, saveTriggers } from '../../api/client';
 import { useTriggerStore } from '../../store/triggerStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import type { MissionGroup } from '../../types/mission';
 
 /* ------------------------------------------------------------------ */
@@ -504,9 +504,7 @@ export function generateMooseCarrierScript(configs: CarrierConfig[]): string {
 export function CarrierSetupPanel() {
   const groups = useMissionStore((s) => s.groups);
   const sessionId = useMissionStore((s) => s.sessionId);
-  const activeSop = useSopStore((s) => s.activeId
-    ? s.sops.find((x) => x.id === s.activeId) || null
-    : null);
+  const activeSop = useActiveSop();
   const addEdit = useEditStore((s) => s.addEdit);
   const [configs, setConfigs] = useState<CarrierConfig[]>([]);
   const [generated, setGenerated] = useState(false);

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { useSopStore } from '../../sop/sopStore';
+import { useActiveSop } from '../../sop/sopStore';
 import { isCarrierGroup, getAirRoleLabel } from '../../utils/groups';
 import { detectCarrierIcls, allocateIcls } from '../../utils/carrierDefaults';
 
@@ -88,7 +88,7 @@ export function TacanTab() {
     () => allEdits.filter((e) => (e as { field?: string }).field === 'icls'),
     [allEdits],
   );
-  const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
+  const activeSop = useActiveSop();
   const [overrides, setOverrides] = useState<Map<number, Partial<TacanRow>>>(new Map());
   const [result, setResult] = useState('');
 
