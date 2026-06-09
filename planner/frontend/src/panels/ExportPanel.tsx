@@ -9,6 +9,7 @@ import { RouteCard } from '../kneeboard/RouteCard';
 import { FlightCard } from '../kneeboard/FlightCard';
 import { CommsCard } from '../kneeboard/CommsCard';
 import { RouteDetailCard } from '../kneeboard/RouteDetailCard';
+import { StripMapCard } from '../kneeboard/StripMapCard';
 import { FuelLadderCard } from '../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
@@ -156,6 +157,9 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           if (cards.routeDetail)
             await addCard(aircraftType, `${safeName}_RouteDetail.png`,
               createElement(RouteDetailCard, { group: g, threats, notes: cardNotes.routeDetail, coordFormat: kneeboardSettings.coordFormat }));
+          if (cards.stripMap)
+            await addCard(aircraftType, `${safeName}_StripMap.png`,
+              createElement(StripMapCard, { group: g, overview: overview ?? undefined, notes: cardNotes.stripMap }));
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
               createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));

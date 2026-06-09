@@ -46,6 +46,12 @@ export interface KneeboardCards {
    *  KneeboardSettings.popupAttacks (see utils/popupAttack.ts). Side profile
    *  + parameter table + reference points. Defaults OFF. (v1.17.x) */
   popupAttack: boolean;
+  /** Strip Map Card (v1.19.72, task #50) — north-up route map with a
+   *  per-leg doghouse showing MC / DIST / TIME / ALT. One card per
+   *  player flight. Renders to PNG via SVG → renderCardToBlob. Tier
+   *  B follow-up (route rotation, fuel/threat doghouse fields) is
+   *  task #50's deferred section. */
+  stripMap: boolean;
 }
 
 export interface KneeboardSettings {
@@ -225,6 +231,10 @@ export const useEditStore = create<EditState>((set) => ({
       // them when the planner has opted in (notes written / weapons picked /
       // profiles defined), so an empty card doesn't ride along every download.
       sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
+      // Strip Map defaults ON for player flights — it's the kind of card
+      // every aviator wants in the kneeboard pack by default. Mission
+      // makers who don't want it can untick.
+      stripMap: true,
     },
   },
 

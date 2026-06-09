@@ -14,6 +14,7 @@ import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { FlightCard } from '../../kneeboard/FlightCard';
 import { CommsCard } from '../../kneeboard/CommsCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
+import { StripMapCard } from '../../kneeboard/StripMapCard';
 import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
@@ -45,6 +46,7 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
   { key: 'flight', label: 'Flight Card', desc: 'Callsigns, loadout, fuel, datalink' },
   { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
+  { key: 'stripMap', label: 'Strip Map', desc: 'North-up route map with per-leg doghouse (MC / DIST / TIME / ALT)' },
   { key: 'fuelLadder', label: 'Fuel Ladder', desc: 'Fuel burn per leg, joker/bingo' },
   { key: 'homePlate', label: 'Home Plate / Divert', desc: 'Departure field + nearest diverts' },
   { key: 'weaponsAuto', label: 'Weapon Cards (auto)', desc: "Auto-inject employment cards for each flight's actual loadout (matched from pylons)" },
@@ -74,6 +76,7 @@ const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean
   { key: 'flight', label: 'Flight Card', perFlight: true },
   { key: 'comms', label: 'Comms Card', perFlight: true },
   { key: 'routeDetail', label: 'Route Detail', perFlight: true },
+  { key: 'stripMap', label: 'Strip Map', perFlight: true },
   { key: 'fuelLadder', label: 'Fuel Ladder', perFlight: true },
   { key: 'supportAssets', label: 'Support Assets', perFlight: false },
   { key: 'radioLadder', label: 'Radio Ladder', perFlight: false },
@@ -196,6 +199,10 @@ export function KneeboardTab() {
     if (cards.routeDetail) {
       const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat });
       results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    if (cards.stripMap) {
+      const el = createElement(StripMapCard, { group: g, overview: overview || undefined, notes: cardNotes.stripMap });
+      results.push({ name: `${safeName}_StripMap.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.fuelLadder) {
       const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder });
@@ -1009,6 +1016,12 @@ function CardCarousel({
         list.push({
           key: 'routeDetail', label: 'Route Detail',
           element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat }),
+        });
+      }
+      if (cards.stripMap) {
+        list.push({
+          key: 'stripMap', label: 'Strip Map',
+          element: createElement(StripMapCard, { group: selectedGroup, overview: overview || undefined, notes: cardNotes.stripMap }),
         });
       }
       if (cards.fuelLadder) {
