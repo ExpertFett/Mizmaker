@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
+import { setOriginalMiz } from '../store/originalMiz';
 import { useMissionStore } from '../store/missionStore';
 import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
@@ -9,6 +10,7 @@ import { VERSION } from '../version';
 import { useAiStore } from '../ai/aiStore';
 import { useAuthStore, discordDisplayName, discordAvatarUrl } from '../store/authStore';
 import { AiSettingsPanel } from './AiSettingsPanel';
+import { MissionLibraryPanel } from './MissionLibraryPanel';
 
 export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const loadMission = useMissionStore((s) => s.loadMission);
@@ -33,6 +35,9 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       setError(null);
       try {
         const data = await uploadMission(file);
+        // v1.19.73 — stash original blob so the mission library
+        // auto-save (on .miz download) can persist it for re-open.
+        setOriginalMiz(file, file.name);
         setActiveTheater(data.theater);
         loadMission(data);
         // Seed the Mission Goals store from whatever the .miz had in
@@ -136,6 +141,11 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         </div>
 
         <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
+
+        {/* v1.19.73 — Recent missions list (IndexedDB). Auto-hides
+            when the library is empty, so first-time users still see
+            only the drop zone below. */}
+        <MissionLibraryPanel />
 
         {/* Upload zone */}
         <div

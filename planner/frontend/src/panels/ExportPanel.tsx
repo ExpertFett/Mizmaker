@@ -3,6 +3,8 @@ import { useMissionStore } from '../store/missionStore';
 import { useEditStore } from '../store/editStore';
 import { exportJson, closeSession, saveTriggers } from '../api/client';
 import { useTriggerStore } from '../store/triggerStore';
+import { saveCurrentMission } from '../store/missionLibraryActions';
+import { getOriginalMiz } from '../store/originalMiz';
 import type { WaypointEdit } from '../types/mission';
 import { isPlayerGroup } from '../utils/groups';
 import { RouteCard } from '../kneeboard/RouteCard';
@@ -318,6 +320,22 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
       console.log('Blob:', blob.size, 'bytes', blob.type);
 
       if (blob.size === 0) { alert('Empty file returned'); return; }
+
+      // v1.19.73 — auto-save to the mission library. Persists the
+      // ORIGINAL .miz blob + a snapshot of every relevant store so
+      // the user can reopen exactly where they left off via the
+      // Recent Missions panel on the upload screen. Idempotent by
+      // filename (re-downloading updates the same row instead of
+      // stacking). Fails silently — a library-write error must
+      // never block a download the user actually asked for.
+      const original = getOriginalMiz();
+      if (original) {
+        try {
+          await saveCurrentMission(original.blob, original.name);
+        } catch (e) {
+          console.warn('Mission library auto-save failed:', e);
+        }
+      }
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
