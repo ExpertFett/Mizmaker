@@ -101,6 +101,45 @@ const HULL_DB: Record<string, HullData> = {
   'LHD-1':    { label: 'LHD', callsign: 'Stinger',       tacan: 1,  icls: 0,  tiwSpeed: 10, hasIcls: false},
 };
 
+/**
+ * v1.19.68 — pure hull-DB lookup, no existing-AWA overlay.
+ *
+ * Mirrors detectCarrierInfo's tier priority (group-name first, then
+ * unit-type) but returns the raw HullData row so the "Sync to hull DB"
+ * button can clobber a row's TACAN/ICLS back to canonical squadron
+ * values. Returns null when the group doesn't match any known hull
+ * (custom-named carrier groups like "BlueWaterStrike" / generic CVN
+ * without a hull number).
+ */
+export function findHullDefaults(g: MissionGroup): HullData | null {
+  const nameNorm = g.groupName.toLowerCase().replace(/[\s_]/g, '-');
+  const utypeNorm = (g.units[0]?.type || '').toLowerCase().replace(/[\s_]/g, '-');
+
+  // Tier 1: CVN-NN in group name
+  const nameCvn = nameNorm.match(/cvn-?(\d+)/);
+  if (nameCvn) {
+    const key = `CVN-${nameCvn[1]}`;
+    if (HULL_DB[key]) return HULL_DB[key];
+  }
+  // Tier 2: hull keyword in group name (washington, roosevelt, ...)
+  for (const [key, data] of Object.entries(HULL_DB)) {
+    if (/^CVN-?\d/.test(key)) continue;
+    if (nameNorm.includes(key.toLowerCase())) return data;
+  }
+  // Tier 3: hull keyword in unit type (more specific than the engine CVN-NN)
+  for (const [key, data] of Object.entries(HULL_DB)) {
+    if (/^CVN-?\d/.test(key)) continue;
+    if (utypeNorm.includes(key.toLowerCase())) return data;
+  }
+  // Tier 4: CVN-NN in unit type (engine model fallback)
+  const utypeCvn = utypeNorm.match(/cvn-?(\d+)/);
+  if (utypeCvn) {
+    const key = `CVN-${utypeCvn[1]}`;
+    if (HULL_DB[key]) return HULL_DB[key];
+  }
+  return null;
+}
+
 // Exported for unit testing — the hull-name lookup + tier priority is the
 // most regression-prone piece of carrier auto-detect, and unit tests cost
 // less than another live-mission misdetection.
@@ -580,6 +619,40 @@ export function CarrierSetupPanel() {
     setGenerated(false);
   }, []);
 
+  // v1.19.68 — "Sync to hull DB" button. Mission makers who imported a
+  // .miz with non-canonical TACAN values (e.g. someone typed 100/X just
+  // to get something on the boat) want a one-click reset to the
+  // squadron-SOP defaults for the actual hull. Auto-detect picks
+  // existing-AWA over hull-DB intentionally (so the .miz's values win
+  // on first detect), but the user sometimes wants the opposite —
+  // hence the explicit button.
+  //
+  // What it clobbers per row: TACAN ch/band/callsign, ICLS ch, TIW
+  // speed, hasIcls, aclsEnabled, squadron-callsign. What it leaves
+  // alone: user-edited menu label, rescue helo, EMCON, flag base
+  // (those are deliberate planner choices, not hull facts).
+  const handleSyncToHull = useCallback((groupId: number) => {
+    const g = groups.find((x) => x.groupId === groupId);
+    if (!g) return;
+    const hull = findHullDefaults(g);
+    if (!hull) return; // No canonical hull match — silently no-op (button disabled below).
+    setConfigs((prev) => prev.map((c) => {
+      if (c.groupId !== groupId) return c;
+      return {
+        ...c,
+        tacanCh: hull.tacan,
+        tacanBand: 'X',
+        tacanCallsign: hull.label,
+        iclsCh: hull.icls ?? 0,
+        hasIcls: hull.hasIcls,
+        aclsEnabled: hull.hasIcls,
+        tiwSpeed: hull.tiwSpeed,
+        callsign: hull.callsign,
+      };
+    }));
+    setGenerated(false);
+  }, [groups]);
+
   // Auto-dispatch tacan + icls edits whenever the carrier configs
   // change. Without this, the user would set ICLS=7 in the form,
   // hit Generate (which only builds a runtime trigger script), save
@@ -933,6 +1006,46 @@ export function CarrierSetupPanel() {
               {c.label}
             </span>
             <span style={{ color: '#aaaaaa', fontSize: 12 }}>{c.unitType}</span>
+            {(() => {
+              // v1.19.68 — "Sync to hull DB" affordance. Disabled when the
+              // group can't be matched to a known hull row (custom carrier
+              // names, generic CVN). Disabled state stays visible so the
+              // user knows the feature exists; the title attribute explains
+              // why it can't fire on this row.
+              const g = groups.find((x) => x.groupId === c.groupId);
+              const hull = g ? findHullDefaults(g) : null;
+              const enabled = !!hull;
+              return (
+                <button
+                  onClick={() => handleSyncToHull(c.groupId)}
+                  disabled={!enabled}
+                  title={enabled
+                    ? `Reset TACAN, ICLS, callsign, and TIW speed to the canonical hull-DB values for this ship (overrides any AWA values from the .miz).`
+                    : `No canonical hull match for "${c.groupName}" / "${c.unitType}" — custom carrier groups can't sync.`}
+                  style={{
+                    marginLeft: 'auto',
+                    background: enabled ? 'rgba(74, 143, 212, 0.10)' : '#1a1a1a',
+                    border: enabled ? '1px solid rgba(74, 143, 212, 0.45)' : '1px solid #3a3a3a',
+                    color: enabled ? '#4a8fd4' : '#4a4a4a',
+                    cursor: enabled ? 'pointer' : 'not-allowed',
+                    fontSize: 11, fontWeight: 500,
+                    padding: '3px 9px', borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!enabled) return;
+                    e.currentTarget.style.background = 'rgba(74, 143, 212, 0.22)';
+                    e.currentTarget.style.color = '#ffffff';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!enabled) return;
+                    e.currentTarget.style.background = 'rgba(74, 143, 212, 0.10)';
+                    e.currentTarget.style.color = '#4a8fd4';
+                  }}
+                >
+                  ↺ Sync to hull DB
+                </button>
+              );
+            })()}
           </div>
 
           {/* Group name (read-only — use Renamer tab to change) */}

@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { detectCarrierInfo } from './CarrierSetupPanel';
+import { detectCarrierInfo, findHullDefaults } from './CarrierSetupPanel';
 import type { MissionGroup } from '../../types/mission';
 
 function group(overrides: Partial<MissionGroup> & { unitType?: string } = {}): MissionGroup {
@@ -168,5 +168,59 @@ describe('detectCarrierInfo — hull priority (v1.19.53 fix)', () => {
     }));
     expect(info.label).toBe('LHA');
     expect(info.hasIcls).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* v1.19.68 — findHullDefaults: hull-DB lookup with NO AWA overlay     */
+/* ------------------------------------------------------------------ */
+
+describe('findHullDefaults (v1.19.68 — sync-to-hull-DB helper)', () => {
+  it('returns CVN-71 Roosevelt for a Roosevelt-keyword group', () => {
+    const hull = findHullDefaults(group({
+      groupName: 'Carrier-1',
+      unitType: 'CVN_71_Roosevelt',
+    }));
+    expect(hull).not.toBeNull();
+    expect(hull!.tacan).toBe(71);
+    expect(hull!.callsign).toBe('Rough Rider');
+  });
+
+  it('returns CVN-73 War Fighter for CVN-73 in group name', () => {
+    const hull = findHullDefaults(group({
+      groupName: 'CVN-73',
+      unitType: 'CVN_71_Washington',
+    }));
+    expect(hull!.tacan).toBe(73);
+    expect(hull!.callsign).toBe('War Fighter');
+  });
+
+  it('returns null for a custom carrier name with no recognised hull', () => {
+    const hull = findHullDefaults(group({
+      groupName: 'BlueWaterStrike-Lead',
+      unitType: 'Type_071',
+    }));
+    expect(hull).toBeNull();
+  });
+
+  it('returns LHA hull (no ICLS) for tarawa', () => {
+    const hull = findHullDefaults(group({
+      groupName: 'LHA-Tarawa-1',
+      unitType: 'LHA_Tarawa',
+    }));
+    expect(hull!.hasIcls).toBe(false);
+    expect(hull!.tacan).toBe(1);
+  });
+
+  it('does NOT apply existing AWA overlay — sync would clobber to canonical', () => {
+    // detectCarrierInfo would keep the AWA-set channel of 50 because
+    // existing values win over the hull DB. findHullDefaults must
+    // ignore the AWA entirely so the sync button does its job.
+    const hull = findHullDefaults(group({
+      groupName: 'CVN-71',
+      tacan: { channel: 50, band: 'X', callsign: 'Custom' },
+    }));
+    expect(hull!.tacan).toBe(71);
+    expect(hull!.callsign).toBe('Rough Rider');
   });
 });
