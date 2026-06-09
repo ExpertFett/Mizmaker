@@ -13,7 +13,6 @@ Routes:
   POST /api/dtc/generate        — Generate F/A-18C DTC file
   POST /api/dtc/preview         — Preview DTC data
   GET  /api/dtc/blank           — Blank DTC template
-  POST /api/dtc/export-raw      — Export DTC from raw data
   POST /api/close               — Close session
   GET  /api/triggers             — Get parsed triggers from loaded mission
   POST /api/triggers             — Update triggers in mission
@@ -1535,58 +1534,6 @@ def dtc_preview():
 def dtc_blank():
     import copy
     return jsonify(copy.deepcopy(FA18_DEFAULTS))
-
-
-@app.route("/api/dtc/export-raw", methods=["POST"])
-def dtc_export_raw():
-    body = request.get_json()
-    if not body:
-        return jsonify({"error": "No JSON body"}), 400
-
-    dtc_data = body.get("dtc")
-    filename = body.get("filename", "export.dtc")
-
-    if not dtc_data:
-        return jsonify({"error": "No DTC data provided"}), 400
-
-    dtc_bytes = json.dumps(dtc_data, indent=4).encode("utf-8")
-    return send_file(
-        io.BytesIO(dtc_bytes),
-        mimetype="application/json",
-        as_attachment=True,
-        download_name=filename,
-    )
-
-
-@app.route("/api/dtc/export-standalone", methods=["POST"])
-def dtc_export_standalone():
-    """Build a DTC from scratch (no mission needed) with user edits."""
-    body = request.get_json()
-    if not body:
-        return jsonify({"error": "No JSON body"}), 400
-
-    import copy
-    dtc_name = body.get("dtcName", "Standalone")
-    edits = body.get("edits")
-
-    dtc = {
-        "data": copy.deepcopy(FA18_DEFAULTS.get("data", {})),
-        "name": dtc_name,
-        "type": "FA-18C_hornet",
-    }
-    dtc["data"]["name"] = dtc_name
-    dtc["data"]["type"] = "FA-18C_hornet"
-
-    if edits:
-        dtc = build_dtc_from_edits(dtc, edits)
-
-    dtc_bytes = json.dumps(dtc, indent=4).encode("utf-8")
-    return send_file(
-        io.BytesIO(dtc_bytes),
-        mimetype="application/json",
-        as_attachment=True,
-        download_name=f"{dtc_name}.dtc",
-    )
 
 
 # --------------------------------------------------------------------------

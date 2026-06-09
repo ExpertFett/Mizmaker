@@ -142,9 +142,13 @@ commits.
 1. **`useMemo` is not `useEffect`**. Don't call `setState` inside a
    `useMemo` — it runs during render and will break HMR / cause
    cross-mount state leaks. (We hit this in CoalitionsTab.)
-2. **Direct `useMissionStore.setState({...})` from tabs**: 20+ places
-   in the code do this. It works but bypasses action boundaries. Try
-   not to add more. When you must, comment why.
+2. **Direct `useMissionStore.setState({...})` from tabs**: was 20+
+   places, eradicated in production by v0.8.15 — zero hits today
+   (verified by Fable audit 2026-06-09). DO NOT reintroduce. Use a
+   named store action instead; if you genuinely can't, write the
+   action onto the store and call THAT. Bypasses action boundaries
+   and re-opens the door to the audit-trail / undo gap that motivated
+   the cleanup.
 3. **Tabs unmount on switch** unless you use the `visitedTabs` pattern
    in `MissionEditor.tsx`. All new tabs must be registered there with
    `display: none` toggling, not conditional render.

@@ -524,9 +524,9 @@ function GroupCard({
 
 /* ------------------------------------------------------------------ */
 /* Auto-setup sections (Carrier, JTAC, TIC, AEGIS) used to live here as
- * collapsibles. They moved to dedicated top-level tabs (Carriers and
- * Scripts) in the v0.7.x workflow reorg \u2014 see CarriersTab.tsx and
- * ScriptsTab.tsx.
+ * collapsibles. They moved to dedicated top-level tabs in the v0.7.x
+ * reorg, then in v1.19.54 the standalone Carriers tab folded into
+ * Scripts as a sub-tab \u2014 see CarrierSetupPanel.tsx and ScriptsTab.tsx.
  */
 
 /* ------------------------------------------------------------------ */

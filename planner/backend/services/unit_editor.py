@@ -2248,28 +2248,6 @@ def _rename_group_and_units(text: str, group_id: int, new_group_name: str | None
 # Mission-level edit functions
 # ---------------------------------------------------------------------------
 
-def _replace_weather_field(text: str, field_path: str, new_value) -> str:
-    """Replace a weather field in the mission Lua text.
-
-    field_path examples: 'weather.wind.atGround.speed', 'weather.clouds.base'
-    """
-    parts = field_path.split(".")
-    lua_key = parts[-1]
-
-    if isinstance(new_value, bool):
-        lua_val = "true" if new_value else "false"
-    elif isinstance(new_value, (int, float)):
-        lua_val = str(new_value)
-    else:
-        lua_val = f'"{new_value}"'
-
-    pattern = rf'(\["{lua_key}"\]\s*=\s*)([^,\n]+)'
-    match = re.search(pattern, text)
-    if match:
-        text = text[:match.start(2)] + lua_val + text[match.end(2):]
-    return text
-
-
 def _replace_briefing_fields(text: str, value: dict) -> str:
     """Replace mission briefing text fields (sortie, descriptionText, blue/red task).
 
