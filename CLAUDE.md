@@ -241,21 +241,24 @@ Things we've discussed but explicitly deferred. Don't start these
 without Fett's go-ahead.
 
 - **BYOK AI features** (Bring Your Own Anthropic Key). **Foundation
-  shipped in v0.8.0** — `ai/aiStore.ts` (key + model in localStorage),
-  `ai/anthropicClient.ts` (direct browser → api.anthropic.com), AI
-  Settings modal on the upload screen, vision-based SOP image
-  extraction. Pattern: user pastes their personal Anthropic API key
+  shipped in v0.8.0** and ALL parked features shipped by v1.19.70 —
+  `ai/aiStore.ts` (key + model in localStorage),
+  `ai/anthropicClient.ts` + `geminiClient.ts` (direct browser →
+  provider), AI Settings modal on the upload screen, vision-based
+  SOP image extraction (`sopExtractor.ts`), smarter commander's
+  intent (`commandersIntent.ts`), threat narrative paragraphs
+  (`threatNarrative.ts`), brief writer with mission-flow rewrite
+  (`briefWriter.ts`), brief-presenter speaker notes
+  (`speakerNotes.ts`), and custom-template token auto-mapping
+  (`templateMapper.ts`). Every AI feature has a graceful no-key
+  fallback so the brief still renders without one.
+  Pattern: user pastes their personal Anthropic / Gemini API key
   in a Settings panel, key is stored client-side only (browser
-  localStorage), AI calls go directly from the browser to
-  `api.anthropic.com` using `anthropic-dangerous-direct-browser-
-  access: true`. Their key, their bill — Railway never sees it.
-  Remaining AI features to build (each ~30 min once foundation
-  exists): smarter commander's intent (full prose from scenario +
-  threats + flights), threat narrative paragraphs, mission-flow
-  rewrite, brief-presenter speaker notes, custom template token
-  auto-mapping ("Option C" from the original brief plan). Every AI
-  feature MUST have a graceful non-AI fallback so users without
-  keys still see a working brief.
+  localStorage), AI calls go directly from the browser to the
+  provider using `anthropic-dangerous-direct-browser-access: true`
+  (Anthropic) or the Gemini REST API. Their key, their bill —
+  Railway never sees it.
+  Any FUTURE AI feature must preserve the no-key fallback rule.
 
 - **Per-flight editor UI** (Phase 3b). Currently flight briefs are
   auto-only — the package render rebuilds them fresh each time from
