@@ -147,6 +147,30 @@ export function TriggerTab() {
     }
   }, [sessionId, rules, markClean]);
 
+  // v1.19.65 — auto-save dirty triggers after 1.5s of idle. Without
+  // this, edits made via the Triggers tab UI (or via Apply on
+  // AEGIS/TIC/JTAC panels, or via F10 Menu Builder) sit only in the
+  // local store until the user remembers to click "Save Triggers".
+  // If they download the .miz first, those edits are silently dropped.
+  // The ExportPanel pre-download flush is the safety net for that case;
+  // this effect is the friendlier, faster path that keeps the backend
+  // continuously in sync while the user is actively editing.
+  const autoSaveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!sessionId || !isDirty || saving) return;
+    if (autoSaveTimerRef.current != null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      handleSave();
+    }, 1500);
+    return () => {
+      if (autoSaveTimerRef.current != null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [sessionId, isDirty, saving, handleSave]);
+
   const selectedRule = rules.find((r) => r.id === selectedRuleId);
 
   if (loading) return <div style={{ padding: 20, color: '#aaaaaa' }}>Loading triggers...</div>;

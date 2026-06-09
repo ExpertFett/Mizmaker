@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { useEditStore } from '../store/editStore';
-import { exportJson, closeSession } from '../api/client';
+import { exportJson, closeSession, saveTriggers } from '../api/client';
+import { useTriggerStore } from '../store/triggerStore';
 import type { WaypointEdit } from '../types/mission';
 import { isPlayerGroup } from '../utils/groups';
 import { RouteCard } from '../kneeboard/RouteCard';
@@ -255,6 +256,31 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         }
       } catch (e) {
         console.error('Shared kneeboard render failed:', e);
+      }
+    }
+
+    // v1.19.65 — pre-download trigger flush. Several paths mutate the
+    // trigger store WITHOUT calling saveTriggers: AEGIS / TIC / JTAC
+    // Apply, the F10 Menu Builder, and the Triggers tab's own edits
+    // until the user clicks "Save Triggers". Without this flush, a
+    // user who applies a framework and immediately downloads gets a
+    // .miz with none of the new trigger rules. Fett report:
+    // "make sure that on our triggers page that everything is saving
+    // properly". Flush is gated on isDirty so the round-trip cost is
+    // zero when there's nothing pending.
+    const triggerStore = useTriggerStore.getState();
+    if (triggerStore.isDirty && triggerStore.loaded && sessionId) {
+      try {
+        await saveTriggers(sessionId, { rules: triggerStore.rules });
+        useTriggerStore.getState().markClean();
+      } catch (e) {
+        console.error('Pre-download trigger flush failed:', e);
+        const proceed = window.confirm(
+          'Warning: failed to save pending trigger edits before download. ' +
+          'The downloaded .miz may be missing recent trigger changes. ' +
+          'Continue downloading anyway?',
+        );
+        if (!proceed) return;
       }
     }
 

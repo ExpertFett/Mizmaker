@@ -145,6 +145,47 @@ export function WaypointEditPopup({
     } catch (e) { console.error('Edit failed:', e); }
   };
 
+  // v1.19.65 — delete from the map-click popup. Previously delete was
+  // ONLY in the FloatingFlightPanel route table, which a tester couldn't
+  // find when they clicked a waypoint dot on the map. Mirrors the
+  // route-table handler: optimistic local renumber, then POST, then
+  // close the popup (the waypoint we were editing no longer exists).
+  // Gated same as the route table: can't delete WP0 (departure) and
+  // can't drop to zero waypoints.
+  const canDelete = !locked
+    && waypoints.length > 1
+    && wpIndex !== 0;
+  const handleDelete = useCallback(async () => {
+    if (!canDelete || !group || !sessionId) return;
+    if (!window.confirm(`Delete WP${wpIndex}${wp?.waypoint_name ? ' (' + wp.waypoint_name + ')' : ''}?`)) return;
+
+    // Optimistic local update (same shape as FloatingFlightPanel)
+    const { groups: currentGroups } = useMissionStore.getState();
+    const updatedGroups = currentGroups.map((g) => {
+      if (g.groupId !== groupId) return g;
+      const newWps = g.waypoints.filter((w) => w.waypoint_number !== wpIndex);
+      for (let i = 0; i < newWps.length; i++) newWps[i] = { ...newWps[i], waypoint_number: i };
+      return { ...g, waypoints: newWps };
+    });
+    useMissionStore.getState().setGroups(updatedGroups);
+
+    try {
+      const result = await sessionEdit(sessionId, {
+        groupName: group.groupName, action: 'delete', wpIndex,
+      });
+      if (result.ok && result.groupName && result.waypoints) {
+        const { groups: post } = useMissionStore.getState();
+        const synced = post.map((g) =>
+          g.groupName === result.groupName ? { ...g, waypoints: result.waypoints } : g,
+        );
+        useMissionStore.getState().setGroups(synced);
+      }
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
+    onClose();
+  }, [canDelete, group, sessionId, groupId, wpIndex, wp, onClose]);
+
   const altFt = Math.round(metersToFeet(wp.altitude_m));
   const spdKts = Math.round(msToKnots(wp.speed_ms));
   const pos = wp.lat && wp.lon ? formatLatLon(wp.lat, wp.lon) : '';
@@ -369,6 +410,43 @@ export function WaypointEditPopup({
           />
         </label>
       </div>
+
+      {/* v1.19.65 — Delete-waypoint action. Lives at the bottom of the
+          popup so it's the last thing in tab order and doesn't draw the
+          eye away from the edit fields above. Hidden on WP0, when
+          there's only 1 waypoint, or in locked mode. Single-confirm
+          guard via window.confirm because there's no undo. */}
+      {canDelete && (
+        <div style={{
+          padding: '8px 14px 10px', borderTop: '1px solid #3a3a3a',
+          background: 'rgba(10, 18, 30, 0.4)',
+          display: 'flex', justifyContent: 'flex-end',
+        }}>
+          <button
+            onClick={handleDelete}
+            title={`Delete WP${wpIndex} from this flight's route`}
+            aria-label="Delete waypoint"
+            style={{
+              background: 'rgba(217, 80, 80, 0.10)',
+              border: '1px solid rgba(217, 80, 80, 0.5)',
+              color: '#d95050', cursor: 'pointer',
+              fontSize: 12, fontWeight: 600, padding: '6px 12px',
+              borderRadius: 4, letterSpacing: 0.3,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(217, 80, 80, 0.22)';
+              e.currentTarget.style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(217, 80, 80, 0.10)';
+              e.currentTarget.style.color = '#d95050';
+            }}
+          >
+            <span style={{ fontSize: 14 }}>🗑</span> Delete WP{wpIndex}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -334,7 +334,7 @@ export function FloatingFlightPanel() {
                   <th style={{ ...thStyle, textAlign: 'right' }}>Dist</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Brg</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>ETE</th>
-                  {!locked && <th style={{ ...thStyle, width: 32 }}></th>}
+                  {!locked && <th style={{ ...thStyle, width: 36, textAlign: 'center', color: '#666666', fontSize: 10, fontWeight: 600, letterSpacing: 1 }}>DEL</th>}
                 </tr>
               </thead>
               <tbody>
@@ -538,13 +538,33 @@ function WpRow({ wp, prevWp, locked, canDelete, canMoveUp, canMoveDown, showCont
       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{brg}</td>
       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: "'B612 Mono', monospace", color: '#aaaaaa', fontSize: 13 }}>{eteStr}</td>
       {showControls && (
-        <td style={{ ...tdStyle, textAlign: 'center' }}>
+        <td style={{ ...tdStyle, textAlign: 'center', padding: '2px 4px' }}>
           {canDelete && (
-            <button onClick={() => onDelete(wp.waypoint_number)} title="Delete waypoint"
-              style={{ background: 'transparent', border: '1px solid transparent', color: '#aaaaaa', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '2px 5px', borderRadius: 3 }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#d95050'; e.currentTarget.style.borderColor = '#d95050'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#aaaaaa'; e.currentTarget.style.borderColor = 'transparent'; }}>
-              X
+            // v1.19.65 — was a bare gray "X" that read as neutral and
+            // got lost in the row. Now a tinted-red trash icon with a
+            // visible border, so the "this deletes the waypoint"
+            // affordance is obvious without hovering. Hover bumps to
+            // solid red. Tester feedback: "make it more intuitive".
+            <button onClick={(e) => { e.stopPropagation(); onDelete(wp.waypoint_number); }}
+              title="Delete this waypoint" aria-label="Delete waypoint"
+              style={{
+                background: 'rgba(217, 80, 80, 0.08)',
+                border: '1px solid rgba(217, 80, 80, 0.45)',
+                color: '#d95050', cursor: 'pointer',
+                fontSize: 13, lineHeight: 1, padding: '3px 7px', borderRadius: 4,
+                fontWeight: 600,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(217, 80, 80, 0.22)';
+                e.currentTarget.style.borderColor = '#d95050';
+                e.currentTarget.style.color = '#ffffff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(217, 80, 80, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(217, 80, 80, 0.45)';
+                e.currentTarget.style.color = '#d95050';
+              }}>
+              🗑
             </button>
           )}
         </td>
