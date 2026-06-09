@@ -116,7 +116,7 @@ export function LiveryTab() {
       next.set(unitId, value);
       return next;
     });
-    addEdit({ unitId, field: 'livery', value } as any);
+    addEdit({ unitId, field: 'livery', value });
   }, [addEdit]);
 
   const handleGroupApply = useCallback((units: LiveryUnit[], liveryId: string) => {

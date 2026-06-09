@@ -320,10 +320,69 @@ export interface GroupRenamerData {
   units: { unitId: number; name: string; type: string }[];
 }
 
+/**
+ * Literal union of every `field` value the planner dispatches via
+ * `editStore.addEdit`. Centralised so TS catches dispatcher↔consumer
+ * skew at compile time — when a consumer reads `field === 'tacan'`
+ * but a dispatcher accidentally types `'tcan'`, the typo surfaces
+ * here instead of as a silently-dropped edit at runtime.
+ *
+ * Adding a new field is a deliberate two-step:
+ *   1. Add the literal here.
+ *   2. Wire backend handler (unit_editor.py) + frontend dispatcher.
+ *
+ * If you find yourself wanting to `as any` past this type, that's the
+ * signal to extend the union — not to bypass it.
+ *
+ * Grouped by edit scope for readability; TS treats them all as one
+ * union. Verified against every `field: '…'` dispatch site by
+ * grep at the v1.19.71 cutover (Fable audit follow-up #54).
+ */
+export type UnitEditField =
+  // Mission-level edits — value applies to the whole .miz
+  | 'briefing'
+  | 'coalitionReassign'
+  | 'findReplace'
+  | 'forcedOptions'
+  | 'missionGoals'
+  | 'plannerDmpis'
+  | 'plannerHiddenGroups'
+  | 'stripRequiredModules'
+  | 'weather'
+  // Group-level edits — keyed by groupId
+  | 'callsign'
+  | 'groupFrequency'
+  | 'groupModulation'
+  | 'groupRename'
+  | 'groupWrappedActions'
+  | 'heading'
+  | 'icls'
+  | 'lateActivation'
+  | 'speed'
+  | 'tacan'
+  | 'waypointTasks'
+  // Unit-level edits — keyed by unitId
+  | 'addDonor'
+  | 'addTeamMember'
+  | 'copyLoadout'
+  | 'laserCode'
+  | 'livery'
+  | 'onboard_num'
+  | 'pylonChange'
+  | 'radioFrequency'
+  | 'radioPresets'
+  | 'removeDonor'
+  | 'removeTeamMember'
+  | 'skill'
+  | 'stnL16'
+  | 'unitRename'
+  | 'voiceCallsignLabel'
+  | 'voiceCallsignNumber';
+
 export interface UnitEdit {
   unitId?: number;
   groupId?: number;
-  field: string;
+  field: UnitEditField;
   value: unknown;
 }
 

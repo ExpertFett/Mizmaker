@@ -182,10 +182,10 @@ export function RosterTab() {
   const apply = useCallback(() => {
     for (const { slot, cs, pilot } of resolved) {
       if (cs && (cs.label || cs.number)) {
-        if (cs.label) addEdit({ unitId: slot.unitId, field: 'voiceCallsignLabel', value: cs.label } as any);
-        if (cs.number) addEdit({ unitId: slot.unitId, field: 'voiceCallsignNumber', value: cs.number } as any);
+        if (cs.label) addEdit({ unitId: slot.unitId, field: 'voiceCallsignLabel', value: cs.label });
+        if (cs.number) addEdit({ unitId: slot.unitId, field: 'voiceCallsignNumber', value: cs.number });
       }
-      if (pilot) addEdit({ unitId: slot.unitId, field: 'unitRename', value: pilot } as any);
+      if (pilot) addEdit({ unitId: slot.unitId, field: 'unitRename', value: pilot });
     }
     setApplied(true);
   }, [resolved, addEdit]);

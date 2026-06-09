@@ -316,11 +316,11 @@ export function CommCardTab() {
     for (const [groupId, ov] of overrides) {
       const row = rowById.get(groupId);
       if (ov.frequency !== undefined && (!row || ov.frequency !== row.frequency)) {
-        addEdit({ groupId, field: 'groupFrequency', value: ov.frequency } as any);
+        addEdit({ groupId, field: 'groupFrequency', value: ov.frequency });
         count++;
       }
       if (ov.modulation !== undefined && (!row || ov.modulation !== row.modulation)) {
-        addEdit({ groupId, field: 'groupModulation', value: ov.modulation } as any);
+        addEdit({ groupId, field: 'groupModulation', value: ov.modulation });
         count++;
       }
     }

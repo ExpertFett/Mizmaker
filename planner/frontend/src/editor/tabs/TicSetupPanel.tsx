@@ -665,8 +665,8 @@ export function TicSetupPanel() {
       } as any);
       // Set late activation + random heading for each unit
       for (const u of a.units) {
-        addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
-        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) } as any);
+        addEdit({ unitId: u.unitId, field: 'lateActivation', value: true });
+        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) });
       }
       // v0.9.42 — primary `t+N` token via action + eta_seconds.
       // v0.9.57 — secondary TIC tokens (speed=, roe=, hdg=, flag=, flag+)

@@ -71,8 +71,8 @@ export function DatalinkTab() {
     return n;
   }, [grouped]);
 
-  const handleFieldChange = useCallback((unitId: number, field: string, value: string) => {
-    addEdit({ unitId, field, value } as any);
+  const handleFieldChange = useCallback((unitId: number, field: 'voiceCallsignLabel' | 'voiceCallsignNumber' | 'stnL16', value: string) => {
+    addEdit({ unitId, field, value });
     const { clientUnits } = useMissionStore.getState();
     const updated = clientUnits.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -86,7 +86,7 @@ export function DatalinkTab() {
   }, [addEdit]);
 
   const handleAddDonor = useCallback((unitId: number, donor: DonorInfo) => {
-    addEdit({ unitId, field: 'addDonor', value: donor.missionUnitId } as any);
+    addEdit({ unitId, field: 'addDonor', value: donor.missionUnitId });
     const { clientUnits } = useMissionStore.getState();
     const updated = clientUnits.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -97,7 +97,7 @@ export function DatalinkTab() {
   }, [addEdit]);
 
   const handleRemoveDonor = useCallback((unitId: number, donorId: number) => {
-    addEdit({ unitId, field: 'removeDonor', value: donorId } as any);
+    addEdit({ unitId, field: 'removeDonor', value: donorId });
     const { clientUnits } = useMissionStore.getState();
     const updated = clientUnits.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -107,7 +107,7 @@ export function DatalinkTab() {
   }, [addEdit]);
 
   const handleAddTeamMember = useCallback((unitId: number, member: DonorInfo) => {
-    addEdit({ unitId, field: 'addTeamMember', value: member.missionUnitId } as any);
+    addEdit({ unitId, field: 'addTeamMember', value: member.missionUnitId });
     const { clientUnits } = useMissionStore.getState();
     const updated = clientUnits.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -118,7 +118,7 @@ export function DatalinkTab() {
   }, [addEdit]);
 
   const handleRemoveTeamMember = useCallback((unitId: number, memberId: number) => {
-    addEdit({ unitId, field: 'removeTeamMember', value: memberId } as any);
+    addEdit({ unitId, field: 'removeTeamMember', value: memberId });
     const { clientUnits } = useMissionStore.getState();
     const updated = clientUnits.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -308,7 +308,7 @@ interface GroupCardProps {
   isExpanded: boolean;
   isChanged: (unitId: number, field: keyof ClientUnit) => boolean;
   onToggle: () => void;
-  onFieldChange: (unitId: number, field: string, value: string) => void;
+  onFieldChange: (unitId: number, field: 'voiceCallsignLabel' | 'voiceCallsignNumber' | 'stnL16', value: string) => void;
   onAddDonor: (unitId: number, donor: DonorInfo) => void;
   onRemoveDonor: (unitId: number, donorId: number) => void;
   onAddTeamMember: (unitId: number, member: DonorInfo) => void;
@@ -432,7 +432,7 @@ interface UnitCardProps {
   unit: ClientUnit;
   allUnitsDonor: { unitId: number; name: string; type: string; groupName: string; coalition: string }[];
   isChanged: (unitId: number, field: keyof ClientUnit) => boolean;
-  onFieldChange: (unitId: number, field: string, value: string) => void;
+  onFieldChange: (unitId: number, field: 'voiceCallsignLabel' | 'voiceCallsignNumber' | 'stnL16', value: string) => void;
   onAddDonor: (unitId: number, donor: DonorInfo) => void;
   onRemoveDonor: (unitId: number, donorId: number) => void;
   onAddTeamMember: (unitId: number, member: DonorInfo) => void;

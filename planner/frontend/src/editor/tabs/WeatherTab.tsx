@@ -596,7 +596,7 @@ export function WeatherTab() {
     setWeather(next);
     setHasChanges(true);
     // Queue edit in the format _replace_weather_block expects
-    addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
+    addEdit({ field: 'weather', value: toBackendFormat(next) });
 
     // Sync back to store so WeatherPanel on map stays current
     const { overview, setOverview } = useMissionStore.getState();
@@ -641,7 +641,7 @@ export function WeatherTab() {
     };
     setWeather(next);
     setHasChanges(true);
-    addEdit({ field: 'weather', value: toBackendFormat(next) } as any);
+    addEdit({ field: 'weather', value: toBackendFormat(next) });
 
     const { overview, setOverview } = useMissionStore.getState();
     if (overview) {

@@ -171,15 +171,15 @@ export function BatchEditTab() {
 
     for (let i = 0; i < targets.length; i++) {
       const u = targets[i];
-      if (skill) addEdit({ unitId: u.unitId, field: 'skill', value: skill } as any);
-      if (livery) addEdit({ unitId: u.unitId, field: 'livery', value: livery } as any);
+      if (skill) addEdit({ unitId: u.unitId, field: 'skill', value: skill });
+      if (livery) addEdit({ unitId: u.unitId, field: 'livery', value: livery });
       if (radioValid && (u.category === 'plane' || u.category === 'helicopter')) {
-        addEdit({ unitId: u.unitId, field: 'radioFrequency', value: radioHz } as any);
+        addEdit({ unitId: u.unitId, field: 'radioFrequency', value: radioHz });
       }
       // tailNums can be shorter than targets if the range had too few
       // octal-valid numbers — guard so we never write the string "undefined".
       if (tailNums.length > 0 && tailNums[i] != null) {
-        addEdit({ unitId: u.unitId, field: 'onboard_num', value: String(tailNums[i]) } as any);
+        addEdit({ unitId: u.unitId, field: 'onboard_num', value: String(tailNums[i]) });
       }
     }
 

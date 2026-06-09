@@ -186,7 +186,7 @@ export function CoalitionsTab() {
     // coalitionReassign edit. Edits accumulate in editStore; the most
     // recent one for a given country wins because it runs last.
     if (Object.keys(changes).length > 0) {
-      addEdit({ field: 'coalitionReassign', value: changes } as any);
+      addEdit({ field: 'coalitionReassign', value: changes });
     }
     // Intentionally only react to assignments changes — initialAssignments
     // is recomputed when countries change (loaded mission), at which

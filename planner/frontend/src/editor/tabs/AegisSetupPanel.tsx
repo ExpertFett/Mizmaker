@@ -369,8 +369,8 @@ export function AegisSetupPanel() {
       } as any);
       // Set late activation + random heading for each unit
       for (const u of a.units) {
-        addEdit({ unitId: u.unitId, field: 'lateActivation', value: true } as any);
-        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) } as any);
+        addEdit({ unitId: u.unitId, field: 'lateActivation', value: true });
+        addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) });
       }
     }
     // v1.19.54 — wire MOOSE + AEGIS framework load triggers automatically

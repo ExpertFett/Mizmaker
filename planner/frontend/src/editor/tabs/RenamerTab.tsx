@@ -94,7 +94,7 @@ export function RenamerTab() {
     for (const u of group.units) {
       unitNamesObj[u.unitId] = unitNames.get(u.unitId) ?? u.name;
     }
-    addEdit({ groupId: group.groupId, field: 'groupRename', value: { groupId: group.groupId, newGroupName: newName, unitNames: unitNamesObj } } as any);
+    addEdit({ groupId: group.groupId, field: 'groupRename', value: { groupId: group.groupId, newGroupName: newName, unitNames: unitNamesObj } });
   }, [addEdit, unitNames]);
 
   const handleUnitRename = useCallback((unitId: number, newName: string) => {
@@ -103,7 +103,7 @@ export function RenamerTab() {
       next.set(unitId, newName);
       return next;
     });
-    addEdit({ unitId, field: 'unitRename', value: newName } as any);
+    addEdit({ unitId, field: 'unitRename', value: newName });
   }, [addEdit]);
 
   const handleAutoName = useCallback((group: GroupRenamerData) => {
@@ -114,7 +114,7 @@ export function RenamerTab() {
       const newName = `${gName}-${i + 1}`;
       nextUnitNames.set(u.unitId, newName);
       unitNamesObj[u.unitId] = newName;
-      addEdit({ unitId: u.unitId, field: 'unitRename', value: newName } as any);
+      addEdit({ unitId: u.unitId, field: 'unitRename', value: newName });
     });
     setUnitNames(nextUnitNames);
     // Auto-expand the group so user can see the renamed units
@@ -191,7 +191,7 @@ export function RenamerTab() {
       addEdit({
         groupId: g.groupId, field: 'groupRename',
         value: { groupId: g.groupId, newGroupName, unitNames: unitNamesObj },
-      } as any);
+      });
       assigned++;
     }
 
@@ -202,7 +202,7 @@ export function RenamerTab() {
 
   const handleFindReplace = useCallback(() => {
     if (!findText) return;
-    addEdit({ field: 'findReplace', value: { find: findText, replace: replaceText, useRegex } } as any);
+    addEdit({ field: 'findReplace', value: { find: findText, replace: replaceText, useRegex } });
 
     // Also update local state optimistically
     try {

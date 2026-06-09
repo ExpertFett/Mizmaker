@@ -126,7 +126,7 @@ export function LoadoutTab() {
       return next;
     });
 
-    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
+    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } });
 
     const updated = units.map((u) => {
       if (u.unitId !== unitId) return u;
@@ -252,7 +252,7 @@ export function LoadoutTab() {
           // Actively emptied (wipeAll). Skip; no pylon entry.
           const orig = u.pylons.find((p) => p.number === step.pylon);
           if (orig && orig.clsid) {
-            addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: '', settings: {} } } as any);
+            addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: '', settings: {} } });
             changedCount++;
           }
           continue;
@@ -272,7 +272,7 @@ export function LoadoutTab() {
         // Only queue an edit if this is actually a change from current
         const current = u.pylons.find((p) => p.number === step.pylon);
         if (!current || current.clsid !== chosen.clsid) {
-          addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: chosen.clsid, settings: {} } } as any);
+          addEdit({ unitId: u.unitId, field: 'pylonChange', value: { pylon: step.pylon, clsid: chosen.clsid, settings: {} } });
           changedCount++;
         }
       }
@@ -653,7 +653,7 @@ function UnitRow({
     setPylonSettings((prev) => ({ ...prev, [pylonNum]: settings }));
     const pylon = unit.pylons.find((p) => p.number === pylonNum);
     if (pylon) {
-      addEdit({ unitId: unit.unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid: pylon.clsid, settings } } as any);
+      addEdit({ unitId: unit.unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid: pylon.clsid, settings } });
     }
   }, [unit.unitId, unit.pylons, addEdit]);
 

@@ -708,12 +708,14 @@ function FlightDatalinkContent({ groupName, locked }: { groupName: string; locke
     setResetKey((k) => k + 1);
   };
 
-  const handleChange = (unitId: number, field: string, value: string) => {
-    const edit = { unitId, field, groupName, value };
-    addEdit(edit as any);
-    // Send to server so other participants + download get it
+  const handleChange = (unitId: number, field: 'voiceCallsignLabel' | 'voiceCallsignNumber' | 'stnL16', value: string) => {
+    addEdit({ unitId, field, value });
+    // Server-side edit carries the extra groupName so it can route the
+    // change to peer sessions. addEdit's UnitEdit shape doesn't carry
+    // groupName — keep the dispatches separate so each side gets the
+    // type it actually needs (v1.19.71 — UnitEdit literal-union sweep).
     const { sessionId: sid, sessionToken } = useMissionStore.getState();
-    if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
+    if (sid) sessionUnitEdit(sid, { unitId, field, groupName, value }, sessionToken || undefined).catch(() => {});
 
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
@@ -809,7 +811,7 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
     const selected = opts?.find((o) => o.clsid === clsid);
     if (!selected && clsid !== '') return;
 
-    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } } as any);
+    addEdit({ unitId, field: 'pylonChange', value: { pylon: pylonNum, clsid, settings: {} } });
 
     const { clientUnits: all } = useMissionStore.getState();
     const updated = all.map((u) => {
@@ -841,10 +843,10 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
     setPylonSettings((prev) => ({ ...prev, [key]: settings }));
     const pylon = units.find((u) => u.unitId === unitId)?.pylons.find((p) => p.number === pylonNum);
     if (pylon) {
-      const edit = { unitId, field: 'pylonChange', groupName, value: { pylon: pylonNum, clsid: pylon.clsid, settings } };
-      addEdit(edit as any);
+      const value = { pylon: pylonNum, clsid: pylon.clsid, settings };
+      addEdit({ unitId, field: 'pylonChange', value });
       const { sessionId: sid, sessionToken } = useMissionStore.getState();
-      if (sid) sessionUnitEdit(sid, edit, sessionToken || undefined).catch(() => {});
+      if (sid) sessionUnitEdit(sid, { unitId, field: 'pylonChange', groupName, value }, sessionToken || undefined).catch(() => {});
     }
   };
 
