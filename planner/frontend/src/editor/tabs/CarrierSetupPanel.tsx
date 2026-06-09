@@ -476,6 +476,17 @@ export function CarrierSetupPanel() {
   const [copied, setCopied] = useState(false);
   const [addingToTriggers, setAddingToTriggers] = useState(false);
   const [addedToTriggers, setAddedToTriggers] = useState(false);
+  // v1.19.64 — surface what just got pushed so a tester can see at a
+  // glance whether the flag-watcher rules made it in. Fett report
+  // 2026-06-08: "the carrier script builder isnt putting the flags in
+  // anymore". Pipeline traced clean, so we're instrumenting instead of
+  // guessing — the notification now shows both the carrier rule + the
+  // per-carrier beacon/light rule count.
+  const [lastSaveSummary, setLastSaveSummary] = useState<{
+    carrierRules: number;
+    flagRules: number;
+    totalRules: number;
+  } | null>(null);
 
   // Detect carriers
   const carrierGroups = useMemo(() =>
@@ -812,11 +823,20 @@ export function CarrierSetupPanel() {
       filtered.push(carrierRule);
 
       // Append the per-carrier flag-watcher rules. The backend's
-      // append_inline_rules dedupes by name, so missions that already
-      // ship TIC-style "Deactivate CVN TACAN" rules won't get
-      // duplicates — only missing rules are added.
+      // append_inline_rules upserts by name, so re-clicking
+      // "Add to Triggers" replaces in place instead of duplicating.
       const flagRules = buildCarrierFlagRules(nextId);
       filtered.push(...(flagRules as unknown as typeof filtered));
+
+      // v1.19.64 diagnostic — visible in DevTools so we can prove the
+      // rules were dispatched if a tester reports "the flags aren't in".
+      // eslint-disable-next-line no-console
+      console.log(
+        `[CarrierSetupPanel] Saving ${filtered.length} rule(s): ` +
+        `1 carrier-control + ${flagRules.length} flag-watcher rule(s) ` +
+        `from ${configs.length} carrier config(s).`,
+        { carrierRule, flagRules },
+      );
 
       await saveTriggers(sessionId, { rules: filtered });
 
@@ -824,8 +844,13 @@ export function CarrierSetupPanel() {
       // immediately without a manual refresh.
       useTriggerStore.getState().replaceRulesAfterSave(filtered, carrierRule.id);
 
+      setLastSaveSummary({
+        carrierRules: 1,
+        flagRules: flagRules.length,
+        totalRules: filtered.length,
+      });
       setAddedToTriggers(true);
-      setTimeout(() => setAddedToTriggers(false), 4000);
+      setTimeout(() => setAddedToTriggers(false), 8000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       alert(`Failed to add carrier trigger: ${msg}`);
@@ -1004,12 +1029,32 @@ export function CarrierSetupPanel() {
                   cursor: addingToTriggers ? 'wait' : 'pointer',
                   opacity: addingToTriggers ? 0.6 : 1,
                 }}
-                title="Save the carrier control script as a DO_SCRIPT trigger. Auto-adds Moose_.lua DO_SCRIPT_FILE if not already present."
+                title="Save the carrier control script as a DO_SCRIPT trigger. Auto-adds Moose_.lua DO_SCRIPT_FILE if not already present. Also pushes 7-13 flag-watcher rules per carrier (Activate/Deactivate TACAN/ICLS/LINK4/ACLS + 5 light modes) so the F10 menu can actually toggle beacons + lights at runtime."
               >
                 {addingToTriggers ? 'Adding…' : addedToTriggers ? 'Added ✓' : 'Add to Triggers'}
               </button>
             </div>
           </div>
+          {/* v1.19.64 — surface what just got saved so a tester can
+              confirm the flag-watcher rules actually went through. */}
+          {addedToTriggers && lastSaveSummary && (
+            <div style={{
+              background: '#0d2e1a', border: '1px solid #3fb950', borderRadius: 4,
+              padding: '6px 10px', fontSize: 11, color: '#7ee787',
+              marginBottom: 8,
+              fontFamily: "'B612 Mono', 'Consolas', monospace",
+            }}>
+              ✓ Saved {lastSaveSummary.totalRules} trigger rule(s):
+              {' '}1 carrier-control + {lastSaveSummary.flagRules} flag-watcher rule(s)
+              {lastSaveSummary.flagRules === 0 && (
+                <span style={{ color: '#f0883e', display: 'block', marginTop: 4 }}>
+                  ⚠ No flag-watcher rules emitted — check that Detect found carriers
+                  with hasIcls/aclsEnabled set. Without these, the F10 menu won't
+                  actually toggle TACAN/ICLS/LINK4/ACLS.
+                </span>
+              )}
+            </div>
+          )}
           {scriptPreview && (
             <pre style={{
               background: '#060d14', border: '1px solid #3a3a3a', borderRadius: 4,
