@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo, createElement } from 'react';
 import JSZip from 'jszip';
 import { useMissionStore } from '../../store/missionStore';
+import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useEditStore, type KneeboardCards } from '../../store/editStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { FlightCard } from '../../kneeboard/FlightCard';
@@ -83,7 +84,11 @@ const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean
 ];
 
 export function KneeboardTab() {
-  const groups = useMissionStore((s) => s.groups);
+  // v1.19.66 — kneeboards must match what'll be in the downloaded
+  // .miz. Reading missionStore directly meant printed cards could
+  // contradict the mission they ship inside (TACAN/ICLS/freq edits
+  // staged elsewhere wouldn't render).
+  const groups = useEffectiveGroups();
   const overview = useMissionStore((s) => s.overview);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const threats = useMissionStore((s) => s.threats);

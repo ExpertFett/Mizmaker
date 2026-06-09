@@ -1,16 +1,18 @@
 /**
- * Radio tab — combines Comms, TACAN, and ATIS into one view with sub-tabs.
+ * Radio tab — Comms + TACAN sub-tabs. ATIS used to live here too but
+ * moved to Scripts in v1.19.58 (per tester ask). The duplicate ATIS
+ * mount stayed behind by accident until v1.19.67 — removed because
+ * having ATIS in both Radio and Scripts gave each instance its own
+ * independent state, and a user editing in one wouldn't see the other.
  */
 
 import { useState } from 'react';
 import { CommCardTab } from './CommCardTab';
 import { TacanTab } from './TacanTab';
-import { AtisConfigTab } from './AtisConfigTab';
 
 const SUB_TABS = [
   { id: 'comms', label: 'Comms' },
   { id: 'tacan', label: 'TACAN' },
-  { id: 'atis', label: 'ATIS' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -21,9 +23,12 @@ export function RadioTab() {
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
-      {sub === 'comms' && <CommCardTab />}
-      {sub === 'tacan' && <TacanTab />}
-      {sub === 'atis' && <AtisConfigTab />}
+      {/* v1.19.67 — display:none keeps both sub-tabs mounted, so a user
+          who half-fills CommCardTab and switches to TACAN doesn't lose
+          their un-applied overrides on the way back. Same pattern as
+          SopTabContainer + the top-level visitedTabs in MissionEditor. */}
+      <div style={{ display: sub === 'comms' ? 'block' : 'none' }}><CommCardTab /></div>
+      <div style={{ display: sub === 'tacan' ? 'block' : 'none' }}><TacanTab /></div>
     </div>
   );
 }

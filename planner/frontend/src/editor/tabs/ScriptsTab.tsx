@@ -73,10 +73,14 @@ export function ScriptsTab() {
         ))}
       </div>
 
-      {sub === 'carriers' && <CarrierSetupPanel />}
-      {sub === 'aegis'    && <AegisSetupPanel />}
-      {sub === 'tic'      && <TicSetupPanel />}
-      {sub === 'atis'     && <AtisConfigTab />}
+      {/* v1.19.67 — display:none so sub-tab state survives switching.
+          Particularly important here because CarrierSetupPanel's detect
+          configs and AegisSetupPanel's IADS draft state cost a couple
+          extra clicks to rebuild. */}
+      <div style={{ display: sub === 'carriers' ? 'block' : 'none' }}><CarrierSetupPanel /></div>
+      <div style={{ display: sub === 'aegis'    ? 'block' : 'none' }}><AegisSetupPanel /></div>
+      <div style={{ display: sub === 'tic'      ? 'block' : 'none' }}><TicSetupPanel /></div>
+      <div style={{ display: sub === 'atis'     ? 'block' : 'none' }}><AtisConfigTab /></div>
     </div>
   );
 }

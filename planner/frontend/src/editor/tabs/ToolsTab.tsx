@@ -19,8 +19,9 @@ export function ToolsTab() {
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
-      {sub === 'rename' && <RenamerTab />}
-      {sub === 'batch' && <BatchEditTab />}
+      {/* v1.19.67 — display:none so sub-tab state survives switching. */}
+      <div style={{ display: sub === 'rename' ? 'block' : 'none' }}><RenamerTab /></div>
+      <div style={{ display: sub === 'batch'  ? 'block' : 'none' }}><BatchEditTab /></div>
     </div>
   );
 }

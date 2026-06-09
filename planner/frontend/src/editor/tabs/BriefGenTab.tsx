@@ -14,6 +14,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { getEffectiveGroupsSnapshot } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
 import type { SOP } from '../../sop/types';
 import { useGoalsStore, type GoalSide } from '../../store/goalsStore';
@@ -337,7 +338,9 @@ export function BriefGenTab() {
       // flight back to its mission group by group_name (fallback: callsign).
       // Best-effort — a flight with no coords/group just skips its map.
       try {
-        const groups = useMissionStore.getState().groups;
+        // v1.19.66 — snapshot effective groups so per-flight maps
+        // use the user's queued TACAN/freq edits, not the original .miz.
+        const groups = getEffectiveGroupsSnapshot();
         for (const fl of flights) {
           const grp = groups.find((g) => g.groupName === fl.group_name)
             || groups.find((g) => (g.units?.[0]?.name || g.groupName) === fl.callsign);

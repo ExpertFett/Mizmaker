@@ -32,10 +32,11 @@ export function MissionEditTab() {
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
-      {sub === 'briefing' && <BriefingTab />}
-      {sub === 'commanders' && <BattlefieldCommandersTab />}
-      {sub === 'options' && <MissionOptionsTab />}
-      {sub === 'drawings' && <DrawingsTab />}
+      {/* v1.19.67 — display:none so sub-tab state survives switching. */}
+      <div style={{ display: sub === 'briefing'   ? 'block' : 'none' }}><BriefingTab /></div>
+      <div style={{ display: sub === 'commanders' ? 'block' : 'none' }}><BattlefieldCommandersTab /></div>
+      <div style={{ display: sub === 'options'    ? 'block' : 'none' }}><MissionOptionsTab /></div>
+      <div style={{ display: sub === 'drawings'   ? 'block' : 'none' }}><DrawingsTab /></div>
     </div>
   );
 }

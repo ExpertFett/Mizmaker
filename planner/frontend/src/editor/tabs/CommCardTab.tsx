@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import { RadioPresetsSection } from './RadioPresetsSection';
@@ -83,7 +83,9 @@ function generateFreqPool(start: number, end: number, step: number): number[] {
 /* ------------------------------------------------------------------ */
 
 export function CommCardTab() {
-  const groups = useMissionStore((s) => s.groups);
+  // v1.19.66 — overlay staged groupFrequency edits so the matrix
+  // reflects what's queued in editStore (was missionStore-only).
+  const groups = useEffectiveGroups();
   const addEdit = useEditStore((s) => s.addEdit);
   const activeSop = useSopStore((s) => s.activeId ? s.sops.find((x) => x.id === s.activeId) || null : null);
   const [overrides, setOverrides] = useState<Map<number, { frequency?: number; modulation?: number }>>(new Map());

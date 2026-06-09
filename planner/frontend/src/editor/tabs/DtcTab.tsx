@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useMissionStore } from '../../store/missionStore';
+import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
 import type { SOP } from '../../sop/types';
 import { dtcPreview, dtcGenerate } from '../../api/client';
@@ -769,20 +770,34 @@ export function DtcTab() {
             ))}
           </div>
 
-          {subTab === 'comm' && (
+          {/* v1.19.67 — display:none so sub-tab state survives switching.
+              Particularly important for CommSubTab + WaypointsSubTab which
+              carry steer-notes / preset-form state that's annoying to
+              re-enter after a stray click on a sibling sub-tab. */}
+          <div style={{ display: subTab === 'comm' ? 'block' : 'none' }}>
             <CommSubTab
               data={dtcData.COMM}
               onUpdate={updateComm}
               activeSop={activeSop}
               onApplySop={applySopComms}
             />
-          )}
-          {subTab === 'cmds' && <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />}
-          {subTab === 'waypoints' && <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />}
-          {subTab === 'nav' && <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} selectedFlight={selectedFlight} />}
-          {subTab === 'fuel' && <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />}
-          {subTab === 'tools' && <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />}
-          {subTab === 'presets' && (
+          </div>
+          <div style={{ display: subTab === 'cmds' ? 'block' : 'none' }}>
+            <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />
+          </div>
+          <div style={{ display: subTab === 'waypoints' ? 'block' : 'none' }}>
+            <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />
+          </div>
+          <div style={{ display: subTab === 'nav' ? 'block' : 'none' }}>
+            <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} selectedFlight={selectedFlight} />
+          </div>
+          <div style={{ display: subTab === 'fuel' ? 'block' : 'none' }}>
+            <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />
+          </div>
+          <div style={{ display: subTab === 'tools' ? 'block' : 'none' }}>
+            <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />
+          </div>
+          <div style={{ display: subTab === 'presets' ? 'block' : 'none' }}>
             <PresetsSubTab
               setDtcData={setDtcData}
               templateMsg={templateMsg}
@@ -790,7 +805,7 @@ export function DtcTab() {
               activeSop={activeSop}
               onApplySop={applySopComms}
             />
-          )}
+          </div>
         </>
       )}
     </div>
@@ -1177,7 +1192,9 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
   onUpdate: (section: 'TACAN' | 'ICLS' | 'ACLS', field: string, value: unknown) => void;
   selectedFlight: string;
 }) {
-  const groups = useMissionStore((s) => s.groups);
+  // v1.19.66 — overlay staged TACAN/ICLS/frequency edits so this tab
+  // reflects what the Carriers / Comm Cards panels have queued.
+  const groups = useEffectiveGroups();
   const tacan = data.TACAN;
   const icls = data.ICLS;
   const acls = data.ACLS ?? { frequency: '', enabled: false };
@@ -1351,7 +1368,9 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
 /* ------------------------------------------------------------------ */
 
 function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
-  const groups = useMissionStore((s) => s.groups);
+  // v1.19.66 — overlay staged TACAN/ICLS/frequency edits so this tab
+  // reflects what the Carriers / Comm Cards panels have queued.
+  const groups = useEffectiveGroups();
 
   // Find tankers in mission (groups with task "Refueling" or "Tanker")
   const tankers = useMemo(() => {

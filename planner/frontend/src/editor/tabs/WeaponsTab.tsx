@@ -19,8 +19,9 @@ export function WeaponsTab() {
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
-      {sub === 'loadouts' && <LoadoutTab />}
-      {sub === 'laser' && <LaserTab />}
+      {/* v1.19.67 — display:none so sub-tab state survives switching. */}
+      <div style={{ display: sub === 'loadouts' ? 'block' : 'none' }}><LoadoutTab /></div>
+      <div style={{ display: sub === 'laser'    ? 'block' : 'none' }}><LaserTab /></div>
     </div>
   );
 }
