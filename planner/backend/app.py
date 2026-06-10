@@ -241,8 +241,29 @@ def health():
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
-    """Public app stats for the homepage (e.g. cumulative missions edited)."""
-    return jsonify({"missions_edited": get_missions_edited()})
+    """Public app stats for the homepage + the operator's pre-deploy check.
+
+    v1.19.74 — extended beyond the cumulative missions-edited counter
+    with LIVE usage signals so "is anyone using the tool right now?"
+    has a real answer:
+      - active_sessions:    mission sessions inside their 2h TTL
+      - connected_clients:  browser tabs with an open SSE stream RIGHT
+                            NOW (the truthiest "people on" number)
+      - participants:       invited members across all sessions
+                            (joined at some point; may not be connected)
+    """
+    n_clients = 0
+    n_participants = 0
+    with _lock:
+        for s in sessions.values():
+            n_clients += len(s.get("sse_clients", []))
+            n_participants += len(s.get("participants", {}))
+    return jsonify({
+        "missions_edited": get_missions_edited(),
+        "active_sessions": len(sessions),
+        "connected_clients": n_clients,
+        "participants": n_participants,
+    })
 
 
 @app.route("/api/sessions/<sid>/signup_sheet", methods=["GET"])

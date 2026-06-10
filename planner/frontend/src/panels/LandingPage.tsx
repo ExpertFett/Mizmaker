@@ -48,12 +48,19 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
   // Homepage "missions edited" counter — cumulative, all-time. Best-effort:
   // stays hidden until the backend returns a positive count (so it never shows
   // an empty "0" or a broken state if the stats endpoint is unavailable).
+  // v1.19.74 — also reads the live-usage fields (connected_clients /
+  // active_sessions) so the homepage can show "N planning right now".
   const [missionsEdited, setMissionsEdited] = useState<number | null>(null);
+  const [liveNow, setLiveNow] = useState<number | null>(null);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/stats')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d && typeof d.missions_edited === 'number') setMissionsEdited(d.missions_edited); })
+      .then((d) => {
+        if (cancelled || !d) return;
+        if (typeof d.missions_edited === 'number') setMissionsEdited(d.missions_edited);
+        if (typeof d.connected_clients === 'number') setLiveNow(d.connected_clients);
+      })
       .catch(() => { /* counter is non-essential; ignore */ });
     return () => { cancelled = true; };
   }, []);
@@ -224,7 +231,23 @@ export function LandingPage({ authError, authDetail }: LandingPageProps) {
           <span style={{
             marginLeft: 10, padding: '2px 8px', border: `1px solid ${BORDER}`,
             borderRadius: 3, fontSize: 11.5, color: ACCENT, letterSpacing: 0.3,
-          }}>🎯 {missionsEdited.toLocaleString()} missions edited</span>
+          }}>{missionsEdited.toLocaleString()} missions edited</span>
+        )}
+        {/* v1.19.74 — live "planning right now" chip. Hidden at zero
+            (an empty room doesn't need announcing). Green pulse dot =
+            connected browser tabs, the truthiest live-usage signal. */}
+        {liveNow != null && liveNow > 0 && (
+          <span style={{
+            marginLeft: 10, padding: '2px 8px', border: '1px solid #2a5a3a',
+            borderRadius: 3, fontSize: 11.5, color: '#3fb950', letterSpacing: 0.3,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#3fb950', boxShadow: '0 0 5px #3fb950',
+            }} />
+            {liveNow} planning now
+          </span>
         )}
       </div>
     </div>
