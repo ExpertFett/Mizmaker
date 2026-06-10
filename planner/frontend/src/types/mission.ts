@@ -410,7 +410,7 @@ export type UnitCategory = 'plane' | 'helicopter' | 'vehicle' | 'ship' | 'static
 
 // ── Planner Drawings (user-created overlays) ─────────────────────────────
 
-export type PlannerDrawingType = 'corridor' | 'threatRing' | 'referenceLine' | 'racetrack';
+export type PlannerDrawingType = 'corridor' | 'threatRing' | 'referenceLine' | 'racetrack' | 'highlight';
 
 export interface PlannerDrawing {
   id: string;
@@ -422,6 +422,11 @@ export interface PlannerDrawing {
   widthNm?: number;                  // corridor / racetrack width in NM
   radiusNm?: number;                 // threatRing radius in NM
   lineStyle?: 'solid' | 'dashed';    // referenceLine style
+  /** v1.19.74 — who drew this (highlights). Display name of the
+   *  session participant, so a flight lead can see WHICH wingman
+   *  marked the SAM site. Older drawings without the field render
+   *  with no author label. */
+  author?: string;
 }
 
 // ── Trigger & Audio types ─────────────────────────────────────────────────

@@ -1,36 +1,36 @@
 /**
- * Radio tab — Comms + TACAN sub-tabs. ATIS used to live here too but
- * moved to Scripts in v1.19.58 (per tester ask). The duplicate ATIS
- * mount stayed behind by accident until v1.19.67 — removed because
- * having ATIS in both Radio and Scripts gave each instance its own
- * independent state, and a user editing in one wouldn't see the other.
+ * Targets tab (v1.19.74 PREVIEW) — container for DMPI + JTAC sub-tabs.
+ *
+ * Fable IA review recommendation: DMPI and JTAC are both target-tool
+ * surfaces. The existing MissionEditor.tsx code comment for JTAC's
+ * placement says "lives next to DMPI because both are target tools."
+ * This finishes the thought — they merge into one outer tab named
+ * Targets, with DMPI / JTAC as sub-tabs.
+ *
+ * As a side benefit, the duplicate laser-code surface goes away:
+ * Loadout's laser pane and JTAC's laser pane were two writers of
+ * the same data; JTAC (inside Targets) wins, Loadout becomes the
+ * read-only view.
  */
 
 import { useState } from 'react';
-import { CommCardTab } from './CommCardTab';
-import { TacanTab } from './TacanTab';
-import { DatalinkTab } from './DatalinkTab';
+import { DmpiTab } from './DmpiTab';
+import { JtacSetupPanel } from './JtacSetupPanel';
 
-// v1.19.74 PREVIEW — Datalink folded in as the third sub-tab. The
-// outer tab is renamed "Comms" in the sidebar; this file still exports
-// RadioTab so callers don't have to change.
 const SUB_TABS = [
-  { id: 'comms', label: 'Comms' },
-  { id: 'tacan', label: 'TACAN' },
-  { id: 'datalink', label: 'Datalink' },
+  { id: 'dmpi', label: 'DMPI' },
+  { id: 'jtac', label: 'JTAC' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
 
-export function RadioTab() {
-  const [sub, setSub] = useState<SubTab>('comms');
-
+export function TargetsTab() {
+  const [sub, setSub] = useState<SubTab>('dmpi');
   return (
     <div>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
-      <div style={{ display: sub === 'comms'    ? 'block' : 'none' }}><CommCardTab /></div>
-      <div style={{ display: sub === 'tacan'    ? 'block' : 'none' }}><TacanTab /></div>
-      <div style={{ display: sub === 'datalink' ? 'block' : 'none' }}><DatalinkTab /></div>
+      <div style={{ display: sub === 'dmpi' ? 'block' : 'none' }}><DmpiTab /></div>
+      <div style={{ display: sub === 'jtac' ? 'block' : 'none' }}><JtacSetupPanel /></div>
     </div>
   );
 }

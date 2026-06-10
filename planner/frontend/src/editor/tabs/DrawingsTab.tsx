@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<PlannerDrawingType, string> = {
   threatRing: 'Threat Ring',
   referenceLine: 'Ref Line',
   racetrack: 'Racetrack',
+  highlight: 'Highlight',
 };
 
 const TYPE_ICONS: Record<PlannerDrawingType, string> = {
@@ -37,6 +38,7 @@ const TYPE_ICONS: Record<PlannerDrawingType, string> = {
   threatRing: '\u25CB',
   referenceLine: '\u2500',
   racetrack: '\u2B2D',
+  highlight: '\u270F',
 };
 
 export function DrawingsTab() {

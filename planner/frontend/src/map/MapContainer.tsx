@@ -37,6 +37,8 @@ import { setupWaypointDrag } from './interactions/waypointDrag';
 import { isPlayerGroup } from '../utils/groups';
 import { createWaypointAdd } from './interactions/waypointAdd';
 import { createMeasureTool } from './interactions/measureTool';
+import { createHighlightDraw, highlightColorFor } from './interactions/highlightDraw';
+import { savePlannerDrawings } from '../api/client';
 import { LayerSwitcher } from './controls/LayerSwitcher';
 
 import { WeatherPanel } from './controls/WeatherPanel';
@@ -148,7 +150,8 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     addDraw: Draw | null;
     measureDraw: Draw | null;
     measureLayer: VectorLayer | null;
-  }>({ addDraw: null, measureDraw: null, measureLayer: null });
+    highlightDraw: Draw | null;
+  }>({ addDraw: null, measureDraw: null, measureLayer: null, highlightDraw: null });
   const coordRef = useRef<HTMLDivElement>(null);
 
   // Right-click context menu state (v0.9.28). `null` when no menu
@@ -158,9 +161,9 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
   const [contextMenu, setContextMenu] = useState<
     { x: number; y: number; groupId: number } | null
   >(null);
-  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview } =
+  const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview, sessionId } =
     useMissionStore();
-  const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, setSelectedWpIndex } = useMapStore();
+  const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, highlightMode, setSelectedWpIndex } = useMapStore();
 
   // Helper: update a specific group's waypoints from server response
   const _updateGroupWaypoints = useCallback((groupName: string, waypoints: any[]) => {
@@ -645,8 +648,66 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     }
   }, [measureMode]);
 
+  // v1.19.74 — collaborative highlight pen. Every participant can
+  // draw; strokes save to the session immediately on pen-up and reach
+  // every other client via the drawings_update SSE broadcast. The
+  // wingman-flags-what-lead-missed tool.
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    if (interactionRefs.current.highlightDraw) {
+      map.removeInteraction(interactionRefs.current.highlightDraw);
+      interactionRefs.current.highlightDraw = null;
+    }
+
+    if (highlightMode) {
+      const draw = createHighlightDraw(map, {
+        onFinish: (coords) => {
+          const { sessionId: sid, assignedGroup, role } = useMissionStore.getState();
+          const author = assignedGroup
+            || (role === 'mission_maker' ? 'HOST' : role === 'co_editor' ? 'CO-ED' : role.toUpperCase());
+          const drawing = {
+            id: `hl-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+            type: 'highlight' as const,
+            name: '',
+            color: highlightColorFor(author),
+            visible: true,
+            coords,
+            author,
+          };
+          const store = useDrawingStore.getState();
+          const next = [...store.drawings, drawing];
+          store.loadDrawings(next);
+          // Persist + broadcast. Errors logged, not surfaced — losing
+          // one stroke is annoying but must never block the pen.
+          if (sid) savePlannerDrawings(sid, next).catch((e) => console.warn('highlight save failed', e));
+        },
+      });
+      map.addInteraction(draw);
+      interactionRefs.current.highlightDraw = draw;
+    }
+  }, [highlightMode]);
+
   // Planner drawings — auto-generated from mission data
   const plannerDrawings = useDrawingStore((s) => s.drawings);
+
+  // v1.19.74 — initial fetch of saved drawings (incl. highlights) on
+  // session load. Without this, a wingman who joins AFTER the lead
+  // highlighted something sees nothing until the next stroke triggers
+  // an SSE update — DrawingsTab used to be the only fetcher and pilots
+  // never open it. Only overwrites the store when the server actually
+  // has drawings, so DrawingsTab's auto-generate flow stays intact.
+  const drawingsFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionId || drawingsFetchedRef.current) return;
+    drawingsFetchedRef.current = true;
+    import('../api/client').then(({ getPlannerDrawings }) =>
+      getPlannerDrawings(sessionId).then((saved) => {
+        if (saved.length > 0) useDrawingStore.getState().loadDrawings(saved);
+      }),
+    ).catch(() => { /* non-fatal — SSE will catch us up on next change */ });
+  }, [sessionId]);
 
 
   // Populate planner drawing layer

@@ -1,6 +1,14 @@
 import { useState, useMemo } from 'react';
+import {
+  MapIcon, SopIcon, CoalitionsIcon, MissionIcon, GoalsIcon, WeatherIcon,
+  ScriptsIcon, TriggersIcon,
+  ThreatsIcon, DmpiIcon,
+  RosterIcon, LoadoutIcon, RadioIcon, DtcIcon, LiveryIcon,
+  KneeboardIcon, BriefIcon,
+  VisibilityIcon,
+  DebugIcon, ToolsIcon, UploadIcon,
+} from '../icons/TabIcons';
 import { useMissionStore } from '../store/missionStore';
-import { useEditStore } from '../store/editStore';
 import { useSopStore } from '../sop/sopStore';
 import { useSessionStream } from '../session/useSessionStream';
 import { ParticipantBar } from '../session/ParticipantBar';
@@ -8,8 +16,12 @@ import { InviteManager } from '../session/InviteManager';
 import { MapContainer } from '../map/MapContainer';
 import { FloatingFlightPanel } from '../panels/FloatingFlightPanel';
 import { ExportPanel } from '../panels/ExportPanel';
+import { MissionDataStrip } from '../panels/MissionDataStrip';
+import { SessionToasts } from '../panels/SessionToasts';
 import { PlayerGroupsButton } from '../panels/PlayerGroupsModal';
-import { DatalinkTab } from './tabs/DatalinkTab';
+// v1.19.74 PREVIEW — DatalinkTab is now a sub-tab inside RadioTab;
+// don't mount it as a top-level tab anymore.
+import { TargetsTab } from './tabs/TargetsTab';
 import { DtcTab } from './tabs/DtcTab';
 import { WeaponsTab } from './tabs/WeaponsTab';
 import { RadioTab } from './tabs/RadioTab';
@@ -25,18 +37,14 @@ import { MissionDebugTab } from './tabs/MissionDebugTab';
 // tab toggle). One sidebar entry, two sub-tabs (SOPs / Check). Apply
 // button lives on the Check sub-tab.
 import { SopTabContainer } from './tabs/SopTabContainer';
-import { EditsTab } from './tabs/EditsTab';
+// v1.19.74 PREVIEW — EditsTab moved to a drawer beside the Download
+// button (see ExportPanel). DmpiTab + JtacSetupPanel now mounted via
+// the new TargetsTab container.
 import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
-import { DmpiTab } from './tabs/DmpiTab';
 import { VisibilityTab } from './tabs/VisibilityTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
-// v1.19.54 — AirfieldsTab + RangePlanTab + CarriersTab no longer
-// imported. Airfields/Range removed entirely; Carriers moved INSIDE
-// ScriptsTab as a sub-tab so it lives with the other auto-setup
-// panels (AEGIS / TIC / JTAC).
 import { ScriptsTab } from './tabs/ScriptsTab';
-import { JtacSetupPanel } from './tabs/JtacSetupPanel';
 import { RosterTab } from './tabs/RosterTab';
 import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
@@ -51,39 +59,44 @@ import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode 
 //
 // Carriers and Scripts are top-level (promoted from the v0.6 Tools→Rename
 // collapsibles). Old "Weapons" → "Loadout", old "Miz Edit" → "Mission".
-type TabDef = { id: string; label: string; icon: string };
+type TabDef = { id: string; label: string; icon: React.ReactNode };
 type SidebarItem = { kind: 'section'; label: string } | (TabDef & { kind: 'tab' });
 
+// v1.19.74 PREVIEW — emoji glyphs swapped for monochrome stroke SVGs.
+// The Fable design review (2026-06-09) flagged the 24 colored emoji as
+// the #1 "looks AI-generated" tell; this is the replacement set defined
+// in src/icons/TabIcons.tsx. Same visual slot, same flex layout, just
+// monochrome 16px stroke icons inheriting currentColor.
 const SIDEBAR: SidebarItem[] = [
   { kind: 'section', label: 'SETUP' },
-  { kind: 'tab', id: 'map',         label: 'Map',         icon: '🗺' },
+  { kind: 'tab', id: 'map',         label: 'Map',         icon: <MapIcon /> },
   // SOP comes early because callsigns, freqs, TACAN channels, ICLS
   // assignments etc. defined here drive defaults all over the rest of
   // the planner (CommCardTab auto-deconflict, carrier setup, kneeboards).
   // Loading the right SOP first means the downstream tabs start
   // pre-configured for the squadron / era you're flying.
-  { kind: 'tab', id: 'sop',         label: 'SOP',         icon: '📘' },
+  { kind: 'tab', id: 'sop',         label: 'SOP',         icon: <SopIcon /> },
   // v1.19.57 — SOP Check folded under SOP as a sub-tab.
-  { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: '⚔' },
-  { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: '🔔' },
+  { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: <CoalitionsIcon /> },
+  { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: <MissionIcon /> },
   // Mission Goals — squadron-style objective list. Sits next to
   // Mission because that's where the briefing-adjacent settings
   // live. Tokens flow into Brief tab via {goals.*}.
-  { kind: 'tab', id: 'goals',       label: 'Goals',       icon: '🎖' },
-  { kind: 'tab', id: 'weather',     label: 'Weather',     icon: '🌤' },
+  { kind: 'tab', id: 'goals',       label: 'Goals',       icon: <GoalsIcon /> },
+  { kind: 'tab', id: 'weather',     label: 'Weather',     icon: <WeatherIcon /> },
 
   { kind: 'section', label: 'ENTITIES' },
   // v1.19.54 — Carriers moved INTO Scripts as a sub-tab (along with
   // AEGIS / TIC / JTAC). All four are "auto-setup the mission for a
   // scripting framework" panels — keeping them together cuts the
   // sidebar by 1 row and makes the conceptual grouping obvious.
-  { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: '📜' },
+  { kind: 'tab', id: 'scripts',     label: 'Scripts',     icon: <ScriptsIcon /> },
   // Triggers comes AFTER Scripts because Scripts panels auto-append
   // trigger rules (Carrier Control + 13 TIC rules from Carriers,
   // framework load triggers from AEGIS/TIC apply). By the time the
   // user opens this tab the rules are already there — they're
   // verifying / tweaking, not authoring from scratch.
-  { kind: 'tab', id: 'triggers',    label: 'Triggers',    icon: '⚡' },
+  { kind: 'tab', id: 'triggers',    label: 'Triggers',    icon: <TriggersIcon /> },
 
   // PLANNING comes BEFORE flights — threat picture, target list, and
   // range/fuel constraints all drive the loadout / radio / DTC choices
@@ -96,29 +109,29 @@ const SIDEBAR: SidebarItem[] = [
   // to its own MISSION MAKER section near the bottom — it's a
   // mission-maker intel filter, not a planning-time decision.
   { kind: 'section', label: 'PLANNING' },
-  { kind: 'tab', id: 'threats',     label: 'Threats',     icon: '⚠' },
-  { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: '🎯' },
-  // v1.19.58 — JTAC moved out of Scripts. It's a target-designation
-  // mission-config concern (laser codes / freqs / ground-group renames
-  // for autolase scripts), not a scripting framework itself, and lives
-  // next to DMPI because both are target tools.
-  { kind: 'tab', id: 'jtac',        label: 'JTAC',        icon: '🔦' },
+  { kind: 'tab', id: 'threats',     label: 'Threats',     icon: <ThreatsIcon /> },
+  // v1.19.74 PREVIEW — DMPI + JTAC merged into one "Targets" tab.
+  // Both were target-tool surfaces; the old code comment for JTAC's
+  // placement already said "lives next to DMPI because both are target
+  // tools" — this finishes the thought.
+  { kind: 'tab', id: 'dmpi',        label: 'Targets',     icon: <DmpiIcon /> },
 
   { kind: 'section', label: 'FLIGHTS' },
-  { kind: 'tab', id: 'roster',      label: 'Roster',      icon: '👥' },
-  { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: '💣' },
-  { kind: 'tab', id: 'datalink',    label: 'Datalink',    icon: '📡' },
-  { kind: 'tab', id: 'radio',       label: 'Radio',       icon: '📻' },
-  { kind: 'tab', id: 'dtc',         label: 'DTC',         icon: '💾' },
-  { kind: 'tab', id: 'livery',      label: 'Livery',      icon: '🎨' },
+  { kind: 'tab', id: 'roster',      label: 'Roster',      icon: <RosterIcon /> },
+  { kind: 'tab', id: 'weapons',     label: 'Loadout',     icon: <LoadoutIcon /> },
+  // v1.19.74 PREVIEW — Datalink folded into Radio as a sub-tab; the
+  // outer tab is renamed "Comms" since all three sub-tabs (Comms /
+  // TACAN / Datalink) are net/channel assignments feeding DTC.
+  { kind: 'tab', id: 'radio',       label: 'Comms',       icon: <RadioIcon /> },
+  { kind: 'tab', id: 'dtc',         label: 'DTC',         icon: <DtcIcon /> },
+  { kind: 'tab', id: 'livery',      label: 'Livery',      icon: <LiveryIcon /> },
 
   { kind: 'section', label: 'OUTPUT' },
-  { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: '📋' },
-  { kind: 'tab', id: 'briefGen',    label: 'Brief',       icon: '📝' },
-  // Edits preview — read-only inventory of every edit currently
-  // queued for the next download. Lives in OUTPUT because it's a
-  // pre-download summary view, same as Kneeboard / Brief.
-  { kind: 'tab', id: 'edits',       label: 'Edits',       icon: '✎' },
+  { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: <KneeboardIcon /> },
+  { kind: 'tab', id: 'briefGen',    label: 'Brief',       icon: <BriefIcon /> },
+  // v1.19.74 PREVIEW — Edits dropped from the sidebar. It's a
+  // staged-diff review sibling of the Download action, so it now
+  // lives as a drawer that opens from a chip beside Download .miz.
 
   // MISSION MAKER — tools the mission AUTHOR uses to control what
   // joining players see / can do. Distinct from PLANNING (which is what
@@ -126,12 +139,12 @@ const SIDEBAR: SidebarItem[] = [
   // Visibility was previously under PLANNING but Fett moved it here
   // because it's an authoring decision, not a planning one. (v1.19.54)
   { kind: 'section', label: 'MISSION MAKER' },
-  { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: '👁' },
+  { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: <VisibilityIcon /> },
 
   { kind: 'section', label: 'UTIL' },
-  { kind: 'tab', id: 'debug',       label: 'Debug',       icon: '🔍' },
-  { kind: 'tab', id: 'tools',       label: 'Tools',       icon: '🔧' },
-  { kind: 'tab', id: 'upload',      label: 'Upload',      icon: '📁' },
+  { kind: 'tab', id: 'debug',       label: 'Debug',       icon: <DebugIcon /> },
+  { kind: 'tab', id: 'tools',       label: 'Tools',       icon: <ToolsIcon /> },
+  { kind: 'tab', id: 'upload',      label: 'Upload',      icon: <UploadIcon /> },
 ];
 
 const TABS = SIDEBAR.filter((s): s is TabDef & { kind: 'tab' } => s.kind === 'tab');
@@ -200,10 +213,6 @@ export function MissionEditor() {
     [activeSopId, sops],
   );
 
-  // Pending-edit count, rendered as a small badge on the Edits tab so
-  // the queue size is visible without leaving the current tab.
-  const pendingEditCount = useEditStore((s) => s.edits.length);
-
   const selectTab = (tab: TabId) => {
     setActiveTab(tab);
     setVisitedTabs((prev) => prev.has(tab) ? prev : new Set(prev).add(tab));
@@ -237,12 +246,24 @@ export function MissionEditor() {
       inset: 0,
       background: '#1a1a1a',
       display: 'flex',
-      // Inherit from body (B612). Set explicitly so any portal-mounted
-      // children that escape the body cascade still get the right stack.
+      flexDirection: 'column',
       fontFamily: "'B612', 'IBM Plex Sans', 'Inter', system-ui, sans-serif",
       color: '#e0e0e0',
       overflow: 'hidden',
     }}>
+      {/* v1.19.74 PREVIEW — fixed mission-data strip across every tab.
+          Replaces the floating WeatherPanel's role of being the only
+          place that surfaces date/time/wind. Zulu-first to match the
+          kneeboards. */}
+      <MissionDataStrip
+        mode={LOCK_TO_PLANNING ? undefined : mode}
+        onModeChange={LOCK_TO_PLANNING ? undefined : switchMode}
+      />
+      {/* v1.19.74 — session activity toasts (bottom-left). Fires when
+          another participant edits a route, changes a unit, joins, or
+          highlights the map. Renders across all three modes. */}
+      <SessionToasts />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       {/* Left sidebar */}
       <div style={{
         width: sidebarWidth,
@@ -357,40 +378,10 @@ export function MissionEditor() {
           )}
         </div>
 
-        {/* Mode switcher (Planning / Editing / Live). Hidden when the build is
-            locked to Planning (VITE_PLANNER_MODE) or the sidebar is collapsed. */}
-        {!LOCK_TO_PLANNING && !isCollapsed && (
-          <div style={{ display: 'flex', gap: 4, padding: '8px 10px', borderBottom: '1px solid #3a3a3a' }}>
-            {(['editing', 'planning', 'live'] as AppMode[]).map((m) => {
-              const active = mode === m;
-              const label = m === 'planning' ? 'Plan' : m === 'editing' ? 'Editor' : 'Live';
-              return (
-                <button
-                  key={m}
-                  onClick={() => switchMode(m)}
-                  title={m === 'live'
-                    ? 'Live server / Olympus bridge — coming soon'
-                    : m === 'planning' ? 'Planning mode (no .miz editing)' : 'Editing mode (full editor)'}
-                  style={{
-                    flex: 1,
-                    background: active ? 'rgba(74,143,212,0.15)' : 'transparent',
-                    border: `1px solid ${active ? '#4a8fd4' : '#3a3a3a'}`,
-                    color: active ? '#9cd0ff' : '#aaaaaa',
-                    borderRadius: 4,
-                    padding: '5px 0',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: 0.4,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* v1.19.74 PREVIEW — Editor/Plan/Live mode switcher promoted to
+            the global header strip (MissionDataStrip). It swaps the
+            entire shell so it belonged at top-bar weight, not
+            sub-tab weight inside the sidebar that the switch destroys. */}
 
         {/* Tab buttons + section dividers.
             v0.9.60 — tab list can scroll when the sidebar gets too tall
@@ -449,10 +440,9 @@ export function MissionEditor() {
             // v1.19.57 — sopCheck no longer a top-level tab; the dot
             // only needs to render on 'sop' now.
             const showSopDot = activeSop != null && item.id === 'sop';
-            // Edits-tab count badge — same spirit as the SOP dot but
-            // shows a number so you can see at a glance how many edits
-            // are queued without switching tabs.
-            const showEditsCount = item.id === 'edits' && pendingEditCount > 0;
+            // v1.19.74 PREVIEW — the Edits tab left the sidebar (it's a
+            // drawer beside Download now), so the count badge moved to
+            // the ExportPanel "Edits (N)" chip.
             // In Planning mode the Weather tab is a read-only METAR readout.
             const displayLabel = (mode === 'planning' && item.id === 'weather') ? 'METAR' : item.label;
             return (
@@ -482,7 +472,7 @@ export function MissionEditor() {
                   position: 'relative',
                 }}
               >
-                <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ display: 'inline-flex', flexShrink: 0, width: 18, justifyContent: 'center', color: 'currentColor' }}>{item.icon}</span>
                 {!isCollapsed && displayLabel}
                 {showSopDot && (
                   <span
@@ -509,38 +499,6 @@ export function MissionEditor() {
                         : {}),
                     }}
                   />
-                )}
-                {showEditsCount && (
-                  <span
-                    title={`${pendingEditCount} edit${pendingEditCount !== 1 ? 's' : ''} queued`}
-                    style={{
-                      // Style the count as a compact pill. Blue (not
-                      // red) because queued edits are normal flow, not
-                      // a problem. Red would be alarming.
-                      background: '#1a3050',
-                      border: '1px solid #2a5a8a',
-                      color: '#6ab4f0',
-                      borderRadius: 10,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: '1px 6px',
-                      letterSpacing: 0.3,
-                      flexShrink: 0,
-                      marginLeft: isCollapsed ? 0 : 'auto',
-                      ...(isCollapsed
-                        ? {
-                            position: 'absolute',
-                            top: 2,
-                            right: 2,
-                            padding: '1px 4px',
-                            fontSize: 9,
-                            marginLeft: 0,
-                          }
-                        : {}),
-                    }}
-                  >
-                    {pendingEditCount}
-                  </span>
                 )}
               </button>
             );
@@ -614,11 +572,7 @@ export function MissionEditor() {
                 <ThreatLibraryTab onGoToMap={() => selectTab('map')} />
               </div>
             )}
-            {visitedTabs.has('datalink') && (
-              <div style={{ display: activeTab === 'datalink' ? 'block' : 'none' }}>
-                <DatalinkTab />
-              </div>
-            )}
+            {/* v1.19.74 PREVIEW — DatalinkTab mounted as a sub-tab inside RadioTab. */}
             {visitedTabs.has('dtc') && (
               <div style={{ display: activeTab === 'dtc' ? 'block' : 'none' }}>
                 <DtcTab />
@@ -669,14 +623,10 @@ export function MissionEditor() {
                 <MissionDebugTab />
               </div>
             )}
+            {/* v1.19.74 PREVIEW — DMPI + JTAC merged into TargetsTab. */}
             {visitedTabs.has('dmpi') && (
               <div style={{ display: activeTab === 'dmpi' ? 'block' : 'none' }}>
-                <DmpiTab onPickOnMap={() => selectTab('map')} />
-              </div>
-            )}
-            {visitedTabs.has('jtac') && (
-              <div style={{ display: activeTab === 'jtac' ? 'block' : 'none' }}>
-                <JtacSetupPanel />
+                <TargetsTab />
               </div>
             )}
             {visitedTabs.has('visibility') && (
@@ -709,11 +659,8 @@ export function MissionEditor() {
                 <BriefGenTab />
               </div>
             )}
-            {visitedTabs.has('edits') && (
-              <div style={{ display: activeTab === 'edits' ? 'block' : 'none' }}>
-                <EditsTab />
-              </div>
-            )}
+            {/* v1.19.74 PREVIEW — Edits now lives as a drawer beside the
+                Download .miz button (see ExportPanel changes). */}
             {visitedTabs.has('upload') && (
               <div style={{ display: activeTab === 'upload' ? 'block' : 'none' }}>
                 <UploadPanel onLoaded={() => selectTab('map')} />
@@ -723,6 +670,7 @@ export function MissionEditor() {
         )}
         </>
         )}
+      </div>
       </div>
     </div>
   );

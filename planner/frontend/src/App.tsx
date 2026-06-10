@@ -108,8 +108,12 @@ export default function App() {
   return (
     <>
       {view}
-      <DiscordButton />
-      <HelpButton onClick={() => setGuideOpen(true)} />
+      {/* v1.19.74 PREVIEW — DiscordButton + HelpButton hidden in the
+          editor view. MissionDataStrip renders them as text links in
+          the top bar instead. They still surface here so the LANDING
+          page (no editor strip) keeps them. */}
+      {!sessionId && <DiscordButton />}
+      {!sessionId && <HelpButton onClick={() => setGuideOpen(true)} />}
       {guideOpen && <GuidePanel onClose={() => setGuideOpen(false)} />}
     </>
   );

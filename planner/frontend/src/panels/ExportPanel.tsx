@@ -1,5 +1,6 @@
-import { createElement } from 'react';
+import { createElement, useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { EditsTab } from '../editor/tabs/EditsTab';
 import { useEditStore } from '../store/editStore';
 import { exportJson, closeSession, saveTriggers } from '../api/client';
 import { useTriggerStore } from '../store/triggerStore';
@@ -57,6 +58,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export function ExportPanel({ mode }: { mode: AppMode }) {
+  const [editsOpen, setEditsOpen] = useState(false);
   const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
   const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, kneeboardSettings } = useEditStore();
   // Active SOP — needed if the user has the SOP Comms kneeboard card
@@ -411,9 +413,48 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
             artefacts (kneeboards, brief, DTC, planning JSON) come from their
             own tabs. */}
         {mode === 'editing' && (
-          <button onClick={handleDownload} style={{ ...btnStyle, width: '100%' }}>
-            {isDirty ? 'Download .miz *' : 'Download .miz'}
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={handleDownload} style={{ ...btnStyle, flex: 1 }}>
+              {isDirty ? 'Download .miz *' : 'Download .miz'}
+            </button>
+            {/* v1.19.74 PREVIEW — Edits drawer chip beside Download.
+                Counts queued edits, opens an inline review panel. */}
+            <button
+              onClick={() => setEditsOpen((v) => !v)}
+              title="Review the edit queue before download"
+              style={{
+                ...btnStyle,
+                flexBasis: 88,
+                color: edits.length > 0 ? '#ffa500' : '#aaaaaa',
+                borderColor: edits.length > 0 ? '#ffa500' : '#3a3a3a',
+              }}
+            >
+              Edits ({edits.length})
+            </button>
+          </div>
+        )}
+        {editsOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 30, right: 0, bottom: 0, width: 520,
+            background: '#1a1a1a', borderLeft: '1px solid #3a3a3a',
+            boxShadow: '-4px 0 24px rgba(0,0,0,0.4)',
+            zIndex: 200, padding: '12px 16px', overflowY: 'auto',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: '1px solid #2a2a2a', paddingBottom: 8, marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#4a8fd4', letterSpacing: 1 }}>
+                EDIT QUEUE ({edits.length})
+              </div>
+              <button onClick={() => setEditsOpen(false)} style={{
+                background: 'transparent', border: '1px solid #3a3a3a',
+                color: '#aaaaaa', fontSize: 12, padding: '4px 10px', cursor: 'pointer',
+              }}>Close</button>
+            </div>
+            <EditsTab />
+          </div>
         )}
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={handleExportJson} style={{ ...btnStyle, flex: 1, background: '#1a3a2a' }}>

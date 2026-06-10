@@ -45,6 +45,7 @@ export function LayerSwitcher() {
   const {
     layers, toggleLayer, viewMode, setViewMode, adminMode, setAdminMode,
     measureMode, setMeasureMode,
+    highlightMode, setHighlightMode,
   } = useMapStore();
   const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable('layerSwitcher');
   const [collapsed, setCollapsed] = useState(false);
@@ -325,6 +326,23 @@ export function LayerSwitcher() {
                   }}
                 >
                   {measureMode ? '\u{1F4CF} Measuring... (Esc)' : '\u{1F4CF} Measure'}
+                </button>
+
+                {/* v1.19.74 — collaborative highlight pen. NOT role-gated:
+                    every session participant (wingmen included) can mark
+                    the map; strokes broadcast live to all clients. */}
+                <button
+                  onClick={() => setHighlightMode(!highlightMode)}
+                  title="Freehand-highlight anything on the map. Everyone in the session sees your strokes live, tagged with your flight name."
+                  style={{
+                    padding: '6px 10px', fontSize: 13,
+                    background: highlightMode ? '#3a2a1a' : '#262626',
+                    border: `1px solid ${highlightMode ? '#ffa500' : '#3a3a3a'}`,
+                    borderRadius: 4, textAlign: 'left',
+                    color: highlightMode ? '#ffa500' : '#e0e0e0', cursor: 'pointer',
+                  }}
+                >
+                  {highlightMode ? '✏ Highlighting... (click again to stop)' : '✏ Highlight'}
                 </button>
 
                 <label style={{

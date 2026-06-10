@@ -85,8 +85,36 @@ function buildFeatures(d: PlannerDrawing): Feature[] {
     case 'threatRing': return buildThreatRing(d);
     case 'referenceLine': return buildReferenceLine(d);
     case 'racetrack': return buildRacetrack(d);
+    case 'highlight': return buildHighlight(d);
     default: return [];
   }
+}
+
+/**
+ * v1.19.74 — collaborative highlight stroke. Renders like a marker
+ * pen: thick semi-transparent core with a thin opaque centre line so
+ * it stays legible over any basemap. The author's name renders at
+ * the stroke midpoint so a flight lead can see WHO flagged it.
+ */
+function buildHighlight(d: PlannerDrawing): Feature[] {
+  if (d.coords.length < 2) return [];
+  const mapCoords = d.coords.map((c) => fromLonLat(c));
+  const geometry = new LineString(mapCoords);
+
+  const feature = new Feature({ geometry });
+  feature.setStyle([
+    // Wide translucent "marker pen" body
+    new Style({
+      stroke: new Stroke({ color: hexToRgba(d.color, 0.35), width: 10, lineCap: 'round', lineJoin: 'round' }),
+    }),
+    // Thin solid core + author label
+    new Style({
+      stroke: new Stroke({ color: hexToRgba(d.color, 0.9), width: 2, lineCap: 'round', lineJoin: 'round' }),
+      text: d.author ? labelStyle(d.author, d.color) : undefined,
+    }),
+  ]);
+  feature.setId(`planner-${d.id}`);
+  return [feature];
 }
 
 function buildCorridor(d: PlannerDrawing): Feature[] {

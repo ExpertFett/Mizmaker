@@ -27,6 +27,10 @@ interface MapState {
   speedMode: SpeedMode;
   addWaypointMode: boolean;
   measureMode: boolean;
+  /** v1.19.74 — collaborative highlight pen. Open to EVERY session
+   *  participant (host, co-editor, flight lead, pilot) — the point is
+   *  that a wingman can mark something their lead missed. */
+  highlightMode: boolean;
   editorMode: boolean;
   floatingPanelPos: { x: number; y: number };
   selectedWpIndex: number | null;
@@ -45,6 +49,7 @@ interface MapState {
   setSpeedMode: (mode: SpeedMode) => void;
   setAddWaypointMode: (on: boolean) => void;
   setMeasureMode: (on: boolean) => void;
+  setHighlightMode: (on: boolean) => void;
   setEditorMode: (on: boolean) => void;
   setFloatingPanelPos: (pos: { x: number; y: number }) => void;
   setSelectedWpIndex: (idx: number | null) => void;
@@ -83,6 +88,7 @@ export const useMapStore = create<MapState>((set) => ({
   speedMode: 'gs' as SpeedMode,
   addWaypointMode: false,
   measureMode: false,
+  highlightMode: false,
   editorMode: false,
   floatingPanelPos: { x: -1, y: -1 }, // -1 = use default
   selectedWpIndex: null,
@@ -111,8 +117,9 @@ export const useMapStore = create<MapState>((set) => ({
 
   setAdminMode: (on) => set({ adminMode: on }),
   setSpeedMode: (mode) => set({ speedMode: mode }),
-  setAddWaypointMode: (on) => set({ addWaypointMode: on, measureMode: false }),
-  setMeasureMode: (on) => set({ measureMode: on, addWaypointMode: false }),
+  setAddWaypointMode: (on) => set({ addWaypointMode: on, measureMode: false, highlightMode: false }),
+  setMeasureMode: (on) => set({ measureMode: on, addWaypointMode: false, highlightMode: false }),
+  setHighlightMode: (on) => set({ highlightMode: on, measureMode: false, addWaypointMode: false }),
   setEditorMode: (on) => set({ editorMode: on }),
   setFloatingPanelPos: (pos) => set({ floatingPanelPos: pos }),
   setSelectedWpIndex: (idx) => set({ selectedWpIndex: idx }),
