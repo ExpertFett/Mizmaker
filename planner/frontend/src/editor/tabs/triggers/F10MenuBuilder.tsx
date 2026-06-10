@@ -30,7 +30,11 @@ import { Button } from '../../../components/Button';
 
 /** Menu entry user-facing types. */
 type MenuCoalition = 'blue' | 'red' | 'all';
-type MenuAction = 'activate' | 'deactivate' | 'destroy';
+// v1.19.76 — 'setFlag' added for ME interop: a menu item that sets a
+// user flag, so one click can drive whatever flag-watching trigger
+// rules the mission already carries (the native ME radio-item
+// pattern Fett described: "In ME the item is attached to a flag").
+type MenuAction = 'activate' | 'deactivate' | 'destroy' | 'setFlag';
 
 const COALITION_LABEL: Record<MenuCoalition, string> = {
   blue: 'Blue',
@@ -39,9 +43,10 @@ const COALITION_LABEL: Record<MenuCoalition, string> = {
 };
 
 const ACTION_LABEL: Record<MenuAction, string> = {
-  activate:   'Activate group',
-  deactivate: 'Deactivate group (AI off)',
-  destroy:    'Destroy group',
+  activate:   'Activate group(s)',
+  deactivate: 'Deactivate group(s) (AI off)',
+  destroy:    'Destroy group(s)',
+  setFlag:    'Set flag (fires ME trigger rules)',
 };
 
 const COALITION_COLOR: Record<MenuCoalition, string> = {
@@ -67,6 +72,7 @@ const ACTION_COLOR: Record<MenuAction, string> = {
   activate:   '#3fb950',
   deactivate: '#d29922',
   destroy:    '#d95050',
+  setFlag:    '#4a8fd4',
 };
 
 interface MenuEntry {
@@ -74,7 +80,12 @@ interface MenuEntry {
   coalition: MenuCoalition;
   label: string;
   action: MenuAction;
-  groupName: string;
+  /** v1.19.76 — one item can target MANY groups (batch activate a
+   *  whole QRF package with one click). Empty for setFlag entries. */
+  groupNames: string[];
+  /** Flag id for setFlag entries — numeric or named, same convention
+   *  the trigger editor uses. Empty for group-action entries. */
+  flag: string;
 }
 
 function makeId(): string {
@@ -100,27 +111,45 @@ function generateScript(entries: MenuEntry[]): string {
 
   for (const e of entries) {
     const labelEsc = escapeLuaString(e.label);
-    const groupEsc = escapeLuaString(e.groupName);
-    // Per-entry block. `pcall` around the action so a missing group
-    // (typo / late activation order) doesn't kill the whole menu.
-    const actionLua = (() => {
-      switch (e.action) {
-        case 'activate':
-          return 'local g = Group.getByName(name); if g then g:activate() end';
-        case 'deactivate':
-          return 'local g = Group.getByName(name); if g then trigger.action.setGroupAIOff(g) end';
-        case 'destroy':
-          return 'local g = Group.getByName(name); if g then g:destroy() end';
-      }
-    })();
+
+    // Body of the menu-click callback. Group actions iterate the
+    // whole target list so one click drives the entire batch — the
+    // closure approach gives us ME's "one item, many consequences"
+    // without flag bookkeeping. setFlag covers the OTHER case: firing
+    // trigger logic the mission already carries (ME-authored rules
+    // that watch a flag).
+    let body: string[];
+    let summary: string;
+    if (e.action === 'setFlag') {
+      const flagEsc = escapeLuaString(e.flag);
+      body = [`        trigger.action.setUserFlag("${flagEsc}", true)`];
+      summary = `set flag ${flagEsc}`;
+    } else {
+      const perGroup = (() => {
+        switch (e.action) {
+          case 'activate':
+            return 'local g = Group.getByName(name); if g then g:activate() end';
+          case 'deactivate':
+            return 'local g = Group.getByName(name); if g then trigger.action.setGroupAIOff(g) end';
+          case 'destroy':
+            return 'local g = Group.getByName(name); if g then g:destroy() end';
+        }
+      })();
+      const namesList = e.groupNames.map((n) => `"${escapeLuaString(n)}"`).join(', ');
+      body = [
+        `        for _, name in ipairs({ ${namesList} }) do`,
+        `            ${perGroup}`,
+        `        end`,
+      ];
+      summary = `${e.action} → ${e.groupNames.join(', ')}`;
+    }
 
     if (e.coalition === 'all') {
       lines.push(
-        `-- ${labelEsc} (${e.action} → ${groupEsc})`,
+        `-- ${labelEsc} (${escapeLuaString(summary)})`,
         `do`,
-        `    local name = "${groupEsc}"`,
         `    missionCommands.addCommand("${labelEsc}", nil, function()`,
-        `        ${actionLua}`,
+        ...body,
         `    end)`,
         `end`,
         '',
@@ -128,11 +157,10 @@ function generateScript(entries: MenuEntry[]): string {
     } else {
       const coalConst = e.coalition === 'blue' ? 'coalition.side.BLUE' : 'coalition.side.RED';
       lines.push(
-        `-- ${labelEsc} (${e.action} → ${groupEsc})`,
+        `-- ${labelEsc} (${escapeLuaString(summary)})`,
         `do`,
-        `    local name = "${groupEsc}"`,
         `    missionCommands.addCommandForCoalition(${coalConst}, "${labelEsc}", nil, function()`,
-        `        ${actionLua}`,
+        ...body,
         `    end)`,
         `end`,
         '',
@@ -190,11 +218,14 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
   const [entries, setEntries] = useState<MenuEntry[]>([]);
   // Form scratch state for the "add row" — kept separate from the
   // committed list so the user can edit fields before clicking +.
+  // v1.19.76 — groupNames is a LIST: picking from the dropdown
+  // appends a chip; "+ Add" commits the entry with all staged groups.
   const [draft, setDraft] = useState<Omit<MenuEntry, 'id'>>({
     coalition: 'blue',
     label: '',
     action: 'activate',
-    groupName: '',
+    groupNames: [],
+    flag: '',
   });
 
   // Filter state for the staged-entries table (v0.9.39). Display
@@ -212,17 +243,32 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
     if (filterSearch.trim()) {
       const q = filterSearch.toLowerCase();
       if (!e.label.toLowerCase().includes(q)
-          && !e.groupName.toLowerCase().includes(q)) return false;
+          && !e.groupNames.some((n) => n.toLowerCase().includes(q))
+          && !e.flag.toLowerCase().includes(q)) return false;
     }
     return true;
   });
 
   const groupNames = groups.map((g) => g.groupName).sort((a, b) => a.localeCompare(b));
 
+  const draftValid = draft.label.trim().length > 0 && (
+    draft.action === 'setFlag' ? draft.flag.trim().length > 0 : draft.groupNames.length > 0
+  );
+
   const addEntry = () => {
-    if (!draft.label.trim() || !draft.groupName) return;
+    if (!draftValid) return;
     setEntries((prev) => [...prev, { ...draft, id: makeId() }]);
-    setDraft({ coalition: draft.coalition, label: '', action: draft.action, groupName: '' });
+    setDraft({ coalition: draft.coalition, label: '', action: draft.action, groupNames: [], flag: '' });
+  };
+
+  /** Append a group to the draft's target list (dedup). */
+  const stageGroup = (name: string) => {
+    if (!name) return;
+    setDraft((d) => d.groupNames.includes(name) ? d : { ...d, groupNames: [...d.groupNames, name] });
+  };
+
+  const unstageGroup = (name: string) => {
+    setDraft((d) => ({ ...d, groupNames: d.groupNames.filter((n) => n !== name) }));
   };
 
   const removeEntry = (id: string) => {
@@ -317,25 +363,75 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
             <option key={a} value={a}>{ACTION_LABEL[a]}</option>
           ))}
         </Select>
-        <Select
-          size="sm"
-          value={draft.groupName}
-          onChange={(e) => setDraft({ ...draft, groupName: e.target.value })}
-        >
-          <option value="">— pick group —</option>
-          {groupNames.map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </Select>
+        {draft.action === 'setFlag' ? (
+          <TextInput
+            size="sm"
+            value={draft.flag}
+            onChange={(e) => setDraft({ ...draft, flag: e.target.value })}
+            placeholder="Flag # (matches your ME trigger rules)"
+            onKeyDown={(e) => { if (e.key === 'Enter') addEntry(); }}
+          />
+        ) : (
+          <Select
+            size="sm"
+            value=""
+            onChange={(e) => stageGroup(e.target.value)}
+            title="Each pick adds a group to this item — one menu click acts on all of them"
+          >
+            <option value="">
+              {draft.groupNames.length === 0 ? '— pick group(s) —' : `+ add another (${draft.groupNames.length} staged)`}
+            </option>
+            {groupNames.filter((n) => !draft.groupNames.includes(n)).map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </Select>
+        )}
         <Button
           variant="success"
           size="sm"
           onClick={addEntry}
-          disabled={!draft.label.trim() || !draft.groupName}
+          disabled={!draftValid}
         >
           + Add
         </Button>
       </div>
+
+      {/* v1.19.76 — staged target-group chips for the draft entry.
+          One menu item can carry the whole batch. */}
+      {draft.action !== 'setFlag' && draft.groupNames.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 6,
+          padding: '8px 12px', marginTop: -6, marginBottom: 12,
+          background: '#0a1218', border: '1px solid #1a2a3a',
+          borderTop: 'none', borderRadius: '0 0 6px 6px',
+        }}>
+          <span style={{ fontSize: 11, color: '#888', alignSelf: 'center' }}>
+            This item targets:
+          </span>
+          {draft.groupNames.map((n) => (
+            <span key={n} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: 'rgba(74, 143, 212, 0.10)',
+              border: '1px solid rgba(74, 143, 212, 0.4)',
+              color: '#9cd0ff', fontSize: 12,
+              fontFamily: "'B612 Mono', monospace",
+              padding: '2px 8px', borderRadius: 3,
+            }}>
+              {n}
+              <button
+                onClick={() => unstageGroup(n)}
+                title={`Remove ${n} from this item`}
+                style={{
+                  background: 'transparent', border: 'none', color: '#d95050',
+                  cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Staged entries */}
       {entries.length === 0 ? (
@@ -465,7 +561,11 @@ export function F10MenuBuilder({ onAdded }: F10MenuBuilderProps) {
                     {ACTION_LABEL[e.action]}
                   </td>
                   <td style={{ ...td, color: '#cccccc', fontFamily: "'B612 Mono', monospace" }}>
-                    {e.groupName}
+                    {e.action === 'setFlag'
+                      ? <span style={{ color: '#9cd0ff' }}>flag {e.flag}</span>
+                      : e.groupNames.length <= 2
+                        ? e.groupNames.join(', ')
+                        : <span title={e.groupNames.join(', ')}>{e.groupNames[0]} +{e.groupNames.length - 1} more</span>}
                   </td>
                   <td style={td}>
                     <Button
