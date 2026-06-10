@@ -15,6 +15,7 @@ import { FlightCard } from '../../kneeboard/FlightCard';
 import { CommsCard } from '../../kneeboard/CommsCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
 import { StripMapCard } from '../../kneeboard/StripMapCard';
+import { RadioPresetCard } from '../../kneeboard/RadioPresetCard';
 import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
@@ -47,6 +48,7 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
   { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
   { key: 'stripMap', label: 'Strip Map', desc: 'North-up route map with per-leg doghouse (MC / DIST / TIME / ALT)' },
+  { key: 'radioPresets', label: 'Radio Presets', desc: 'Per-airframe preset button card from the SOP comm plan (skipped when the active SOP has no map for the airframe)' },
   { key: 'fuelLadder', label: 'Fuel Ladder', desc: 'Fuel burn per leg, joker/bingo' },
   { key: 'homePlate', label: 'Home Plate / Divert', desc: 'Departure field + nearest diverts' },
   { key: 'weaponsAuto', label: 'Weapon Cards (auto)', desc: "Auto-inject employment cards for each flight's actual loadout (matched from pylons)" },
@@ -77,6 +79,7 @@ const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean
   { key: 'comms', label: 'Comms Card', perFlight: true },
   { key: 'routeDetail', label: 'Route Detail', perFlight: true },
   { key: 'stripMap', label: 'Strip Map', perFlight: true },
+  { key: 'radioPresets', label: 'Radio Presets', perFlight: true },
   { key: 'fuelLadder', label: 'Fuel Ladder', perFlight: true },
   { key: 'supportAssets', label: 'Support Assets', perFlight: false },
   { key: 'radioLadder', label: 'Radio Ladder', perFlight: false },
@@ -203,6 +206,15 @@ export function KneeboardTab() {
     if (cards.stripMap) {
       const el = createElement(StripMapCard, { group: g, overview: overview || undefined, notes: cardNotes.stripMap });
       results.push({ name: `${safeName}_StripMap.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    {
+      // v1.19.77 — radio preset card from the SOP comm plan (per
+      // airframe; skipped when the plan has no map for this type).
+      const acType = g.units[0]?.type || '';
+      if (cards.radioPresets && activeSop?.commPlan?.maps.some((m) => m.aircraft === acType)) {
+        const el = createElement(RadioPresetCard, { aircraft: acType, plan: activeSop.commPlan, overview: overview || undefined });
+        results.push({ name: `RadioPresets_${acType}.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+      }
     }
     if (cards.fuelLadder) {
       const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder });
@@ -1023,6 +1035,15 @@ function CardCarousel({
           key: 'stripMap', label: 'Strip Map',
           element: createElement(StripMapCard, { group: selectedGroup, overview: overview || undefined, notes: cardNotes.stripMap }),
         });
+      }
+      {
+        const acType = selectedGroup.units[0]?.type || '';
+        if (cards.radioPresets && activeSop?.commPlan?.maps.some((m) => m.aircraft === acType)) {
+          list.push({
+            key: 'radioPresets', label: 'Radio Presets',
+            element: createElement(RadioPresetCard, { aircraft: acType, plan: activeSop.commPlan, overview: overview || undefined }),
+          });
+        }
       }
       if (cards.fuelLadder) {
         list.push({

@@ -52,6 +52,12 @@ export interface KneeboardCards {
    *  B follow-up (route rotation, fuel/threat doghouse fields) is
    *  task #50's deferred section. */
   stripMap: boolean;
+  /** Radio Preset Card (v1.19.77) — per-airframe button-map card
+   *  generated from the active SOP's comm plan, in the squadron's
+   *  two-column Button|Freq|ID format. Emits only for airframes the
+   *  plan carries maps for; silently skipped otherwise (the card is
+   *  meaningless without a plan). */
+  radioPresets: boolean;
 }
 
 export interface KneeboardSettings {
@@ -235,6 +241,10 @@ export const useEditStore = create<EditState>((set) => ({
       // every aviator wants in the kneeboard pack by default. Mission
       // makers who don't want it can untick.
       stripMap: true,
+      // Radio Preset card defaults ON — it self-skips when the active
+      // SOP has no comm plan maps, so the default costs nothing for
+      // users without a plan.
+      radioPresets: true,
     },
   },
 

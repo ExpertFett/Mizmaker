@@ -113,6 +113,57 @@ function nameForUfc(raw: string, fallback: string): string {
   return v.slice(0, 12);
 }
 
+/**
+ * v1.19.77 — build COMM pages from the SOP's comm plan button maps.
+ * When the plan carries FA-18C maps, the DTC ladder is the SAME
+ * ladder the Radio tab generates — one source of truth, ending the
+ * era of this file's own synthesis convention silently disagreeing
+ * with the preset tables. Returns null when the plan has no Hornet
+ * maps (caller falls back to buildSopComms below).
+ */
+function buildCommsFromPlan(sop: SOP): {
+  COMM1: CommRadio;
+  COMM2: CommRadio;
+  filledCh1: number;
+  filledCh2: number;
+} | null {
+  const plan = sop.commPlan;
+  if (!plan) return null;
+  const netById = new Map(plan.nets.map((n) => [n.id, n]));
+  const buildRadio = (radio: number): { page: CommRadio; filled: number } | null => {
+    const map = plan.maps.find((m) => m.aircraft === 'FA-18C_hornet' && m.radio === radio);
+    if (!map) return null;
+    const page: CommRadio = {};
+    let filled = 0;
+    for (const [pbStr, netId] of Object.entries(map.buttons)) {
+      const pb = parseInt(pbStr, 10);
+      if (!Number.isInteger(pb) || pb < 1 || pb > 20) continue; // DTC carries 20 slots
+      const net = netById.get(netId);
+      if (!net || net.kind !== 'radio' || !net.frequency) continue;
+      page[`Channel_${pb}`] = {
+        frequency: net.frequency.toFixed(3),
+        modulation: net.modulation ?? 'AM',
+        name: nameForUfc(net.name, `CH${pb}`),
+      };
+      filled++;
+    }
+    return { page, filled };
+  };
+  const r1 = buildRadio(1);
+  const r2 = buildRadio(2);
+  if (!r1 && !r2) return null;
+  // GUARD aux slot anchored from the catalog's guard net when present.
+  const guardNet = plan.nets.find((n) => /guard/i.test(n.name) && n.kind === 'radio' && n.frequency);
+  const guardCh: CommChannel = {
+    frequency: (guardNet?.frequency ?? 243.0).toFixed(3),
+    modulation: guardNet?.modulation ?? 'AM',
+    name: 'GUARD',
+  };
+  const comm1 = r1 ? { ...r1.page, GUARD: { ...guardCh } } : {};
+  const comm2 = r2 ? { ...r2.page, GUARD: { ...guardCh } } : {};
+  return { COMM1: comm1, COMM2: comm2, filledCh1: r1?.filled ?? 0, filledCh2: r2?.filled ?? 0 };
+}
+
 function buildSopComms(sop: SOP): {
   COMM1: CommRadio;
   COMM2: CommRadio;
@@ -461,7 +512,9 @@ export function DtcTab() {
   const applySopComms = useCallback(
     (target: 'both' | 'COMM1' | 'COMM2' = 'both') => {
       if (!activeSop) return;
-      const built = buildSopComms(activeSop);
+      // v1.19.77 — comm plan button maps win over the legacy synthesis
+      // so the DTC and the Radio tab generate the SAME ladder.
+      const built = buildCommsFromPlan(activeSop) ?? buildSopComms(activeSop);
       setDtcData((prev) => {
         if (!prev) return prev;
         const nextComm1 =
@@ -510,9 +563,9 @@ export function DtcTab() {
       CMDS: { ...(dtcData.CMDS ?? {}) },
     };
 
-    // 1) COMM
+    // 1) COMM — comm plan wins over legacy synthesis (v1.19.77)
     if (activeSop) {
-      const built = buildSopComms(activeSop);
+      const built = buildCommsFromPlan(activeSop) ?? buildSopComms(activeSop);
       next.COMM = {
         COMM1: { ...next.COMM.COMM1, ...built.COMM1 },
         COMM2: { ...next.COMM.COMM2, ...built.COMM2 },

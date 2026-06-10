@@ -27,7 +27,7 @@ import { useEditStore } from '../../store/editStore';
 import { useActiveSop } from '../../sop/sopStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { MissionGroup, ClientUnit } from '../../types/mission';
-import type { SOP } from '../../sop/types';
+import type { SOP, CommPlan } from '../../sop/types';
 
 interface Preset {
   ch: number;        // 1-20
@@ -83,6 +83,47 @@ function buildPresetsForRadio(channels: { ch: number; freq_mhz: number; modulati
   // if the .miz left it blank — never overwrite a value the designer set.
   if (!out[PRESET_COUNT - 1].freq) {
     out[PRESET_COUNT - 1] = { ...GUARD_PRESET, ch: PRESET_COUNT };
+  }
+  return out;
+}
+
+/**
+ * v1.19.77 — build ladders from the SOP comm plan's button maps.
+ * This is THE source when the active SOP defines a plan: fixed button
+ * numbers are the wing's briefing contract ("push 3" = Marshal in
+ * every cockpit), so the ladder comes from the plan, not from
+ * heuristics. Returns null when the plan has no maps for this
+ * airframe (caller falls through to .miz presets / auto-build).
+ *
+ * MIDS voice nets mapped onto radio buttons render label-only (no
+ * freq) — they're not radio channels; the label is reference info.
+ */
+function buildPresetsFromCommPlan(aircraft: string, plan: CommPlan | undefined): FlightPresets | null {
+  if (!plan) return null;
+  const maps = plan.maps.filter((m) => m.aircraft === aircraft);
+  if (maps.length === 0) return null;
+  const netById = new Map(plan.nets.map((n) => [n.id, n]));
+  const out: FlightPresets = new Map();
+  for (const m of maps) {
+    const maxSet = Math.max(0, ...Object.keys(m.buttons).map(Number));
+    const count = Math.max(PRESET_COUNT, maxSet);
+    const presets: Preset[] = [];
+    for (let ch = 1; ch <= count; ch++) {
+      const net = m.buttons[ch] ? netById.get(m.buttons[ch]) : undefined;
+      if (net && net.kind === 'radio' && net.frequency) {
+        presets.push({
+          ch,
+          label: net.name,
+          freq: net.frequency.toFixed(3),
+          mod: net.modulation === 'FM' ? 'FM' : 'AM',
+        });
+      } else if (net) {
+        presets.push({ ch, label: `${net.name} (MIDS)`, freq: '', mod: 'AM' });
+      } else {
+        presets.push({ ch, label: '', freq: '', mod: 'AM' });
+      }
+    }
+    out.set(m.radio, presets);
   }
   return out;
 }
@@ -261,10 +302,18 @@ export function RadioPresetsSection() {
     return clientUnits.find((u) => u.groupName === flight.groupName);
   }, [clientUnits]);
 
-  // Resolve a flight's initial preset state. Reads every radio the lead
-  // has in the .miz; if the lead carries nothing, falls back to a single
-  // auto-derived COMM 1 (Radio[1]).
+  // Resolve a flight's initial preset state.
+  // v1.19.77 precedence (Fett: "I want the AI to do its best to make
+  // sure SOP is enforced when the user has SOP turned on"):
+  //   1. Active SOP's comm plan button maps for this airframe — the
+  //      wing ladder is the contract; it wins over whatever the .miz
+  //      happened to carry.
+  //   2. The lead's .miz-stored presets (no plan for this airframe).
+  //   3. Auto-derived single-radio fallback (no plan, no .miz data).
   const resolveInitial = useCallback((flight: MissionGroup): FlightPresets => {
+    const aircraft = flight.units[0]?.type || '';
+    const fromPlan = buildPresetsFromCommPlan(aircraft, activeSop?.commPlan);
+    if (fromPlan) return fromPlan;
     const lead = findLeadClient(flight);
     const fromMiz = buildPresetsFromMiz(lead);
     if (fromMiz) return fromMiz;
@@ -414,12 +463,45 @@ export function RadioPresetsSection() {
             </span>
           )}
         </div>
-        <span style={{ fontSize: 11, color: '#888888' }}>
+        <span style={{ fontSize: 11, color: '#888888', display: 'flex', alignItems: 'center', gap: 12 }}>
           Edits write to every radio of every unit in the flight on download
           {presetClipboard && copiedFromName && clipboardSummary && (
-            <span style={{ marginLeft: 12, color: '#d29922' }}>
+            <span style={{ color: '#d29922' }}>
               clipboard: {copiedFromName} ({clipboardSummary})
             </span>
+          )}
+          {/* v1.19.77 — one-click SOP-ladder enforcement. Stamps the
+              comm plan's button maps onto every flight whose airframe
+              has a map, dispatching the radioPresets edits so the
+              ladders land in the .miz on download. */}
+          {activeSop?.commPlan && activeSop.commPlan.maps.length > 0 && (
+            <button
+              onClick={() => {
+                for (const f of playerFlights) {
+                  const aircraft = f.units[0]?.type || '';
+                  const fromPlan = buildPresetsFromCommPlan(aircraft, activeSop.commPlan);
+                  if (!fromPlan) continue;
+                  setPresetsByFlight((prev) => {
+                    const next = new Map(prev);
+                    next.set(f.groupId, fromPlan);
+                    return next;
+                  });
+                  for (const [radioNum, presets] of fromPlan) {
+                    dispatchRadioPresetsEdit(f.groupId, radioNum, presets);
+                  }
+                }
+              }}
+              title="Stamp the SOP comm plan's button maps onto every flight with a matching airframe map. Edits land in the .miz on download."
+              style={{
+                background: 'rgba(63, 185, 80, 0.10)',
+                border: '1px solid rgba(63, 185, 80, 0.5)',
+                color: '#3fb950', borderRadius: 3,
+                fontSize: 11, fontWeight: 600, padding: '3px 10px',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Apply SOP ladders
+            </button>
           )}
         </span>
       </div>

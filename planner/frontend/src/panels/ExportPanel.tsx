@@ -13,6 +13,7 @@ import { FlightCard } from '../kneeboard/FlightCard';
 import { CommsCard } from '../kneeboard/CommsCard';
 import { RouteDetailCard } from '../kneeboard/RouteDetailCard';
 import { StripMapCard } from '../kneeboard/StripMapCard';
+import { RadioPresetCard } from '../kneeboard/RadioPresetCard';
 import { FuelLadderCard } from '../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
@@ -164,6 +165,15 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           if (cards.stripMap)
             await addCard(aircraftType, `${safeName}_StripMap.png`,
               createElement(StripMapCard, { group: g, overview: overview ?? undefined, notes: cardNotes.stripMap }));
+          // v1.19.77 — radio preset card from the SOP comm plan. Per
+          // AIRFRAME, not per flight: every flight of the type gets the
+          // same card (fixed buttons = wing contract), and the shared
+          // filename means duplicate flights just overwrite identical
+          // bytes. Skipped when the plan has no map for this airframe.
+          if (cards.radioPresets && activeSop?.commPlan?.maps.some((m) => m.aircraft === aircraftType)) {
+            await addCard(aircraftType, `RadioPresets_${aircraftType}.png`,
+              createElement(RadioPresetCard, { aircraft: aircraftType, plan: activeSop.commPlan, overview: overview ?? undefined }));
+          }
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
               createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));

@@ -16,9 +16,13 @@
 import { useState } from 'react';
 import { SopTab } from './SopTab';
 import { SopCheckTab } from './SopCheckTab';
+import { CommPlanTab } from './CommPlanTab';
 
 const SUB_TABS = [
   { id: 'edit',  label: 'SOPs',      color: '#9cd0ff' },
+  // v1.19.77 — wing comm plan: net catalog + per-airframe preset
+  // button maps. The "one more SOP page" for radio architecture.
+  { id: 'comms', label: 'Comm Plan', color: '#d29922' },
   { id: 'check', label: 'Check',     color: '#3fb950' },
 ] as const;
 
@@ -60,6 +64,7 @@ export function SopTabContainer() {
           Both are mounted; just toggle visibility. SopTab in particular
           carries form state we don't want to lose on switch. */}
       <div style={{ display: sub === 'edit'  ? 'block' : 'none' }}><SopTab /></div>
+      <div style={{ display: sub === 'comms' ? 'block' : 'none' }}><CommPlanTab /></div>
       <div style={{ display: sub === 'check' ? 'block' : 'none' }}><SopCheckTab /></div>
     </div>
   );
