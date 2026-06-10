@@ -19,6 +19,7 @@ export type AutoSetupCategory =
   | 'Renamer'
   | 'Datalink'
   | 'Radio'
+  | 'Comms'
   | 'Carriers';
 
 /** One applier's output. Always returned — even when nothing was done

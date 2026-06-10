@@ -18,6 +18,7 @@
  */
 
 import { isPlayerGroup } from '../../utils/groups';
+import { channelsFromCommPlan } from '../commPlanMatch';
 import type { MissionGroup, UnitEdit } from '../../types/mission';
 import type { SOP } from '../types';
 import type { AutoSetupAction } from './types';
@@ -151,8 +152,34 @@ export function applyRadioSop(groups: MissionGroup[], sop: SOP): AutoSetupAction
 
   const edits: UnitEdit[] = [];
   const details: string[] = [];
+  let flightsAffected = 0;
+  let usedPlan = false;
 
   for (const flight of playerFlights) {
+    // v1.19.79 (#61) — when the active SOP carries a comm plan with a
+    // button map for this airframe, the plan IS the briefing contract:
+    // build every radio's ladder straight from it (honouring 24-channel
+    // radios and per-radio band placement) instead of the heuristic
+    // pool below. Falls through to the heuristic builder for airframes
+    // the plan doesn't cover.
+    const aircraft = flight.units[0]?.type || '';
+    const planRadios = channelsFromCommPlan(aircraft, sop.commPlan);
+    if (planRadios) {
+      usedPlan = true;
+      let chTotal = 0;
+      for (const [radio, channels] of planRadios) {
+        edits.push({
+          groupId: flight.groupId,
+          field: 'radioPresets',
+          value: { radio, channels },
+        } as UnitEdit);
+        chTotal += channels.length;
+      }
+      flightsAffected++;
+      details.push(`${flight.groupName}: ${chTotal} preset${chTotal !== 1 ? 's' : ''} across ${planRadios.size} radio${planRadios.size !== 1 ? 's' : ''} (from comm plan)`);
+      continue;
+    }
+
     const channels = buildChannelsForFlight(flight, groups, sop);
     if (channels.length === 0) continue;
 
@@ -161,14 +188,17 @@ export function applyRadioSop(groups: MissionGroup[], sop: SOP): AutoSetupAction
       field: 'radioPresets',
       value: { radio: 1, channels },
     } as UnitEdit);
+    flightsAffected++;
     details.push(`${flight.groupName}: ${channels.length} channel${channels.length !== 1 ? 's' : ''} on COMM1`);
   }
 
   return {
     category: 'Radio',
-    description: `Built COMM1 presets for ${edits.length} flight${edits.length !== 1 ? 's' : ''}`,
+    description: usedPlan
+      ? `Built presets for ${flightsAffected} flight${flightsAffected !== 1 ? 's' : ''} from the SOP comm plan`
+      : `Built COMM1 presets for ${flightsAffected} flight${flightsAffected !== 1 ? 's' : ''}`,
     edits,
-    itemsAffected: edits.length,
+    itemsAffected: flightsAffected,
     details,
   };
 }

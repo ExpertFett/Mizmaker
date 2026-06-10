@@ -19,6 +19,7 @@ import { buildReport } from '../discrepancy';
 import { applyRenamerSop } from './renamer';
 import { applyDatalinkSop } from './datalink';
 import { applyRadioSop } from './radio';
+import { applyCommAssetsSop } from './comms';
 import { applyCarriersSop } from './carriers';
 import type { ClientUnit, MissionGroup } from '../../types/mission';
 import type { SOP } from '../types';
@@ -37,6 +38,7 @@ export function runAutoSetup(
     safelyRun('Renamer', () => applyRenamerSop(groups, sop)),
     safelyRun('Datalink', () => applyDatalinkSop(clientUnits, sop)),
     safelyRun('Radio', () => applyRadioSop(groups, sop)),
+    safelyRun('Comms', () => applyCommAssetsSop(groups, sop)),
     safelyRun('Carriers', () => applyCarriersSop(groups, sop)),
   ];
 

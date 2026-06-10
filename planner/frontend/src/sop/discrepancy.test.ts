@@ -22,9 +22,10 @@ import {
   checkGuardFreq,
   checkTankers,
   checkCarriers,
+  checkCommPlanAssets,
 } from './discrepancy';
 import type { MissionGroup, MissionUnit } from '../types/mission';
-import type { SOP } from './types';
+import type { SOP, CommPlan } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Builders                                                            */
@@ -465,5 +466,48 @@ describe('buildReport', () => {
     expect(cats).toContain('Flight Frequency');
     expect(cats).toContain('Guard Channel');
     expect(cats).toContain('Tanker Freq');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* checkCommPlanAssets (#61)                                           */
+/* ------------------------------------------------------------------ */
+
+describe('checkCommPlanAssets', () => {
+  const tankerPlan: CommPlan = {
+    nets: [{ id: 'tx', name: 'Texaco 1', kind: 'radio', frequency: 332.1, modulation: 'AM' }],
+    maps: [],
+  };
+
+  it('flags RED when the mission tanker is off the comm-plan net freq', () => {
+    const sop = makeSop({ commPlan: tankerPlan });
+    const groups = [
+      makeGroup({
+        groupId: 5, groupName: 'Shell', task: 'Refueling', frequency: 251_000_000,
+        units: [makeUnit({ skill: 'High' })],
+      }),
+    ];
+    const rows = checkCommPlanAssets(groups, sop);
+    expect(rows.length).toBe(1);
+    expect(rows[0].severity).toBe('red');
+    expect(rows[0].category).toBe('Comm Plan ↔ Mission');
+    expect(rows[0].sopValue).toContain('332.100');
+  });
+
+  it('passes silently when the tanker already matches the net', () => {
+    const sop = makeSop({ commPlan: tankerPlan });
+    const groups = [
+      makeGroup({
+        groupId: 5, groupName: 'Shell', task: 'Refueling', frequency: 332_100_000,
+        units: [makeUnit({ skill: 'High' })],
+      }),
+    ];
+    expect(checkCommPlanAssets(groups, sop)).toEqual([]);
+  });
+
+  it('no-ops when the SOP has no comm plan', () => {
+    const sop = makeSop({});
+    const groups = [makeGroup({ groupName: 'Shell', task: 'Refueling', units: [makeUnit({ skill: 'High' })] })];
+    expect(checkCommPlanAssets(groups, sop)).toEqual([]);
   });
 });

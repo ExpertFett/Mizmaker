@@ -21,6 +21,7 @@
  */
 
 import { isPlayerGroup, isCarrierGroup } from '../utils/groups';
+import { matchAssetNets } from './commPlanMatch';
 import type { MissionGroup } from '../types/mission';
 import type {
   SOP, SopFlightCallsign, SopTanker, SopTacanEntry,
@@ -351,6 +352,36 @@ export function checkLaserCodes(_groups: MissionGroup[], sop: SOP): DiscrepancyR
   }];
 }
 
+/**
+ * v1.19.79 (#61) — comm-plan enforcement. When the SOP carries a comm
+ * plan, the players' preset buttons are built from it ("push 11" =
+ * Texaco), so the AI tanker / AWACS must actually broadcast on that
+ * net's frequency or the call goes unanswered. Pair each in-mission
+ * asset with its net (role + order based, see matchAssetNets) and flag
+ * any whose mission freq differs from the plan. RED — this is a live
+ * comms break, not a style nit. The "Apply SOP" Comms applier stages
+ * the groupFrequency edit that fixes it.
+ */
+export function checkCommPlanAssets(groups: MissionGroup[], sop: SOP): DiscrepancyRow[] {
+  const plan = sop.commPlan;
+  if (!plan || plan.nets.length === 0) return [];
+
+  const out: DiscrepancyRow[] = [];
+  for (const { group, net, role } of matchAssetNets(groups, plan)) {
+    const mz = freqMhz(group.frequency);
+    if (freqsMatch(mz, net.frequency ?? null)) continue;
+    out.push({
+      category: 'Comm Plan ↔ Mission',
+      field: `${group.groupName} (${role.toUpperCase()})`,
+      missionValue: fmtFreq(mz, modString(group.modulation)),
+      sopValue: fmtFreq(net.frequency ?? null, net.modulation ?? 'AM'),
+      severity: 'red',
+      reason: `Players tune "${net.name}" from the comm-plan presets — the mission ${role} must broadcast on that freq or the call goes unanswered.`,
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /* Aggregator                                                          */
 /* ------------------------------------------------------------------ */
@@ -359,6 +390,7 @@ export function buildReport(groups: MissionGroup[], sop: SOP): DiscrepancyRow[] 
   return [
     ...checkPlayerFlightFreqs(groups, sop),
     ...checkGuardFreq(groups, sop),
+    ...checkCommPlanAssets(groups, sop),
     ...checkTankers(groups, sop),
     ...checkSupport(groups, sop),
     ...checkCarriers(groups, sop),
