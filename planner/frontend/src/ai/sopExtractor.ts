@@ -9,9 +9,10 @@
 
 import { callAi, type AiContentBlock } from './aiClient';
 import type { AiProvider } from './aiStore';
-import type { SOP, SopAttachment } from '../sop/types';
+import type { SOP, SopAttachment, CommPlan, CommNet, RadioButtonMap } from '../sop/types';
+import { makeId } from '../sop/types';
 
-const SYSTEM_PROMPT = `You are a tactical aviation reference reader. The user will give you images of a squadron's Standard Operating Procedures (SOP) — typically callsign tables, frequency cards, TACAN charts, kneeboard reference pages.
+const SYSTEM_PROMPT = `You are a tactical aviation reference reader. The user will give you images of a squadron's Standard Operating Procedures (SOP) — typically callsign tables, frequency cards, TACAN charts, kneeboard reference pages, and RADIO PRESET CARDS.
 
 Extract the structured data into JSON matching the schema below. Rules:
 - Read every visible field carefully; do not invent values that aren't on the page.
@@ -20,6 +21,13 @@ Extract the structured data into JSON matching the schema below. Rules:
 - TACAN channels are integers 1-126 with band X or Y.
 - Modulation is "AM" or "FM". If unstated, infer from frequency band: <136 MHz = FM, >225 MHz = AM, otherwise null.
 - Return ONLY valid JSON, no markdown fences, no commentary, no preamble.
+
+RADIO PRESET CARDS (important — this is the comm plan):
+A radio-preset card has a title like "HORNET RADIO PRESETS" or "TOMCAT RADIO PRESETS" and one or more columns, each a list of: Button# | Frequency Mod | ID/Name. Two side-by-side button/freq/ID groups = two radios (e.g. "Radio 1" + "Radio 2", or "Rear" + "Front"). When you see one, fill "commPlan":
+- "aircraftTitle": the airframe word from the card title ("Hornet", "Tomcat", "Viper", …) — used to map to the DCS type.
+- For EACH radio column, one entry in "radioMaps" with its label and a "buttons" object mapping preset number → the ID/Name text in that row.
+- Put EVERY distinct ID/Name + its frequency into "nets" ONCE (dedupe across columns — "App. A CVN" appears on both radios but is ONE net). Use the exact ID text as the net name. A MIDS/datalink entry (no MHz freq, has a channel) → kind "midsA"/"midsB" with midsChannel; everything else → kind "radio" with frequency+modulation.
+- Button numbers can exceed 20 (e.g. a Tomcat radio with 24). Read ALL of them.
 
 CRITICAL output-length rules — these prevent JSON truncation:
 - "notes" is OPTIONAL and OFTEN BEST OMITTED. If you include it, ≤120 characters MAX. ONE short sentence identifying the SOP. NEVER dump tables, lists, or any structured data into notes — that's what the array fields are for. If the only thing you'd put there is a list, OMIT the field entirely.
@@ -50,8 +58,27 @@ JSON schema (all top-level fields optional; omit any you can't fill):
   "tacans": [
     { "role": string, "channel": number, "band": "X" | "Y", "callsign": string | null }
   ],
-  "laserCodeBase": number          // 4-digit code, each digit 1-7. Lowest code visible if multiple.
+  "laserCodeBase": number,         // 4-digit code, each digit 1-7. Lowest code visible if multiple.
+  "commPlan": {                    // ONLY when a radio-preset card is present
+    "aircraftTitle": string,       // airframe word from the card title
+    "nets": [
+      { "name": string, "kind": "radio" | "midsA" | "midsB",
+        "frequency": number | null, "modulation": "AM" | "FM" | null,
+        "midsChannel": number | null }
+    ],
+    "radioMaps": [
+      { "radio": number,           // 1 = left column, 2 = right column
+        "radioLabel": string,      // "Radio 1" / "Rear" / "Front" …
+        "buttons": { "<presetNumber>": "<net name>" } }
+    ]
+  }
 }`;
+
+interface PartialCommPlan {
+  aircraftTitle?: string | null;
+  nets?: Array<{ name: string; kind?: 'radio' | 'midsA' | 'midsB' | null; frequency?: number | null; modulation?: 'AM' | 'FM' | null; midsChannel?: number | null }>;
+  radioMaps?: Array<{ radio: number; radioLabel?: string | null; buttons?: Record<string, string> }>;
+}
 
 interface PartialSop {
   name?: string | null;
@@ -63,6 +90,34 @@ interface PartialSop {
   comms?: Array<{ role: string; frequency: number; modulation?: 'AM' | 'FM' | null; notes?: string | null }>;
   tacans?: Array<{ role: string; channel: number; band: 'X' | 'Y'; callsign?: string | null }>;
   laserCodeBase?: number | null;
+  commPlan?: PartialCommPlan | null;
+}
+
+/** Map a radio-preset card's airframe title word → DCS unit type, so the
+ *  imported button maps line up with the airframes that appear in a
+ *  mission. Falls back to the raw title (the Comm Plan editor accepts a
+ *  free-text aircraft anyway). */
+const AIRFRAME_FROM_TITLE: Record<string, string> = {
+  hornet: 'FA-18C_hornet',
+  tomcat: 'F-14B',
+  viper: 'F-16C_50',
+  warthog: 'A-10C_2',
+  hawg: 'A-10C_2',
+  harrier: 'AV8BNA',
+  'strike eagle': 'F-15ESE',
+  eagle: 'F-15ESE',
+  apache: 'AH-64D_BLK_II',
+};
+
+function resolveAircraftType(title: string | null | undefined): string {
+  const t = (title || '').trim().toLowerCase();
+  if (!t) return '';
+  // Exact word match first, then substring (titles like "HORNET RADIO PRESETS").
+  if (AIRFRAME_FROM_TITLE[t]) return AIRFRAME_FROM_TITLE[t];
+  for (const [word, type] of Object.entries(AIRFRAME_FROM_TITLE)) {
+    if (t.includes(word)) return type;
+  }
+  return title!.trim();
 }
 
 export interface ExtractionResult {
@@ -269,7 +324,67 @@ export function mergePartialIntoSop(sop: SOP, partial: PartialSop): SOP {
     (t) => (t.role || '').toLowerCase(),
   );
 
+  // v1.19.78 — radio-preset card → comm plan. Resolve the AI's
+  // button→net-NAME maps into the id-referenced model (the AI can't
+  // mint stable ids). Merge philosophy matches the rest: nets dedupe
+  // by name (existing wins), and a button map is added only when the
+  // SOP doesn't already carry one for that (aircraft, radio) — so a
+  // user-built map is never silently overwritten by a re-import.
+  if (partial.commPlan) {
+    next.commPlan = mergeCommPlan(next.commPlan, partial.commPlan);
+  }
+
   return next;
+}
+
+function mergeCommPlan(existing: CommPlan | undefined, partial: PartialCommPlan): CommPlan {
+  const nets: CommNet[] = existing ? [...existing.nets] : [];
+  const maps: RadioButtonMap[] = existing ? [...existing.maps] : [];
+
+  // Net id lookup by lowercased name — existing nets win, new ones append.
+  const idByName = new Map<string, string>();
+  for (const n of nets) idByName.set(n.name.trim().toLowerCase(), n.id);
+
+  type PartialNet = NonNullable<PartialCommPlan['nets']>[number];
+  const ensureNet = (name: string, src?: PartialNet): string => {
+    const key = name.trim().toLowerCase();
+    const found = idByName.get(key);
+    if (found) return found;
+    const id = makeId();
+    const kind = src?.kind || 'radio';
+    nets.push({
+      id,
+      name: name.trim(),
+      kind,
+      frequency: kind === 'radio' ? (src?.frequency ?? undefined) : undefined,
+      modulation: kind === 'radio' ? (src?.modulation ?? 'AM') : undefined,
+      midsChannel: kind !== 'radio' ? (src?.midsChannel ?? undefined) : undefined,
+    });
+    idByName.set(key, id);
+    return id;
+  };
+
+  // Seed nets from the extracted catalog first so freq/mod/kind attach.
+  for (const n of partial.nets || []) {
+    if (!n?.name) continue;
+    ensureNet(n.name, n);
+  }
+
+  const aircraft = resolveAircraftType(partial.aircraftTitle);
+  for (const rm of partial.radioMaps || []) {
+    if (!Number.isInteger(rm.radio)) continue;
+    // Skip if the SOP already has a map for this aircraft+radio (user wins).
+    if (maps.some((m) => m.aircraft === aircraft && m.radio === rm.radio)) continue;
+    const buttons: Record<number, string> = {};
+    for (const [pbStr, netName] of Object.entries(rm.buttons || {})) {
+      const pb = parseInt(pbStr, 10);
+      if (!Number.isInteger(pb) || pb < 1 || !netName) continue;
+      buttons[pb] = ensureNet(netName); // create name-only net if catalog missed it
+    }
+    maps.push({ aircraft, radio: rm.radio, radioLabel: rm.radioLabel || undefined, buttons });
+  }
+
+  return { nets, maps };
 }
 
 function mergeBy<T>(existing: T[], extra: T[], key: (item: T) => string): T[] {

@@ -298,10 +298,20 @@ export function SopTab() {
       ];
       const totalNew = partsAdded.reduce((a, b) => a + Math.max(0, b), 0);
 
+      // v1.19.78 — comm plan (radio preset cards) lands in working.commPlan,
+      // not the flat arrays, so report it separately or a pure radio-card
+      // import reads as "0 new entries" and looks broken.
+      const planNetsAdded = (working.commPlan?.nets.length || 0) - (selected.commPlan?.nets.length || 0);
+      const planMapsAdded = (working.commPlan?.maps.length || 0) - (selected.commPlan?.maps.length || 0);
+      const planNote = planMapsAdded > 0
+        ? ` Comm plan: +${planMapsAdded} radio map${planMapsAdded === 1 ? '' : 's'}, +${Math.max(0, planNetsAdded)} net${planNetsAdded === 1 ? '' : 's'} (see SOP → Comm Plan).`
+        : '';
+
       const successCount = atts.length - failures.length;
-      const summary = atts.length === 1
+      const summary = (atts.length === 1
         ? `Extracted ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} via ${aiModel}.`
-        : `Extracted across ${successCount}/${atts.length} images via ${aiModel}: ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} added. (${totalIn} input + ${totalOut} output tokens total)`;
+        : `Extracted across ${successCount}/${atts.length} images via ${aiModel}: ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} added. (${totalIn} input + ${totalOut} output tokens total)`)
+        + planNote;
 
       if (failures.length > 0) {
         setImportError(`${summary}\n\n${failures.length} image(s) failed:\n${failures.slice(0, 3).join('\n')}${failures.length > 3 ? `\n…and ${failures.length - 3} more` : ''}`);
