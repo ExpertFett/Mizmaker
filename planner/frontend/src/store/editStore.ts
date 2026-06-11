@@ -58,6 +58,10 @@ export interface KneeboardCards {
    *  plan carries maps for; silently skipped otherwise (the card is
    *  meaningless without a plan). */
   radioPresets: boolean;
+  /** Transponder / IFF Card (v1.19.82) — per-flight Mode 1/2/3 squawk
+   *  plan from the active SOP's transponder block. Reference only;
+   *  silently skipped when the SOP carries no transponder plan. */
+  transponder: boolean;
 }
 
 export interface KneeboardSettings {
@@ -245,6 +249,9 @@ export const useEditStore = create<EditState>((set) => ({
       // SOP has no comm plan maps, so the default costs nothing for
       // users without a plan.
       radioPresets: true,
+      // Transponder card defaults ON — self-skips when the active SOP
+      // has no transponder plan, so it costs nothing without one.
+      transponder: true,
     },
   },
 

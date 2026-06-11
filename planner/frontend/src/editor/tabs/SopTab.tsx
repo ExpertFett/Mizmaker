@@ -307,11 +307,19 @@ export function SopTab() {
         ? ` Comm plan: +${planMapsAdded} radio map${planMapsAdded === 1 ? '' : 's'}, +${Math.max(0, planNetsAdded)} net${planNetsAdded === 1 ? '' : 's'} (see SOP → Comm Plan).`
         : '';
 
+      // v1.19.82 — transponder plan lands in working.transponder, also off
+      // the flat arrays, so report it or a pure transponder-card import
+      // reads as "0 new entries".
+      const xpdrAdded = (working.transponder?.assignments?.length || 0) - (selected.transponder?.assignments?.length || 0);
+      const xpdrNote = xpdrAdded > 0
+        ? ` Transponder: +${xpdrAdded} flight${xpdrAdded === 1 ? '' : 's'} (Kneeboard → Transponder / IFF).`
+        : '';
+
       const successCount = atts.length - failures.length;
       const summary = (atts.length === 1
         ? `Extracted ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} via ${aiModel}.`
         : `Extracted across ${successCount}/${atts.length} images via ${aiModel}: ${totalNew} new entr${totalNew === 1 ? 'y' : 'ies'} added. (${totalIn} input + ${totalOut} output tokens total)`)
-        + planNote;
+        + planNote + xpdrNote;
 
       if (failures.length > 0) {
         setImportError(`${summary}\n\n${failures.length} image(s) failed:\n${failures.slice(0, 3).join('\n')}${failures.length > 3 ? `\n…and ${failures.length - 3} more` : ''}`);

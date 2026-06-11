@@ -29,6 +29,12 @@ A radio-preset card has a title like "HORNET RADIO PRESETS" or "TOMCAT RADIO PRE
 - Put EVERY distinct ID/Name + its frequency into "nets" ONCE (dedupe across columns — "App. A CVN" appears on both radios but is ONE net). Use the exact ID text as the net name. A MIDS/datalink entry (no MHz freq, has a channel) → kind "midsA"/"midsB" with midsChannel; everything else → kind "radio" with frequency+modulation.
 - Button numbers can exceed 20 (e.g. a Tomcat radio with 24). Read ALL of them.
 
+TRANSPONDER / IFF SOP CARDS:
+A transponder card (title like "TRANSPONDER SOP" / "IFF") assigns squawk codes per flight. Fill "transponder":
+- One "assignments" entry per flight row: { "flight": <callsign>, "mode1": <2-octal or null>, "mode2": <4-octal or null>, "mode3": <4-octal squawk or null> }. Keep codes as STRINGS exactly as printed (preserve leading zeros). Octal digits are 0-7.
+- If the card states a single mission-wide Mode 1, put it in top-level "mode1". If it says Mode 4 is on/required, set "mode4": true.
+- This is reference data only — do NOT invent codes for flights not listed.
+
 CRITICAL output-length rules — these prevent JSON truncation:
 - "notes" is OPTIONAL and OFTEN BEST OMITTED. If you include it, ≤120 characters MAX. ONE short sentence identifying the SOP. NEVER dump tables, lists, or any structured data into notes — that's what the array fields are for. If the only thing you'd put there is a list, OMIT the field entirely.
 - If the page has per-unit laser codes (e.g. Victory 1-4: 1661-1664, Wraith 1-4: 1665-1668, etc.) — pick the LOWEST single code visible as "laserCodeBase" (an integer, e.g. 1661) and STOP. DO NOT enumerate per-unit codes anywhere in the response. The planner derives per-flight codes from the base.
@@ -59,6 +65,14 @@ JSON schema (all top-level fields optional; omit any you can't fill):
     { "role": string, "channel": number, "band": "X" | "Y", "callsign": string | null }
   ],
   "laserCodeBase": number,         // 4-digit code, each digit 1-7. Lowest code visible if multiple.
+  "transponder": {                 // ONLY when a transponder/IFF SOP card is present
+    "mode1": string | null,        // mission-wide Mode 1 (2-octal) if uniform
+    "mode4": boolean | null,       // true if Mode 4 required
+    "assignments": [
+      { "flight": string, "mode1": string | null, "mode2": string | null,
+        "mode3": string | null, "notes": string | null }
+    ]
+  },
   "commPlan": {                    // ONLY when a radio-preset card is present
     "aircraftTitle": string,       // airframe word from the card title
     "nets": [
@@ -90,7 +104,14 @@ interface PartialSop {
   comms?: Array<{ role: string; frequency: number; modulation?: 'AM' | 'FM' | null; notes?: string | null }>;
   tacans?: Array<{ role: string; channel: number; band: 'X' | 'Y'; callsign?: string | null }>;
   laserCodeBase?: number | null;
+  transponder?: PartialTransponder | null;
   commPlan?: PartialCommPlan | null;
+}
+
+interface PartialTransponder {
+  mode1?: string | null;
+  mode4?: boolean | null;
+  assignments?: Array<{ flight: string; mode1?: string | null; mode2?: string | null; mode3?: string | null; notes?: string | null }>;
 }
 
 /** Map a radio-preset card's airframe title word → DCS unit type, so the
@@ -265,6 +286,32 @@ export function mergePartialIntoSop(sop: SOP, partial: PartialSop): SOP {
   if (!next.notes && partial.notes) next.notes = partial.notes;
   if (next.laserCodeBase == null && partial.laserCodeBase != null) {
     next.laserCodeBase = partial.laserCodeBase;
+  }
+
+  // Transponder plan — merge per-flight assignments (existing wins),
+  // fill mission-wide mode1/mode4 only when the SOP lacks them.
+  if (partial.transponder) {
+    const pt = partial.transponder;
+    const existing = next.transponder ?? { assignments: [] };
+    const merged = mergeBy(
+      existing.assignments || [],
+      (pt.assignments || [])
+        .filter((a) => (a.flight || '').trim())
+        .map((a) => ({
+          flight: a.flight.trim(),
+          mode1: a.mode1 ?? undefined,
+          mode2: a.mode2 ?? undefined,
+          mode3: a.mode3 ?? undefined,
+          notes: a.notes ?? undefined,
+        })),
+      (a) => (a.flight || '').toLowerCase(),
+    );
+    next.transponder = {
+      mode1: existing.mode1 ?? pt.mode1 ?? undefined,
+      mode4: existing.mode4 ?? pt.mode4 ?? undefined,
+      assignments: merged,
+      notes: existing.notes,
+    };
   }
 
   // Merge arrays — dedupe by primary key. Existing entries win.

@@ -62,6 +62,39 @@ export interface SopTacanEntry {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
+ * Transponder / IFF (v1.19.82) — reference only.
+ *
+ * DCS does NOT store per-unit transponder codes in the .miz (not parsed,
+ * not writable — pilots set Mode 1/2/3 in-cockpit), so this can't be an
+ * "enforcement" model like the comm plan or laser codes. It's exactly
+ * what a squadron Transponder SOP card is in real life: a per-flight
+ * squawk plan the pilot dials in. We carry it on the SOP and render a
+ * kneeboard reference card from it.
+ *
+ * Modes: Mode 1 = 2-octal mission code; Mode 2 = 4-octal (often per-tail)
+ * unit code; Mode 3/A = 4-octal ATC squawk. Stored as strings so leading
+ * zeros and octal digits survive verbatim from the card.
+ * ────────────────────────────────────────────────────────────────────── */
+export interface SopTransponderAssignment {
+  /** Flight callsign this row applies to, e.g. "Bengal" (or "ALL"). */
+  flight: string;
+  mode1?: string;       // 2-octal mission code, e.g. "51"
+  mode2?: string;       // 4-octal unit code, e.g. "5100"
+  mode3?: string;       // 4-octal squawk, e.g. "4301"
+  notes?: string;
+}
+
+export interface SopTransponder {
+  /** Mission-wide Mode 1 when the SOP sets one uniformly. */
+  mode1?: string;
+  /** Whether Mode 4 (crypto) is expected on — display only. */
+  mode4?: boolean;
+  /** Per-flight squawk assignments. */
+  assignments: SopTransponderAssignment[];
+  notes?: string;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
  * Comm Plan (v1.19.77) — the wing's radio architecture, modelled from
  * real squadron radio-preset kneeboards (VF-103 Tomcat + VMFA-224
  * Hornet cards, 2026-06-10).
@@ -156,6 +189,10 @@ export interface SOP {
 
   /** Starting laser code for auto-assign (e.g. 1611). */
   laserCodeBase?: number;
+
+  /** Transponder / IFF squawk plan (reference only — DCS doesn't store
+   *  per-unit codes in the .miz). Renders a kneeboard card. */
+  transponder?: SopTransponder;
 
   /** Optional raw image / file attachment (base64) — for reference only.
    *  Deprecated: prefer `attachments` for multiple items. */

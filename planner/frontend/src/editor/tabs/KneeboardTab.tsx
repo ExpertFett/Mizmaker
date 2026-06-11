@@ -25,6 +25,7 @@ import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
+import { TransponderCard } from '../../kneeboard/TransponderCard';
 import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
@@ -62,6 +63,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
+  { key: 'transponder', label: 'Transponder / IFF', desc: 'Per-flight Mode 1/2/3 squawk plan — needs an active SOP with a transponder plan' },
   { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
@@ -289,6 +291,11 @@ export function KneeboardTab() {
     if (cards.sopComms && activeSop) {
       const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined });
       results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    // Transponder card — only when the active SOP carries a transponder plan.
+    if (cards.transponder && activeSop?.transponder?.assignments?.length) {
+      const el = createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined });
+      results.push({ name: 'Transponder.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     // Mission Goals card — emitted even when the goals list is empty
     // so the user gets a clear "no goals defined" placeholder rather
@@ -1124,6 +1131,12 @@ function CardCarousel({
       list.push({
         key: 'sopComms', label: 'SOP Comms',
         element: createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }),
+      });
+    }
+    if (cards.transponder && activeSop?.transponder?.assignments?.length) {
+      list.push({
+        key: 'transponder', label: 'Transponder / IFF',
+        element: createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined }),
       });
     }
     // Mission Goals card always renders when enabled, even with an
