@@ -60,8 +60,14 @@ const monoCell: React.CSSProperties = {
   letterSpacing: 1,
 };
 
+// Fixed 850px canvas fits ~20 rows under the header/banner. Cap and
+// show a "+N more" footer rather than silently clipping the bottom.
+const ROW_CAP = 20;
+
 export function TransponderCard({ transponder, squadron, overview }: TransponderCardProps) {
-  const rows = transponder.assignments ?? [];
+  const allRows = transponder.assignments ?? [];
+  const rows = allRows.slice(0, ROW_CAP);
+  const overflow = allRows.length - rows.length;
 
   return (
     <div style={{
@@ -136,6 +142,11 @@ export function TransponderCard({ transponder, squadron, overview }: Transponder
               ))}
             </tbody>
           </table>
+          {overflow > 0 && (
+            <div style={{ fontSize: 12, color: TEXT_MUTED, textAlign: 'center', marginTop: 6 }}>
+              +{overflow} more flight{overflow === 1 ? '' : 's'} in SOP
+            </div>
+          )}
         </div>
       )}
 

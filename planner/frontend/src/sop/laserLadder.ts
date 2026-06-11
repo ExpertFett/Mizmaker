@@ -55,8 +55,13 @@ export function assignLaserLadder(
   units: LaserCapableUnit[],
   base: number,
 ): Map<number, number> {
+  // Sort by group name before grouping so the ladder is deterministic
+  // regardless of input order — callers no longer have to pre-sort to
+  // agree with SOP Check (Array.sort is stable, so within-group unit
+  // order is preserved). Matches the store's groupName.localeCompare sort.
+  const sorted = [...units].sort((a, b) => (a.groupName || '').localeCompare(b.groupName || ''));
   const grouped = new Map<string, LaserCapableUnit[]>();
-  for (const u of units) {
+  for (const u of sorted) {
     let arr = grouped.get(u.groupName);
     if (!arr) { arr = []; grouped.set(u.groupName, arr); }
     arr.push(u);

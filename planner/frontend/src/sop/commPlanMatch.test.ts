@@ -69,7 +69,18 @@ describe('role classification', () => {
     expect(classifyNetRole('Shell')).toBe('tanker');
     expect(classifyNetRole('Overlord')).toBe('awacs');
     expect(classifyNetRole('Magic')).toBe('awacs');
+    expect(classifyNetRole('E-2 Hawkeye')).toBe('awacs');
     expect(classifyNetRole('Marshal CVN')).toBeNull();
+  });
+
+  it('does not false-positive on flight callsigns that merely contain a token', () => {
+    // Tightened regexes (v1.19.83): these must NOT classify as assets.
+    expect(classifyNetRole('Boomer')).toBeNull();      // player callsign, not "boom"
+    expect(classifyNetRole('Colt E2')).toBeNull();     // bare E2 (no hyphen) ≠ E-2
+    expect(classifyNetRole('Pontiac E3')).toBeNull();
+    expect(classifyNetRole('Ascot 51')).toBeNull();    // transport callsign
+    expect(groupAssetRole(group({ task: 'CAS', groupName: 'Boomer' }))).toBeNull();
+    expect(groupAssetRole(group({ task: 'CAS', groupName: 'Colt E2' }))).toBeNull();
   });
 
   it('classifies mission groups by task first, then name', () => {
@@ -118,6 +129,27 @@ describe('matchAssetNets', () => {
     expect(pairs[0].net.name).toBe('Arco 1');
     expect(pairs[1].group.groupId).toBe(20);
     expect(pairs[1].net.name).toBe('Texaco 1');
+  });
+
+  it('matches by callsign before falling back to order (no cross-wire)', () => {
+    // Nets named for the actual mission callsigns — must pair by name,
+    // not by alphabetical index (which would put Arco on Shell's net).
+    const namedPlan: CommPlan = {
+      nets: [
+        { id: 's', name: 'Shell 1', kind: 'radio', frequency: 251.0, modulation: 'AM' },
+        { id: 't', name: 'Texaco 1', kind: 'radio', frequency: 332.1, modulation: 'AM' },
+      ],
+      maps: [],
+    };
+    const groups = [
+      group({ groupId: 30, groupName: 'Arco', task: 'Refueling' }),
+      group({ groupId: 31, groupName: 'Shell', task: 'Refueling' }),
+    ];
+    const pairs = matchAssetNets(groups, namedPlan);
+    const shell = pairs.find((p) => p.group.groupId === 31)!;
+    expect(shell.net.name).toBe('Shell 1');          // matched by callsign
+    const arco = pairs.find((p) => p.group.groupId === 30)!;
+    expect(arco.net.name).toBe('Texaco 1');          // leftover, order-zipped
   });
 
   it('returns nothing when the plan has no asset nets', () => {

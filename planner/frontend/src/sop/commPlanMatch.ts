@@ -82,10 +82,15 @@ export function channelsFromCommPlan(
 
 export type AssetRole = 'tanker' | 'awacs';
 
-/** Common DCS tanker callsigns + generic terms. */
-const TANKER_NET = /\b(texaco|shell|arco|exxon|tanker|petro|boom(?:er)?|basket|kc-?1?[0-9]{2}|s-?3)\b/i;
-/** Common DCS AWACS/AEW callsigns + generic terms. */
-const AWACS_NET = /\b(overlord|magic|wizard|darkstar|sentry|focus|awacs|ascot|hawkeye|e-?[23]|skyking)\b/i;
+// Canonical DCS tanker/AWACS callsigns + the generic role words. Kept
+// TIGHT on purpose: a false positive here makes the comms applier
+// rewrite an AI group's frequency onto the wrong net. We dropped loose
+// tokens that collide with real flight callsigns — "Boomer" (a player
+// callsign), bare "E2"/"E3" (match "Colt E2"), "S3", "Ascot" (a
+// transport callsign), "Basket"/"Petro". Aircraft designators require a
+// hyphen (E-2/E-3, KC-135) so they can't match arbitrary words.
+const TANKER_NET = /\b(texaco|shell|arco|exxon|tanker|kc-1[0-9]{2})\b/i;
+const AWACS_NET = /\b(overlord|magic|wizard|darkstar|sentry|focus|awacs|hawkeye|e-[23])\b/i;
 
 /** Classify a comm-plan net's name into an AI-asset role, or null. */
 export function classifyNetRole(name: string): AssetRole | null {
@@ -113,6 +118,11 @@ export interface AssetPairing {
   role: AssetRole;
 }
 
+/** First whitespace/hyphen-delimited word, lowercased — the callsign root. */
+function firstWord(s: string): string {
+  return (s || '').split(/[-\s]/)[0].toLowerCase();
+}
+
 /**
  * Pair in-mission AI assets with the comm-plan nets that represent
  * them. For each role (tanker, AWACS) we sort the mission groups and
@@ -135,14 +145,36 @@ export function matchAssetNets(
   for (const role of ['tanker', 'awacs'] as AssetRole[]) {
     const groupsOfRole = groups
       .filter((g) => groupAssetRole(g) === role)
-      .sort((a, b) => a.groupName.localeCompare(b.groupName));
+      .sort((a, b) => (a.groupName || '').localeCompare(b.groupName || ''));
     const netsOfRole = plan.nets
       .filter((n) => n.kind === 'radio' && n.frequency != null && classifyNetRole(n.name) === role)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const pairs = Math.min(groupsOfRole.length, netsOfRole.length);
+    // Pass 1 — match by callsign root: a group named "Shell" pairs with
+    // the net whose name contains "shell" ("Shell 1"), regardless of
+    // alphabetical position. This is the reliable signal when the card's
+    // net names actually correspond to the mission's asset callsigns.
+    const usedNet = new Set<number>();
+    const leftover: MissionGroup[] = [];
+    for (const g of groupsOfRole) {
+      const gw = firstWord(g.groupName);
+      const idx = gw
+        ? netsOfRole.findIndex((n, i) => !usedNet.has(i) && n.name.toLowerCase().includes(gw))
+        : -1;
+      if (idx >= 0) {
+        usedNet.add(idx);
+        out.push({ group: g, net: netsOfRole[idx], role });
+      } else {
+        leftover.push(g);
+      }
+    }
+    // Pass 2 — order-zip the remainder against still-unused nets. This is
+    // the fallback for the common case where card names ("Texaco 1")
+    // differ from mission callsigns ("Shell").
+    const freeNets = netsOfRole.filter((_, i) => !usedNet.has(i));
+    const pairs = Math.min(leftover.length, freeNets.length);
     for (let i = 0; i < pairs; i++) {
-      out.push({ group: groupsOfRole[i], net: netsOfRole[i], role });
+      out.push({ group: leftover[i], net: freeNets[i], role });
     }
   }
   return out;

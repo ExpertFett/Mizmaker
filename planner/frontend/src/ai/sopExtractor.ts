@@ -289,8 +289,10 @@ export function mergePartialIntoSop(sop: SOP, partial: PartialSop): SOP {
   }
 
   // Transponder plan — merge per-flight assignments (existing wins),
-  // fill mission-wide mode1/mode4 only when the SOP lacks them.
-  if (partial.transponder) {
+  // fill mission-wide mode1/mode4 only when the SOP lacks them. Guard
+  // against an empty `{}` from the AI creating a hollow plan.
+  if (partial.transponder
+      && (partial.transponder.assignments?.length || partial.transponder.mode1 || partial.transponder.mode4 != null)) {
     const pt = partial.transponder;
     const existing = next.transponder ?? { assignments: [] };
     const merged = mergeBy(
@@ -377,7 +379,7 @@ export function mergePartialIntoSop(sop: SOP, partial: PartialSop): SOP {
   // by name (existing wins), and a button map is added only when the
   // SOP doesn't already carry one for that (aircraft, radio) — so a
   // user-built map is never silently overwritten by a re-import.
-  if (partial.commPlan) {
+  if (partial.commPlan && (partial.commPlan.nets?.length || partial.commPlan.radioMaps?.length)) {
     next.commPlan = mergeCommPlan(next.commPlan, partial.commPlan);
   }
 

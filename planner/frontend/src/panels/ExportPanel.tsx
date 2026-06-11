@@ -25,6 +25,7 @@ import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { SopCommsCard } from '../kneeboard/SopCommsCard';
+import { TransponderCard } from '../kneeboard/TransponderCard';
 import { GoalsCard } from '../kneeboard/GoalsCard';
 import { DmpiCard } from '../kneeboard/DmpiCard';
 import { NotesCard } from '../kneeboard/NotesCard';
@@ -240,6 +241,12 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         if (cards.sopComms && activeSop)
           await addCard(sharedType, 'SOP_Comms.png',
             createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }));
+        // Transponder / IFF — same gate as the carousel + standalone-zip
+        // paths (KneeboardTab). Without this block the card showed in the
+        // preview but never landed in the injected .miz. (v1.19.83)
+        if (cards.transponder && activeSop?.transponder?.assignments?.length)
+          await addCard(sharedType, 'Transponder.png',
+            createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined }));
         // Mission Goals — always emitted when the toggle is on, even
         // with an empty list. The card itself shows an explicit
         // placeholder so a "no goals" mission still gets a visible
