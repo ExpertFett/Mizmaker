@@ -606,7 +606,15 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
         dragCleanup.current = null;
       }
     };
-  }, [handleDragEnd, handleDragStart, addWaypointMode, measureMode, groups, selectedGroupId, viewMode]);
+    // IMPORTANT: do NOT depend on groups / selectedGroupId / viewMode here.
+    // isEditLocked reads them fresh via getState() at drag time, and the
+    // hit-test resolves the feature live on pointerdown — none are captured.
+    // Listing `groups` re-ran this effect on every store update (e.g. the
+    // server/SSE echo that lands ~3s after a drag), tearing down and
+    // recreating the pointer listeners mid-drag — which reset the internal
+    // `dragging` ref to null and left the waypoint stuck under the cursor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleDragEnd, handleDragStart, addWaypointMode, measureMode]);
 
   // Add waypoint mode toggle
   useEffect(() => {
