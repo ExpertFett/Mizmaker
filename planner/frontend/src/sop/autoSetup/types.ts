@@ -20,6 +20,7 @@ export type AutoSetupCategory =
   | 'Datalink'
   | 'Radio'
   | 'Comms'
+  | 'Laser'
   | 'Carriers';
 
 /** One applier's output. Always returned — even when nothing was done

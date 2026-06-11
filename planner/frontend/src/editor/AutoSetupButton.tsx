@@ -22,6 +22,7 @@ interface Props {
 export function AutoSetupButton({ onNavigate, collapsed }: Props) {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
+  const laserCapableUnits = useMissionStore((s) => s.laserCapableUnits);
   const sops = useSopStore((s) => s.sops);
   const activeSopId = useSopStore((s) => s.activeId);
   const activeSop = useMemo(
@@ -41,14 +42,14 @@ export function AutoSetupButton({ onNavigate, collapsed }: Props) {
 
   const handleClick = useCallback(() => {
     if (!activeSop || groups.length === 0) return;
-    const r = runAutoSetup(groups, clientUnits, activeSop);
+    const r = runAutoSetup(groups, clientUnits, activeSop, laserCapableUnits);
     // Push every produced edit into the queue. The user can review in
     // Edits tab and remove individual entries before download.
     for (const action of r.actions) {
       for (const e of action.edits) addEdit(e);
     }
     setReport(r);
-  }, [activeSop, groups, clientUnits, addEdit]);
+  }, [activeSop, groups, clientUnits, laserCapableUnits, addEdit]);
 
   return (
     <>

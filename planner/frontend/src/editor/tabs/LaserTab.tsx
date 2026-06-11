@@ -2,34 +2,11 @@ import { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { useActiveSop } from '../../sop/sopStore';
+// v1.19.80 — laser ladder math lives in sop/laserLadder so the Laser
+// tab, SOP Check, and the Auto-Setup laser applier all assign identical
+// codes (see that file). Was duplicated here.
+import { nextLaserCode, assignLaserLadder } from '../../sop/laserLadder';
 import type { LaserCapableUnit } from '../../types/mission';
-
-/**
- * DCS laser codes use digits 1-7 only (8 and 9 are invalid).
- * This increments the last digit, rolling over through higher digits,
- * keeping all digits in the valid 1-7 range.
- */
-function nextLaserCode(code: number): number {
-  let d1 = Math.floor(code / 1000) % 10;
-  let d2 = Math.floor(code / 100) % 10;
-  let d3 = Math.floor(code / 10) % 10;
-  let d4 = code % 10;
-  d4 += 1;
-  if (d4 > 7) { d4 = 1; d3 += 1; }
-  if (d3 > 7) { d3 = 1; d2 += 1; }
-  if (d2 > 7) { d2 = 1; d1 += 1; }
-  if (d1 > 7) d1 = 1; // wrap to 1111 — unreachable with normal mission sizes
-  return d1 * 1000 + d2 * 100 + d3 * 10 + d4;
-}
-
-function clampToValidLaserCode(n: number): number {
-  const d1 = Math.floor(n / 1000) % 10;
-  const d2 = Math.floor(n / 100) % 10;
-  const d3 = Math.floor(n / 10) % 10;
-  const d4 = n % 10;
-  const clamp = (d: number) => (d < 1 ? 1 : d > 7 ? 7 : d);
-  return clamp(d1) * 1000 + clamp(d2) * 100 + clamp(d3) * 10 + clamp(d4);
-}
 
 export function LaserTab() {
   const laserCapableUnits = useMissionStore((s) => s.laserCapableUnits);
@@ -123,18 +100,11 @@ export function LaserTab() {
   }, [addEdit]);
 
   const handleAutoAssign = useCallback(() => {
-    const start = clampToValidLaserCode(baseCode);
     const { laserCapableUnits: units } = useMissionStore.getState();
-    let nextCode = start;
-    const assignedByUnit = new Map<number, number>();
-    let groupCount = 0;
-    for (const [, { units: groupUnits }] of grouped) {
-      groupCount += 1;
-      for (const u of groupUnits) {
-        assignedByUnit.set(u.unitId, nextCode);
-        nextCode = nextLaserCode(nextCode);
-      }
-    }
+    // Shared ladder — identical to what SOP Check expects and the
+    // Auto-Setup laser applier stages.
+    const assignedByUnit = assignLaserLadder(units, baseCode);
+    const groupCount = new Set(units.map((u) => u.groupName)).size;
 
     const updatedUnits = units.map((u) => {
       const code = assignedByUnit.get(u.unitId);
@@ -145,9 +115,9 @@ export function LaserTab() {
     useMissionStore.getState().setLaserCapableUnits(updatedUnits);
 
     setAutoResult(
-      `Assigned ${assignedByUnit.size} laser code${assignedByUnit.size !== 1 ? 's' : ''} across ${groupCount} group${groupCount !== 1 ? 's' : ''} starting at ${start}`,
+      `Assigned ${assignedByUnit.size} laser code${assignedByUnit.size !== 1 ? 's' : ''} across ${groupCount} group${groupCount !== 1 ? 's' : ''} starting at ${assignedByUnit.values().next().value ?? baseCode}`,
     );
-  }, [grouped, baseCode, addEdit]);
+  }, [baseCode, addEdit]);
 
   if (laserUnits.length === 0) {
     return (

@@ -58,6 +58,7 @@ const severityLabel: Record<Severity, string> = {
 export function SopCheckTab() {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
+  const laserCapableUnits = useMissionStore((s) => s.laserCapableUnits);
   const sops = useSopStore((s) => s.sops);
   const activeSopId = useSopStore((s) => s.activeId);
   const addEdit = useEditStore((s) => s.addEdit);
@@ -80,7 +81,7 @@ export function SopCheckTab() {
     setApplyBusy(true);
     setApplyNote(null);
     try {
-      const report = runAutoSetup(groups, clientUnits, activeSop);
+      const report = runAutoSetup(groups, clientUnits, activeSop, laserCapableUnits);
       for (const action of report.actions) {
         for (const edit of action.edits) {
           addEdit(edit as never);
@@ -113,12 +114,12 @@ export function SopCheckTab() {
     } finally {
       setApplyBusy(false);
     }
-  }, [activeSop, groups, clientUnits, addEdit]);
+  }, [activeSop, groups, clientUnits, laserCapableUnits, addEdit]);
 
   const rows = useMemo(() => {
     if (!activeSop) return [];
-    return buildReport(groups, activeSop);
-  }, [groups, activeSop]);
+    return buildReport(groups, activeSop, laserCapableUnits);
+  }, [groups, activeSop, laserCapableUnits]);
 
   // Group rows by category for visual scanning. JS Map preserves insert
   // order so the report sections come out in checkPlayerFlightFreqs →

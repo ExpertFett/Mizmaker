@@ -23,9 +23,17 @@ import {
   checkTankers,
   checkCarriers,
   checkCommPlanAssets,
+  checkLaserCodes,
 } from './discrepancy';
-import type { MissionGroup, MissionUnit } from '../types/mission';
+import type { MissionGroup, MissionUnit, LaserCapableUnit } from '../types/mission';
 import type { SOP, CommPlan } from './types';
+
+function makeLaserUnit(o: Partial<LaserCapableUnit> = {}): LaserCapableUnit {
+  return {
+    unitId: 1, name: 'Bengal 1-1', type: 'FA-18C_hornet', groupName: 'Bengal 1',
+    coalition: 'blue', isClient: true, pylons: [], laserCode: null, ...o,
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Builders                                                            */
@@ -509,5 +517,42 @@ describe('checkCommPlanAssets', () => {
     const sop = makeSop({});
     const groups = [makeGroup({ groupName: 'Shell', task: 'Refueling', units: [makeUnit({ skill: 'High' })] })];
     expect(checkCommPlanAssets(groups, sop)).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* checkLaserCodes (#63)                                               */
+/* ------------------------------------------------------------------ */
+
+describe('checkLaserCodes', () => {
+  it('flags RED for each shooter off the SOP ladder', () => {
+    const sop = makeSop({ laserCodeBase: 1611 });
+    const units = [
+      makeLaserUnit({ unitId: 1, laserCode: 1611 }),   // correct → no row
+      makeLaserUnit({ unitId: 2, laserCode: 1688 }),   // wrong
+      makeLaserUnit({ unitId: 3, laserCode: null }),   // unset
+    ];
+    const rows = checkLaserCodes(units, sop);
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.severity === 'red')).toBe(true);
+    expect(rows.every((r) => r.category === 'Laser Codes')).toBe(true);
+    // Unit 2's expected ladder slot is 1612, unit 3's is 1613.
+    expect(rows.map((r) => r.sopValue).sort()).toEqual(['1612', '1613']);
+  });
+
+  it('passes silently when all codes match', () => {
+    const sop = makeSop({ laserCodeBase: 1611 });
+    const units = [makeLaserUnit({ unitId: 1, laserCode: 1611 }), makeLaserUnit({ unitId: 2, laserCode: 1612 })];
+    expect(checkLaserCodes(units, sop)).toEqual([]);
+  });
+
+  it('no-ops when SOP defines no laser base', () => {
+    expect(checkLaserCodes([makeLaserUnit({ laserCode: 1234 })], makeSop({}))).toEqual([]);
+  });
+
+  it('falls back to a gray info row when no laser units are loaded', () => {
+    const rows = checkLaserCodes([], makeSop({ laserCodeBase: 1611 }));
+    expect(rows.length).toBe(1);
+    expect(rows[0].severity).toBe('gray');
   });
 });

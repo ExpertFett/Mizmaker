@@ -22,7 +22,8 @@
 
 import { isPlayerGroup, isCarrierGroup } from '../utils/groups';
 import { matchAssetNets } from './commPlanMatch';
-import type { MissionGroup } from '../types/mission';
+import { assignLaserLadder } from './laserLadder';
+import type { MissionGroup, LaserCapableUnit } from '../types/mission';
 import type {
   SOP, SopFlightCallsign, SopTanker, SopTacanEntry,
 } from './types';
@@ -335,21 +336,48 @@ export function checkDatalinkOrder(groups: MissionGroup[], sop: SOP): Discrepanc
   return out;
 }
 
-export function checkLaserCodes(_groups: MissionGroup[], sop: SOP): DiscrepancyRow[] {
-  // We don't have per-unit laser codes on MissionGroup — those live
-  // in unit pylon weapon settings, which the frontend reads as
-  // pylonOptions / unit edits. For v1 we just inform the user about
-  // the SOP base value so they can verify in the Laser tab. v2 will
-  // pull actual unit laser codes via the donor data structure.
+/**
+ * v1.19.80 — real per-unit laser-code validation. Earlier this only
+ * echoed the SOP base value; now that per-unit codes are parsed into
+ * laserCapableUnits we compute the SOP ladder (assignLaserLadder — the
+ * same function the Laser tab's Auto Assign + the laser applier use)
+ * and flag every shooter off its slot. RED: a duplicate / wrong laser
+ * code is a fratricide risk, not a style nit. Falls back to the old
+ * informational row only when no laser units were passed (so the check
+ * still says something useful in contexts that don't hydrate them).
+ */
+export function checkLaserCodes(
+  laserUnits: LaserCapableUnit[],
+  sop: SOP,
+): DiscrepancyRow[] {
   if (sop.laserCodeBase == null) return [];
-  return [{
-    category: 'Laser Codes',
-    field: 'Base value',
-    missionValue: 'Check Laser tab',
-    sopValue: String(sop.laserCodeBase),
-    severity: 'gray',
-    reason: `SOP defines laser code base ${sop.laserCodeBase}. Per-unit codes are validated separately in v2.`,
-  }];
+
+  if (laserUnits.length === 0) {
+    return [{
+      category: 'Laser Codes',
+      field: 'Base value',
+      missionValue: 'No laser-capable units loaded',
+      sopValue: String(sop.laserCodeBase),
+      severity: 'gray',
+      reason: `SOP defines laser code base ${sop.laserCodeBase}.`,
+    }];
+  }
+
+  const ladder = assignLaserLadder(laserUnits, sop.laserCodeBase);
+  const out: DiscrepancyRow[] = [];
+  for (const u of laserUnits) {
+    const want = ladder.get(u.unitId);
+    if (want == null || u.laserCode === want) continue;
+    out.push({
+      category: 'Laser Codes',
+      field: `${u.groupName} / ${u.name}`,
+      missionValue: u.laserCode == null ? 'Not set' : String(u.laserCode),
+      sopValue: String(want),
+      severity: 'red',
+      reason: `Off the SOP laser ladder (base ${sop.laserCodeBase}). Apply SOP — or the Laser tab's Auto Assign — sets it.`,
+    });
+  }
+  return out;
 }
 
 /**
@@ -386,7 +414,11 @@ export function checkCommPlanAssets(groups: MissionGroup[], sop: SOP): Discrepan
 /* Aggregator                                                          */
 /* ------------------------------------------------------------------ */
 
-export function buildReport(groups: MissionGroup[], sop: SOP): DiscrepancyRow[] {
+export function buildReport(
+  groups: MissionGroup[],
+  sop: SOP,
+  laserUnits: LaserCapableUnit[] = [],
+): DiscrepancyRow[] {
   return [
     ...checkPlayerFlightFreqs(groups, sop),
     ...checkGuardFreq(groups, sop),
@@ -395,6 +427,6 @@ export function buildReport(groups: MissionGroup[], sop: SOP): DiscrepancyRow[] 
     ...checkSupport(groups, sop),
     ...checkCarriers(groups, sop),
     ...checkDatalinkOrder(groups, sop),
-    ...checkLaserCodes(groups, sop),
+    ...checkLaserCodes(laserUnits, sop),
   ];
 }

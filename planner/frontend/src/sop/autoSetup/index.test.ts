@@ -289,7 +289,7 @@ describe('runAutoSetup', () => {
     const report = runAutoSetup(groups, cu, sop);
     expect(report.sopName).toBe('Test');
     expect(report.actions.map((a) => a.category)).toEqual([
-      'Renamer', 'Datalink', 'Radio', 'Comms', 'Carriers',
+      'Renamer', 'Datalink', 'Radio', 'Comms', 'Laser', 'Carriers',
     ]);
     expect(report.totalEdits).toBeGreaterThan(0);
   });

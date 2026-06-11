@@ -20,8 +20,9 @@ import { applyRenamerSop } from './renamer';
 import { applyDatalinkSop } from './datalink';
 import { applyRadioSop } from './radio';
 import { applyCommAssetsSop } from './comms';
+import { applyLaserCodesSop } from './laser';
 import { applyCarriersSop } from './carriers';
-import type { ClientUnit, MissionGroup } from '../../types/mission';
+import type { ClientUnit, LaserCapableUnit, MissionGroup } from '../../types/mission';
 import type { SOP } from '../types';
 import type { AutoSetupReport, AutoSetupAction } from './types';
 
@@ -31,6 +32,7 @@ export function runAutoSetup(
   groups: MissionGroup[],
   clientUnits: ClientUnit[],
   sop: SOP,
+  laserUnits: LaserCapableUnit[] = [],
 ): AutoSetupReport {
   // Run each applier. Any thrown exception becomes a "failed" action
   // so a single broken applier can't take the whole run down.
@@ -39,13 +41,14 @@ export function runAutoSetup(
     safelyRun('Datalink', () => applyDatalinkSop(clientUnits, sop)),
     safelyRun('Radio', () => applyRadioSop(groups, sop)),
     safelyRun('Comms', () => applyCommAssetsSop(groups, sop)),
+    safelyRun('Laser', () => applyLaserCodesSop(laserUnits, sop)),
     safelyRun('Carriers', () => applyCarriersSop(groups, sop)),
   ];
 
   // Discrepancies are the post-pass picture: things the SOP says that
   // the auto-pass couldn't address. The user clicks through to the
   // SOP Check tab to drill in.
-  const discrepancies = buildReport(groups, sop);
+  const discrepancies = buildReport(groups, sop, laserUnits);
 
   return {
     sopName: sop.name,
