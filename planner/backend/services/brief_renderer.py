@@ -730,7 +730,8 @@ def _slide_has_content(slide) -> bool:
 
 def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None,
                       top_margin_in: Optional[float] = None,
-                      sections: Optional[List[Dict[str, Any]]] = None) -> bytes:
+                      sections: Optional[List[Dict[str, Any]]] = None,
+                      bg_image_b64: Optional[str] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
 
     base_template_b64: optional base64 of a squadron .pptx. When given,
@@ -774,6 +775,17 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         prs.slide_width = Inches(13.333)   # 16:9
         prs.slide_height = Inches(7.5)
 
+    # Image template (v1.19.86) — a PNG/JPEG used as the full-bleed
+    # background behind every slide (squadron backdrop/letterhead) for
+    # users who don't have a .pptx. Mutually exclusive with a .pptx base
+    # template. Decoded once; applied at the end after the deck is built.
+    bg_img_bytes = None
+    if bg_image_b64 and not use_template:
+        try:
+            bg_img_bytes = _b64.b64decode(bg_image_b64.split(",", 1)[-1])
+        except Exception:
+            bg_img_bytes = None
+
     # How many slides the template already had — its branding cover(s).
     n_template_slides = len(prs.slides._sldIdLst)
 
@@ -798,6 +810,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # template's background brightness, or text vanishes (e.g. light grey
     # on a white master). Auto-detect dark vs light from the master bg.
     dark = True if not use_template else _master_bg_is_dark(prs)
+    # Image template: pick text palette from the backdrop's luminance so
+    # text reads on it (light text on a dark backdrop, dark text on light).
+    if bg_img_bytes:
+        dark = _image_is_dark(bg_img_bytes)
     if dark:
         BG = RGBColor(0x1A, 0x1A, 0x1A)
         LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
@@ -865,6 +881,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # 0-4"); default 1.2".
     if use_template:
         _top = 1.2 if top_margin_in is None else max(0.0, min(float(top_margin_in), 4.0))
+    elif bg_img_bytes and top_margin_in is not None:
+        # Image backdrops can also carry a header band the user wants to
+        # clear — honour the margin when set, but default to 0 (no band).
+        _top = max(0.0, min(float(top_margin_in), 4.0))
     else:
         _top = 0.0
     _MY = Inches(_top)
@@ -893,8 +913,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # ---------- helpers ---------------------------------------------------
 
     def _apply_bg(slide):
-        # On a user template, let the master's branding/background show.
-        if use_template:
+        # On a user template OR an image backdrop, don't paint our own
+        # solid rectangle — the template master / the full-bleed image is
+        # the background instead.
+        if use_template or bg_img_bytes:
             return
         rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
         rect.fill.solid(); rect.fill.fore_color.rgb = BG
@@ -1491,6 +1513,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     if speaker_notes_map:
         _apply_speaker_notes(prs, n_template_slides, speaker_notes_map)
 
+    # v1.19.86 — image template: drop the backdrop behind every built slide.
+    if bg_img_bytes:
+        _apply_bg_image(prs, n_template_slides, bg_img_bytes)
+
     # v1.19.84 — honour the user's slide layout (show/hide + reorder). Runs
     # AFTER speaker notes (which attach by slide object, order-independent).
     if sections:
@@ -1562,6 +1588,41 @@ def _section_of_slide(slide) -> Optional[str]:
         if any(h.startswith(p) for p in prefixes):
             return sid
     return None
+
+
+def _image_is_dark(img_bytes: bytes) -> bool:
+    """True if the image's average luminance is dark (→ use light text).
+    Falls back to dark (the safe default for squadron backdrops) if the
+    image can't be sampled."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(img_bytes)).convert("L").resize((16, 16))
+        data = list(im.getdata())
+        return (sum(data) / len(data)) < 128
+    except Exception:
+        return True
+
+
+def _apply_bg_image(prs, n_template_slides: int, img_bytes: bytes) -> None:
+    """Drop a full-bleed background picture behind every renderer-added
+    slide (the squadron backdrop). Each picture is sent to the back of the
+    slide's shape tree so all content draws on top. Template slides (the
+    first n_template_slides) are left alone. Per-slide failures are
+    swallowed so a bad image never breaks the render."""
+    try:
+        slides = list(prs.slides)
+    except Exception:
+        return
+    W, H = prs.slide_width, prs.slide_height
+    for slide in slides[n_template_slides:]:
+        try:
+            pic = slide.shapes.add_picture(io.BytesIO(img_bytes), 0, 0, width=W, height=H)
+            tree = slide.shapes._spTree
+            el = pic._element
+            tree.remove(el)
+            tree.insert(2, el)  # first child after nvGrpSpPr/grpSpPr → back of z-order
+        except Exception:
+            pass
 
 
 def _apply_section_layout(prs, n_template_slides: int, sections: List[Dict[str, Any]]) -> None:

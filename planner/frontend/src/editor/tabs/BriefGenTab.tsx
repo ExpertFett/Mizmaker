@@ -246,10 +246,18 @@ export function BriefGenTab() {
   // base64, no data: prefix. Threaded into preview/render calls.
   const [templateB64, setTemplateB64] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState<string | null>(null);
+  // v1.19.86 — the template can be a .pptx (built ON it) or an image
+  // (PNG/JPEG used as the full-bleed background on every slide). One slot,
+  // two kinds; the send path routes to `template` vs `bg_image`.
+  const [templateKind, setTemplateKind] = useState<'pptx' | 'image' | null>(null);
   // Content top-margin (inches) — pushes brief content below the
   // template's branded header band so section titles don't collide with
   // logos. Only relevant when a template is attached. (v0.9.81)
   const [templateTopMargin, setTemplateTopMargin] = useState(1.2);
+  // Route the single template slot to the right render param.
+  const tmplBody = templateKind === 'pptx' ? (templateB64 || undefined) : undefined;
+  const bgImageBody = templateKind === 'image' ? (templateB64 || undefined) : undefined;
+  const topMarginBody = templateB64 ? templateTopMargin : undefined;
 
   // Collapsible cards (v1.19.84) — set of collapsed card slug-ids. Lives
   // in component state, which survives tab switches (tabs stay mounted
@@ -369,7 +377,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/preview-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, dpi: 100, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
+        body: JSON.stringify({ brief, dpi: 100, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (reqId !== previewReq.current) return; // superseded by a newer render
       if (!res.ok) {
@@ -418,7 +426,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
+        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -498,7 +506,7 @@ export function BriefGenTab() {
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
+        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -835,14 +843,17 @@ export function BriefGenTab() {
             </span>
             <input
               type="file"
-              accept=".pptx"
+              accept=".pptx,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
               id="brief-base-template-input"
               style={{ display: 'none' }}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                if (!file.name.toLowerCase().endsWith('.pptx')) {
-                  setError('Template must be a .pptx file');
+                const lname = file.name.toLowerCase();
+                const isPptx = lname.endsWith('.pptx');
+                const isImage = /\.(png|jpe?g|webp)$/.test(lname) || file.type.startsWith('image/');
+                if (!isPptx && !isImage) {
+                  setError('Template must be a .pptx or an image (PNG / JPEG / WEBP)');
                   return;
                 }
                 try {
@@ -856,6 +867,10 @@ export function BriefGenTab() {
                   }
                   setTemplateB64(btoa(bin));
                   setTemplateName(file.name);
+                  setTemplateKind(isPptx ? 'pptx' : 'image');
+                  // .pptx defaults to a 1.2" header-clear inset; an image
+                  // backdrop starts content at the top (raise if it has a band).
+                  setTemplateTopMargin(isPptx ? 1.2 : 0);
                   setError(null);
                 } catch {
                   setError('Could not read template file');
@@ -868,8 +883,9 @@ export function BriefGenTab() {
                   {templateName}
                 </span>
                 <span style={{ fontSize: 11, color: '#cccccc' }}>
-                  — built on your template: cover + branding + theme. Text color
-                  auto-adapts to your background.
+                  {templateKind === 'image'
+                    ? '— image backdrop behind every slide; text colour auto-contrasts to it.'
+                    : '— built on your template: cover + branding + theme. Text color auto-adapts to your background.'}
                 </span>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#aaaaaa' }}
                        title="How far down content starts, in inches — raise it until section titles clear your template's header band / logos.">
@@ -888,20 +904,20 @@ export function BriefGenTab() {
                 <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
                   Replace
                 </label>
-                <button onClick={() => { setTemplateB64(null); setTemplateName(null); }} style={btnDanger}>
+                <button onClick={() => { setTemplateB64(null); setTemplateName(null); setTemplateKind(null); }} style={btnDanger}>
                   Remove
                 </button>
               </>
             ) : (
               <>
                 <label htmlFor="brief-base-template-input" style={{ ...btnSecondary, display: 'inline-block' }}>
-                  Upload .pptx
+                  Upload .pptx or image
                 </label>
                 <span style={{ fontSize: 11, color: '#888888' }}>
                   Optional — without one, the brief uses the built-in dark template.
-                  With one, the whole brief renders on your template's background +
-                  branding (text color auto-adapts to light/dark); your cover slide(s)
-                  lead the deck.
+                  A <strong>.pptx</strong> renders the brief on its slides + theme (your
+                  cover leads the deck). A <strong>PNG / JPEG</strong> is used as the
+                  full-bleed background on every slide; text colour auto-contrasts.
                 </span>
               </>
             )}

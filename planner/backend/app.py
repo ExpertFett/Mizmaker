@@ -2063,6 +2063,7 @@ def brief_preview_wing():
     template_b64 = body.get("template") or None
     top_margin = body.get("top_margin")
     sections = body.get("sections")  # optional [{id, enabled}] slide layout
+    bg_image = body.get("bg_image")  # optional PNG/JPEG backdrop (base64)
     if not isinstance(brief, dict):
         return jsonify({"error": "brief object required"}), 400
     # Cap DPI to something reasonable — preview doesn't need print quality
@@ -2076,7 +2077,7 @@ def brief_preview_wing():
         # PPTX → PDF (LibreOffice) → per-page PNG (pypdfium2). Skip the
         # zip-bundling that the public PNG export does — the editor needs
         # the raw slide images.
-        pptx_bytes = render_wing_brief(brief, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections)
+        pptx_bytes = render_wing_brief(brief, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections, bg_image_b64=bg_image)
         pdf_bytes, _ = convert_pptx(pptx_bytes, "pdf")
         slide_pngs = _rasterize_pdf(pdf_bytes, "png", dpi=dpi)
     except LibreOfficeNotFoundError as e:
@@ -2148,6 +2149,7 @@ def brief_render_package():
     template_b64 = body.get("template") or None
     top_margin = body.get("top_margin")
     sections = body.get("sections")  # optional [{id, enabled}] slide layout
+    bg_image = body.get("bg_image")  # optional PNG/JPEG backdrop (base64)
     if not isinstance(wing, dict):
         return jsonify({"error": "wing brief object required"}), 400
     if not isinstance(flights, list):
@@ -2169,7 +2171,7 @@ def brief_render_package():
         # malformed brief doesn't take down the whole package.
         items: list[tuple[str, bytes]] = []  # (filename_in_zip, bytes)
 
-        wing_pptx = render_wing_brief(wing, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections)
+        wing_pptx = render_wing_brief(wing, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections, bg_image_b64=bg_image)
         wing_out, _ = convert_pptx(wing_pptx, fmt)  # noqa: pptx passthrough or pdf
         items.append((f"{safe_name}_wing.{fmt}", wing_out))
 
@@ -2210,6 +2212,7 @@ def brief_render_wing():
     template_b64 = body.get("template") or None
     top_margin = body.get("top_margin")
     sections = body.get("sections")  # optional [{id, enabled}] slide layout
+    bg_image = body.get("bg_image")  # optional PNG/JPEG backdrop (base64)
     if not isinstance(brief, dict):
         return jsonify({"error": "brief object required"}), 400
     if fmt not in ("pptx", "pdf", "png", "jpg"):
@@ -2219,7 +2222,7 @@ def brief_render_wing():
         from services.brief_renderer import (
             render_wing_brief, convert_pptx, LibreOfficeNotFoundError,
         )
-        pptx_bytes = render_wing_brief(brief, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections)
+        pptx_bytes = render_wing_brief(brief, base_template_b64=template_b64, top_margin_in=top_margin, sections=sections, bg_image_b64=bg_image)
         out_bytes, mime = convert_pptx(pptx_bytes, fmt)
     except LibreOfficeNotFoundError as e:
         return jsonify({"error": str(e)}), 503
