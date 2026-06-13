@@ -729,7 +729,8 @@ def _slide_has_content(slide) -> bool:
 
 
 def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = None,
-                      top_margin_in: Optional[float] = None) -> bytes:
+                      top_margin_in: Optional[float] = None,
+                      sections: Optional[List[Dict[str, Any]]] = None) -> bytes:
     """Render a WingBrief dict to .pptx bytes.
 
     base_template_b64: optional base64 of a squadron .pptx. When given,
@@ -1490,6 +1491,11 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     if speaker_notes_map:
         _apply_speaker_notes(prs, n_template_slides, speaker_notes_map)
 
+    # v1.19.84 — honour the user's slide layout (show/hide + reorder). Runs
+    # AFTER speaker notes (which attach by slide object, order-independent).
+    if sections:
+        _apply_section_layout(prs, n_template_slides, sections)
+
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue()
@@ -1521,6 +1527,107 @@ _SLIDE_HEADER_TO_NOTE_KEY: Dict[str, str] = {
     "popup attack profiles": "popup",
     "weapon employment": "weapons",
 }
+
+
+# Section id → header-text prefixes (lowercased, punctuation-stripped) the
+# renderer writes via _slide_header(). Used to identify a built slide's
+# section for the show/hide + reorder layout. Paginated slides share a
+# header prefix (e.g. "FRIENDLY FORCES (1/2)") so we match by startswith.
+_SECTION_LABEL_PREFIXES: Dict[str, List[str]] = {
+    "theatre": ["theatre overview"],
+    "scenario": ["scenario"],
+    "route_overview": ["route overview"],
+    "intent": ["commander's intent", "commanders intent"],
+    "threat_brief": ["threat brief"],
+    "threats": ["surface threats"],
+    "flights": ["friendly forces", "force composition"],
+    "air_threats": ["air threats"],
+    "comms": ["comms"],
+    "mission_flow": ["mission flow"],
+    "timeline": ["timeline"],
+    "notes": ["special instructions", "notes"],
+    "popup": ["popup attack"],
+    "weapons": ["weapon employment"],
+}
+
+
+def _section_of_slide(slide) -> Optional[str]:
+    """Identify a built slide's section id from its header text, or None
+    (cover / unrecognised). Matches by startswith so paginated headers with
+    "(1/2)" suffixes still resolve."""
+    h = _slide_section_header(slide).lower().strip(" :.")
+    if not h:
+        return None
+    for sid, prefixes in _SECTION_LABEL_PREFIXES.items():
+        if any(h.startswith(p) for p in prefixes):
+            return sid
+    return None
+
+
+def _apply_section_layout(prs, n_template_slides: int, sections: List[Dict[str, Any]]) -> None:
+    """Reorder + filter the renderer-added content slides per the user's
+    layout. `sections` = [{"id": str, "enabled": bool}, ...] in the desired
+    order. Template slides + the renderer's cover stay pinned at the front.
+    Content slides whose section isn't listed are kept (appended after the
+    ordered ones, original order) so an unlisted slide (e.g. route overview)
+    is never silently dropped. Disabled sections are removed.
+
+    Reorders by rewriting the <p:sldIdLst> element order (the established,
+    relationship-safe python-pptx idiom). Removed slides' parts stay in the
+    package but don't render without a sldId entry — fine for a one-shot
+    export. Any failure leaves the deck untouched."""
+    try:
+        sldIdLst = prs.slides._sldIdLst
+        id_elems = list(sldIdLst)        # one <p:sldId> per slide, in order
+        slides = list(prs.slides)
+        n = len(slides)
+        if n != len(id_elems) or n == 0:
+            return
+
+        # Pin template slides; also pin the renderer's cover (first added
+        # slide with no recognised section header — absent when a template
+        # supplies the cover).
+        pinned_count = min(n_template_slides, n)
+        if pinned_count < n and _section_of_slide(slides[pinned_count]) is None:
+            pinned_count += 1
+
+        listed = {s.get("id") for s in sections}
+        order = [s.get("id") for s in sections if s.get("enabled", True)]
+
+        # Group consecutive content slides by section (keeps pagination intact).
+        groups: List[tuple] = []  # (sid_or_None, [indices])
+        for idx in range(pinned_count, n):
+            sid = _section_of_slide(slides[idx])
+            if groups and groups[-1][0] == sid and sid is not None:
+                groups[-1][1].append(idx)
+            else:
+                groups.append((sid, [idx]))
+
+        by_sid: Dict[str, List[List[int]]] = {}
+        unknown: List[List[int]] = []
+        for sid, idxs in groups:
+            if sid is not None and sid in listed:
+                by_sid.setdefault(sid, []).append(idxs)
+            else:
+                unknown.append(idxs)  # cover-less unrecognised / not user-controlled
+
+        new_content: List[int] = []
+        for sid in order:
+            for idxs in by_sid.get(sid, []):
+                new_content.extend(idxs)
+        for idxs in unknown:
+            new_content.extend(idxs)
+
+        desired = list(range(pinned_count)) + new_content
+        # No-op guard: if nothing changed, don't churn the XML.
+        if desired == list(range(n)):
+            return
+        for el in id_elems:
+            sldIdLst.remove(el)
+        for i in desired:
+            sldIdLst.append(id_elems[i])
+    except Exception:
+        pass  # never break the render over layout
 
 
 def _apply_speaker_notes(prs, n_template_slides: int, notes_map: Dict[str, str]) -> None:

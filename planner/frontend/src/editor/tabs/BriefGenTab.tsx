@@ -12,7 +12,7 @@
  *      version since some users will want this path.
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, useContext, createContext } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { getEffectiveGroupsSnapshot } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
@@ -85,6 +85,58 @@ const FORMAT_LABEL: Record<OutputFormat, string> = {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+/** Slugify a card title into a stable DOM id (for collapse state + nav). */
+function cardSlug(title: string): string {
+  return title.toLowerCase().replace(/\(.*?\)/g, '').trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/** Collapse state shared with the Card component without prop-drilling
+ *  every <Card> usage (v1.19.84). */
+const BriefCardCtx = createContext<{ collapsed: Set<string>; toggle: (id: string) => void } | null>(null);
+
+/** Editor cards in render order — drives the jump-to-section nav rail.
+ *  `title` must match each <Card>'s title so the slug ids line up. */
+const NAV_SECTIONS: { title: string; short: string }[] = [
+  { title: 'Slides (order & visibility)', short: 'Slides' },
+  { title: 'Cover', short: 'Cover' },
+  { title: 'Brief Colors (optional)', short: 'Colors' },
+  { title: 'Theatre Overview', short: 'Theatre' },
+  { title: 'Scenario', short: 'Scenario' },
+  { title: 'Mission Story', short: 'Story' },
+  { title: "Commander's Intent", short: 'Intent' },
+  { title: 'Threat Brief (AI)', short: 'Threat Brief' },
+  { title: 'Threats', short: 'Threats' },
+  { title: 'Air Threats', short: 'Air' },
+  { title: 'Friendly Forces', short: 'Forces' },
+  { title: 'Per-Flight Briefs', short: 'Flights' },
+  { title: 'Comms', short: 'Comms' },
+  { title: 'Mission Flow', short: 'Flow' },
+  { title: 'Timeline', short: 'Timeline' },
+  { title: 'Special Instructions / Notes', short: 'Notes' },
+];
+
+/** Controllable wing-brief slide sections, in the renderer's DEFAULT emit
+ *  order (must match brief_renderer.render_wing_brief so disabling one
+ *  section never surprise-reorders the rest). The cover is always first
+ *  and isn't listed. ids match the backend _SECTION_LABEL_PREFIXES keys. */
+const SLIDE_SECTIONS: { id: string; label: string }[] = [
+  { id: 'theatre', label: 'Theatre Overview' },
+  { id: 'scenario', label: 'Scenario' },
+  { id: 'intent', label: "Commander's Intent" },
+  { id: 'route_overview', label: 'Route Overview (map)' },
+  { id: 'threat_brief', label: 'Threat Brief (AI)' },
+  { id: 'threats', label: 'Surface Threats' },
+  { id: 'air_threats', label: 'Air Threats' },
+  { id: 'flights', label: 'Friendly Forces' },
+  { id: 'comms', label: 'Comms' },
+  { id: 'mission_flow', label: 'Mission Flow' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'notes', label: 'Special Instructions / Notes' },
+  { id: 'popup', label: 'Popup Attack' },
+];
+const DEFAULT_SLIDE_ORDER = SLIDE_SECTIONS.map((s) => s.id);
+const SLIDE_LABEL: Record<string, string> = Object.fromEntries(SLIDE_SECTIONS.map((s) => [s.id, s.label]));
 
 export function BriefGenTab() {
   const sessionId = useMissionStore((s) => s.sessionId);
@@ -166,8 +218,9 @@ export function BriefGenTab() {
    *  features). Lives in its own card above the AI button so the
    *  user understands "type story here → AI uses it". Not part of the
    *  WingBrief object — this is AI context, not brief content. The
-   *  scenario card below remains the slide-displayed prose. Cleared
-   *  on Rebuild from mission. */
+   *  scenario card below remains the slide-displayed prose. PRESERVED
+   *  across Rebuild — it's your authored context, not derived from the
+   *  .miz, so a rebuild keeps it (only the AI notes + steer reset). */
   const [missionStory, setMissionStory] = useState('');
 
   // Inline preview pane state. Slides come from the server as base64 PNGs
@@ -178,6 +231,14 @@ export function BriefGenTab() {
   const [previewSlides, setPreviewSlides] = useState<string[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Live auto-refresh (v1.19.84): a request token so a slow render can't
+  // clobber a newer one, a "stale" flag for the pending-changes indicator,
+  // and a ref mirror of previewOpen so the debounce effect can gate
+  // without re-running when the pane merely opens.
+  const previewReq = useRef(0);
+  const [previewStale, setPreviewStale] = useState(false);
+  const previewOpenRef = useRef(false);
+  useEffect(() => { previewOpenRef.current = previewOpen; }, [previewOpen]);
 
   // Base template (.pptx) for the MAIN brief (v0.9.79). When set, the
   // auto-built brief renders ON this template — the template's own
@@ -189,6 +250,64 @@ export function BriefGenTab() {
   // template's branded header band so section titles don't collide with
   // logos. Only relevant when a template is attached. (v0.9.81)
   const [templateTopMargin, setTemplateTopMargin] = useState(1.2);
+
+  // Collapsible cards (v1.19.84) — set of collapsed card slug-ids. Lives
+  // in component state, which survives tab switches (tabs stay mounted
+  // via the visitedTabs display:none pattern), so the collapsed layout
+  // persists across the session.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCard = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  // Jump-to-section nav: ensure the card is expanded, then scroll to it.
+  const jumpToCard = useCallback((title: string) => {
+    const id = cardSlug(title);
+    setCollapsed((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev); next.delete(id); return next;
+    });
+    requestAnimationFrame(() => {
+      document.getElementById(`bc-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  // Slide layout (v1.19.84) — show/hide + reorder the wing-brief slides.
+  // `slideOrder` is the section id order; `slidesOff` are disabled ids.
+  // We only send `sections` to the backend when the layout differs from
+  // the default, so an untouched brief renders in the natural order.
+  const [slideOrder, setSlideOrder] = useState<string[]>(DEFAULT_SLIDE_ORDER);
+  const [slidesOff, setSlidesOff] = useState<Set<string>>(new Set());
+  const slidesDirty = useMemo(
+    () => slidesOff.size > 0 || slideOrder.some((id, i) => id !== DEFAULT_SLIDE_ORDER[i]),
+    [slideOrder, slidesOff],
+  );
+  const slideSections = useMemo(
+    () => slideOrder.map((id) => ({ id, enabled: !slidesOff.has(id) })),
+    [slideOrder, slidesOff],
+  );
+  // The payload to thread into preview/render bodies — undefined when the
+  // layout is untouched so the backend keeps its default order.
+  const sectionsPayload = slidesDirty ? slideSections : undefined;
+  const moveSlide = useCallback((idx: number, dir: -1 | 1) => {
+    setSlideOrder((prev) => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }, []);
+  const toggleSlide = useCallback((id: string) => {
+    setSlidesOff((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   const probeCapabilities = () => {
     fetch('/api/brief/capabilities')
@@ -240,17 +359,19 @@ export function BriefGenTab() {
     }
   };
 
-  const handlePreview = async () => {
+  const runPreview = useCallback(async (auto: boolean) => {
     if (!brief) return;
-    setPreviewOpen(true);
+    if (!auto) setPreviewOpen(true);
+    const reqId = ++previewReq.current;
     setPreviewLoading(true);
-    setError(null);
+    if (!auto) setError(null);
     try {
       const res = await fetch('/api/brief/preview-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, dpi: 100, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
+        body: JSON.stringify({ brief, dpi: 100, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
       });
+      if (reqId !== previewReq.current) return; // superseded by a newer render
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Preview failed' }));
         if (err.needs_libreoffice) {
@@ -261,15 +382,33 @@ export function BriefGenTab() {
         throw new Error(err.error || 'Preview failed');
       }
       const data = await res.json();
-      setPreviewSlides(data.slides || []);
-      setPreviewIdx(0);
+      if (reqId !== previewReq.current) return;
+      const slides: string[] = data.slides || [];
+      setPreviewSlides(slides);
+      // Manual open jumps to slide 1; auto-refresh keeps the user's place.
+      setPreviewIdx((i) => (auto ? Math.min(i, Math.max(0, slides.length - 1)) : 0));
+      setPreviewStale(false);
     } catch (e: any) {
+      if (reqId !== previewReq.current) return;
       setError(e.message);
-      setPreviewOpen(false);
+      if (!auto) setPreviewOpen(false); // manual failure closes the pane; auto keeps it
     } finally {
-      setPreviewLoading(false);
+      if (reqId === previewReq.current) setPreviewLoading(false);
     }
-  };
+  }, [brief, templateB64, templateTopMargin, sectionsPayload]);
+
+  const handlePreview = () => runPreview(false);
+
+  // Debounced live auto-refresh: when the preview pane is open, re-render
+  // ~1.8s after the last edit so slides track the form without burning a
+  // render on every keystroke. runPreview's identity changes whenever the
+  // brief/template/margin change, so this effect re-arms on each edit.
+  useEffect(() => {
+    if (!previewOpenRef.current || !brief) return;
+    setPreviewStale(true);
+    const t = setTimeout(() => { runPreview(true); }, 1800);
+    return () => clearTimeout(t);
+  }, [runPreview, brief]);
 
   const handleRender = async () => {
     if (!brief) return;
@@ -279,7 +418,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
+        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -359,7 +498,7 @@ export function BriefGenTab() {
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined }),
+        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: templateB64, top_margin: templateB64 ? templateTopMargin : undefined, sections: sectionsPayload }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -597,7 +736,7 @@ export function BriefGenTab() {
 
       {/* Editor view */}
       {brief && (
-        <>
+        <BriefCardCtx.Provider value={{ collapsed, toggle: toggleCard }}>
           {/* Sticky action bar */}
           <div style={{
             display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
@@ -648,6 +787,37 @@ export function BriefGenTab() {
             </button>
             <span style={{ flex: 1 }} />
             <button onClick={() => setBrief(null)} style={btnDanger}>Discard</button>
+          </div>
+
+          {/* Jump-to-section nav rail (v1.19.84) — sticky chip bar; click a
+              chip to expand + scroll to that card. Collapse-/expand-all on
+              the right tames the long form. */}
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 5,
+            display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap',
+            padding: '8px 12px', marginBottom: 14,
+            background: '#1d1d1d', border: '1px solid #3a3a3a', borderRadius: 4,
+          }}>
+            <span style={{ fontSize: 10, color: '#777', textTransform: 'uppercase', letterSpacing: 1, marginRight: 2 }}>Jump</span>
+            {NAV_SECTIONS.map((s) => (
+              <button key={s.title} onClick={() => jumpToCard(s.title)} style={{
+                background: collapsed.has(cardSlug(s.title)) ? '#262626' : '#2c2c2c',
+                border: '1px solid #3a3a3a', borderRadius: 12,
+                color: collapsed.has(cardSlug(s.title)) ? '#888' : '#ccc',
+                fontSize: 11, padding: '2px 9px', cursor: 'pointer', fontFamily: 'inherit',
+              }} title={collapsed.has(cardSlug(s.title)) ? 'Collapsed — click to expand + jump' : `Jump to ${s.title}`}>
+                {s.short}
+              </button>
+            ))}
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={() => setCollapsed(new Set(NAV_SECTIONS.map((s) => cardSlug(s.title))))}
+              style={{ ...btnSmall, fontSize: 10 }} title="Collapse every section"
+            >Collapse all</button>
+            <button
+              onClick={() => setCollapsed(new Set())}
+              style={{ ...btnSmall, fontSize: 10 }} title="Expand every section"
+            >Expand all</button>
           </div>
 
           {/* Base-template row (v0.9.79) — attach your squadron .pptx and
@@ -757,6 +927,14 @@ export function BriefGenTab() {
                     ? `Slide ${previewIdx + 1} / ${previewSlides.length}`
                     : previewLoading ? 'Rendering…' : 'No slides'}
                 </span>
+                {/* Live indicator (v1.19.84): auto-refresh status */}
+                {previewLoading && previewSlides.length > 0 ? (
+                  <span style={{ fontSize: 11, color: '#fbb941' }}>● updating…</span>
+                ) : previewStale ? (
+                  <span style={{ fontSize: 11, color: '#888' }}>○ edits pending</span>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#3fb950' }}>● live</span>
+                )}
                 <span style={{ flex: 1 }} />
                 <button
                   onClick={() => setPreviewIdx((i) => Math.max(0, i - 1))}
@@ -783,17 +961,37 @@ export function BriefGenTab() {
                     Rendering brief… (~5s)
                   </div>
                 ) : previewSlides[previewIdx] ? (
-                  <img
-                    src={`data:image/png;base64,${previewSlides[previewIdx]}`}
-                    alt={`slide ${previewIdx + 1}`}
-                    style={{
-                      maxWidth: '100%', maxHeight: 600,
-                      objectFit: 'contain',
-                      boxShadow: '0 0 0 1px #3a3a3a',
-                    }}
-                    onClick={() => setPreviewIdx((i) =>
-                      i + 1 < previewSlides.length ? i + 1 : 0)}
-                  />
+                  <div style={{ position: 'relative', display: 'inline-block', maxHeight: 600, maxWidth: '100%' }}>
+                    <img
+                      src={`data:image/png;base64,${previewSlides[previewIdx]}`}
+                      alt={`slide ${previewIdx + 1}`}
+                      style={{
+                        maxWidth: '100%', maxHeight: 600,
+                        objectFit: 'contain',
+                        boxShadow: '0 0 0 1px #3a3a3a',
+                        display: 'block',
+                      }}
+                      onClick={() => setPreviewIdx((i) =>
+                        i + 1 < previewSlides.length ? i + 1 : 0)}
+                    />
+                    {/* Template content-top guide (v1.19.84): only with a
+                        template loaded — shows where auto content starts
+                        (slide is 7.5in tall) so the margin slider isn't
+                        trial-and-error. */}
+                    {templateB64 && (
+                      <div style={{
+                        position: 'absolute', left: 0, right: 0,
+                        top: `${Math.min(100, (templateTopMargin / 7.5) * 100)}%`,
+                        borderTop: '2px dashed rgba(251,185,65,0.55)',
+                        pointerEvents: 'none',
+                      }}>
+                        <span style={{
+                          position: 'absolute', right: 2, top: -15, fontSize: 9,
+                          color: '#fbb941', background: 'rgba(15,15,15,0.85)', padding: '0 3px',
+                        }}>content top · {templateTopMargin}″</span>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ color: '#888', fontSize: 13, padding: 60 }}>
                     No slides to display.
@@ -812,6 +1010,38 @@ export function BriefGenTab() {
           )}
 
           {/* Header card — mission name / date / time + logo */}
+          <Card title="Slides (order & visibility)" right={
+            slidesDirty
+              ? <button onClick={() => { setSlideOrder(DEFAULT_SLIDE_ORDER); setSlidesOff(new Set()); }} style={btnSmall}>Reset order</button>
+              : <span style={{ fontSize: 10, color: '#666' }}>default order</span>
+          }>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+              Uncheck to drop a slide; ▲▼ to reorder. The cover is always first.
+              Slides with no data (e.g. route map, popup) are skipped automatically.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {slideOrder.map((id, i) => {
+                const off = slidesOff.has(id);
+                return (
+                  <div key={id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '3px 6px', background: '#1d1d1d', border: '1px solid #2e2e2e', borderRadius: 3,
+                    opacity: off ? 0.5 : 1,
+                  }}>
+                    <input type="checkbox" checked={!off} onChange={() => toggleSlide(id)} style={{ accentColor: '#fbb941' }} />
+                    <span style={{ flex: 1, fontSize: 13, color: '#e0e0e0', textDecoration: off ? 'line-through' : 'none' }}>
+                      {i + 1}. {SLIDE_LABEL[id] || id}
+                    </span>
+                    <button onClick={() => moveSlide(i, -1)} disabled={i === 0}
+                      style={{ ...btnSmall, padding: '0 7px', opacity: i === 0 ? 0.3 : 1 }} title="Move up">▲</button>
+                    <button onClick={() => moveSlide(i, 1)} disabled={i === slideOrder.length - 1}
+                      style={{ ...btnSmall, padding: '0 7px', opacity: i === slideOrder.length - 1 ? 0.3 : 1 }} title="Move down">▼</button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
           <Card title="Cover">
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
               <Field label="Mission name">
@@ -1314,7 +1544,8 @@ export function BriefGenTab() {
               <table style={tableStyle}>
                 <thead>
                   <tr><th style={th}>Type</th><th style={th}>Class</th>
-                      <th style={th}>Weapons</th><th style={th}>Notes</th><th style={th}></th></tr>
+                      <th style={th}>Weapons</th><th style={th}>Notes</th>
+                      <th style={th}>Side</th><th style={th}></th></tr>
                 </thead>
                 <tbody>
                   {brief.air_threats.map((a, i) => (
@@ -1327,6 +1558,12 @@ export function BriefGenTab() {
                           onChange={(e) => setRow('air_threats', i, { ...a, weapons: e.target.value })} /></td>
                       <td style={td}><input style={cellInput} value={a.notes}
                           onChange={(e) => setRow('air_threats', i, { ...a, notes: e.target.value })} /></td>
+                      <td style={td}><select style={{ ...cellInput, width: 70 }} value={a.coalition || 'red'}
+                          onChange={(e) => setRow('air_threats', i, { ...a, coalition: e.target.value })}>
+                          <option value="red">Red</option>
+                          <option value="blue">Blue</option>
+                          <option value="neutral">Neut</option>
+                        </select></td>
                       <td style={td}><button style={btnIcon}
                           onClick={() => removeRow('air_threats', i)} title="Delete row">×</button></td>
                     </tr>
@@ -1426,6 +1663,7 @@ export function BriefGenTab() {
                     <td style={td}><input style={cellInput} value={c.label}
                         onChange={(e) => setRow('comms', i, { ...c, label: e.target.value })} /></td>
                     <td style={td}><input style={cellInput} value={c.value}
+                        placeholder="— enter freq / set in SOP"
                         onChange={(e) => setRow('comms', i, { ...c, value: e.target.value })} /></td>
                     <td style={td}><button style={btnIcon}
                         onClick={() => removeRow('comms', i)} title="Delete row">×</button></td>
@@ -1468,7 +1706,7 @@ export function BriefGenTab() {
                       placeholder="ROE, special procedures, contingency plans, code-words, divert decisions…"
                       onChange={(e) => set('notes', e.target.value)} />
           </Card>
-        </>
+        </BriefCardCtx.Provider>
       )}
 
       {error && (
@@ -2087,7 +2325,9 @@ function fillCommsFromSop(comms: CommsRow[], sop: SOP | null): CommsRow[] {
   return comms.map((r) => {
     const label = (r.label || '').trim();
     const slot = SLOT[label];
-    if (slot) return { ...r, value: slot() ?? '—' };
+    // Leave unmatched SOP slots EMPTY (not a literal "—") so the cell
+    // reads as an editable blank with a placeholder, not a filled value.
+    if (slot) return { ...r, value: slot() ?? '' };
     if (/^guard$/i.test(label)) {
       const g = commFor(/guard/i);
       return g ? { ...r, value: g } : r;  // else keep backend's 243.000 (UHF)
@@ -2102,18 +2342,36 @@ function fillCommsFromSop(comms: CommsRow[], sop: SOP | null): CommsRow[] {
 
 function Card({ title, children, right }:
               { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+  // v1.19.84 — collapsible via the shared context (click the title to
+  // fold the card). The body uses display:none rather than unmounting so
+  // textareas keep their scroll/selection while folded. Nav rail jumps
+  // here by the slug id.
+  const ctx = useContext(BriefCardCtx);
+  const id = cardSlug(title);
+  const collapsed = ctx?.collapsed.has(id) ?? false;
   return (
-    <div style={{ marginBottom: 14, background: '#222222', border: '1px solid #3a3a3a' }}>
+    <div id={`bc-${id}`} style={{ marginBottom: 14, background: '#222222', border: '1px solid #3a3a3a', scrollMarginTop: 8 }}>
       <div style={{
-        padding: '8px 14px', borderBottom: '1px solid #3a3a3a',
+        padding: '8px 14px', borderBottom: collapsed ? 'none' : '1px solid #3a3a3a',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         background: '#262626',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#fbb941',
-                      letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
+        <button
+          type="button"
+          onClick={() => ctx?.toggle(id)}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+            cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+            fontSize: 12, fontWeight: 600, color: '#fbb941', letterSpacing: 1, textTransform: 'uppercase',
+          }}
+        >
+          <span style={{ fontSize: 10, color: '#888', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.12s' }}>▼</span>
+          {title}
+        </button>
         {right}
       </div>
-      <div style={{ padding: 12 }}>{children}</div>
+      <div style={{ padding: 12, display: collapsed ? 'none' : 'block' }}>{children}</div>
     </div>
   );
 }
