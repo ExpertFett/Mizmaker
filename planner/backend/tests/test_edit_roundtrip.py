@@ -1384,3 +1384,44 @@ class TestLateActivationGroupScoping:
         assert '["lateActivation"] = false' in out         # group 1 untouched
         # The inserted flag sits inside group 2's block (after "[2] = {").
         assert '["lateActivation"] = true' in out.split('[2] = {')[1]
+
+
+class TestPropFieldInsertWhenMissing:
+    """Datalink callsign/STN edits must INSERT the AddPropAircraft field when
+    a mission doesn't pre-set it — not silently no-op. Regression guard for
+    the "Datalink edits → downloaded .miz unchanged" report (v1.19.85)."""
+
+    @staticmethod
+    def _unit(addprop=True, label=False):
+        inner = '\t\t\t["VoiceCallsignLabel"] = "OLD",\n' if label else ''
+        ap = ''
+        if addprop:
+            ap = ('\t\t["AddPropAircraft"] = \n\t\t{\n' + inner
+                  + '\t\t}, -- end of ["AddPropAircraft"]\n')
+        return ('[1] = \n\t{\n\t\t["type"] = "FA-18C_hornet",\n'
+                + ap + '\t\t["unitId"] = 5,\n\t}, -- end of [1]\n')
+
+    def test_inserts_into_existing_addprop(self):
+        from services.unit_editor import _replace_prop_field
+        text = self._unit(addprop=True, label=False)
+        out = _replace_prop_field(text, 5, "VoiceCallsignLabel", "BN")
+        assert '["VoiceCallsignLabel"] = "BN",' in out
+        assert out.count("{") == out.count("}")   # braces stay balanced
+        # one AddPropAircraft assignment (the "-- end of" comment also names it)
+        assert out.count('["AddPropAircraft"] =') == 1
+
+    def test_creates_addprop_when_absent(self):
+        from services.unit_editor import _replace_prop_field
+        text = self._unit(addprop=False)
+        out = _replace_prop_field(text, 5, "STN_L16", "00012")
+        assert '["AddPropAircraft"]' in out          # block created
+        assert '["STN_L16"] = "00012",' in out
+        assert out.count("{") == out.count("}")
+
+    def test_still_replaces_existing_value(self):
+        from services.unit_editor import _replace_prop_field
+        text = self._unit(addprop=True, label=True)
+        out = _replace_prop_field(text, 5, "VoiceCallsignLabel", "NEW")
+        assert '["VoiceCallsignLabel"] = "NEW",' in out
+        assert '"OLD"' not in out
+        assert out.count('["VoiceCallsignLabel"]') == 1   # replaced, not duplicated

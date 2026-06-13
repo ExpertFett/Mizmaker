@@ -328,11 +328,50 @@ def _replace_prop_field(text: str, unit_id: int, lua_field: str, new_value: str)
     pattern = rf'\["{lua_field}"\]\s*=\s*"' + _LUA_STR_VALUE + r'"'
     match = re.search(pattern, unit_block)
     if not match:
-        raise ValueError(f"Field {lua_field} not found in unit {unit_id} block")
+        # v1.19.85 — field absent: INSERT it into AddPropAircraft rather
+        # than no-op. Most missions don't pre-set datalink callsign/STN, so
+        # without this every Datalink auto-assign edit silently skipped and
+        # the downloaded .miz showed "no change". Mirrors _replace_laser_code's
+        # insert-when-missing behaviour.
+        return _insert_prop_field(text, block_start, unit_block, lua_field, new_value)
 
     abs_start = block_start + match.start(1)
     abs_end = block_start + match.end(1)
     return text[:abs_start] + _lua_str_escape(str(new_value)) + text[abs_end:]
+
+
+def _insert_prop_field(text: str, block_start: int, unit_block: str,
+                       lua_field: str, new_value: str) -> str:
+    """Insert a string AddPropAircraft field that isn't present yet.
+
+    DCS doesn't care about indentation, only valid Lua — so we splice a
+    minimally-formatted entry. Prefers an existing ["AddPropAircraft"] = {
+    block (insert right after its opening brace); if the unit has none,
+    create the block anchored after ["type"] = "...". Raises if neither
+    anchor is found so the corruption guard / results never silently lie.
+    """
+    esc = _lua_str_escape(str(new_value))
+
+    ap = re.search(r'\["AddPropAircraft"\]\s*=\s*\n?\s*\{', unit_block)
+    if ap:
+        insert_at = block_start + ap.end()  # just past the opening brace
+        snippet = f'\n\t\t\t\t["{lua_field}"] = "{esc}",'
+        return text[:insert_at] + snippet + text[insert_at:]
+
+    # No AddPropAircraft block — create one after the ["type"] = "..." field.
+    ty = re.search(r'\["type"\]\s*=\s*"' + _LUA_STR_VALUE + r'"\s*,', unit_block)
+    if not ty:
+        raise ValueError(
+            f"Cannot insert {lua_field}: no AddPropAircraft or [\"type\"] anchor in unit block"
+        )
+    insert_at = block_start + ty.end()
+    snippet = (
+        '\n\t\t\t\t["AddPropAircraft"] = \n'
+        '\t\t\t\t{\n'
+        f'\t\t\t\t\t["{lua_field}"] = "{esc}",\n'
+        '\t\t\t\t}, -- end of ["AddPropAircraft"]'
+    )
+    return text[:insert_at] + snippet + text[insert_at:]
 
 
 def _build_network_list_block(key: str, unit_ids: list, base_indent: str) -> str:
