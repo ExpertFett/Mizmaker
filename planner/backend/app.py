@@ -38,6 +38,16 @@ import hashlib
 from gevent.queue import Queue
 from gevent import sleep as gsleep
 
+import logging
+# Configure logging deterministically at import time. Without this, the first
+# lazy `logging.warning(...)` call (we use several) auto-installs a root handler
+# mid-run, after which werkzeug's request logs — which propagate to root — start
+# printing TWICE. Pinning the config up front + stopping werkzeug from
+# propagating makes each request log exactly once. No-op shape under
+# gunicorn/gevent in prod (basicConfig only adds a handler if root has none).
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("werkzeug").propagate = False
+
 from services.miz_parser import (
     extract_mission_from_miz,
     parse_mission_text,
