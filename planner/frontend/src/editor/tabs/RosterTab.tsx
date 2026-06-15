@@ -17,15 +17,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
+import { parseRrLink, rosterUrl, rosterToRows, isSupportedRoster } from './readyRoomImport';
 
 type Row = Record<string, string>;
-type ColKey = 'pilot' | 'callsign' | 'flight' | 'seat';
+type ColKey = 'pilot' | 'callsign' | 'flight' | 'seat' | 'modex';
 
 const COL_HINTS: Record<ColKey, string[]> = {
   pilot: ['pilot', 'name', 'player', 'aircrew', 'student'],
   callsign: ['callsign', 'call sign', 'cs', 'voice'],
   flight: ['flight', 'element', 'section', 'package'],
   seat: ['seat', 'pos', 'position', 'dash', 'number', '#'],
+  modex: ['modex', 'side', 'hull', 'bort', 'tail'],
 };
 
 /** Minimal CSV parser: handles quoted fields, escaped quotes, CRLF. */
@@ -58,7 +60,7 @@ function parseCsv(text: string): { headers: string[]; rows: Row[] } {
 }
 
 function autoDetectCols(headers: string[]): Record<ColKey, string> {
-  const out: Record<ColKey, string> = { pilot: '', callsign: '', flight: '', seat: '' };
+  const out: Record<ColKey, string> = { pilot: '', callsign: '', flight: '', seat: '', modex: '' };
   for (const key of Object.keys(COL_HINTS) as ColKey[]) {
     const hit = headers.find((h) => COL_HINTS[key].some((hint) => h.toLowerCase().includes(hint)));
     if (hit) out[key] = hit;
@@ -83,7 +85,7 @@ export function RosterTab() {
   const [raw, setRaw] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
-  const [cols, setCols] = useState<Record<ColKey, string>>({ pilot: '', callsign: '', flight: '', seat: '' });
+  const [cols, setCols] = useState<Record<ColKey, string>>({ pilot: '', callsign: '', flight: '', seat: '', modex: '' });
   const [assign, setAssign] = useState<Record<number, number | null>>({}); // unitId -> row index
   const [applied, setApplied] = useState(false);
   const [parseMsg, setParseMsg] = useState('');
@@ -174,18 +176,21 @@ export function RosterTab() {
     const row = (i != null && rows[i]) ? rows[i] : null;
     const cs = row && cols.callsign ? splitCallsign(row[cols.callsign]) : null;
     const pilot = row && cols.pilot ? row[cols.pilot] : '';
-    return { slot, row, cs, pilot };
+    const modex = (row && cols.modex ? row[cols.modex] : '').trim();
+    return { slot, row, cs, pilot, modex };
   }), [slots, assign, rows, cols]);
 
   const matchedCount = resolved.filter((x) => x.row).length;
 
   const apply = useCallback(() => {
-    for (const { slot, cs, pilot } of resolved) {
+    for (const { slot, cs, pilot, modex } of resolved) {
       if (cs && (cs.label || cs.number)) {
         if (cs.label) addEdit({ unitId: slot.unitId, field: 'voiceCallsignLabel', value: cs.label });
         if (cs.number) addEdit({ unitId: slot.unitId, field: 'voiceCallsignNumber', value: cs.number });
       }
       if (pilot) addEdit({ unitId: slot.unitId, field: 'unitRename', value: pilot });
+      // Modex → unit onboard_num (side/hull number painted on the jet).
+      if (modex) addEdit({ unitId: slot.unitId, field: 'onboard_num', value: modex });
     }
     setApplied(true);
   }, [resolved, addEdit]);
@@ -207,6 +212,7 @@ export function RosterTab() {
           column, the runner uploads the result back via the "Upload CSV /
           XLSX" button below. (v1.19.15) */}
       <SignupSheetRow />
+      <ReadyRoomImportRow onParsed={applyParsed} />
       <AarRow />
 
       {/* Upload / paste */}
@@ -247,7 +253,7 @@ export function RosterTab() {
             <button onClick={() => autoMatch(rows, cols)} style={btn}>Re-auto-match</button>
           </div>
           <div style={{ border: `1px solid ${BORDER}`, borderRadius: 4, overflow: 'hidden' }}>
-            {resolved.map(({ slot, cs, pilot }, idx) => (
+            {resolved.map(({ slot, cs, pilot, modex }, idx) => (
               <div key={slot.unitId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderTop: idx ? `1px solid ${BORDER}` : 'none', background: idx % 2 ? '#1d1d1d' : '#222' }}>
                 <span style={{ width: 16, color: slot.coalition === 'blue' ? '#4a8fd4' : slot.coalition === 'red' ? '#d95050' : MUTED }}>●</span>
                 <span style={{ width: 150, fontSize: 12, color: '#cccccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${slot.groupName} · ${slot.type}`}>
@@ -260,7 +266,7 @@ export function RosterTab() {
                   {rows.map((_, i) => <option key={i} value={i}>{rowLabel(i)}</option>)}
                 </select>
                 <span style={{ width: 150, fontSize: 12, fontFamily: "'B612 Mono', monospace", color: '#e0e0e0', textAlign: 'right' }}>
-                  {cs && (cs.label || cs.number) ? `${cs.label} ${cs.number}` : ''}{pilot ? `  ${pilot}` : ''}
+                  {cs && (cs.label || cs.number) ? `${cs.label} ${cs.number}` : ''}{pilot ? `  ${pilot}` : ''}{modex ? `  #${modex}` : ''}
                 </span>
               </div>
             ))}
@@ -269,7 +275,7 @@ export function RosterTab() {
           {/* Apply */}
           <div style={{ marginTop: 16, padding: 14, background: '#222', border: `1px solid ${BORDER}`, borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: MUTED }}>
-              {applied ? 'Roster applied! Download your .miz to save changes.' : `Apply will set callsigns + pilot names on ${matchedCount} slot${matchedCount === 1 ? '' : 's'}.`}
+              {applied ? 'Roster applied! Download your .miz to save changes.' : `Apply will set callsigns, pilot names${cols.modex ? ' & modex' : ''} on ${matchedCount} slot${matchedCount === 1 ? '' : 's'}.`}
             </span>
             <button onClick={apply} disabled={applied || matchedCount === 0}
                     style={{ ...btn, background: applied ? '#1a2020' : '#1a2a1a', border: `1px solid ${applied ? '#3a5a3a' : '#3fb950'}`, color: applied ? '#3a5a3a' : '#3fb950', fontWeight: 600, padding: '8px 18px' }}>
@@ -282,14 +288,15 @@ export function RosterTab() {
             <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 6 }}>Roster reference</div>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
               <thead><tr style={{ textAlign: 'left', color: MUTED }}>
-                <th style={th}>Flight</th><th style={th}>Callsign</th><th style={th}>Pilot</th><th style={th}>Aircraft</th>
+                <th style={th}>Flight</th><th style={th}>Callsign</th><th style={th}>Pilot</th><th style={th}>Modex</th><th style={th}>Aircraft</th>
               </tr></thead>
               <tbody>
-                {resolved.filter((x) => x.row).map(({ slot, cs, pilot }) => (
+                {resolved.filter((x) => x.row).map(({ slot, cs, pilot, modex }) => (
                   <tr key={slot.unitId} style={{ borderTop: `1px solid ${BORDER}` }}>
                     <td style={td}>{slot.groupName}</td>
                     <td style={{ ...td, fontFamily: "'B612 Mono', monospace", color: '#e0e0e0' }}>{cs ? `${cs.label} ${cs.number}` : `${slot.voiceCallsignLabel}${slot.voiceCallsignNumber}`}</td>
                     <td style={td}>{pilot || '—'}</td>
+                    <td style={{ ...td, fontFamily: "'B612 Mono', monospace", color: modex ? '#e0e0e0' : MUTED }}>{modex || '—'}</td>
                     <td style={{ ...td, color: MUTED }}>{slot.type}</td>
                   </tr>
                 ))}
@@ -366,6 +373,83 @@ function SignupSheetRow() {
   );
 }
 
+// ───── Import from Ready Room ─────────────────────────────────────────────
+// Pull the sign-up roster for a mission straight from Ready Room (the squadron
+// app that owns who's flying) via its tokened, CORS-enabled share link. The
+// fetched roster is mapped to the same {headers, rows} shape the CSV/XLSX
+// importer produces, then handed to the shared applyParsed pipeline — so it
+// auto-detects columns, auto-matches callsigns/slots, and Apply writes the
+// usual voiceCallsign + unitRename edits. Fully additive + client-side: no
+// planner backend involvement, the link points at the external Ready Room host.
+function ReadyRoomImportRow({ onParsed }: { onParsed: (h: string[], r: Record<string, string>[], label?: string) => void }) {
+  const setReadyRoomLink = useMissionStore((s) => s.setReadyRoomLink);
+  const [link, setLink] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const fetchRoster = async () => {
+    if (busy) return;
+    setMsg('');
+    const parsed = parseRrLink(link);
+    if (!parsed) {
+      setMsg("✗ That doesn't look like a Ready Room sign-up link.");
+      return;
+    }
+    if (!/^https?:\/\//i.test(parsed.base)) {
+      setMsg('✗ Paste the full link including https:// — Ready Room is a separate site.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(rosterUrl(parsed), { credentials: 'omit' });
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Ready Room rejected the link — the wing token may have been rotated.');
+        if (res.status === 404) throw new Error('Mission not found in Ready Room (wrong link, or it belongs to another wing).');
+        throw new Error(`Ready Room returned HTTP ${res.status}.`);
+      }
+      const data = await res.json();
+      if (!isSupportedRoster(data)) throw new Error('Unsupported roster format from Ready Room — update the planner.');
+      const { headers, rows } = rosterToRows(data);
+      const name = data.mission?.name || 'mission';
+      onParsed(headers, rows, `Ready Room · ${name}`);
+      // Remember the link so the AAR step can post results back to this mission.
+      setReadyRoomLink({ ...parsed, missionName: name });
+      setMsg(rows.length
+        ? `✓ Loaded ${rows.length} sign-up${rows.length === 1 ? '' : 's'} from "${name}". Review the matches below, then Apply.`
+        : `✓ "${name}" has no sign-ups yet.`);
+    } catch (e) {
+      // Network/CORS failures reject the fetch (no res) — distinguish from HTTP errors above.
+      const m = e instanceof Error ? e.message : 'failed';
+      setMsg(`✗ ${m === 'Failed to fetch' ? "Couldn't reach Ready Room — check the link and that the server is up." : m}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14, padding: '10px 14px', background: '#1d2530', border: `1px solid ${BORDER}`, borderRadius: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Import from Ready Room</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
+            Paste a mission's "sign-up link" from Ready Room to pull who's flying each flight, then match them to slots below.
+          </div>
+        </div>
+        <input
+          type="text" value={link} onChange={(e) => setLink(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') fetchRoster(); }}
+          placeholder="https://…/share/…/missions/…/roster"
+          spellCheck={false}
+          style={{ ...sel, flex: 1, minWidth: 240 }} />
+        <button onClick={fetchRoster} disabled={busy || !link.trim()} style={{ ...btn, opacity: busy || !link.trim() ? 0.5 : 1, cursor: busy || !link.trim() ? 'not-allowed' : 'pointer' }}>
+          {busy ? 'Fetching…' : '↧ Fetch'}
+        </button>
+      </div>
+      {msg && <div style={{ fontSize: 11, marginTop: 6, color: msg.startsWith('✓') ? '#3fb950' : '#e0554f' }}>{msg}</div>}
+    </div>
+  );
+}
+
 // ───── After-Action Review download row ──────────────────────────────────
 // Generates a post-flight debrief skeleton (markdown / CSV / XLSX) pre-
 // filled with the mission's participants + any pilot names already
@@ -375,6 +459,7 @@ function AarRow() {
   const sessionId = useMissionStore((s) => s.sessionId);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const edits = useEditStore((s) => s.edits);
+  const readyRoomLink = useMissionStore((s) => s.readyRoomLink);
   const [format, setFormat] = useState<'md' | 'csv' | 'xlsx'>('md');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -428,6 +513,26 @@ function AarRow() {
     return out;
   }, [edits, clientUnits]);
 
+  // Participants to push back to Ready Room: per assigned slot, the pilot name
+  // (unitRename) + modex (onboard_num) so RR can match them to members and mark
+  // attendance. Only slots we actually assigned a pilot/modex to are included.
+  const participants = useMemo(() => {
+    const renameByUid = new Map<string, string>();
+    const modexByUid = new Map<string, string>();
+    for (const ed of edits as Array<{ unitId?: string | number; field: string; value: string }>) {
+      if (ed.unitId == null) continue;
+      if (ed.field === 'unitRename') renameByUid.set(String(ed.unitId), String(ed.value || ''));
+      if (ed.field === 'onboard_num') modexByUid.set(String(ed.unitId), String(ed.value || ''));
+    }
+    return clientUnits
+      .map((u) => ({
+        pilot: renameByUid.get(String(u.unitId)) || '',
+        callsign: u.name || '',
+        modex: modexByUid.get(String(u.unitId)) || '',
+      }))
+      .filter((p) => p.pilot || p.modex);
+  }, [edits, clientUnits]);
+
   const download = async () => {
     if (!sessionId || busy) return;
     setBusy(true); setMsg('');
@@ -461,6 +566,37 @@ function AarRow() {
       refreshEventCount();
     } catch (e) {
       setMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Push the post-mission result back to Ready Room (hop 7 of the OPT ⇄ RR
+  // loop). Uses the link remembered from the roster import; marks the pilots who
+  // flew Present on the linked event + posts the debrief summary. CORS-enabled
+  // /share endpoint, no credentials (the token in the URL is the authority).
+  const postToReadyRoom = async () => {
+    if (!readyRoomLink || busy) return;
+    setBusy(true); setMsg('');
+    try {
+      const { base, token, missionId, missionName } = readyRoomLink;
+      const summary = `${missionName || 'Mission'} flown — ${participants.length} pilot${participants.length === 1 ? '' : 's'}.${notes ? `\n${notes}` : ''}`;
+      const res = await fetch(`${base}/share/${token}/missions/${missionId}/result`, {
+        method: 'POST', credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary, participants }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) throw new Error('Publish this mission as an event in Ready Room first.');
+        if (res.status === 401) throw new Error('Ready Room rejected the link (token rotated?).');
+        if (res.status === 404) throw new Error('Mission not found in Ready Room.');
+        throw new Error(`Ready Room returned HTTP ${res.status}.`);
+      }
+      const j = await res.json();
+      setMsg(`✓ Posted to Ready Room — ${j.present} marked present${j.unmatched?.length ? `, ${j.unmatched.length} unmatched` : ''}.`);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : 'failed';
+      setMsg(`✗ ${m === 'Failed to fetch' ? "Couldn't reach Ready Room — check the link and that it's up." : m}`);
     } finally {
       setBusy(false);
     }
@@ -500,6 +636,12 @@ function AarRow() {
         <button onClick={download} disabled={!sessionId || busy} style={{ ...btn, opacity: !sessionId || busy ? 0.5 : 1, cursor: !sessionId || busy ? 'not-allowed' : 'pointer' }}>
           {busy ? 'Generating…' : '⬇ Download'}
         </button>
+        {readyRoomLink && (
+          <button onClick={postToReadyRoom} disabled={busy} title={`Mark ${participants.length} pilot(s) present on "${readyRoomLink.missionName || 'the mission'}" in Ready Room and post the debrief.`}
+                  style={{ ...btn, background: '#1a2a1a', border: '1px solid #3fb950', color: '#3fb950', opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}>
+            ↥ Post to Ready Room
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'flex-start' }}>
         <input

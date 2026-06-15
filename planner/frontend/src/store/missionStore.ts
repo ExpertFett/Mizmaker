@@ -37,6 +37,9 @@ interface MissionState {
   countries: CountryInfo[];
   taskLists: { air: string[]; ground: string[]; ship: string[] };
   selectedGroupId: number | null;
+  /** Ready Room mission link remembered from a roster import, so the AAR step
+   *  can post results back to the same mission. null when not imported from RR. */
+  readyRoomLink: { base: string; token: string; missionId: number; missionName?: string } | null;
 
   loadMission: (data: UploadResponse) => void;
   selectGroup: (groupId: number | null) => void;
@@ -60,6 +63,7 @@ interface MissionState {
    *  display. The store is the source of truth for read-only display
    *  state; the actual edit lives in editStore as a queued edit. */
   setOverview: (overview: MissionOverviewData | null) => void;
+  setReadyRoomLink: (link: { base: string; token: string; missionId: number; missionName?: string } | null) => void;
   clear: () => void;
   selectedGroup: () => MissionGroup | undefined;
 }
@@ -92,6 +96,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   countries: [],
   taskLists: { air: [], ground: [], ship: [] },
   selectedGroupId: null,
+  readyRoomLink: null,
 
   loadMission: (data) => {
     const assignedGroup = (data as any).assignedGroup || null;
@@ -147,6 +152,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   setOverview: (overview) => set({ overview }),
 
+  setReadyRoomLink: (readyRoomLink) => set({ readyRoomLink }),
+
   clear: () =>
     set({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
@@ -157,6 +164,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       countries: [],
       taskLists: { air: [], ground: [], ship: [] },
       selectedGroupId: null,
+      readyRoomLink: null,
     }),
 
   selectedGroup: () => {
