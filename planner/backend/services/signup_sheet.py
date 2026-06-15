@@ -160,6 +160,13 @@ def _flight_aux(group: dict) -> dict[str, str]:
     tacan_s = ""
     if isinstance(tacan, dict) and tacan.get("channel"):
         tacan_s = f"{tacan.get('channel')}{tacan.get('band') or ''}"
+    # Cruise altitude — highest planned waypoint altitude, as FL (≥18k) or ft.
+    alts = [w.get("altitude_m") for w in waypoints
+            if isinstance(w.get("altitude_m"), (int, float)) and w.get("altitude_m")]
+    alt_s = ""
+    if alts:
+        ft = max(alts) * 3.28084
+        alt_s = f"FL{round(ft / 100):03d}" if ft >= 18000 else f"{round(ft / 500) * 500:,} ft"
     return {
         "Task":        (group.get("task") or "").strip().upper(),
         "DepLoc":      deploc,
@@ -167,7 +174,55 @@ def _flight_aux(group: dict) -> dict[str, str]:
         "Aircraft":    (first.get("type") or "").strip(),
         "Freq":        freq_s,
         "ControlFreq": tacan_s,
+        "Altitude":    alt_s,
     }
+
+
+def _mission_support(mission_data: dict) -> dict[str, str]:
+    """Mission-wide support assets the whole package shares — the tanker
+    and the AWACS/GCI controller — derived from the mission's AI groups by
+    task. Used to pre-fill the TANKER + CONTROL NAME columns (same on every
+    flight)."""
+    groups = mission_data.get("groups") or []
+
+    def _first(task_kw: str) -> dict | None:
+        for g in groups:
+            if (g.get("task") or "").strip().lower() == task_kw:
+                return g
+        return None
+
+    tk = _first("refueling")
+    aw = _first("awacs")
+    return {
+        "Tanker":      (tk.get("groupName") if tk else "") or "",
+        "ControlName": (aw.get("groupName") if aw else "") or "",
+    }
+
+
+def _metar(weather: dict) -> str:
+    """One-line wx summary from the mission weather, for the METAR cell.
+    Defensive — emits only the parts present, '' if the dict is empty."""
+    if not isinstance(weather, dict):
+        return ""
+    parts: list[str] = []
+    g = (weather.get("wind") or {}).get("atGround") or {}
+    spd, dr = g.get("speed"), g.get("dir")
+    if isinstance(spd, (int, float)) and isinstance(dr, (int, float)):
+        parts.append(f"{int(round(dr)) % 360:03d}/{round(spd * 1.94384):02d}kt")
+    t = weather.get("temperature_c")
+    if isinstance(t, (int, float)):
+        parts.append(f"{round(t)}°C")
+    q = weather.get("qnh_inhg")
+    if isinstance(q, (int, float)):
+        parts.append(f"QNH {q:.2f}")
+    vis = weather.get("visibility_m")
+    if isinstance(vis, (int, float)) and vis:
+        parts.append(f"vis {round(vis / 1000)}km")
+    base, dens = weather.get("clouds_base_m"), weather.get("clouds_density")
+    if isinstance(base, (int, float)) and isinstance(dens, (int, float)) and dens:
+        cover = "FEW" if dens <= 2 else "SCT" if dens <= 4 else "BKN" if dens <= 7 else "OVC"
+        parts.append(f"{cover} {round(base * 3.28084 / 100) * 100:,}ft")
+    return "   ".join(parts)
 
 
 def _per_seat_callsigns(group: dict) -> list[str]:
@@ -206,6 +261,8 @@ def build_xlsx(mission_data: dict, *, mission_name: str = "", theater: str = "")
     ws.title = "Signup"
 
     meta = _mission_meta(mission_data, mission_name=mission_name, theater=theater)
+    support = _mission_support(mission_data)
+    metar = _metar((mission_data.get("overview") or {}).get("weather") or {})
 
     bold = Font(bold=True)
     bold_orange = Font(bold=True, color="C75D00")
@@ -247,7 +304,7 @@ def build_xlsx(mission_data: dict, *, mission_name: str = "", theater: str = "")
     ws.cell(row=5, column=8).border = cell_border
 
     ws.cell(row=12, column=16, value="METAR").font = bold
-    ws.cell(row=13, column=16, value="(runner fills)").alignment = left
+    ws.cell(row=13, column=16, value=metar or "(runner fills)").alignment = left
     ws.merge_cells(start_row=13, start_column=16, end_row=15, end_column=18)
     ws.cell(row=13, column=16).border = cell_border
 
@@ -309,6 +366,12 @@ def build_xlsx(mission_data: dict, *, mission_name: str = "", theater: str = "")
                         cell.value = aux["Freq"]
                     elif header == "CONTROL PFREQ":
                         cell.value = aux["ControlFreq"]
+                    elif header == "ALTITUDE":
+                        cell.value = aux["Altitude"]
+                    elif header == "TANKER":
+                        cell.value = support["Tanker"]
+                    elif header == "CONTROL NAME":
+                        cell.value = support["ControlName"]
         return start_row + len(callsigns)
 
     for coalition_label, code in [("BLUEFOR", "blue"), ("OPFOR", "red")]:
@@ -371,6 +434,7 @@ def build_csv(mission_data: dict, *, mission_name: str = "", theater: str = "") 
         buf.write(f"#   {term:<12} {meaning}\n")
     buf.write("\n")
 
+    support = _mission_support(mission_data)
     w = csv.writer(buf)
     w.writerow(HEADERS)
     for coalition_label, code in [("BLUEFOR", "blue"), ("OPFOR", "red")]:
@@ -394,6 +458,9 @@ def build_csv(mission_data: dict, *, mission_name: str = "", theater: str = "") 
                     row[idx["MSNACFT"]] = aux["Aircraft"]
                     row[idx["PFREQ"]] = aux["Freq"]
                     row[idx["CONTROL PFREQ"]] = aux["ControlFreq"]
+                    row[idx["ALTITUDE"]] = aux["Altitude"]
+                    row[idx["TANKER"]] = support["Tanker"]
+                    row[idx["CONTROL NAME"]] = support["ControlName"]
                 w.writerow(row)
     return buf.getvalue().encode("utf-8")
 

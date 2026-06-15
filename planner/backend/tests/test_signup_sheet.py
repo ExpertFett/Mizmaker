@@ -244,3 +244,38 @@ class TestXlsx:
         # Camelot seat 2 (row 20) — flight-level fields empty
         assert ws.cell(row=20, column=task_col).value in (None, "")
         assert ws.cell(row=20, column=ac_col).value in (None, "")
+
+
+class TestAutoFillEnrichments:
+    """v1.19.87 — more fields auto-derived from mission data: cruise
+    altitude, mission tanker + AWACS controller, and a wx/METAR line."""
+
+    def test_flight_aux_altitude_as_flight_level(self):
+        from services.signup_sheet import _flight_aux
+        g = {"units": [{"type": "FA-18C_hornet"}],
+             "waypoints": [{"altitude_m": 1000}, {"altitude_m": 7620}]}  # 25,000 ft
+        assert _flight_aux(g)["Altitude"] == "FL250"
+
+    def test_flight_aux_altitude_low_in_feet(self):
+        from services.signup_sheet import _flight_aux
+        g = {"units": [{"type": "AH-64D"}], "waypoints": [{"altitude_m": 1524}]}  # 5,000 ft
+        assert _flight_aux(g)["Altitude"] == "5,000 ft"
+
+    def test_mission_support_picks_tanker_and_awacs(self):
+        from services.signup_sheet import _mission_support
+        md = {"groups": [
+            {"groupName": "Shell", "task": "Refueling"},
+            {"groupName": "Overlord", "task": "AWACS"},
+            {"groupName": "Uzi 1", "task": "CAP"},
+        ]}
+        s = _mission_support(md)
+        assert s["Tanker"] == "Shell"
+        assert s["ControlName"] == "Overlord"
+
+    def test_metar_composes_present_fields(self):
+        from services.signup_sheet import _metar
+        wx = {"wind": {"atGround": {"speed": 5.0, "dir": 270.0}},
+              "temperature_c": 15.0, "qnh_inhg": 29.92, "visibility_m": 9260}
+        out = _metar(wx)
+        assert "270/" in out and "15" in out and "29.92" in out
+        assert _metar({}) == ""  # empty weather → empty string
