@@ -54,6 +54,54 @@ _DEFAULT_WAYPOINT = {
 }
 
 
+# SA-page defaults (added with the 2026 radar/SA DTC update). Mirrors a real
+# exported Hornet DTC: declutter toggles per master-reject level (all on),
+# datalink/sensor track symbology, and the empty CAP/corridor/FAOR-FLOT/MEZ
+# lists. MEZ_THRTS is auto-filled at build time from the mission's threats.
+def _dcltr_all_on():
+    return {
+        "Bullseye_TDC_Info": True, "CAP": True, "CORR": True, "Compase_Rose": True,
+        "Countermeasure_Inventory": True, "FAOR": True, "FLOT": True, "Ground_Speed": True,
+        "MEZ_Names": True, "MEZ_Rings": True, "SEQ": True, "Waypoint_Info": True,
+    }
+
+SA_DEFAULTS = {
+    "CAP_PTS": [],
+    "CORRIDORS": [],
+    "Default_CAP_Point": 10,
+    "Default_CORRIDORS_Point": 8,
+    "Default_FAOR_Line": 4,
+    "Default_FLOT_Line": 4,
+    "Default_MEZ_THRTS_Level": 1,
+    "FAOR_FLOT": {"FAOR": [], "FLOT": []},
+    "MEZ_THRTS": [],
+    "mirror_MEZ_THRTS": False,
+    "SETTINGS": {
+        "DCLTR_SETTINGS": {"MREJ1": _dcltr_all_on(), "MREJ2": _dcltr_all_on()},
+        "SENSORS_SETTINGS": {
+            "FF_tracks": True, "FRIEND_Symbols": 3, "PPLI_tracks": True,
+            "RWR_Symbols": 1, "SURV_tracks": True, "UNK_tracks": True,
+        },
+    },
+}
+
+
+def _make_mez_threat(num, name="", x=0.0, y=0.0, threat_level=1, threat_ring_radius=1, threat_type="Custom"):
+    """One SA-page MEZ threat entry. threat_type 'Custom' + level/radius mirror a
+    hand-built DTC; real SAM-range mapping can refine radius once the unit is
+    confirmed in-jet."""
+    return {
+        "id": f"MEZ_THRTS_{num}",
+        "num": num,
+        "text": str(name or "")[:24],
+        "threat_level": int(threat_level),
+        "threat_ring_radius": threat_ring_radius,
+        "threat_type": threat_type,
+        "x": x,
+        "y": y,
+    }
+
+
 def _make_comm_channel(num, frequency=305.0, modulation=0, name=""):
     """Create a single COMM channel entry."""
     if not name:
@@ -155,6 +203,7 @@ def extract_flight_for_dtc(mission: dict, group_name: str):
                         "theatre": mission.get("theatre", ""),
                         "group_name": group_name,
                         "aircraft_type": aircraft_type,
+                        "side": coal_name,  # 'red'/'blue' — used to pick enemy threats for the SA page
                     }
 
     return None
@@ -246,11 +295,30 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
         "terrain": flight_data.get("theatre", ""),
     }
 
+    # SA page (2026 radar/SA DTC update). Start from defaults, then drop the
+    # mission's threats onto the page as MEZ markers (name + position). Only the
+    # flight's enemy threats are included when a side is known.
+    sa = copy.deepcopy(SA_DEFAULTS)
+    flight_side = flight_data.get("side")
+    threats = flight_data.get("threats", []) or []
+    num = 0
+    for t in threats:
+        if flight_side and t.get("coalition") and t.get("coalition") == flight_side:
+            continue  # skip friendly threats
+        num += 1
+        sa["MEZ_THRTS"].append(_make_mez_threat(
+            num,
+            name=t.get("name", "") or t.get("type", ""),
+            x=t.get("x", 0),
+            y=t.get("y", 0),
+        ))
+
     dtc = {
         "data": {
             "ALR67": alr67,
             "COMM": comm,
             "name": dtc_name,
+            "SA": sa,
             "TCN": [],
             "terrain": flight_data.get("theatre", ""),
             "type": "FA-18C_hornet",
@@ -335,6 +403,40 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
         settings["ACLS"].update(edits["acls"])
     if "alt_warning" in edits:
         settings["Altitude_Warning"].update(edits["alt_warning"])
+
+    # Full SA object straight from the frontend dtcData (the SA subtab edits the
+    # auto-filled SA in place, then export sends the whole data block). Takes
+    # precedence — it already contains the user's declutter/sensor/MEZ choices.
+    if isinstance(edits.get("SA"), dict):
+        data["SA"] = edits["SA"]
+
+    # SA-page edits. `sa` can carry:
+    #   declutter: {MREJ1: {...bool}, MREJ2: {...bool}}
+    #   sensors:   {FF_tracks, FRIEND_Symbols, PPLI_tracks, RWR_Symbols, SURV_tracks, UNK_tracks}
+    #   mez_threats: [{text, x, y, threat_level, threat_ring_radius, threat_type}, ...]  (full replace)
+    if "sa" in edits:
+        sa_data = data.setdefault("SA", copy.deepcopy(SA_DEFAULTS))
+        sa_edit = edits["sa"] or {}
+        if "declutter" in sa_edit:
+            dcl = sa_data["SETTINGS"]["DCLTR_SETTINGS"]
+            for mrej, vals in sa_edit["declutter"].items():
+                if mrej in dcl and isinstance(vals, dict):
+                    dcl[mrej].update(vals)
+        if "sensors" in sa_edit and isinstance(sa_edit["sensors"], dict):
+            sa_data["SETTINGS"]["SENSORS_SETTINGS"].update(sa_edit["sensors"])
+        if "mez_threats" in sa_edit and isinstance(sa_edit["mez_threats"], list):
+            sa_data["MEZ_THRTS"] = [
+                _make_mez_threat(
+                    i + 1,
+                    name=m.get("text", ""),
+                    x=m.get("x", 0),
+                    y=m.get("y", 0),
+                    threat_level=m.get("threat_level", 1),
+                    threat_ring_radius=m.get("threat_ring_radius", 1),
+                    threat_type=m.get("threat_type", "Custom"),
+                )
+                for i, m in enumerate(sa_edit["mez_threats"])
+            ]
 
     return dtc
 

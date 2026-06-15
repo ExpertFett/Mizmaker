@@ -57,15 +57,59 @@ interface CmdsProgram {
   flareInterval: number;
 }
 
+// SA page (2026 radar/SA DTC update). Mirrors data.SA in the .dtc.
+interface MezThreat {
+  id?: string;
+  num?: number;
+  text: string;
+  threat_level: number;
+  threat_ring_radius: number;
+  threat_type: string;
+  x: number;
+  y: number;
+}
+type Dcltr = Record<string, boolean>;
+interface SaData {
+  MEZ_THRTS: MezThreat[];
+  mirror_MEZ_THRTS?: boolean;
+  CAP_PTS?: unknown[];
+  CORRIDORS?: unknown[];
+  FAOR_FLOT?: unknown;
+  Default_CAP_Point?: number;
+  Default_CORRIDORS_Point?: number;
+  Default_FAOR_Line?: number;
+  Default_FLOT_Line?: number;
+  Default_MEZ_THRTS_Level?: number;
+  SETTINGS: {
+    DCLTR_SETTINGS: { MREJ1: Dcltr; MREJ2: Dcltr };
+    SENSORS_SETTINGS: {
+      FF_tracks: boolean; FRIEND_Symbols: number; PPLI_tracks: boolean;
+      RWR_Symbols: number; SURV_tracks: boolean; UNK_tracks: boolean;
+    };
+  };
+}
+
 interface DtcData {
   COMM: { COMM1: CommRadio; COMM2: CommRadio };
   WYPT: { NAV_PTS: NavPoint[]; NAV_SETTINGS: NavSettings };
   CMDS: Record<string, CmdsProgram>;
+  SA?: SaData;
   ALR67?: unknown;
   TCN?: unknown[];
 }
 
-type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools' | 'presets';
+const DCLTR_ORDER = [
+  'Bullseye_TDC_Info', 'CAP', 'CORR', 'Compase_Rose', 'Countermeasure_Inventory',
+  'FAOR', 'FLOT', 'Ground_Speed', 'MEZ_Names', 'MEZ_Rings', 'SEQ', 'Waypoint_Info',
+];
+const DCLTR_LABELS: Record<string, string> = {
+  Bullseye_TDC_Info: 'Bullseye / TDC info', CAP: 'CAP points', CORR: 'Corridors',
+  Compase_Rose: 'Compass rose', Countermeasure_Inventory: 'CM inventory',
+  FAOR: 'FAOR line', FLOT: 'FLOT line', Ground_Speed: 'Ground speed',
+  MEZ_Names: 'MEZ names', MEZ_Rings: 'MEZ rings', SEQ: 'Sequence', Waypoint_Info: 'Waypoint info',
+};
+
+type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools' | 'presets' | 'sa';
 
 const COMM_CHANNELS = [
   ...Array.from({ length: 20 }, (_, i) => `Channel_${i + 1}`),
@@ -800,6 +844,7 @@ export function DtcTab() {
               { key: 'waypoints', label: 'Waypoints' },
               { key: 'nav', label: 'NAV' },
               { key: 'fuel', label: 'Fuel' },
+              { key: 'sa', label: 'SA' },
               { key: 'tools', label: 'Tools' },
               { key: 'presets', label: 'Presets' },
             ] as { key: SubTab; label: string }[]).map((t) => (
@@ -846,6 +891,9 @@ export function DtcTab() {
           </div>
           <div style={{ display: subTab === 'fuel' ? 'block' : 'none' }}>
             <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />
+          </div>
+          <div style={{ display: subTab === 'sa' ? 'block' : 'none' }}>
+            <SaSubTab data={dtcData.SA} setDtcData={setDtcData} />
           </div>
           <div style={{ display: subTab === 'tools' ? 'block' : 'none' }}>
             <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />
@@ -1649,6 +1697,120 @@ function FuelStat({ label, value, color }: { label: string; value: string; color
 /* ------------------------------------------------------------------ */
 /* Tools sub-tab                                                       */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* SA sub-tab — SA-page setup (2026 radar/SA DTC update).               */
+/* Edits dtcData.SA in place; the full SA object flows to the backend   */
+/* on export (build_dtc_from_edits accepts the uppercase "SA" object).  */
+/* ------------------------------------------------------------------ */
+function SaSubTab({ data, setDtcData }: {
+  data?: SaData;
+  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
+}) {
+  if (!data || !data.SETTINGS) {
+    return <div style={{ color: '#aaaaaa', fontSize: 13, padding: 12 }}>Load a flight's DTC to set up its SA page.</div>;
+  }
+  const mutate = (fn: (sa: SaData) => SaData) =>
+    setDtcData((prev) => (prev && prev.SA ? { ...prev, SA: fn(prev.SA) } : prev));
+  const sensors = data.SETTINGS.SENSORS_SETTINGS;
+  type SensorKey = keyof SaData['SETTINGS']['SENSORS_SETTINGS'];
+  const setSensor = (k: SensorKey, v: boolean | number) =>
+    mutate((sa) => ({ ...sa, SETTINGS: { ...sa.SETTINGS, SENSORS_SETTINGS: { ...sa.SETTINGS.SENSORS_SETTINGS, [k]: v } } }));
+  const toggleDcltr = (mrej: 'MREJ1' | 'MREJ2', k: string) =>
+    mutate((sa) => ({ ...sa, SETTINGS: { ...sa.SETTINGS, DCLTR_SETTINGS: { ...sa.SETTINGS.DCLTR_SETTINGS, [mrej]: { ...sa.SETTINGS.DCLTR_SETTINGS[mrej], [k]: !sa.SETTINGS.DCLTR_SETTINGS[mrej][k] } } } }));
+  const renumber = (arr: MezThreat[]) => arr.map((m, i) => ({ ...m, num: i + 1, id: `MEZ_THRTS_${i + 1}` }));
+  const setMez = (i: number, k: keyof MezThreat, v: string | number) =>
+    mutate((sa) => ({ ...sa, MEZ_THRTS: sa.MEZ_THRTS.map((m, idx) => (idx === i ? ({ ...m, [k]: v } as MezThreat) : m)) }));
+  const addMez = () =>
+    mutate((sa) => ({ ...sa, MEZ_THRTS: renumber([...sa.MEZ_THRTS, { text: 'NEW', threat_level: 1, threat_ring_radius: 1, threat_type: 'Custom', x: 0, y: 0 }]) }));
+  const removeMez = (i: number) =>
+    mutate((sa) => ({ ...sa, MEZ_THRTS: renumber(sa.MEZ_THRTS.filter((_, idx) => idx !== i)) }));
+
+  const card: React.CSSProperties = { background: '#222', border: '1px solid #3a3a3a', borderRadius: 4, padding: 12, marginBottom: 14 };
+  const head: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 };
+  const chk = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: on ? '#cfe6ff' : '#888', cursor: 'pointer', padding: '3px 0' });
+  const numIn: React.CSSProperties = { width: 64, background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3, color: '#e0e0e0', fontSize: 12, padding: '3px 5px', fontFamily: 'inherit' };
+  const txtIn: React.CSSProperties = { ...numIn, width: 130 };
+
+  const trackToggles: [SensorKey, string][] = [
+    ['FF_tracks', 'Fighter-to-fighter'], ['PPLI_tracks', 'PPLI (own flight)'],
+    ['SURV_tracks', 'Surveillance'], ['UNK_tracks', 'Unknown'],
+  ];
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: '#aaaaaa', marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>
+        SA-page setup written onto the cartridge (2026 radar/SA DTC). Threat rings auto-fill from the mission's enemy SAMs — rename, retune, or add your own markers below.
+      </p>
+
+      <div style={card}>
+        <div style={head}>Track display</div>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+          {trackToggles.map(([k, label]) => (
+            <label key={k} style={chk(!!sensors[k])}>
+              <input type="checkbox" checked={!!sensors[k]} onChange={() => setSensor(k, !sensors[k])} />
+              {label}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 18, marginTop: 8 }}>
+          <label style={{ fontSize: 12, color: '#aaa', display: 'flex', flexDirection: 'column', gap: 3 }}>Friend symbols
+            <input type="number" min={0} max={5} style={numIn} value={sensors.FRIEND_Symbols} onChange={(e) => setSensor('FRIEND_Symbols', Number(e.target.value))} /></label>
+          <label style={{ fontSize: 12, color: '#aaa', display: 'flex', flexDirection: 'column', gap: 3 }}>RWR symbols
+            <input type="number" min={0} max={5} style={numIn} value={sensors.RWR_Symbols} onChange={(e) => setSensor('RWR_Symbols', Number(e.target.value))} /></label>
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={head}>Declutter (master reject levels)</div>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          {(['MREJ1', 'MREJ2'] as const).map((mrej) => (
+            <div key={mrej} style={{ flex: '1 1 220px', minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#4a8fd4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{mrej === 'MREJ1' ? 'Reject 1' : 'Reject 2'}</div>
+              {DCLTR_ORDER.map((k) => (
+                <label key={k} style={chk(!!data.SETTINGS.DCLTR_SETTINGS[mrej][k])}>
+                  <input type="checkbox" checked={!!data.SETTINGS.DCLTR_SETTINGS[mrej][k]} onChange={() => toggleDcltr(mrej, k)} />
+                  {DCLTR_LABELS[k] ?? k}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={head}>Threat rings / markers ({data.MEZ_THRTS.length})</div>
+          <button onClick={addMez} style={{ background: '#1a2a1a', border: '1px solid #3fb950', color: '#3fb950', borderRadius: 3, fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>+ Add marker</button>
+        </div>
+        {data.MEZ_THRTS.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#888' }}>No enemy SAMs in this mission — add markers by hand, or they'll auto-fill when the mission has threats.</div>
+        ) : (
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+            <thead><tr style={{ textAlign: 'left', color: '#888' }}>
+              <th style={{ padding: '4px 6px' }}>#</th><th style={{ padding: '4px 6px' }}>Name</th><th style={{ padding: '4px 6px' }}>Level</th><th style={{ padding: '4px 6px' }}>Radius</th><th style={{ padding: '4px 6px' }}>Position</th><th />
+            </tr></thead>
+            <tbody>
+              {data.MEZ_THRTS.map((m, i) => (
+                <tr key={i} style={{ borderTop: '1px solid #2f2f2f' }}>
+                  <td style={{ padding: '4px 6px', color: '#888' }}>{i + 1}</td>
+                  <td style={{ padding: '4px 6px' }}><input style={txtIn} value={m.text} onChange={(e) => setMez(i, 'text', e.target.value)} /></td>
+                  <td style={{ padding: '4px 6px' }}><input type="number" style={numIn} value={m.threat_level} onChange={(e) => setMez(i, 'threat_level', Number(e.target.value))} /></td>
+                  <td style={{ padding: '4px 6px' }}><input type="number" style={numIn} value={m.threat_ring_radius} onChange={(e) => setMez(i, 'threat_ring_radius', Number(e.target.value))} /></td>
+                  <td style={{ padding: '4px 6px', color: '#888', fontFamily: "'B612 Mono', monospace", fontSize: 11 }}>{Math.round(m.x)}, {Math.round(m.y)}</td>
+                  <td style={{ padding: '4px 6px' }}><button onClick={() => removeMez(i)} title="Remove" style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 14 }}>×</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div style={{ fontSize: 11, color: '#777', marginTop: 8, lineHeight: 1.5 }}>
+          Level/radius mirror a hand-built DTC (Custom type). Confirm the radius unit in-jet and we'll size rings to real SAM ranges automatically.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ToolsSubTab({ waypoints, dtcData, setDtcData, selectedFlight }: {
   waypoints: NavPoint[];

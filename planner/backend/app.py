@@ -1505,6 +1505,11 @@ def dtc_generate():
             flight_data["waypoints"] = server_wps
 
         flight_data["theatre"] = session["theater"]
+        # Attach mission threats so the SA page auto-fills MEZ markers (enemy side).
+        try:
+            flight_data["threats"] = extract_full_mission_data(mission_dict, session["theater"]).get("threats", [])
+        except Exception:
+            flight_data["threats"] = []
         dtc = build_dtc_from_flight(flight_data, dtc_name)
 
         if edits:
@@ -1549,6 +1554,11 @@ def dtc_preview():
             flight_data["waypoints"] = server_wps
 
         flight_data["theatre"] = session["theater"]
+        # Attach mission threats so the SA page auto-fills MEZ markers (enemy side).
+        try:
+            flight_data["threats"] = extract_full_mission_data(mission_dict, session["theater"]).get("threats", [])
+        except Exception:
+            flight_data["threats"] = []
         dtc = build_dtc_from_flight(flight_data, group_name)
 
         return jsonify({
