@@ -69,12 +69,19 @@ interface MezThreat {
   y: number;
 }
 type Dcltr = Record<string, boolean>;
+interface CorridorPoint { id?: string; x: number; y: number; }
+interface Corridor { id?: string; num?: number; note: string; points: CorridorPoint[]; }
+/** Minimal runtime waypoint shape from the backend NAV_PTS — x/y DCS world
+ *  coords + a label. (The display-oriented NavPoint interface omits these; the
+ *  corridor editor needs the world coords.) */
+interface SaWaypoint { x?: number; y?: number; text_note?: string; wypt_num?: number; }
+
 interface SaData {
   MEZ_THRTS: MezThreat[];
   mirror_MEZ_THRTS?: boolean;
   CAP_PTS?: unknown[];
-  CORRIDORS?: unknown[];
-  FAOR_FLOT?: unknown;
+  CORRIDORS?: Corridor[];
+  FAOR_FLOT?: { FAOR: Corridor[]; FLOT: Corridor[] };
   Default_CAP_Point?: number;
   Default_CORRIDORS_Point?: number;
   Default_FAOR_Line?: number;
@@ -893,7 +900,7 @@ export function DtcTab() {
             <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />
           </div>
           <div style={{ display: subTab === 'sa' ? 'block' : 'none' }}>
-            <SaSubTab data={dtcData.SA} setDtcData={setDtcData} />
+            <SaSubTab data={dtcData.SA} navPts={(dtcData.WYPT?.NAV_PTS ?? []) as unknown as SaWaypoint[]} setDtcData={setDtcData} />
           </div>
           <div style={{ display: subTab === 'tools' ? 'block' : 'none' }}>
             <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />
@@ -1703,8 +1710,9 @@ function FuelStat({ label, value, color }: { label: string; value: string; color
 /* Edits dtcData.SA in place; the full SA object flows to the backend   */
 /* on export (build_dtc_from_edits accepts the uppercase "SA" object).  */
 /* ------------------------------------------------------------------ */
-function SaSubTab({ data, setDtcData }: {
+function SaSubTab({ data, navPts, setDtcData }: {
   data?: SaData;
+  navPts: SaWaypoint[];
   setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
 }) {
   if (!data || !data.SETTINGS) {
@@ -1807,6 +1815,99 @@ function SaSubTab({ data, setDtcData }: {
         <div style={{ fontSize: 11, color: '#777', marginTop: 8, lineHeight: 1.5 }}>
           Level/radius mirror a hand-built DTC (Custom type). Confirm the radius unit in-jet and we'll size rings to real SAM ranges automatically.
         </div>
+      </div>
+
+      {/* Corridors / FAOR / FLOT — all named polylines (same DCS shape),
+          built by picking the flight's waypoints. */}
+      <SaLineEditor title="Corridors" addLabel="+ Corridor" idPrefix="CORR" navPts={navPts}
+        lines={data.CORRIDORS ?? []}
+        onChange={(l) => mutate((sa) => ({ ...sa, CORRIDORS: l }))}
+        emptyHint="No corridors. Add one, then pick waypoints to draw the lane (e.g. ingress → egress)." />
+      <SaLineEditor title="FAOR lines" addLabel="+ FAOR" idPrefix="FAOR" navPts={navPts}
+        lines={data.FAOR_FLOT?.FAOR ?? []}
+        onChange={(l) => mutate((sa) => ({ ...sa, FAOR_FLOT: { FAOR: l, FLOT: sa.FAOR_FLOT?.FLOT ?? [] } }))}
+        emptyHint="No FAOR boundaries. Add one and pick waypoints to outline the area of responsibility." />
+      <SaLineEditor title="FLOT / LOA lines" addLabel="+ FLOT" idPrefix="FLOT" navPts={navPts}
+        lines={data.FAOR_FLOT?.FLOT ?? []}
+        onChange={(l) => mutate((sa) => ({ ...sa, FAOR_FLOT: { FAOR: sa.FAOR_FLOT?.FAOR ?? [], FLOT: l } }))}
+        emptyHint="No FLOT/LOA lines. Add one and pick waypoints to mark the forward line." />
+    </div>
+  );
+}
+
+/* SA polyline editor — shared by Corridors, FAOR, and FLOT (identical DCS
+   shape: a named line of points). Points are picked from the flight's
+   waypoints so nobody hand-types world coords. Re-ids to <PREFIX>_n /
+   <PREFIX>_n_PT_m on every change. */
+function SaLineEditor({ title, addLabel, lines, idPrefix, navPts, onChange, emptyHint }: {
+  title: string;
+  addLabel: string;
+  lines: Corridor[];
+  idPrefix: string;
+  navPts: SaWaypoint[];
+  onChange: (lines: Corridor[]) => void;
+  emptyHint: string;
+}) {
+  const wpLabel = (w: SaWaypoint, i: number) => (w.text_note && w.text_note.trim()) || `WP${w.wypt_num ?? i + 1}`;
+  const renumber = (arr: Corridor[]): Corridor[] =>
+    arr.map((c, ci) => ({
+      ...c, num: ci + 1, id: `${idPrefix}_${ci + 1}`,
+      points: c.points.map((p, pi) => ({ ...p, id: `${idPrefix}_${ci + 1}_PT_${pi + 1}` })),
+    }));
+  const set = (fn: (arr: Corridor[]) => Corridor[]) => onChange(renumber(fn(lines)));
+  const defaultNote = title.replace(/ lines$/i, '').replace(/s$/, '');
+  const addLine = () => set((arr) => [...arr, { note: defaultNote, points: [] }]);
+  const removeLine = (ci: number) => set((arr) => arr.filter((_, i) => i !== ci));
+  const setNote = (ci: number, note: string) => set((arr) => arr.map((c, i) => (i === ci ? { ...c, note } : c)));
+  const addPt = (ci: number, w: SaWaypoint) => set((arr) => arr.map((c, i) => (i === ci ? { ...c, points: [...c.points, { x: w.x ?? 0, y: w.y ?? 0 }] } : c)));
+  const removePt = (ci: number, pi: number) => set((arr) => arr.map((c, i) => (i === ci ? { ...c, points: c.points.filter((_, j) => j !== pi) } : c)));
+  const pointLabel = (p: CorridorPoint) => {
+    const w = navPts.find((n) => n.x === p.x && n.y === p.y);
+    return w ? wpLabel(w, 0) : `${Math.round(p.x)}, ${Math.round(p.y)}`;
+  };
+
+  const card: React.CSSProperties = { background: '#222', border: '1px solid #3a3a3a', borderRadius: 4, padding: 12, marginBottom: 14 };
+  const head: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#e0e0e0' };
+  const txtIn: React.CSSProperties = { background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3, color: '#e0e0e0', fontSize: 12, padding: '3px 5px', fontFamily: 'inherit' };
+
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={head}>{title} ({lines.length})</div>
+        <button onClick={addLine} style={{ background: '#1a2330', border: '1px solid #4a8fd4', color: '#cfe6ff', borderRadius: 3, fontSize: 12, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>{addLabel}</button>
+      </div>
+      {lines.length === 0 ? (
+        <div style={{ fontSize: 12, color: '#888' }}>{emptyHint}</div>
+      ) : (
+        lines.map((c, ci) => (
+          <div key={ci} style={{ borderTop: ci ? '1px solid #2f2f2f' : 'none', padding: '8px 0' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+              <input style={{ ...txtIn, flex: 1 }} value={c.note} onChange={(e) => setNote(ci, e.target.value)} placeholder="Name" />
+              <span style={{ fontSize: 11, color: '#888' }}>{c.points.length} pt{c.points.length === 1 ? '' : 's'}</span>
+              <button onClick={() => removeLine(ci)} title="Remove" style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 14 }}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {c.points.map((p, pi) => (
+                <span key={pi} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3, padding: '2px 6px', fontSize: 11, color: '#cccccc' }}>
+                  {pi + 1}. {pointLabel(p)}
+                  <button onClick={() => removePt(ci, pi)} style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 12, padding: 0, lineHeight: 1 }}>×</button>
+                </span>
+              ))}
+              <select value="" onChange={(e) => { if (e.target.value === '') return; const wi = Number(e.target.value); if (navPts[wi]) addPt(ci, navPts[wi]); }}
+                      style={{ ...txtIn, width: 160 }}>
+                <option value="">+ add waypoint…</option>
+                {navPts.map((w, wi) => (w.x != null && w.y != null
+                  ? <option key={wi} value={wi}>{wpLabel(w, wi)}</option>
+                  : null))}
+              </select>
+            </div>
+          </div>
+        ))
+      )}
+      <div style={{ fontSize: 11, color: '#777', marginTop: 8, lineHeight: 1.5 }}>
+        {navPts.length === 0
+          ? 'No waypoints on this flight yet — points are picked from the route.'
+          : 'Points come from this flight’s waypoints (DCS coords). Add them in order; fine-tune the exact path in the DCS DTC Manager if needed.'}
       </div>
     </div>
   );

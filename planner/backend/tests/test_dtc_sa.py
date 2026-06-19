@@ -39,9 +39,9 @@ def test_sa_section_present_and_shaped():
 
 def test_mez_autofill_filters_to_enemy():
     threats = [
-        {"name": "RIVER SA-10", "type": "S-300", "x": -289055.21, "y": 625158.97, "coalition": "red"},
+        {"name": "RIVER SA-10", "type": "S-300", "x": -289055.21, "y": 625158.97, "coalition": "red", "range": 45000},
         {"name": "WASP SA-6", "type": "Kub", "x": -280744.69, "y": 624980.25, "coalition": "red"},
-        {"name": "FRIENDLY", "type": "Patriot", "x": 1, "y": 2, "coalition": "blue"},
+        {"name": "FRIENDLY", "type": "Patriot", "x": 1, "y": 2, "coalition": "blue", "range": 100000},
     ]
     sa = build_dtc_from_flight(_flight(threats, side="blue"), "T")["data"]["SA"]
     assert len(sa["MEZ_THRTS"]) == 2  # blue friendly dropped
@@ -49,6 +49,10 @@ def test_mez_autofill_filters_to_enemy():
     assert set(m.keys()) == MEZ_KEYS
     assert m["text"] == "RIVER SA-10" and m["x"] == -289055.21
     assert m["threat_type"] == "Custom" and m["id"] == "MEZ_THRTS_1"
+    # threat_ring_radius is nautical miles = range_m / 1852 (45 km → 24.298 nm)
+    assert m["threat_ring_radius"] == round(45000 / 1852.0, 3)
+    # no-range threat falls back to a 1 nm marker
+    assert sa["MEZ_THRTS"][1]["threat_ring_radius"] == 1
 
 
 def test_mez_autofill_includes_all_when_side_unknown():

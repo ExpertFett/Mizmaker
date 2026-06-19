@@ -306,11 +306,18 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
         if flight_side and t.get("coalition") and t.get("coalition") == flight_side:
             continue  # skip friendly threats
         num += 1
+        # threat_ring_radius is in NAUTICAL MILES on the SA page (confirmed
+        # against a real DTC: SA-9 4.2km→2.268nm, Hawk 45km→24.3nm). The
+        # mission threat's `range` is in metres → nm = m / 1852. Falls back to
+        # a 1 nm marker when the threat has no defined range.
+        rng_m = t.get("range") or 0
+        radius_nm = round(rng_m / 1852.0, 3) if rng_m else 1
         sa["MEZ_THRTS"].append(_make_mez_threat(
             num,
             name=t.get("name", "") or t.get("type", ""),
             x=t.get("x", 0),
             y=t.get("y", 0),
+            threat_ring_radius=radius_nm,
         ))
 
     dtc = {
