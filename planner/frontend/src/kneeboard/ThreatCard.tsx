@@ -196,7 +196,10 @@ export function ThreatCard({
         <div style={titleStyle}>
           THREAT CARD
           {totalPages > 1 ? ` (${page + 1}/${totalPages})` : ''}
-          {fidelity !== 'full' && (
+          {/* Realistic mode wears no badge — telling pilots the card is
+              "realistic" hints the picture is obscured. Operational keeps
+              its tag so the planner knows designations are hidden. */}
+          {fidelity === 'operational' && (
             <span style={{ fontSize: 13, color: ACCENT, marginLeft: 8, fontWeight: 600 }}>
               [{fidelity.toUpperCase()}]
             </span>
@@ -230,8 +233,10 @@ export function ThreatCard({
           placeholder so the empty space doesn't read as a render
           bug. Only fires when there ARE threats but the user chose
           to hide them; missions with zero threats fall through to
-          the existing "no hostile systems" message below. */}
-      {isFirstPage && !mapVisible && enriched.length >= 1 && (
+          the existing "no hostile systems" message below.
+          Realistic mode is exempt: there, map-off means "drop it
+          entirely" — no placeholder — for the most minimal card. */}
+      {isFirstPage && !mapVisible && enriched.length >= 1 && fidelity !== 'realistic' && (
         <div
           style={{
             margin: '0 16px 8px',
