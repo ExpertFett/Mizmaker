@@ -15,6 +15,7 @@ export interface RrSignup {
   name: string | null;
   callsign: string | null;
   modex: string | null;
+  livery: string | null;
   status: string | null;
 }
 export interface RrFlight {
@@ -83,9 +84,10 @@ export function rosterUrl(link: RrLink): string {
  *   Callsign  = "<flight.callsign> 1-<i+1>"  (→ "Uzi 1-1"; empty if no callsign)
  *   Pilot     = signup.name || signup.callsign || ""
  *   Modex     = signup.modex || ""   (side/hull number → unit onboard_num on Apply)
+ *   Livery    = signup.livery || ""  (DCS skin → unit livery on Apply)
  */
 export function rosterToRows(roster: RrRoster): { headers: string[]; rows: Record<string, string>[] } {
-  const headers = ['Flight', 'Callsign', 'Pilot', 'Seat', 'Modex'];
+  const headers = ['Flight', 'Callsign', 'Pilot', 'Seat', 'Modex', 'Livery'];
   const rows: Record<string, string>[] = [];
   for (const flight of roster.flights || []) {
     const fc = (flight.callsign || '').trim();
@@ -97,6 +99,7 @@ export function rosterToRows(roster: RrRoster): { headers: string[]; rows: Recor
         Pilot: (s.name || s.callsign || '').trim(),
         Seat: String(seat),
         Modex: (s.modex || '').trim(),
+        Livery: (s.livery || '').trim(),
       });
     });
   }

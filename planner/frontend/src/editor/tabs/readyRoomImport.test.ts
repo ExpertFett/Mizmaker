@@ -15,8 +15,8 @@ const ROSTER: RrRoster = {
     {
       callsign: 'Uzi', aircraft: 'FA-18C_hornet', role: 'OCA', slots: 4,
       signups: [
-        { name: 'Garrett', callsign: 'Fett', modex: '401', status: 'signed' },
-        { name: 'Joe', callsign: 'Sixer', modex: '403', status: 'confirmed' },
+        { name: 'Garrett', callsign: 'Fett', modex: '401', livery: 'VMFA-224 2023', status: 'signed' },
+        { name: 'Joe', callsign: 'Sixer', modex: '403', livery: null, status: 'confirmed' },
       ],
     },
     { callsign: 'Hawk', aircraft: 'FA-18C_hornet', role: 'CAP', slots: 2, signups: [] }, // empty flight
@@ -84,29 +84,30 @@ describe('isSupportedRoster', () => {
 
 describe('rosterToRows', () => {
   it('emits the planner sheet headers', () => {
-    expect(rosterToRows(ROSTER).headers).toEqual(['Flight', 'Callsign', 'Pilot', 'Seat', 'Modex']);
+    expect(rosterToRows(ROSTER).headers).toEqual(['Flight', 'Callsign', 'Pilot', 'Seat', 'Modex', 'Livery']);
   });
 
-  it('emits one row per signed-up pilot, flight-then-seat, with modex', () => {
+  it('emits one row per signed-up pilot, flight-then-seat, with modex + livery', () => {
     const { rows } = rosterToRows(ROSTER);
     expect(rows).toHaveLength(2); // Uzi has 2 signups; Hawk empty contributes none
-    expect(rows[0]).toEqual({ Flight: 'Uzi', Callsign: 'Uzi 1-1', Pilot: 'Garrett', Seat: '1', Modex: '401' });
-    expect(rows[1]).toEqual({ Flight: 'Uzi', Callsign: 'Uzi 1-2', Pilot: 'Joe', Seat: '2', Modex: '403' });
+    expect(rows[0]).toEqual({ Flight: 'Uzi', Callsign: 'Uzi 1-1', Pilot: 'Garrett', Seat: '1', Modex: '401', Livery: 'VMFA-224 2023' });
+    expect(rows[1]).toEqual({ Flight: 'Uzi', Callsign: 'Uzi 1-2', Pilot: 'Joe', Seat: '2', Modex: '403', Livery: '' });
   });
 
-  it('leaves Modex blank when the signup has none', () => {
+  it('leaves Modex + Livery blank when the signup has none', () => {
     const r: RrRoster = { ...ROSTER, flights: [
       { callsign: 'Viper', aircraft: null, role: null, slots: 1, signups: [
-        { name: 'Mav', callsign: null, modex: null, status: 'signed' },
+        { name: 'Mav', callsign: null, modex: null, livery: null, status: 'signed' },
       ] },
     ] };
     expect(rosterToRows(r).rows[0].Modex).toBe('');
+    expect(rosterToRows(r).rows[0].Livery).toBe('');
   });
 
   it('falls back to pilot callsign when name is null', () => {
     const r: RrRoster = { ...ROSTER, flights: [
       { callsign: 'Viper', aircraft: null, role: null, slots: 2, signups: [
-        { name: null, callsign: 'Maverick', modex: null, status: 'signed' },
+        { name: null, callsign: 'Maverick', modex: null, livery: null, status: 'signed' },
       ] },
     ] };
     expect(rosterToRows(r).rows[0].Pilot).toBe('Maverick');
@@ -115,7 +116,7 @@ describe('rosterToRows', () => {
   it('degrades safely on a null flight callsign (empty Callsign cell)', () => {
     const r: RrRoster = { ...ROSTER, flights: [
       { callsign: null, aircraft: null, role: null, slots: 1, signups: [
-        { name: 'Solo', callsign: null, modex: null, status: 'signed' },
+        { name: 'Solo', callsign: null, modex: null, livery: null, status: 'signed' },
       ] },
     ] };
     const row = rosterToRows(r).rows[0];

@@ -20,7 +20,7 @@ import { useEditStore } from '../../store/editStore';
 import { parseRrLink, rosterUrl, rosterToRows, isSupportedRoster } from './readyRoomImport';
 
 type Row = Record<string, string>;
-type ColKey = 'pilot' | 'callsign' | 'flight' | 'seat' | 'modex';
+type ColKey = 'pilot' | 'callsign' | 'flight' | 'seat' | 'modex' | 'livery';
 
 const COL_HINTS: Record<ColKey, string[]> = {
   pilot: ['pilot', 'name', 'player', 'aircrew', 'student'],
@@ -28,6 +28,7 @@ const COL_HINTS: Record<ColKey, string[]> = {
   flight: ['flight', 'element', 'section', 'package'],
   seat: ['seat', 'pos', 'position', 'dash', 'number', '#'],
   modex: ['modex', 'side', 'hull', 'bort', 'tail'],
+  livery: ['livery', 'skin', 'paint', 'scheme'],
 };
 
 /** Minimal CSV parser: handles quoted fields, escaped quotes, CRLF. */
@@ -60,7 +61,7 @@ function parseCsv(text: string): { headers: string[]; rows: Row[] } {
 }
 
 function autoDetectCols(headers: string[]): Record<ColKey, string> {
-  const out: Record<ColKey, string> = { pilot: '', callsign: '', flight: '', seat: '', modex: '' };
+  const out: Record<ColKey, string> = { pilot: '', callsign: '', flight: '', seat: '', modex: '', livery: '' };
   for (const key of Object.keys(COL_HINTS) as ColKey[]) {
     const hit = headers.find((h) => COL_HINTS[key].some((hint) => h.toLowerCase().includes(hint)));
     if (hit) out[key] = hit;
@@ -85,7 +86,7 @@ export function RosterTab() {
   const [raw, setRaw] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
-  const [cols, setCols] = useState<Record<ColKey, string>>({ pilot: '', callsign: '', flight: '', seat: '', modex: '' });
+  const [cols, setCols] = useState<Record<ColKey, string>>({ pilot: '', callsign: '', flight: '', seat: '', modex: '', livery: '' });
   const [assign, setAssign] = useState<Record<number, number | null>>({}); // unitId -> row index
   const [applied, setApplied] = useState(false);
   const [parseMsg, setParseMsg] = useState('');
@@ -177,13 +178,14 @@ export function RosterTab() {
     const cs = row && cols.callsign ? splitCallsign(row[cols.callsign]) : null;
     const pilot = row && cols.pilot ? row[cols.pilot] : '';
     const modex = (row && cols.modex ? row[cols.modex] : '').trim();
-    return { slot, row, cs, pilot, modex };
+    const livery = (row && cols.livery ? row[cols.livery] : '').trim();
+    return { slot, row, cs, pilot, modex, livery };
   }), [slots, assign, rows, cols]);
 
   const matchedCount = resolved.filter((x) => x.row).length;
 
   const apply = useCallback(() => {
-    for (const { slot, cs, pilot, modex } of resolved) {
+    for (const { slot, cs, pilot, modex, livery } of resolved) {
       if (cs && (cs.label || cs.number)) {
         if (cs.label) addEdit({ unitId: slot.unitId, field: 'voiceCallsignLabel', value: cs.label });
         if (cs.number) addEdit({ unitId: slot.unitId, field: 'voiceCallsignNumber', value: cs.number });
@@ -191,6 +193,8 @@ export function RosterTab() {
       if (pilot) addEdit({ unitId: slot.unitId, field: 'unitRename', value: pilot });
       // Modex → unit onboard_num (side/hull number painted on the jet).
       if (modex) addEdit({ unitId: slot.unitId, field: 'onboard_num', value: modex });
+      // Livery → unit skin.
+      if (livery) addEdit({ unitId: slot.unitId, field: 'livery', value: livery });
     }
     setApplied(true);
   }, [resolved, addEdit]);
@@ -275,7 +279,7 @@ export function RosterTab() {
           {/* Apply */}
           <div style={{ marginTop: 16, padding: 14, background: '#222', border: `1px solid ${BORDER}`, borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: MUTED }}>
-              {applied ? 'Roster applied! Download your .miz to save changes.' : `Apply will set callsigns, pilot names${cols.modex ? ' & modex' : ''} on ${matchedCount} slot${matchedCount === 1 ? '' : 's'}.`}
+              {applied ? 'Roster applied! Download your .miz to save changes.' : `Apply will set callsigns + pilot names${cols.modex ? ' + modex' : ''}${cols.livery ? ' + livery' : ''} on ${matchedCount} slot${matchedCount === 1 ? '' : 's'}.`}
             </span>
             <button onClick={apply} disabled={applied || matchedCount === 0}
                     style={{ ...btn, background: applied ? '#1a2020' : '#1a2a1a', border: `1px solid ${applied ? '#3a5a3a' : '#3fb950'}`, color: applied ? '#3a5a3a' : '#3fb950', fontWeight: 600, padding: '8px 18px' }}>
@@ -288,15 +292,16 @@ export function RosterTab() {
             <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 6 }}>Roster reference</div>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
               <thead><tr style={{ textAlign: 'left', color: MUTED }}>
-                <th style={th}>Flight</th><th style={th}>Callsign</th><th style={th}>Pilot</th><th style={th}>Modex</th><th style={th}>Aircraft</th>
+                <th style={th}>Flight</th><th style={th}>Callsign</th><th style={th}>Pilot</th><th style={th}>Modex</th><th style={th}>Livery</th><th style={th}>Aircraft</th>
               </tr></thead>
               <tbody>
-                {resolved.filter((x) => x.row).map(({ slot, cs, pilot, modex }) => (
+                {resolved.filter((x) => x.row).map(({ slot, cs, pilot, modex, livery }) => (
                   <tr key={slot.unitId} style={{ borderTop: `1px solid ${BORDER}` }}>
                     <td style={td}>{slot.groupName}</td>
                     <td style={{ ...td, fontFamily: "'B612 Mono', monospace", color: '#e0e0e0' }}>{cs ? `${cs.label} ${cs.number}` : `${slot.voiceCallsignLabel}${slot.voiceCallsignNumber}`}</td>
                     <td style={td}>{pilot || '—'}</td>
                     <td style={{ ...td, fontFamily: "'B612 Mono', monospace", color: modex ? '#e0e0e0' : MUTED }}>{modex || '—'}</td>
+                    <td style={{ ...td, color: livery ? '#cccccc' : MUTED }}>{livery || '—'}</td>
                     <td style={{ ...td, color: MUTED }}>{slot.type}</td>
                   </tr>
                 ))}
