@@ -71,6 +71,12 @@ interface MezThreat {
 type Dcltr = Record<string, boolean>;
 interface CorridorPoint { id?: string; x: number; y: number; }
 interface Corridor { id?: string; num?: number; note: string; points: CorridorPoint[]; }
+interface CapPoint {
+  id?: string; num?: number; note: string;
+  x: number; y: number;
+  course: number; diameter: number; length: number;  // course °, diameter/length metres
+  turn_direction: 'Left' | 'Right';
+}
 /** Minimal runtime waypoint shape from the backend NAV_PTS — x/y DCS world
  *  coords + a label. (The display-oriented NavPoint interface omits these; the
  *  corridor editor needs the world coords.) */
@@ -79,7 +85,7 @@ interface SaWaypoint { x?: number; y?: number; text_note?: string; wypt_num?: nu
 interface SaData {
   MEZ_THRTS: MezThreat[];
   mirror_MEZ_THRTS?: boolean;
-  CAP_PTS?: unknown[];
+  CAP_PTS?: CapPoint[];
   CORRIDORS?: Corridor[];
   FAOR_FLOT?: { FAOR: Corridor[]; FLOT: Corridor[] };
   Default_CAP_Point?: number;
@@ -1734,6 +1740,18 @@ function SaSubTab({ data, navPts, setDtcData }: {
   const removeMez = (i: number) =>
     mutate((sa) => ({ ...sa, MEZ_THRTS: renumber(sa.MEZ_THRTS.filter((_, idx) => idx !== i)) }));
 
+  // --- CAP points (manual: anchored at a picked waypoint, editable orbit) ---
+  const caps: CapPoint[] = data.CAP_PTS ?? [];
+  const wpLabel = (w: SaWaypoint, i: number) => (w.text_note && w.text_note.trim()) || `WP${w.wypt_num ?? i + 1}`;
+  const renumberCaps = (arr: CapPoint[]) => arr.map((c, i) => ({ ...c, num: i + 1, id: `CAP_PTS_${i + 1}` }));
+  const mutateCaps = (fn: (arr: CapPoint[]) => CapPoint[]) =>
+    mutate((sa) => ({ ...sa, CAP_PTS: renumberCaps(fn(sa.CAP_PTS ?? [])) }));
+  const addCapAt = (w: SaWaypoint) =>
+    mutateCaps((arr) => [...arr, { note: 'CAP', x: w.x ?? 0, y: w.y ?? 0, course: 0, diameter: 9260, length: 37040, turn_direction: 'Left' as const }]);
+  const setCap = (i: number, k: keyof CapPoint, v: string | number) =>
+    mutateCaps((arr) => arr.map((c, idx) => (idx === i ? ({ ...c, [k]: v } as CapPoint) : c)));
+  const removeCap = (i: number) => mutateCaps((arr) => arr.filter((_, idx) => idx !== i));
+
   const card: React.CSSProperties = { background: '#222', border: '1px solid #3a3a3a', borderRadius: 4, padding: 12, marginBottom: 14 };
   const head: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 8 };
   const chk = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: on ? '#cfe6ff' : '#888', cursor: 'pointer', padding: '3px 0' });
@@ -1831,6 +1849,38 @@ function SaSubTab({ data, navPts, setDtcData }: {
         lines={data.FAOR_FLOT?.FLOT ?? []}
         onChange={(l) => mutate((sa) => ({ ...sa, FAOR_FLOT: { FAOR: sa.FAOR_FLOT?.FAOR ?? [], FLOT: l } }))}
         emptyHint="No FLOT/LOA lines. Add one and pick waypoints to mark the forward line." />
+
+      {/* CAP points — racetrack orbits anchored at a waypoint. */}
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={head}>CAP points ({caps.length})</div>
+          <select value="" onChange={(e) => { if (e.target.value === '') return; const wi = Number(e.target.value); if (navPts[wi]) addCapAt(navPts[wi]); }}
+                  style={{ background: '#1a2330', border: '1px solid #4a8fd4', color: '#cfe6ff', borderRadius: 3, fontSize: 12, padding: '4px 8px', fontFamily: 'inherit' }}>
+            <option value="">+ CAP at waypoint…</option>
+            {navPts.map((w, wi) => (w.x != null && w.y != null ? <option key={wi} value={wi}>{wpLabel(w, wi)}</option> : null))}
+          </select>
+        </div>
+        {caps.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#888' }}>No CAP points. Add one anchored at a waypoint, then set the orbit course / length / diameter.</div>
+        ) : (
+          caps.map((c, i) => (
+            <div key={i} style={{ borderTop: i ? '1px solid #2f2f2f' : 'none', padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input style={{ ...txtIn, width: 110 }} value={c.note} onChange={(e) => setCap(i, 'note', e.target.value)} placeholder="Name" />
+              <label style={{ fontSize: 11, color: '#aaa' }}>Crs° <input type="number" style={{ ...numIn, width: 54 }} value={c.course} onChange={(e) => setCap(i, 'course', Number(e.target.value))} /></label>
+              <label style={{ fontSize: 11, color: '#aaa' }}>Len(m) <input type="number" style={{ ...numIn, width: 72 }} value={c.length} onChange={(e) => setCap(i, 'length', Number(e.target.value))} /></label>
+              <label style={{ fontSize: 11, color: '#aaa' }}>Dia(m) <input type="number" style={{ ...numIn, width: 64 }} value={c.diameter} onChange={(e) => setCap(i, 'diameter', Number(e.target.value))} /></label>
+              <select value={c.turn_direction} onChange={(e) => setCap(i, 'turn_direction', e.target.value)} style={{ ...numIn, width: 68 }}>
+                <option value="Left">Left</option><option value="Right">Right</option>
+              </select>
+              <span style={{ fontSize: 11, color: '#888', fontFamily: "'B612 Mono', monospace" }}>@ {Math.round(c.x)}, {Math.round(c.y)}</span>
+              <button onClick={() => removeCap(i)} title="Remove" style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 14, marginLeft: 'auto' }}>×</button>
+            </div>
+          ))
+        )}
+        <div style={{ fontSize: 11, color: '#777', marginTop: 8, lineHeight: 1.5 }}>
+          Anchored at the picked waypoint; length/diameter in metres (9260 m ≈ 5 nm). Auto-fill from Mission-Editor orbit tasks lands once we map an orbit sample.
+        </div>
+      </div>
     </div>
   );
 }
