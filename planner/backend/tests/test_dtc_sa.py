@@ -62,6 +62,26 @@ def test_mez_autofill_includes_all_when_side_unknown():
     assert len(sa["MEZ_THRTS"]) == 1
 
 
+def test_comm_export_reconcile():
+    """Frontend dtcData COMM edits (string freqs, CUE/GUARD aliases) reach the
+    exported .dtc as numbers on the real channel keys."""
+    dtc = build_dtc_from_flight(_flight(), "T")
+    fe = {  # what the DTC tab sends back as edits["COMM"]
+        "COMM1": {
+            "Channel_1": {"frequency": "251.0", "modulation": "1", "name": "STRIKE"},
+            "CUE": {"frequency": "30.0"},          # special-channel alias → Channel_C
+            "BOGUS": {"frequency": "1"},            # editor-only key → must be ignored
+        },
+    }
+    out = build_dtc_from_edits(dtc, {"COMM": fe})["data"]["COMM"]
+    c1 = out["COMM1"]["Channel_1"]
+    assert c1["frequency"] == 251.0 and isinstance(c1["frequency"], float)
+    assert c1["modulation"] == 1 and isinstance(c1["modulation"], int)
+    assert c1["name"] == "STRIKE"
+    assert out["COMM1"]["Channel_C"]["frequency"] == 30.0   # CUE aliased
+    assert "BOGUS" not in out["COMM1"]                       # stray key never injected
+
+
 def test_sa_edits_apply():
     dtc = build_dtc_from_flight(_flight(), "T")
     edited = build_dtc_from_edits(dtc, {"sa": {

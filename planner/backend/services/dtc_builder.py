@@ -368,6 +368,41 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
                 if ch_key in data["COMM"][comm_key]:
                     data["COMM"][comm_key][ch_key].update(ch_data)
 
+    # Frontend dtcData sends the full uppercase COMM block (the DTC tab edits
+    # data.COMM.COMMx.Channel_N in place). The editor stores freqs/mods as
+    # strings and uses CUE/GUARD/MAN/MAR_S for the special channels — coerce to
+    # numbers and alias onto the real Channel_C/G/M/S. We only write to channels
+    # that already exist, so a stray editor-only key can never reach the file.
+    fe_comm = edits.get("COMM")
+    if isinstance(fe_comm, dict):
+        SPECIAL_ALIAS = {"CUE": "Channel_C", "GUARD": "Channel_G", "MAN": "Channel_M", "MAR_S": "Channel_S"}
+        for comm_key in ("COMM1", "COMM2"):
+            fe_radio = fe_comm.get(comm_key)
+            real_radio = data["COMM"].get(comm_key)
+            if not isinstance(fe_radio, dict) or not isinstance(real_radio, dict):
+                continue
+            for fe_key, ch in fe_radio.items():
+                if not isinstance(ch, dict):
+                    continue
+                real_key = fe_key if fe_key in real_radio else SPECIAL_ALIAS.get(fe_key)
+                if not real_key or real_key not in real_radio:
+                    continue
+                upd = {}
+                if ch.get("frequency") not in (None, ""):
+                    try:
+                        upd["frequency"] = float(ch["frequency"])
+                    except (TypeError, ValueError):
+                        pass
+                if ch.get("modulation") is not None:
+                    try:
+                        upd["modulation"] = int(float(ch["modulation"]))
+                    except (TypeError, ValueError):
+                        pass
+                if ch.get("name") is not None:
+                    upd["name"] = str(ch["name"])
+                if upd:
+                    real_radio[real_key].update(upd)
+
     # CMDS edits
     if "cmds" in edits:
         programs = data["ALR67"]["CMDS"]["CMDSProgramSettings"]
