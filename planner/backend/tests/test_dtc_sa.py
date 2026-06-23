@@ -18,9 +18,10 @@ DCLTR_KEYS = {
 }
 
 
-def _flight(threats=None, side="blue"):
+def _flight(threats=None, side="blue", orbits=None):
     return {
         "waypoints": [{"x": 1, "y": 2, "alt": 1000, "alt_type": "BARO", "name": "WP1"}],
+        "orbits": orbits or [],
         "radios": {}, "theatre": "Caucasus", "group_name": "Uzi",
         "aircraft_type": "FA-18C_hornet", "side": side, "threats": threats or [],
     }
@@ -63,12 +64,14 @@ def test_mez_autofill_includes_all_when_side_unknown():
 
 
 def test_comm_export_reconcile():
-    """Frontend dtcData COMM edits (string freqs, CUE/GUARD aliases) reach the
-    exported .dtc as numbers on the real channel keys."""
+    """Frontend dtcData COMM edits (string freqs, AM/FM modulation, CUE/GUARD
+    aliases) reach the exported .dtc as numbers on the real channel keys."""
     dtc = build_dtc_from_flight(_flight(), "T")
     fe = {  # what the DTC tab sends back as edits["COMM"]
         "COMM1": {
-            "Channel_1": {"frequency": "251.0", "modulation": "1", "name": "STRIKE"},
+            "Channel_1": {"frequency": "251.0", "modulation": "FM", "name": "STRIKE"},
+            "Channel_2": {"frequency": "305.0", "modulation": "AM", "name": "TWR"},
+            "Channel_3": {"frequency": "256.0", "modulation": "1"},   # legacy int form still ok
             "CUE": {"frequency": "30.0"},          # special-channel alias → Channel_C
             "BOGUS": {"frequency": "1"},            # editor-only key → must be ignored
         },
@@ -76,10 +79,92 @@ def test_comm_export_reconcile():
     out = build_dtc_from_edits(dtc, {"COMM": fe})["data"]["COMM"]
     c1 = out["COMM1"]["Channel_1"]
     assert c1["frequency"] == 251.0 and isinstance(c1["frequency"], float)
-    assert c1["modulation"] == 1 and isinstance(c1["modulation"], int)
+    assert c1["modulation"] == 1 and isinstance(c1["modulation"], int)   # FM → 1
     assert c1["name"] == "STRIKE"
-    assert out["COMM1"]["Channel_C"]["frequency"] == 30.0   # CUE aliased
-    assert "BOGUS" not in out["COMM1"]                       # stray key never injected
+    assert out["COMM1"]["Channel_2"]["modulation"] == 0                  # AM → 0
+    assert out["COMM1"]["Channel_3"]["modulation"] == 1                  # "1" → 1
+    assert out["COMM1"]["Channel_C"]["frequency"] == 30.0               # CUE aliased
+    assert "BOGUS" not in out["COMM1"]                                   # stray key never injected
+
+
+def test_cmds_export_reconcile():
+    """Frontend dtcData CMDS (flat display shape) maps onto the real nested
+    ALR67.CMDS.CMDSProgramSettings, preserving Repeat/Other1/Other2."""
+    dtc = build_dtc_from_flight(_flight(), "T")
+    progs = dtc["data"]["ALR67"]["CMDS"]["CMDSProgramSettings"]
+    # capture a Repeat to prove it survives the overlay
+    repeat_before = progs["AUTO_1"]["Chaff"].get("Repeat")
+    fe = {"AUTO_1": {"chaffQty": 8, "chaffInterval": 0.25, "flareQty": 4, "flareInterval": 0.5}}
+    out = build_dtc_from_edits(dtc, {"CMDS": fe})["data"]["ALR67"]["CMDS"]["CMDSProgramSettings"]
+    assert out["AUTO_1"]["Chaff"]["Quantity"] == 8
+    assert out["AUTO_1"]["Chaff"]["Interval"] == 0.25
+    assert out["AUTO_1"]["Flare"]["Quantity"] == 4
+    # Repeat (a field the display shape doesn't model) is untouched
+    assert out["AUTO_1"]["Chaff"].get("Repeat") == repeat_before
+    # Flare has no Interval in the real schema → we don't bolt one on
+    assert "Interval" not in out["AUTO_1"]["Flare"]
+
+
+def test_nav_export_reconcile():
+    """Frontend dtcData WYPT.NAV_SETTINGS (display keys) maps back to the real
+    TACAN/ICLS/ACLS keys with the X/T-R = 1 enum."""
+    dtc = build_dtc_from_flight(_flight(), "T")
+    fe = {"NAV_SETTINGS": {
+        "TACAN": {"channel": 31, "band": "X", "mode": "T-R", "enabled": True},
+        "ICLS": {"channel": 8, "enabled": True},
+        "ACLS": {"frequency": "336", "enabled": False},
+    }}
+    nav = build_dtc_from_edits(dtc, {"WYPT": fe})["data"]["WYPT"]["NAV_SETTINGS"]
+    assert nav["TACAN"] == {"Channel": 31, "ChannelMode": 1, "Mode": 1, "OnOff": True}
+    assert nav["ICLS"]["Channel"] == 8 and nav["ICLS"]["OnOff"] is True
+    assert nav["ACLS"]["Frequency"] == 336.0 and nav["ACLS"]["OnOff"] is False
+    # Y band / A-A mode take the best-effort enum (2) when explicitly chosen
+    nav2 = build_dtc_from_edits(dtc, {"WYPT": {"NAV_SETTINGS": {
+        "TACAN": {"channel": 47, "band": "Y", "mode": "A-A", "enabled": True}}}})["data"]["WYPT"]["NAV_SETTINGS"]
+    assert nav2["TACAN"]["ChannelMode"] == 2 and nav2["TACAN"]["Mode"] == 2
+
+
+def test_cap_autofill_from_orbit():
+    """Race-Track orbit waypoints auto-populate SA-page CAP_PTS with the leg
+    bearing/length; an existing CAP track is never clobbered."""
+    orbits = [{"x": -700000.0, "y": -110000.0, "name": "CAP NORTH",
+               "pattern": "Race-Track", "course": 90.0, "length": 37040.0}]
+    sa = build_dtc_from_flight(_flight(orbits=orbits), "T")["data"]["SA"]
+    assert len(sa["CAP_PTS"]) == 1
+    cap = sa["CAP_PTS"][0]
+    assert cap["id"] == "CAP_PTS_1" and cap["num"] == 1
+    assert cap["note"] == "CAP NORTH"
+    assert cap["x"] == -700000.0 and cap["y"] == -110000.0
+    assert cap["course"] == 90 and cap["length"] == 37040
+    assert cap["diameter"] == 9260 and cap["turn_direction"] == "Left"
+    # no orbits → no CAP points
+    assert build_dtc_from_flight(_flight(), "T")["data"]["SA"]["CAP_PTS"] == []
+
+
+def test_extract_detects_orbit_waypoints():
+    """extract_flight_for_dtc finds an Orbit task on a route point and computes
+    the race-track leg course/length from this point → the next point."""
+    from services.dtc_builder import extract_flight_for_dtc
+    mission = {
+        "theatre": "Caucasus",
+        "coalition": {"blue": {"country": [{"plane": {"group": [{
+            "name": "Uzi",
+            "route": {"points": [
+                {"x": 0.0, "y": 0.0, "name": "TAKEOFF"},
+                {"x": 0.0, "y": 1000.0, "name": "CAP", "task": {
+                    "id": "ComboTask", "params": {"tasks": {
+                        1: {"id": "Orbit", "params": {"pattern": "Race-Track"}}}}}},
+                {"x": 0.0, "y": 2000.0, "name": "CAP END"},
+            ]},
+            "units": [{"type": "FA-18C_hornet", "Radio": {}}],
+        }]}}]}},
+    }
+    fd = extract_flight_for_dtc(mission, "Uzi")
+    assert fd is not None and len(fd["orbits"]) == 1
+    o = fd["orbits"][0]
+    assert o["name"] == "CAP" and o["x"] == 0.0 and o["y"] == 1000.0
+    # leg runs +1000 m east (y) → course 090, length 1000 m
+    assert round(o["course"]) == 90 and round(o["length"]) == 1000
 
 
 def test_sa_edits_apply():

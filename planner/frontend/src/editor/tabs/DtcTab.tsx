@@ -153,6 +153,91 @@ function programLabel(key: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Real .dtc → display-shape normalization                             */
+/*                                                                      */
+/* The preview endpoint returns the real file shape: CMDS nested under  */
+/* ALR67.CMDS.CMDSProgramSettings, TACAN/ICLS/ACLS with                 */
+/* Channel/ChannelMode/Mode/OnOff, COMM modulation as 0/1. The tab's    */
+/* editors are built around a flatter display shape (top-level CMDS,    */
+/* TACAN.{channel,band,mode,enabled}, modulation 'AM'/'FM'). Without    */
+/* this normalize on load, CMDS + NAV showed defaults/zeros and edits   */
+/* never reached the export. The backend maps the SAME display shape    */
+/* back to the real file on generate, so the round-trip is closed.      */
+/* ------------------------------------------------------------------ */
+
+function modToStr(m: unknown): string {
+  if (m === 1 || m === '1') return 'FM';
+  if (typeof m === 'string' && m.trim().toUpperCase() === 'FM') return 'FM';
+  return 'AM';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeLoadedDtc(raw: Record<string, any>): DtcData {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: Record<string, any> = { ...raw };
+
+  // COMM — modulation 0/1 → 'AM'/'FM', frequency → string.
+  for (const radio of ['COMM1', 'COMM2'] as const) {
+    const r = raw.COMM?.[radio];
+    if (r && typeof r === 'object') {
+      const nr: Record<string, CommChannel> = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const [k, ch] of Object.entries(r as Record<string, any>)) {
+        if (ch && typeof ch === 'object') {
+          nr[k] = {
+            frequency: ch.frequency != null ? String(ch.frequency) : '',
+            modulation: modToStr(ch.modulation),
+            name: ch.name ?? '',
+          };
+        }
+      }
+      data.COMM = { ...data.COMM, [radio]: nr };
+    }
+  }
+
+  // CMDS — lift ALR67.CMDS.CMDSProgramSettings into the flat display map.
+  const progs = raw.ALR67?.CMDS?.CMDSProgramSettings;
+  if (progs && typeof progs === 'object') {
+    const cmds: Record<string, CmdsProgram> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const [name, p] of Object.entries(progs as Record<string, any>)) {
+      cmds[name] = {
+        chaffQty: Number(p?.Chaff?.Quantity ?? 0),
+        chaffInterval: Number(p?.Chaff?.Interval ?? 0),
+        flareQty: Number(p?.Flare?.Quantity ?? 0),
+        flareInterval: Number(p?.Flare?.Interval ?? 0),
+      };
+    }
+    data.CMDS = cmds;
+  }
+
+  // NAV settings — real keys → display keys (other NAV_SETTINGS fields kept
+  // by the spread so they pass through to export untouched).
+  const ns = raw.WYPT?.NAV_SETTINGS;
+  if (ns && typeof ns === 'object') {
+    const t = ns.TACAN ?? {};
+    const ic = ns.ICLS ?? {};
+    const ac = ns.ACLS ?? {};
+    data.WYPT = {
+      ...data.WYPT,
+      NAV_SETTINGS: {
+        ...ns,
+        TACAN: {
+          channel: Number(t.Channel ?? 1),
+          band: t.ChannelMode === 2 ? 'Y' : 'X',
+          mode: t.Mode === 2 ? 'A-A' : 'T-R',
+          enabled: !!t.OnOff,
+        },
+        ICLS: { channel: Number(ic.Channel ?? 1), enabled: !!ic.OnOff },
+        ACLS: { frequency: ac.Frequency != null ? String(ac.Frequency) : '', enabled: !!ac.OnOff },
+      },
+    };
+  }
+
+  return data as unknown as DtcData;
+}
+
+/* ------------------------------------------------------------------ */
 /* SOP -> DTC COMM synthesis                                            */
 /*                                                                      */
 /* When an SOP is active the DTC tab can auto-fill both Hornet radios   */
@@ -520,7 +605,8 @@ export function DtcTab() {
     setError(null);
     try {
       const resp = await dtcPreview(sessionId, selectedFlight);
-      setDtcData(resp.dtc?.data ?? null);
+      const raw = resp.dtc?.data;
+      setDtcData(raw ? normalizeLoadedDtc(raw) : null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load DTC');
     } finally {

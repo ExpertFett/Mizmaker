@@ -559,9 +559,15 @@ export function MissionEditor() {
         {/* Editor tabs — scrollable content.
             Keep each tab mounted once it's been visited so local state
             (textareas, toggles, etc.) isn't wiped on tab switch. Inactive
-            tabs are hidden via display:none instead of unmounted. */}
-        {!isMap && (
-          <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
+            tabs are hidden via display:none instead of unmounted.
+
+            This whole container also stays MOUNTED while the Map is showing
+            (display:none rather than `{!isMap && …}`). Previously a trip to the
+            Map unmounted the entire container, wiping every tab's local state
+            (e.g. unsaved Brief text) — going Brief → Map → Brief lost work.
+            Now the Map renders alongside the hidden container and tab state
+            survives the round-trip. */}
+        <div style={{ height: '100%', overflow: 'auto', padding: 24, display: isMap ? 'none' : 'block' }}>
             {visitedTabs.has('coalitions') && (
               <div style={{ display: activeTab === 'coalitions' ? 'block' : 'none' }}>
                 <CoalitionsTab />
@@ -666,8 +672,7 @@ export function MissionEditor() {
                 <UploadPanel onLoaded={() => selectTab('map')} />
               </div>
             )}
-          </div>
-        )}
+        </div>
         </>
         )}
       </div>

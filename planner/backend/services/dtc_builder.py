@@ -7,6 +7,7 @@ Can also be used standalone to create/edit DTCs.
 import json
 import os
 import copy
+import math
 
 
 def _load_defaults():
@@ -102,6 +103,46 @@ def _make_mez_threat(num, name="", x=0.0, y=0.0, threat_level=1, threat_ring_rad
     }
 
 
+def _make_cap_point(num, note="", x=0.0, y=0.0, course=0, diameter=9260, length=37040, turn_direction="Left"):
+    """One SA-page CAP point (race-track orbit marker). Mirrors a real exported
+    DTC: id/num + position + leg geometry. `diameter` defaults to 9260 m (5 nm)
+    and `length` to 37040 m (20 nm) — the same defaults the manual CAP editor
+    uses — because a DCS Orbit task carries no track-width; the pilot can refine
+    course/diameter/length in the SA subtab."""
+    return {
+        "id": f"CAP_PTS_{num}",
+        "num": num,
+        "note": str(note or "")[:24],
+        "x": x,
+        "y": y,
+        "course": round(course),
+        "diameter": round(diameter),
+        "length": round(length),
+        "turn_direction": turn_direction if turn_direction in ("Left", "Right") else "Left",
+    }
+
+
+def _find_orbit_task(task):
+    """Return the params dict of the first Orbit task on a route point, or None.
+
+    A .miz route point's task is `{"id":"ComboTask","params":{"tasks":{1:{...}}}}`
+    where `tasks` is a Lua table (slpp → dict keyed 1..N, or a list). An orbit
+    entry has `["id"] == "Orbit"` and `["params"]` carrying pattern/speed/altitude.
+    """
+    if not isinstance(task, dict):
+        return None
+    tasks = task.get("params", {}).get("tasks", {}) if isinstance(task.get("params"), dict) else {}
+    if isinstance(tasks, dict):
+        tasks = list(tasks.values())
+    if not isinstance(tasks, list):
+        return None
+    for t in tasks:
+        if isinstance(t, dict) and t.get("id") == "Orbit":
+            params = t.get("params", {})
+            return params if isinstance(params, dict) else {}
+    return None
+
+
 def _make_comm_channel(num, frequency=305.0, modulation=0, name=""):
     """Create a single COMM channel entry."""
     if not name:
@@ -189,6 +230,32 @@ def extract_flight_for_dtc(mission: dict, group_name: str):
                             "speed": pt.get("speed", 0),
                         })
 
+                    # Orbit waypoints → SA-page CAP markers. A Race-Track orbit
+                    # uses this point + the next as the leg ends, so course/length
+                    # come from the bearing/distance between them; a Circle orbit
+                    # has no leg (course/length 0). DCS coords: x=north, y=east.
+                    orbits = []
+                    for i, pt in enumerate(points):
+                        params = _find_orbit_task(pt.get("task"))
+                        if params is None:
+                            continue
+                        ox, oy = pt.get("x", 0), pt.get("y", 0)
+                        pattern = str(params.get("pattern", "") or "")
+                        course, leg_len = 0.0, 0.0
+                        if pattern.lower().startswith("race") and i + 1 < len(points):
+                            nx, ny = points[i + 1].get("x", 0), points[i + 1].get("y", 0)
+                            dx, dy = nx - ox, ny - oy
+                            leg_len = math.hypot(dx, dy)
+                            if leg_len > 0:
+                                course = (math.degrees(math.atan2(dy, dx)) + 360) % 360
+                        orbits.append({
+                            "x": ox, "y": oy,
+                            "name": pt.get("name", "") or "CAP",
+                            "pattern": pattern,
+                            "course": course,
+                            "length": leg_len,
+                        })
+
                     # Get radio data from first unit
                     units = group.get("units", {})
                     if isinstance(units, dict):
@@ -199,6 +266,7 @@ def extract_flight_for_dtc(mission: dict, group_name: str):
 
                     return {
                         "waypoints": waypoints,
+                        "orbits": orbits,  # → SA-page CAP_PTS auto-fill
                         "radios": radios,
                         "theatre": mission.get("theatre", ""),
                         "group_name": group_name,
@@ -320,6 +388,22 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
             threat_ring_radius=radius_nm,
         ))
 
+    # CAP points auto-filled from the flight's orbit waypoints (only when none
+    # are set yet, so a user's hand-built CAP track is never clobbered).
+    orbits = flight_data.get("orbits", []) or []
+    if orbits and not sa["CAP_PTS"]:
+        for j, o in enumerate(orbits, 1):
+            sa["CAP_PTS"].append(_make_cap_point(
+                j,
+                note=o.get("name", ""),
+                x=o.get("x", 0),
+                y=o.get("y", 0),
+                course=o.get("course", 0),
+                length=o.get("length", 0) or 37040,
+                diameter=9260,
+                turn_direction="Left",
+            ))
+
     dtc = {
         "data": {
             "ALR67": alr67,
@@ -393,15 +477,104 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
                         upd["frequency"] = float(ch["frequency"])
                     except (TypeError, ValueError):
                         pass
-                if ch.get("modulation") is not None:
-                    try:
-                        upd["modulation"] = int(float(ch["modulation"]))
-                    except (TypeError, ValueError):
-                        pass
+                mod = ch.get("modulation")
+                if mod is not None:
+                    # Display shape uses 'AM'/'FM'; the file uses 0/1 (AM=0, FM=1).
+                    if isinstance(mod, str) and mod.strip().upper() in ("AM", "FM"):
+                        upd["modulation"] = 0 if mod.strip().upper() == "AM" else 1
+                    else:
+                        try:
+                            upd["modulation"] = int(float(mod))
+                        except (TypeError, ValueError):
+                            pass
                 if ch.get("name") is not None:
                     upd["name"] = str(ch["name"])
                 if upd:
                     real_radio[real_key].update(upd)
+
+    # Frontend dtcData sends CMDS as a top-level uppercase map of the display
+    # shape ({chaffQty, chaffInterval, flareQty, flareInterval}). Map it onto the
+    # real ALR67.CMDS.CMDSProgramSettings[<prog>].{Chaff,Flare}. We only touch
+    # Quantity (and Interval where the real dispenser already carries one — the
+    # exported Flare schema has Quantity only), so Repeat/Other1/Other2 survive.
+    fe_cmds = edits.get("CMDS")
+    if isinstance(fe_cmds, dict):
+        programs = data.get("ALR67", {}).get("CMDS", {}).get("CMDSProgramSettings", {})
+
+        def _set_int(d, key, val):
+            try:
+                d[key] = int(float(val))
+            except (TypeError, ValueError):
+                pass
+
+        def _set_interval(d, val):
+            # Only write Interval onto a dispenser that already exposes one,
+            # so we don't bolt a field onto the exported Flare schema.
+            if "Interval" in d:
+                try:
+                    d["Interval"] = float(val)
+                except (TypeError, ValueError):
+                    pass
+
+        for prog_name, vals in fe_cmds.items():
+            if prog_name not in programs or not isinstance(vals, dict):
+                continue
+            prog = programs[prog_name]
+            chaff = prog.setdefault("Chaff", {"Quantity": 0})
+            flare = prog.setdefault("Flare", {"Quantity": 0})
+            if vals.get("chaffQty") is not None:
+                _set_int(chaff, "Quantity", vals["chaffQty"])
+            if vals.get("chaffInterval") is not None:
+                _set_interval(chaff, vals["chaffInterval"])
+            if vals.get("flareQty") is not None:
+                _set_int(flare, "Quantity", vals["flareQty"])
+            if vals.get("flareInterval") is not None:
+                _set_interval(flare, vals["flareInterval"])
+
+    # Frontend dtcData sends WYPT.NAV_SETTINGS in the display shape
+    # (TACAN {channel,band,mode,enabled}, ICLS {channel,enabled},
+    # ACLS {frequency,enabled}). Map back to the real keys. ChannelMode/Mode
+    # enums: X/T-R = 1 (confirmed against real exported DTCs); Y = 2 and
+    # A-A = 2 are best-effort and only applied on an explicit user change —
+    # an untouched TACAN round-trips its loaded value exactly.
+    fe_wypt = edits.get("WYPT")
+    if isinstance(fe_wypt, dict) and isinstance(fe_wypt.get("NAV_SETTINGS"), dict):
+        fe_nav = fe_wypt["NAV_SETTINGS"]
+        real_nav = data["WYPT"]["NAV_SETTINGS"]
+        ft = fe_nav.get("TACAN")
+        if isinstance(ft, dict):
+            rt = real_nav.setdefault("TACAN", {"Channel": 1, "ChannelMode": 1, "Mode": 1, "OnOff": False})
+            if ft.get("channel") is not None:
+                try:
+                    rt["Channel"] = int(float(ft["channel"]))
+                except (TypeError, ValueError):
+                    pass
+            if isinstance(ft.get("band"), str):
+                rt["ChannelMode"] = 2 if ft["band"].strip().upper() == "Y" else 1
+            if isinstance(ft.get("mode"), str):
+                rt["Mode"] = 2 if ft["mode"].strip().upper().replace("/", "-") in ("A-A", "AA") else 1
+            if "enabled" in ft:
+                rt["OnOff"] = bool(ft["enabled"])
+        fi = fe_nav.get("ICLS")
+        if isinstance(fi, dict):
+            ri = real_nav.setdefault("ICLS", {"Channel": 1, "OnOff": False})
+            if fi.get("channel") is not None:
+                try:
+                    ri["Channel"] = int(float(fi["channel"]))
+                except (TypeError, ValueError):
+                    pass
+            if "enabled" in fi:
+                ri["OnOff"] = bool(fi["enabled"])
+        fa = fe_nav.get("ACLS")
+        if isinstance(fa, dict):
+            ra = real_nav.setdefault("ACLS", {"Frequency": 0, "OnOff": False})
+            if fa.get("frequency") not in (None, ""):
+                try:
+                    ra["Frequency"] = float(fa["frequency"])
+                except (TypeError, ValueError):
+                    pass
+            if "enabled" in fa:
+                ra["OnOff"] = bool(fa["enabled"])
 
     # CMDS edits
     if "cmds" in edits:
