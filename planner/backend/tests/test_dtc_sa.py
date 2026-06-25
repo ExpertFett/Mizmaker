@@ -94,8 +94,15 @@ def test_cmds_export_reconcile():
     progs = dtc["data"]["ALR67"]["CMDS"]["CMDSProgramSettings"]
     # capture a Repeat to prove it survives the overlay
     repeat_before = progs["AUTO_1"]["Chaff"].get("Repeat")
-    fe = {"AUTO_1": {"chaffQty": 8, "chaffInterval": 0.25, "flareQty": 4, "flareInterval": 0.5}}
+    fe = {
+        "AUTO_1": {"chaffQty": 8, "chaffInterval": 0.25, "flareQty": 4, "flareInterval": 0.5},
+        # CMDSProgramSettings carries this scalar alongside the programs; the
+        # frontend echoes it back. The reconcile must skip it, not crash on it
+        # (regression: 'int' object has no attribute 'setdefault' → export 500).
+        "delay_between_programs": {"chaffQty": 0, "chaffInterval": 0, "flareQty": 0, "flareInterval": 0},
+    }
     out = build_dtc_from_edits(dtc, {"CMDS": fe})["data"]["ALR67"]["CMDS"]["CMDSProgramSettings"]
+    assert not isinstance(out["delay_between_programs"], dict)  # scalar left untouched
     assert out["AUTO_1"]["Chaff"]["Quantity"] == 8
     assert out["AUTO_1"]["Chaff"]["Interval"] == 0.25
     assert out["AUTO_1"]["Flare"]["Quantity"] == 4

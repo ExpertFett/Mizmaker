@@ -520,6 +520,8 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
             if prog_name not in programs or not isinstance(vals, dict):
                 continue
             prog = programs[prog_name]
+            if not isinstance(prog, dict):
+                continue  # CMDSProgramSettings also holds scalars (e.g. delay_between_programs)
             chaff = prog.setdefault("Chaff", {"Quantity": 0})
             flare = prog.setdefault("Flare", {"Quantity": 0})
             if vals.get("chaffQty") is not None:

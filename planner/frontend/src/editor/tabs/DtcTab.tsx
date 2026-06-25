@@ -201,6 +201,9 @@ function normalizeLoadedDtc(raw: Record<string, any>): DtcData {
     const cmds: Record<string, CmdsProgram> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const [name, p] of Object.entries(progs as Record<string, any>)) {
+      // CMDSProgramSettings also carries scalars (e.g. delay_between_programs) —
+      // skip anything that isn't a program object.
+      if (!p || typeof p !== 'object') continue;
       cmds[name] = {
         chaffQty: Number(p?.Chaff?.Quantity ?? 0),
         chaffInterval: Number(p?.Chaff?.Interval ?? 0),
