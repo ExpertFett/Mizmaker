@@ -20,7 +20,7 @@
  * edits persist immediately via sopStore.updateSop → localStorage.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useSopStore, useActiveSop } from '../../sop/sopStore';
 import { useMissionStore } from '../../store/missionStore';
 import { isPlayerGroup } from '../../utils/groups';
@@ -58,6 +58,48 @@ function bandWarning(aircraft: string, radio: number, net: CommNet | undefined):
   if (!bands) return null;
   const ok = bands.some((b) => net.frequency! >= b.lo && net.frequency! <= b.hi);
   return ok ? null : `${net.frequency.toFixed(3)} MHz is outside this radio's tunable range`;
+}
+
+/* Decimal-tolerant frequency field. The model stores a number, but a plain
+ * controlled `value={number}` text input drops the decimal point: typing
+ * "265." re-stringifies the parsed 265 back to "265", so the "." never sticks
+ * (you could only enter whole MHz). This keeps a local text buffer so the
+ * in-progress "265." survives, commits the parsed number alongside, and
+ * re-syncs from the model when the field isn't being edited (SOP swap / AI fill). */
+function FreqInput({ value, onCommit, style, placeholder }: {
+  value: number | undefined;
+  onCommit: (v: number | undefined) => void;
+  style?: React.CSSProperties;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState(value != null ? String(value) : '');
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setText(value != null ? String(value) : '');
+  }, [value, editing]);
+  return (
+    <input
+      style={style}
+      placeholder={placeholder}
+      value={text}
+      inputMode="decimal"
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        const v = parseFloat(text);
+        onCommit(isFinite(v) ? v : undefined);
+      }}
+      onChange={(e) => {
+        const t = e.target.value;
+        // digits + a single optional dot (or empty) — lets "265." persist
+        if (t === '' || /^\d*\.?\d*$/.test(t)) {
+          setText(t);
+          const v = parseFloat(t);
+          onCommit(isFinite(v) ? v : undefined);
+        }
+      }}
+    />
+  );
 }
 
 /* ── Shared styles (match SopTab / kneeboard-adjacent surfaces) ──────── */
@@ -251,11 +293,8 @@ export function CommPlanTab() {
                   </td>
                   <td style={td}>
                     {n.kind === 'radio' ? (
-                      <input style={monoInput} value={n.frequency ?? ''} placeholder="332.100"
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          updateNet(n.id, { frequency: isFinite(v) ? v : undefined });
-                        }} />
+                      <FreqInput style={monoInput} value={n.frequency} placeholder="332.100"
+                        onCommit={(v) => updateNet(n.id, { frequency: v })} />
                     ) : (
                       <input style={monoInput} value={n.midsChannel ?? ''} placeholder="ch 1-126"
                         onChange={(e) => {

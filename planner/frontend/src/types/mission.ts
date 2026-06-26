@@ -365,6 +365,7 @@ export type UnitEditField =
   | 'addDonor'
   | 'addTeamMember'
   | 'copyLoadout'
+  | 'fuel'
   | 'laserCode'
   | 'livery'
   | 'onboard_num'

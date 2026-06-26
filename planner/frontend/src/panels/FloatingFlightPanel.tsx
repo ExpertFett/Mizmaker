@@ -112,6 +112,24 @@ export function FloatingFlightPanel() {
     } catch (e) { console.error('Edit failed:', e); }
   }, [groupId, locked, _updateFromServer]);
 
+  // CAP / loiter: add or remove an Orbit task on a waypoint (server injects the
+  // task; it serializes into the .miz on download).
+  const handleLoiter = useCallback(async (
+    wpIndex: number,
+    params: { enabled: boolean; pattern?: string; durationMin?: number; altitudeM?: number; speedMs?: number },
+  ) => {
+    if (locked) return;
+    const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
+    const g = groups.find((gr) => gr.groupId === groupId);
+    if (!g || !sid) return;
+    try {
+      const result = await sessionEdit(sid, {
+        groupName: g.groupName, action: 'loiter', wpIndex, data: params,
+      }, sessionToken || undefined);
+      if (result.ok) _updateFromServer(result.groupName, result.waypoints);
+    } catch (e) { console.error('Loiter failed:', e); }
+  }, [groupId, locked, _updateFromServer]);
+
   const handleDelete = useCallback(async (wpIndex: number) => {
     if (locked || wpLen <= 1 || wpIndex === 0) return;
     const { groups, sessionId: sid, sessionToken } = useMissionStore.getState();
@@ -386,6 +404,7 @@ export function FloatingFlightPanel() {
                 onNavigate={(idx) => setSelectedWpIndex(idx)}
                 onClose={() => setSelectedWpIndex(null)}
                 onPropChange={handlePropChange}
+                onLoiter={handleLoiter}
               />
             )}
           </div>
@@ -925,6 +944,84 @@ function FlightLoadoutContent({ groupName, locked }: { groupName: string; locked
 }
 
 /* ------------------------------------------------------------------ */
+/* Loiter / CAP-hold control — adds an Orbit task to a waypoint         */
+/* ------------------------------------------------------------------ */
+
+/** Read the current Orbit task off a waypoint's server-side `task` dict. */
+function readOrbit(wp: Waypoint): { enabled: boolean; pattern: string; durationMin: number } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tasks = (wp as any)?.task?.params?.tasks;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let orbit: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (Array.isArray(tasks)) orbit = tasks.find((t: any) => t?.id === 'Orbit');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  else if (tasks && typeof tasks === 'object') orbit = Object.values(tasks).find((t: any) => t?.id === 'Orbit');
+  if (!orbit) return { enabled: false, pattern: 'Race-Track', durationMin: 0 };
+  const dur = orbit.stopCondition?.duration ?? 0;
+  return { enabled: true, pattern: orbit.params?.pattern || 'Race-Track', durationMin: Math.round((dur || 0) / 60) };
+}
+
+function LoiterControl({ wp, wpIndex, locked, onLoiter }: {
+  wp: Waypoint;
+  wpIndex: number;
+  locked: boolean;
+  onLoiter: (i: number, p: { enabled: boolean; pattern?: string; durationMin?: number }) => void;
+}) {
+  const cur = readOrbit(wp);
+  const [enabled, setEnabled] = useState(cur.enabled);
+  const [pattern, setPattern] = useState(cur.pattern);
+  const [durMin, setDurMin] = useState(cur.durationMin ? String(cur.durationMin) : '');
+  useEffect(() => {
+    const c = readOrbit(wp);
+    setEnabled(c.enabled);
+    setPattern(c.pattern);
+    setDurMin(c.durationMin ? String(c.durationMin) : '');
+  }, [wp]);
+
+  const push = (en: boolean, pat: string, dm: string) =>
+    onLoiter(wpIndex, { enabled: en, pattern: pat, durationMin: parseFloat(dm) || 0 });
+
+  const lblStyle: React.CSSProperties = { display: 'block', color: '#555555', fontSize: 10, marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 };
+  const inStyle: React.CSSProperties = {
+    background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4,
+    color: '#e0e0e0', padding: '5px 6px', fontSize: 12, width: '100%',
+    fontFamily: "'B612 Mono', monospace", boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 6, borderTop: '1px solid #262626' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#cccccc', cursor: locked ? 'default' : 'pointer' }}>
+        <input type="checkbox" checked={enabled} disabled={locked}
+          onChange={(e) => { setEnabled(e.target.checked); push(e.target.checked, pattern, durMin); }} />
+        Loiter / orbit (CAP hold)
+      </label>
+      {enabled && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', paddingLeft: 22 }}>
+          <label style={{ flex: 1 }}>
+            <span style={lblStyle}>Pattern</span>
+            <select value={pattern} disabled={locked}
+              onChange={(e) => { setPattern(e.target.value); push(true, e.target.value, durMin); }}
+              style={{ ...inStyle, padding: '4px 4px' }}>
+              <option value="Race-Track">Race-Track</option>
+              <option value="Circle">Circle</option>
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={lblStyle}>Loiter (min · 0=indef)</span>
+            <input type="number" min={0} value={durMin} disabled={locked}
+              onChange={(e) => setDurMin(e.target.value)}
+              onBlur={() => push(true, pattern, durMin)}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              style={inStyle} />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Waypoint detail panel — shown below route table when a WP selected  */
 /* ------------------------------------------------------------------ */
 
@@ -937,6 +1034,7 @@ function WaypointDetail({
   onNavigate,
   onClose,
   onPropChange,
+  onLoiter,
 }: {
   groupId: number;
   groupName: string;
@@ -946,6 +1044,7 @@ function WaypointDetail({
   onNavigate: (idx: number) => void;
   onClose: () => void;
   onPropChange: (i: number, f: string, v: string | number | boolean) => void;
+  onLoiter: (i: number, p: { enabled: boolean; pattern?: string; durationMin?: number }) => void;
 }) {
   const wp = waypoints.find((w) => w.waypoint_number === wpIndex);
   const [note, setNoteState] = useState(() => getWpNote(groupId, wpIndex));
@@ -1168,6 +1267,9 @@ function WaypointDetail({
             />
           </label>
         </div>
+
+        {/* CAP / loiter — adds (or removes) an Orbit task on this waypoint */}
+        {wp && <LoiterControl key={`loiter-${groupId}-${wpIndex}`} wp={wp} wpIndex={wpIndex} locked={locked} onLoiter={onLoiter} />}
 
         {locked && (
           <div style={{ fontSize: 10, color: '#666666', textAlign: 'center', fontStyle: 'italic' }}>

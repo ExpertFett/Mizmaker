@@ -148,6 +148,58 @@ def test_cap_autofill_from_orbit():
     assert build_dtc_from_flight(_flight(), "T")["data"]["SA"]["CAP_PTS"] == []
 
 
+def test_alr67_rwr_and_threat_table_passthrough():
+    """Frontend-edited RWR + CMDS threat tables reach the export wholesale,
+    while CMDSProgramSettings stays owned by the flat-display reconcile."""
+    dtc = build_dtc_from_flight(_flight(), "T")
+    edited_rwr = {"AAA": {"SAM SA-6 'Gainful'": {"display": False, "PRI": 1, "aspj_xmit": True, "friend": False}}}
+    edited_tt = {"Ground": {"SAM SA-6 'Gainful'": {"program": 4, "default_threshold": {"index": 3, "label": "LAUNCH"}}}}
+    out = build_dtc_from_edits(dtc, {
+        "ALR67": {"RWR": edited_rwr, "CMDS": {"CMDS_Threat_table": edited_tt}},
+        "CMDS": {"AUTO_1": {"chaffQty": 9}},  # display reconcile still applies
+    })["data"]["ALR67"]
+    assert out["RWR"]["AAA"]["SAM SA-6 'Gainful'"]["PRI"] == 1
+    assert out["RWR"]["AAA"]["SAM SA-6 'Gainful'"]["display"] is False
+    assert out["CMDS"]["CMDS_Threat_table"]["Ground"]["SAM SA-6 'Gainful'"]["program"] == 4
+    assert out["CMDS"]["CMDSProgramSettings"]["AUTO_1"]["Chaff"]["Quantity"] == 9  # not clobbered
+
+
+def test_nav_extras_and_oa_overlay():
+    """NAV extras (alt warning / home WP / A-A WP) merge, and per-waypoint OA +
+    sensor-slave fields overlay onto the rebuilt NAV_PTS by wypt_num."""
+    dtc = build_dtc_from_flight(_flight(), "T")
+    nav = build_dtc_from_edits(dtc, {"WYPT": {
+        "NAV_SETTINGS": {
+            "Altitude_Warning": {"Warn_Alt_Baro": 1500, "Warn_Alt_Rdr": 300},
+            "Home_Waypoint": {"FPAS_HOME_WP": 3},
+            "AA_Waypoint": {"AA_WP_Enabled": False, "AA_WP_Number": 12},
+        },
+        "NAV_PTS": [{"wypt_num": 1, "isOA": True, "OA_Bearing": 45, "OA_Range": 3, "R1": True, "text_note": "IP"}],
+    }})["data"]["WYPT"]
+    assert nav["NAV_SETTINGS"]["Altitude_Warning"] == {"Warn_Alt_Baro": 1500, "Warn_Alt_Rdr": 300}
+    assert nav["NAV_SETTINGS"]["Home_Waypoint"]["FPAS_HOME_WP"] == 3
+    assert nav["NAV_SETTINGS"]["AA_Waypoint"]["AA_WP_Number"] == 12
+    wp1 = next(w for w in nav["NAV_PTS"] if w["wypt_num"] == 1)
+    assert wp1["isOA"] is True and wp1["OA_Bearing"] == 45 and wp1["R1"] is True
+    assert wp1["text_note"] == "IP"
+    # position is route-authoritative — OA overlay must not have invented x/y
+    assert "x" in wp1 and "y" in wp1
+
+
+def test_dtc_accepts_session_waypoint_shape():
+    """Map-edited waypoints arrive in the session shape (altitude_m /
+    waypoint_name / altitude_type); the DTC builder must read those, not only
+    the raw-mission alt/name/alt_type keys (regression: names blank, alt 0)."""
+    f = _flight()
+    f["waypoints"] = [
+        {"x": 10.0, "y": 20.0, "altitude_m": 3046, "altitude_type": "RADIO", "waypoint_name": "IP"},
+        {"x": 30.0, "y": 40.0, "alt": 1500, "alt_type": "BARO", "name": "TGT"},  # raw shape still works
+    ]
+    nav = build_dtc_from_flight(f, "T")["data"]["WYPT"]["NAV_PTS"]
+    assert nav[0]["text_note"] == "IP" and nav[0]["alt"] == 3046 and nav[0]["altitudeType"] == 0
+    assert nav[1]["text_note"] == "TGT" and nav[1]["alt"] == 1500 and nav[1]["altitudeType"] == 1
+
+
 def test_extract_detects_orbit_waypoints():
     """extract_flight_for_dtc finds an Orbit task on a route point and computes
     the race-track leg course/length from this point → the next point."""

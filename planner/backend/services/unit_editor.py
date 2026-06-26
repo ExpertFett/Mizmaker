@@ -474,6 +474,64 @@ def _replace_team_members(text: str, unit_id: int, member_ids: list) -> str:
     return _replace_network_list(text, unit_id, "teamMembers", member_ids)
 
 
+def _fmt_lua_number(v: float) -> str:
+    """Format a number the way DCS does — whole numbers without a trailing .0."""
+    v = float(v)
+    if abs(v - round(v)) < 1e-6:
+        return str(int(round(v)))
+    return ("%.3f" % v).rstrip("0").rstrip(".")
+
+
+def _replace_fuel(text: str, unit_id: int, fuel_kg: float) -> str:
+    """Set internal fuel (kg) in a unit's ["payload"] block.
+
+    DCS stores fuel as an absolute kg value inside the payload. Scoped to the
+    unit via brace-matched bounds → payload block, then the ["fuel"] field.
+    Inserts ["fuel"] right after the payload's opening brace if it's missing.
+    """
+    block_start, block_end = _find_unit_block_bounds(text, unit_id)
+    unit_block = text[block_start:block_end]
+
+    payload_match = re.search(r'\["payload"\]\s*=\s*\n?\s*\{', unit_block)
+    if not payload_match:
+        raise ValueError(f"Payload section not found in unit block for unitId {unit_id}")
+
+    # Brace-match the payload block (string-aware) to bound the search.
+    p_open = payload_match.end() - 1  # index of '{' relative to unit_block
+    depth = 0
+    in_str = False
+    i = p_open
+    while i < len(unit_block):
+        c = unit_block[i]
+        if c == '"' and unit_block[i - 1] != "\\":
+            in_str = not in_str
+        elif not in_str and c == "{":
+            depth += 1
+        elif not in_str and c == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    payload_end = i  # index of payload's closing '}' relative to unit_block
+    payload_region = unit_block[payload_match.start():payload_end + 1]
+    payload_region_abs = block_start + payload_match.start()
+
+    fuel_str = _fmt_lua_number(fuel_kg)
+    fuel_m = re.search(r'(\["fuel"\]\s*=\s*)([-\d.eE+]+)', payload_region)
+    if fuel_m:
+        abs_start = payload_region_abs + fuel_m.start(2)
+        abs_end = payload_region_abs + fuel_m.end(2)
+        return text[:abs_start] + fuel_str + text[abs_end:]
+
+    # No ["fuel"] in payload — insert just after the opening brace, matching the
+    # indentation of the next line so the block stays tidy.
+    insert_at = block_start + payload_match.end()  # just past the '{'
+    after = text[insert_at:insert_at + 200]
+    indent_m = re.match(r'\s*\n(\s*)', after)
+    indent = indent_m.group(1) if indent_m else "\t\t\t\t\t"
+    return text[:insert_at] + f'\n{indent}["fuel"] = {fuel_str},' + text[insert_at:]
+
+
 def _replace_pylon_clsid(text: str, unit_id: int, pylon_num: int, new_clsid: str,
                           settings_overrides: dict | None = None) -> str:
     """Replace the CLSID for a specific pylon on a specific unit.
@@ -3629,6 +3687,8 @@ def apply_unit_edits(text: str, edits: list) -> tuple[str, list[dict]]:
                 )
             elif field == "payloadReplace":
                 text = _replace_payload_block(text, edit.get("unitId"), value)
+            elif field == "fuel":
+                text = _replace_fuel(text, edit.get("unitId"), float(value))
             else:
                 dispatched = False
 

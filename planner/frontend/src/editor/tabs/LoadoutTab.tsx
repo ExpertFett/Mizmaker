@@ -633,6 +633,36 @@ interface UnitRowProps {
   onPaste?: () => void;
 }
 
+/* Internal-fuel editor — writes the unit payload's absolute ["fuel"] (kg) via a
+ * surgical edit. Commits on blur/Enter; shows a lb readout. DCS stores fuel in
+ * kg, so that's the unit here (a lb field would just be kg ÷ 2.205 anyway). */
+function FuelRow({ unit, addEdit }: {
+  unit: ClientUnit;
+  addEdit: (e: { unitId: number; field: 'fuel'; value: number }) => void;
+}) {
+  const [kg, setKg] = useState<string>(unit.fuel != null ? String(Math.round(unit.fuel)) : '');
+  const commit = () => {
+    const v = parseFloat(kg);
+    if (Number.isFinite(v) && v >= 0) addEdit({ unitId: unit.unitId, field: 'fuel', value: v });
+  };
+  const lbs = (() => { const v = parseFloat(kg); return Number.isFinite(v) ? Math.round(v * 2.20462) : null; })();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 12 }}>
+      <span style={{ color: '#aaaaaa', minWidth: 84 }}>Internal fuel</span>
+      <input
+        value={kg}
+        inputMode="decimal"
+        onChange={(e) => setKg(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        style={{ width: 80, background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 4,
+                 color: '#e0e0e0', padding: '3px 6px', fontFamily: "'B612 Mono', monospace", fontSize: 12 }}
+      />
+      <span style={{ color: '#888' }}>kg{lbs != null ? `  ≈ ${lbs.toLocaleString()} lb` : ''}</span>
+    </div>
+  );
+}
+
 function UnitRow({
   unit, pylonOptions, isExpanded, copiedUnitId, isPylonChanged,
   onToggle, onPylonChange, onCopy, onPaste,
@@ -744,6 +774,7 @@ function UnitRow({
       {/* Expanded pylon editor */}
       {isExpanded && (
         <div style={{ padding: '8px 16px 12px 56px' }}>
+          <FuelRow unit={unit} addEdit={addEdit} />
           {(() => {
             const allStations = typeOptions
               ? Object.keys(typeOptions).map(Number).sort((a, b) => a - b)

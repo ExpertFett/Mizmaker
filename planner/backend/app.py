@@ -58,6 +58,7 @@ from services.miz_editor import (
     replace_group_waypoints, repack_miz,
     extract_dictionary_from_miz, apply_briefing_edits_to_dictionary,
     extract_options_from_miz, apply_forced_options_to_options_file,
+    set_waypoint_orbit, clear_waypoint_orbit,
 )
 from services.unit_editor import apply_unit_edits
 from services.trigger_editor import (
@@ -804,6 +805,22 @@ def session_edit(sid):
                 elif field == "alt_type": wps[wp_index]["altitude_type"] = value
                 elif field == "speed_ref": wps[wp_index]["speed_ref"] = value
                 elif field == "speed_input": wps[wp_index]["speed_input"] = value
+
+        elif action == "loiter" and wp_index is not None and 0 <= wp_index < len(wps):
+            # CAP / hold: add or remove an Orbit task on this waypoint. The orbit
+            # is injected into the waypoint's task dict; replace_group_waypoints
+            # serializes it on download (real DCS structure, no raw-Lua splicing).
+            if data.get("enabled"):
+                dur_min = data.get("durationMin")
+                set_waypoint_orbit(
+                    wps[wp_index],
+                    pattern=data.get("pattern", "Race-Track"),
+                    altitude_m=data.get("altitudeM"),
+                    speed_ms=data.get("speedMs"),
+                    duration_sec=int(round(float(dur_min) * 60)) if dur_min else 0,
+                )
+            else:
+                clear_waypoint_orbit(wps[wp_index])
 
         # Recompute route leg data
         wps = recompute_route(wps)

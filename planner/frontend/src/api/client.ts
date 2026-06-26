@@ -34,7 +34,7 @@ export async function uploadMission(file: File) {
 
 export interface WaypointEditAction {
   groupName: string;
-  action: 'move' | 'add' | 'delete' | 'reorder' | 'update';
+  action: 'move' | 'add' | 'delete' | 'reorder' | 'update' | 'loiter';
   wpIndex?: number;
   fromIndex?: number;
   toIndex?: number;

@@ -332,14 +332,21 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
     miz_waypoints = flight_data.get("waypoints", [])
     for i, wp in enumerate(miz_waypoints):
         stpt_num = i + 1
-        alt_type_int = _alt_type_to_int(wp.get("alt_type", "BARO"))
+        # Tolerate both waypoint shapes: the raw-mission shape (alt / alt_type /
+        # name) AND the session/edited shape the map writes (altitude_m /
+        # altitude_type / waypoint_name). Without this, waypoints edited on the
+        # map reached the DTC with zeroed altitude and blank names.
+        alt_type_int = _alt_type_to_int(wp.get("alt_type", wp.get("altitude_type", "BARO")))
+        alt_val = wp.get("alt")
+        if alt_val is None:
+            alt_val = wp.get("altitude_m", 0)
         nav_wp = _make_waypoint(
             num=stpt_num,
-            x=wp["x"],
-            y=wp["y"],
-            alt=round(wp.get("alt", 0)),
+            x=wp.get("x", 0),
+            y=wp.get("y", 0),
+            alt=round(alt_val or 0),
             alt_type=alt_type_int,
-            name=wp.get("name", ""),
+            name=wp.get("name") or wp.get("waypoint_name") or "",
         )
         nav_pts.append(nav_wp)
 
@@ -442,6 +449,20 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
     if "name" in edits:
         data["name"] = edits["name"]
         dtc["name"] = edits["name"]
+
+    # ALR67 RWR + CMDS threat tables. These are huge reference tables the
+    # frontend edits in place (display/PRI/ASPJ per emitter; per-threat auto-CM
+    # program + threshold) and echoes back whole. Take the frontend's versions
+    # wholesale when present — far simpler than field-by-field reconcile across
+    # ~93 emitters. CMDSProgramSettings is deliberately NOT taken here: it's
+    # owned by the flat-display CMDS reconcile below.
+    fe_alr = edits.get("ALR67")
+    if isinstance(fe_alr, dict):
+        if isinstance(fe_alr.get("RWR"), dict):
+            data.setdefault("ALR67", {})["RWR"] = fe_alr["RWR"]
+        fe_alr_cmds = fe_alr.get("CMDS")
+        if isinstance(fe_alr_cmds, dict) and isinstance(fe_alr_cmds.get("CMDS_Threat_table"), dict):
+            data.setdefault("ALR67", {}).setdefault("CMDS", {})["CMDS_Threat_table"] = fe_alr_cmds["CMDS_Threat_table"]
 
     # COMM edits
     for radio_key in ("comm1", "comm2"):
@@ -577,6 +598,29 @@ def build_dtc_from_edits(base_dtc: dict, edits: dict):
                     pass
             if "enabled" in fa:
                 ra["OnOff"] = bool(fa["enabled"])
+        # NAV extras the UI now edits in place (already real-keyed). Merge the
+        # frontend sub-objects over the defaults the builder emitted.
+        for sub_key in ("AA_Waypoint", "Altitude_Warning", "Home_Waypoint"):
+            sub = fe_nav.get(sub_key)
+            if isinstance(sub, dict):
+                real_nav.setdefault(sub_key, {}).update(sub)
+
+    # Per-waypoint Offset Aimpoint + sensor-slave edits. NAV_PTS positions come
+    # from the mission route (rebuilt fresh), so we only overlay the editable
+    # OA / R-slave / label fields onto the matching wypt_num — never the x/y/alt.
+    if isinstance(fe_wypt, dict) and isinstance(fe_wypt.get("NAV_PTS"), list):
+        OA_FIELDS = (
+            "isOA", "idOA", "idOA_Line", "OA_Alt", "OA_Bearing", "OA_Bearing_Units",
+            "OA_DeltaX", "OA_DeltaY", "OA_Elevation_Units", "OA_Range", "OA_Range_Units",
+            "OA_X", "OA_Y", "R1", "R2", "R3", "velocityType", "note", "text_note",
+        )
+        by_num = {wp.get("wypt_num"): wp for wp in fe_wypt["NAV_PTS"] if isinstance(wp, dict)}
+        for wp in data["WYPT"]["NAV_PTS"]:
+            src = by_num.get(wp.get("wypt_num"))
+            if isinstance(src, dict):
+                for f in OA_FIELDS:
+                    if f in src:
+                        wp[f] = src[f]
 
     # CMDS edits
     if "cmds" in edits:

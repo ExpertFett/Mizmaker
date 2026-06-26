@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, Fragment } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
@@ -25,6 +25,26 @@ interface NavPoint {
   lat: string;
   lon: string;
   alt: number;
+  // Real .dtc NAV_PTS fields (preview returns these; the display-only lat/lon
+  // above never exist on a real point, which is why legs/coords used to be blank).
+  wypt_num?: number;
+  text_note?: string;
+  x?: number;
+  y?: number;
+  altitudeType?: number;
+  // Offset Aimpoint + sensor-slave fields.
+  isOA?: boolean;
+  OA_Bearing?: number;
+  OA_Bearing_Units?: number;
+  OA_Range?: number;
+  OA_Range_Units?: number;
+  OA_Alt?: number;
+  OA_Elevation_Units?: number;
+  OA_DeltaX?: number;
+  OA_DeltaY?: number;
+  R1?: boolean;
+  R2?: boolean;
+  R3?: boolean;
 }
 
 interface TacanSettings {
@@ -44,11 +64,27 @@ interface AclsSettings {
   enabled: boolean;
 }
 
+// NAV extras that live on the real NAV_SETTINGS alongside TACAN/ICLS/ACLS.
+interface AltWarn { Warn_Alt_Baro: number; Warn_Alt_Rdr: number; }
+interface HomeWp { FPAS_HOME_WP: number; }
+interface AaWp { AA_WP_Enabled: boolean; AA_WP_Number: number; }
+
 interface NavSettings {
   TACAN: TacanSettings;
   ICLS: IclsSettings;
   ACLS?: AclsSettings;
+  Altitude_Warning?: AltWarn;
+  Home_Waypoint?: HomeWp;
+  AA_Waypoint?: AaWp;
 }
+
+// ALR67 RWR threat-table entry (one emitter on one of the AAA/AI/FRND pages).
+interface RwrEntry { display: boolean; friend: boolean; aspj_xmit: boolean; PRI: number; }
+type RwrTable = Record<string, RwrEntry>;
+// ALR67 CMDS auto-dispense entry (per threat: which CM program fires + the RWR
+// state that triggers it). `program` 0 = no auto-dispense.
+interface ThreatLevel { index: number; label: string; }
+interface CmThreatEntry { program: number; default_threshold?: ThreatLevel; thresholds?: ThreatLevel[]; }
 
 interface CmdsProgram {
   chaffQty: number;
@@ -107,7 +143,15 @@ interface DtcData {
   WYPT: { NAV_PTS: NavPoint[]; NAV_SETTINGS: NavSettings };
   CMDS: Record<string, CmdsProgram>;
   SA?: SaData;
-  ALR67?: unknown;
+  ALR67?: {
+    RWR?: Record<string, RwrTable>;
+    CMDS?: {
+      CMDSProgramSettings?: unknown;
+      // category → emitter → entry, plus a CMDS_Avionics_Threat_Table list we leave alone.
+      CMDS_Threat_table?: Record<string, unknown>;
+    };
+    [k: string]: unknown;
+  };
   TCN?: unknown[];
 }
 
@@ -122,7 +166,7 @@ const DCLTR_LABELS: Record<string, string> = {
   MEZ_Names: 'MEZ names', MEZ_Rings: 'MEZ rings', SEQ: 'Sequence', Waypoint_Info: 'Waypoint info',
 };
 
-type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools' | 'presets' | 'sa';
+type SubTab = 'comm' | 'cmds' | 'waypoints' | 'nav' | 'fuel' | 'tools' | 'presets' | 'sa' | 'rwr' | 'autocm';
 
 const COMM_CHANNELS = [
   ...Array.from({ length: 20 }, (_, i) => `Channel_${i + 1}`),
@@ -176,7 +220,10 @@ function normalizeLoadedDtc(raw: Record<string, any>): DtcData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = { ...raw };
 
-  // COMM — modulation 0/1 → 'AM'/'FM', frequency → string.
+  // COMM — modulation 0/1 → 'AM'/'FM', frequency → string. Special channels use
+  // real keys (Channel_C/G/M/S) in the file but the table + SOP builders key them
+  // CUE/GUARD/MAN/MAR_S, so rename on load (the export reconcile aliases back).
+  const SPECIAL_FROM_REAL: Record<string, string> = { Channel_C: 'CUE', Channel_G: 'GUARD', Channel_M: 'MAN', Channel_S: 'MAR_S' };
   for (const radio of ['COMM1', 'COMM2'] as const) {
     const r = raw.COMM?.[radio];
     if (r && typeof r === 'object') {
@@ -184,7 +231,7 @@ function normalizeLoadedDtc(raw: Record<string, any>): DtcData {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const [k, ch] of Object.entries(r as Record<string, any>)) {
         if (ch && typeof ch === 'object') {
-          nr[k] = {
+          nr[SPECIAL_FROM_REAL[k] ?? k] = {
             frequency: ch.frequency != null ? String(ch.frequency) : '',
             modulation: modToStr(ch.modulation),
             name: ch.name ?? '',
@@ -650,6 +697,20 @@ export function DtcTab() {
     });
   }, []);
 
+  // NAV extras (Altitude Warning / Home WP / A-A WP) — real-keyed sub-objects on
+  // NAV_SETTINGS that the builder emits and the export reconcile merges back.
+  const updateNavExtra = useCallback((section: 'Altitude_Warning' | 'Home_Waypoint' | 'AA_Waypoint', field: string, value: unknown) => {
+    setDtcData((prev) => {
+      if (!prev) return prev;
+      const ns = prev.WYPT.NAV_SETTINGS as NavSettings;
+      const cur = (ns[section] ?? {}) as Record<string, unknown>;
+      return {
+        ...prev,
+        WYPT: { ...prev.WYPT, NAV_SETTINGS: { ...ns, [section]: { ...cur, [field]: value } } },
+      };
+    });
+  }, []);
+
   /**
    * Overwrites both COMM radios with channels synthesized from the active
    * SOP. Existing channels not produced by the SOP are preserved on each
@@ -947,6 +1008,8 @@ export function DtcTab() {
               { key: 'nav', label: 'NAV' },
               { key: 'fuel', label: 'Fuel' },
               { key: 'sa', label: 'SA' },
+              { key: 'rwr', label: 'RWR' },
+              { key: 'autocm', label: 'Auto-CM' },
               { key: 'tools', label: 'Tools' },
               { key: 'presets', label: 'Presets' },
             ] as { key: SubTab; label: string }[]).map((t) => (
@@ -986,16 +1049,22 @@ export function DtcTab() {
             <CmdsSubTab data={dtcData.CMDS ?? {}} onUpdate={updateCmds} />
           </div>
           <div style={{ display: subTab === 'waypoints' ? 'block' : 'none' }}>
-            <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} />
+            <WaypointsSubTab data={dtcData.WYPT?.NAV_PTS ?? []} steerNotes={steerNotes} setSteerNotes={setSteerNotes} setDtcData={setDtcData} />
           </div>
           <div style={{ display: subTab === 'nav' ? 'block' : 'none' }}>
-            <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} selectedFlight={selectedFlight} />
+            <NavSubTab data={dtcData.WYPT?.NAV_SETTINGS ?? { TACAN: { channel: 1, band: 'X', mode: 'T-R', enabled: false }, ICLS: { channel: 1, enabled: false } }} onUpdate={updateNav} onUpdateExtra={updateNavExtra} selectedFlight={selectedFlight} />
           </div>
           <div style={{ display: subTab === 'fuel' ? 'block' : 'none' }}>
             <FuelPlannerSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} />
           </div>
           <div style={{ display: subTab === 'sa' ? 'block' : 'none' }}>
             <SaSubTab data={dtcData.SA} navPts={(dtcData.WYPT?.NAV_PTS ?? []) as unknown as SaWaypoint[]} setDtcData={setDtcData} />
+          </div>
+          <div style={{ display: subTab === 'rwr' ? 'block' : 'none' }}>
+            <RwrSubTab data={dtcData.ALR67?.RWR} setDtcData={setDtcData} />
+          </div>
+          <div style={{ display: subTab === 'autocm' ? 'block' : 'none' }}>
+            <AutoCmSubTab data={dtcData.ALR67?.CMDS?.CMDS_Threat_table} setDtcData={setDtcData} />
           </div>
           <div style={{ display: subTab === 'tools' ? 'block' : 'none' }}>
             <ToolsSubTab waypoints={dtcData.WYPT?.NAV_PTS ?? []} dtcData={dtcData} setDtcData={setDtcData} selectedFlight={selectedFlight} />
@@ -1301,33 +1370,30 @@ function CmdsSubTab({ data, onUpdate }: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Waypoints sub-tab (read-only)                                       */
+/* Waypoints sub-tab — name + offset-aimpoint editor                   */
 /* ------------------------------------------------------------------ */
 
-function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
+/** Leg distance in nm between two NAV points using DCS world x/y (metres). */
+function wpLegNm(a: NavPoint, b: NavPoint): number {
+  if (a?.x == null || a?.y == null || b?.x == null || b?.y == null) return 0;
+  return Math.hypot((b.x as number) - (a.x as number), (b.y as number) - (a.y as number)) / 1852;
+}
+const wpNumOf = (wp: NavPoint, i: number) => wp.wypt_num ?? wp.number ?? i + 1;
+const wpNameOf = (wp: NavPoint) => wp.text_note ?? wp.name ?? '';
+
+function WaypointsSubTab({ data, steerNotes, setSteerNotes, setDtcData }: {
   data: NavPoint[];
   steerNotes: Record<number, string>;
   setSteerNotes: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
 }) {
-  // Compute leg distances (simplified great circle approx). This hook MUST
-  // run before any early return so the hook order stays stable when `data`
-  // toggles between empty and populated — otherwise React throws
-  // "rendered fewer hooks than expected" and the tab crashes.
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  // Leg distances from world x/y (the old lat/lon path was always blank because
+  // real NAV_PTS carry x/y, not lat/lon). Hook runs before any early return.
   const distances = useMemo(() => {
     const dists: number[] = [0];
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1];
-      const curr = data[i];
-      const lat1 = parseCoord(prev.lat);
-      const lon1 = parseCoord(prev.lon);
-      const lat2 = parseCoord(curr.lat);
-      const lon2 = parseCoord(curr.lon);
-      if (lat1 !== null && lon1 !== null && lat2 !== null && lon2 !== null) {
-        dists.push(haversineNm(lat1, lon1, lat2, lon2));
-      } else {
-        dists.push(0);
-      }
-    }
+    for (let i = 1; i < data.length; i++) dists.push(wpLegNm(data[i - 1], data[i]));
     return dists;
   }, [data]);
 
@@ -1337,11 +1403,29 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
 
   const totalDist = distances.reduce((s, d) => s + d, 0);
 
+  // Patch one waypoint (matched by wypt_num) in the shared dtcData NAV_PTS.
+  const patchWp = (wnum: number, patch: Partial<NavPoint>) =>
+    setDtcData((prev) => {
+      if (!prev?.WYPT?.NAV_PTS) return prev;
+      const nav = prev.WYPT.NAV_PTS.map((wp, i) =>
+        wpNumOf(wp, i) === wnum ? { ...wp, ...patch } : wp,
+      );
+      return { ...prev, WYPT: { ...prev.WYPT, NAV_PTS: nav } };
+    });
+
+  const toggle = (wnum: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(wnum)) next.delete(wnum); else next.add(wnum);
+      return next;
+    });
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
         <span style={{ color: '#aaaaaa', fontSize: 12 }}>
           {data.length} waypoints · Total: <strong style={{ color: '#e0e0e0' }}>{totalDist.toFixed(1)} nm</strong>
+          {' '}· click <strong style={{ color: '#d29922' }}>OA</strong> to set an offset aimpoint / sensor slave
         </span>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
@@ -1349,35 +1433,94 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
           <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a' }}>
             <th style={{ ...thStyle, width: 36 }}>#</th>
             <th style={thStyle}>Name</th>
-            <th style={thStyle}>Lat</th>
-            <th style={thStyle}>Lon</th>
             <th style={thStyle}>Alt (ft)</th>
             <th style={{ ...thStyle, width: 70 }}>Leg nm</th>
+            <th style={{ ...thStyle, width: 60 }}>OA</th>
             <th style={thStyle}>Notes</th>
           </tr>
         </thead>
         <tbody>
           {data.map((wp, i) => {
-            const wpNum = wp.number ?? i + 1;
+            const wpNum = wpNumOf(wp, i);
+            const isOpen = expanded.has(wpNum);
+            const oaActive = !!wp.isOA || !!wp.R1 || !!wp.R2 || !!wp.R3;
             return (
-              <tr key={wpNum} style={{ borderBottom: '1px solid #262626' }}>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{wpNum}</td>
-                <td style={tdStyle}>{wp.name || '-'}</td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 12 }}>{wp.lat}</td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 12 }}>{wp.lon}</td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{wp.alt}</td>
-                <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: distances[i] > 0 ? '#d29922' : '#3a3a3a', fontSize: 12 }}>
-                  {distances[i] > 0 ? distances[i].toFixed(1) : '—'}
-                </td>
-                <td style={tdStyle}>
-                  <input
-                    value={steerNotes[wpNum] ?? ''}
-                    onChange={(e) => setSteerNotes((prev) => ({ ...prev, [wpNum]: e.target.value }))}
-                    placeholder="IP, push, fence in..."
-                    style={{ ...monoInputStyle, width: '100%', fontSize: 11, fontFamily: 'inherit', color: '#cccccc' }}
-                  />
-                </td>
-              </tr>
+              <Fragment key={wpNum}>
+                <tr style={{ borderBottom: isOpen ? 'none' : '1px solid #262626' }}>
+                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: '#aaaaaa' }}>{wpNum}</td>
+                  <td style={tdStyle}>
+                    <input
+                      value={wpNameOf(wp)}
+                      onChange={(e) => patchWp(wpNum, { text_note: e.target.value })}
+                      style={{ ...monoInputStyle, width: '100%', fontFamily: 'inherit' }}
+                    />
+                  </td>
+                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace" }}>{wp.alt}</td>
+                  <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", color: distances[i] > 0 ? '#d29922' : '#3a3a3a', fontSize: 12 }}>
+                    {distances[i] > 0 ? distances[i].toFixed(1) : '—'}
+                  </td>
+                  <td style={tdStyle}>
+                    <button
+                      onClick={() => toggle(wpNum)}
+                      title="Offset aimpoint + sensor-slave (R1/R2/R3)"
+                      style={{
+                        background: oaActive ? '#3a3018' : '#262626',
+                        border: `1px solid ${oaActive ? '#fbb941' : '#3a3a3a'}`,
+                        borderRadius: 4, color: oaActive ? '#fbb941' : '#aaaaaa',
+                        cursor: 'pointer', fontSize: 11, padding: '3px 8px', fontWeight: 600,
+                      }}
+                    >
+                      OA {isOpen ? '▲' : '▼'}
+                    </button>
+                  </td>
+                  <td style={tdStyle}>
+                    <input
+                      value={steerNotes[wpNum] ?? ''}
+                      onChange={(e) => setSteerNotes((prev) => ({ ...prev, [wpNum]: e.target.value }))}
+                      placeholder="IP, push, fence in..."
+                      style={{ ...monoInputStyle, width: '100%', fontSize: 11, fontFamily: 'inherit', color: '#cccccc' }}
+                    />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr style={{ borderBottom: '1px solid #262626', background: '#141414' }}>
+                    <td />
+                    <td colSpan={5} style={{ padding: '8px 6px' }}>
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ ...fieldLabelStyle, cursor: 'pointer', flexDirection: 'row', gap: 4 }}>
+                          <input type="checkbox" checked={!!wp.isOA} onChange={(e) => patchWp(wpNum, { isOA: e.target.checked })} />
+                          Offset
+                        </label>
+                        <label style={fieldLabelStyle}>
+                          Brg °
+                          <input type="number" value={wp.OA_Bearing ?? 0}
+                            onChange={(e) => patchWp(wpNum, { OA_Bearing: Number(e.target.value) })}
+                            style={{ ...monoInputStyle, width: 60 }} />
+                        </label>
+                        <label style={fieldLabelStyle}>
+                          Rng
+                          <input type="number" value={wp.OA_Range ?? 0}
+                            onChange={(e) => patchWp(wpNum, { OA_Range: Number(e.target.value) })}
+                            style={{ ...monoInputStyle, width: 60 }} />
+                        </label>
+                        <label style={fieldLabelStyle}>
+                          Elev ft
+                          <input type="number" value={wp.OA_Alt ?? 0}
+                            onChange={(e) => patchWp(wpNum, { OA_Alt: Number(e.target.value) })}
+                            style={{ ...monoInputStyle, width: 70 }} />
+                        </label>
+                        <span style={{ color: '#666', fontSize: 11, borderLeft: '1px solid #3a3a3a', paddingLeft: 12 }}>Slave</span>
+                        {(['R1', 'R2', 'R3'] as const).map((r) => (
+                          <label key={r} style={{ ...fieldLabelStyle, cursor: 'pointer', flexDirection: 'row', gap: 4 }}>
+                            <input type="checkbox" checked={!!wp[r]} onChange={(e) => patchWp(wpNum, { [r]: e.target.checked })} />
+                            {r}
+                          </label>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
@@ -1390,9 +1533,10 @@ function WaypointsSubTab({ data, steerNotes, setSteerNotes }: {
 /* NAV sub-tab                                                         */
 /* ------------------------------------------------------------------ */
 
-function NavSubTab({ data, onUpdate, selectedFlight }: {
+function NavSubTab({ data, onUpdate, onUpdateExtra, selectedFlight }: {
   data: NavSettings;
   onUpdate: (section: 'TACAN' | 'ICLS' | 'ACLS', field: string, value: unknown) => void;
+  onUpdateExtra: (section: 'Altitude_Warning' | 'Home_Waypoint' | 'AA_Waypoint', field: string, value: unknown) => void;
   selectedFlight: string;
 }) {
   // v1.19.66 — overlay staged TACAN/ICLS/frequency edits so this tab
@@ -1401,6 +1545,9 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
   const tacan = data.TACAN;
   const icls = data.ICLS;
   const acls = data.ACLS ?? { frequency: '', enabled: false };
+  const altWarn = data.Altitude_Warning ?? { Warn_Alt_Baro: 0, Warn_Alt_Rdr: 0 };
+  const homeWp = data.Home_Waypoint ?? { FPAS_HOME_WP: 1 };
+  const aaWp = data.AA_Waypoint ?? { AA_WP_Enabled: false, AA_WP_Number: 0 };
 
   // Collect nav-relevant data from all mission groups
   const navRefs = useMemo(() => {
@@ -1523,6 +1670,67 @@ function NavSubTab({ data, onUpdate, selectedFlight }: {
           </label>
         </div>
       </fieldset>
+
+      {/* Altitude Warning — baro + radar altitude floors (ft). */}
+      <fieldset style={fieldsetStyle}>
+        <legend style={legendStyle}>Altitude Warning</legend>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={fieldLabelStyle}>
+            Baro (ft)
+            <input
+              type="number"
+              value={altWarn.Warn_Alt_Baro}
+              onChange={(e) => onUpdateExtra('Altitude_Warning', 'Warn_Alt_Baro', Number(e.target.value))}
+              style={{ ...monoInputStyle, width: 80 }}
+            />
+          </label>
+          <label style={fieldLabelStyle}>
+            Radar (ft)
+            <input
+              type="number"
+              value={altWarn.Warn_Alt_Rdr}
+              onChange={(e) => onUpdateExtra('Altitude_Warning', 'Warn_Alt_Rdr', Number(e.target.value))}
+              style={{ ...monoInputStyle, width: 80 }}
+            />
+          </label>
+        </div>
+      </fieldset>
+
+      {/* Home Waypoint + A-A Waypoint (datalink). */}
+      <fieldset style={fieldsetStyle}>
+        <legend style={legendStyle}>Home / A-A Waypoint</legend>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={fieldLabelStyle}>
+            Home WP #
+            <input
+              type="number"
+              min={0}
+              value={homeWp.FPAS_HOME_WP}
+              onChange={(e) => onUpdateExtra('Home_Waypoint', 'FPAS_HOME_WP', Number(e.target.value))}
+              style={{ ...monoInputStyle, width: 60 }}
+            />
+          </label>
+          <label style={fieldLabelStyle}>
+            A-A WP #
+            <input
+              type="number"
+              min={0}
+              value={aaWp.AA_WP_Number}
+              onChange={(e) => onUpdateExtra('AA_Waypoint', 'AA_WP_Number', Number(e.target.value))}
+              style={{ ...monoInputStyle, width: 60 }}
+            />
+          </label>
+          <label style={{ ...fieldLabelStyle, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={aaWp.AA_WP_Enabled}
+              onChange={(e) => onUpdateExtra('AA_Waypoint', 'AA_WP_Enabled', e.target.checked)}
+              style={{ marginRight: 4 }}
+            />
+            A-A On
+          </label>
+        </div>
+      </fieldset>
     </div>
 
     {/* Mission Nav Reference */}
@@ -1598,24 +1806,15 @@ function FuelPlannerSubTab({ waypoints }: { waypoints: NavPoint[] }) {
 
     for (let i = 0; i < waypoints.length; i++) {
       const wp = waypoints[i];
-      let legNm = 0;
-      if (i > 0) {
-        const prev = waypoints[i - 1];
-        const lat1 = parseCoord(prev.lat);
-        const lon1 = parseCoord(prev.lon);
-        const lat2 = parseCoord(wp.lat);
-        const lon2 = parseCoord(wp.lon);
-        if (lat1 !== null && lon1 !== null && lat2 !== null && lon2 !== null) {
-          legNm = haversineNm(lat1, lon1, lat2, lon2);
-        }
-      }
+      // Real NAV_PTS carry world x/y, not lat/lon — leg from euclidean metres.
+      const legNm = i > 0 ? wpLegNm(waypoints[i - 1], wp) : 0;
       const legMin = groundSpeed > 0 ? (legNm / groundSpeed) * 60 : 0;
       const fuelUsed = (burnRate / 60) * legMin;
       remaining -= fuelUsed;
 
       plan.push({
-        wpNum: wp.number ?? i + 1,
-        name: wp.name || `WP ${i + 1}`,
+        wpNum: wpNumOf(wp, i),
+        name: wpNameOf(wp) || `WP ${i + 1}`,
         legNm,
         legMin,
         fuelUsed,
@@ -2190,22 +2389,12 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
   const [totZulu, setTotZulu] = useState('');
   const [inputSpeed, setInputSpeed] = useState(420);
 
-  // Distance from WP1 to target WP
+  // Distance from WP1 to target WP (world x/y, not lat/lon).
   const totalNm = useMemo(() => {
     let nm = 0;
-    const targetIdx = waypoints.findIndex((wp) => (wp.number ?? 0) === targetWp);
+    const targetIdx = waypoints.findIndex((wp, i) => wpNumOf(wp, i) === targetWp);
     if (targetIdx <= 0) return 0;
-    for (let i = 1; i <= targetIdx; i++) {
-      const prev = waypoints[i - 1];
-      const curr = waypoints[i];
-      const lat1 = parseCoord(prev.lat);
-      const lon1 = parseCoord(prev.lon);
-      const lat2 = parseCoord(curr.lat);
-      const lon2 = parseCoord(curr.lon);
-      if (lat1 !== null && lon1 !== null && lat2 !== null && lon2 !== null) {
-        nm += haversineNm(lat1, lon1, lat2, lon2);
-      }
-    }
+    for (let i = 1; i <= targetIdx; i++) nm += wpLegNm(waypoints[i - 1], waypoints[i]);
     return nm;
   }, [waypoints, targetWp]);
 
@@ -2270,8 +2459,8 @@ function SpeedTimeCalc({ waypoints }: { waypoints: NavPoint[] }) {
           <select value={targetWp} onChange={(e) => setTargetWp(Number(e.target.value))}
             style={{ ...selectStyle, fontSize: 13, padding: '3px 6px' }}>
             {waypoints.map((wp, i) => (
-              <option key={wp.number ?? i + 1} value={wp.number ?? i + 1}>
-                WP {wp.number ?? i + 1} — {wp.name || 'unnamed'}
+              <option key={wpNumOf(wp, i)} value={wpNumOf(wp, i)}>
+                WP {wpNumOf(wp, i)} — {wpNameOf(wp) || 'unnamed'}
               </option>
             ))}
           </select>
@@ -2447,6 +2636,206 @@ function CopyToWingman({ dtcData, setDtcData, selectedFlight: _selectedFlight }:
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* RWR sub-tab — per-emitter display / priority / ASPJ                  */
+/* ------------------------------------------------------------------ */
+
+function RwrSubTab({ data, setDtcData }: {
+  data?: Record<string, RwrTable>;
+  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
+}) {
+  const tableKeys = useMemo(() => (data ? Object.keys(data) : []), [data]);
+  const [table, setTable] = useState<string>('');
+  const [filter, setFilter] = useState('');
+  const activeKey = data && table && table in data ? table : tableKeys[0] ?? '';
+  const active: RwrTable = (data?.[activeKey] ?? {}) as RwrTable;
+
+  const rows = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    return Object.entries(active)
+      .filter(([name]) => !f || name.toLowerCase().includes(f))
+      .sort((a, b) => (a[1]?.PRI ?? 999) - (b[1]?.PRI ?? 999));
+  }, [active, filter]);
+
+  if (!data || tableKeys.length === 0) {
+    return <div style={{ color: '#aaaaaa', fontSize: 14 }}>No RWR table in this DTC.</div>;
+  }
+
+  const patch = (emitter: string, field: keyof RwrEntry, value: boolean | number) =>
+    setDtcData((prev) => {
+      const rwr = prev?.ALR67?.RWR;
+      if (!rwr?.[activeKey]?.[emitter]) return prev;
+      const tbl = { ...rwr[activeKey], [emitter]: { ...rwr[activeKey][emitter], [field]: value } };
+      return { ...prev!, ALR67: { ...prev!.ALR67, RWR: { ...rwr, [activeKey]: tbl } } };
+    });
+
+  const bulkDisplay = (value: boolean) =>
+    setDtcData((prev) => {
+      const rwr = prev?.ALR67?.RWR;
+      if (!rwr?.[activeKey]) return prev;
+      const visible = new Set(rows.map(([n]) => n));  // only the filtered set
+      const tbl: RwrTable = {};
+      for (const [n, e] of Object.entries(rwr[activeKey])) tbl[n] = visible.has(n) ? { ...e, display: value } : e;
+      return { ...prev!, ALR67: { ...prev!.ALR67, RWR: { ...rwr, [activeKey]: tbl } } };
+    });
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: '#aaaaaa' }}>
+        ALR-67 threat library — toggle which emitters show on the RWR, set priority (lower = higher),
+        and flag ASPJ jam-assignment. Pick the threat page below.
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 0, border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden' }}>
+          {tableKeys.map((k) => (
+            <button key={k} onClick={() => setTable(k)} style={{
+              background: k === activeKey ? '#2a3a4a' : '#1a1a1a',
+              color: k === activeKey ? '#6ab4f0' : '#aaaaaa',
+              border: 'none', cursor: 'pointer', fontSize: 13, padding: '5px 14px', fontWeight: 600,
+            }}>{k}</button>
+          ))}
+        </div>
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter emitters…"
+          style={{ ...monoInputStyle, width: 180, fontFamily: 'inherit' }} />
+        <span style={{ flex: 1 }} />
+        <button onClick={() => bulkDisplay(true)} style={{ ...btnStyle, fontSize: 12, padding: '4px 10px' }}>Show all</button>
+        <button onClick={() => bulkDisplay(false)} style={{ ...btnStyle, fontSize: 12, padding: '4px 10px' }}>Hide all</button>
+      </div>
+      <div style={{ maxHeight: 460, overflowY: 'auto', border: '1px solid #262626', borderRadius: 6 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
+          <thead>
+            <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a', position: 'sticky', top: 0 }}>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Emitter</th>
+              <th style={{ ...thStyle, width: 70 }}>Display</th>
+              <th style={{ ...thStyle, width: 70 }}>PRI</th>
+              <th style={{ ...thStyle, width: 70 }}>ASPJ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([name, e]) => (
+              <tr key={name} style={{ borderBottom: '1px solid #1f1f1f', opacity: e.display ? 1 : 0.5 }}>
+                <td style={{ ...tdStyle, textAlign: 'left' }}>{name}</td>
+                <td style={tdStyle}>
+                  <input type="checkbox" checked={!!e.display} onChange={(ev) => patch(name, 'display', ev.target.checked)} />
+                </td>
+                <td style={tdStyle}>
+                  <input type="number" value={e.PRI ?? 0} onChange={(ev) => patch(name, 'PRI', Number(ev.target.value))}
+                    style={{ ...monoInputStyle, width: 52 }} />
+                </td>
+                <td style={tdStyle}>
+                  <input type="checkbox" checked={!!e.aspj_xmit} onChange={(ev) => patch(name, 'aspj_xmit', ev.target.checked)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Auto-CM sub-tab — per-threat countermeasure program + trigger       */
+/* ------------------------------------------------------------------ */
+
+const AUTOCM_CATS = ['Air', 'Ground', 'Naval', 'Other'];
+
+function AutoCmSubTab({ data, setDtcData }: {
+  data?: Record<string, unknown>;
+  setDtcData: React.Dispatch<React.SetStateAction<DtcData | null>>;
+}) {
+  const cats = useMemo(
+    () => (data ? AUTOCM_CATS.filter((c) => data[c] && typeof data[c] === 'object' && !Array.isArray(data[c])) : []),
+    [data],
+  );
+  const [cat, setCat] = useState('');
+  const [filter, setFilter] = useState('');
+  const activeCat = data && cat && cat in data ? cat : cats[0] ?? '';
+  const entries: Record<string, CmThreatEntry> = (data?.[activeCat] ?? {}) as Record<string, CmThreatEntry>;
+
+  const rows = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    return Object.entries(entries).filter(([name]) => !f || name.toLowerCase().includes(f)).sort();
+  }, [entries, filter]);
+
+  if (!data || cats.length === 0) {
+    return <div style={{ color: '#aaaaaa', fontSize: 14 }}>No CMDS threat table in this DTC.</div>;
+  }
+
+  const setEntry = (emitter: string, patch: Partial<CmThreatEntry>) =>
+    setDtcData((prev) => {
+      const tt = prev?.ALR67?.CMDS?.CMDS_Threat_table as Record<string, Record<string, CmThreatEntry>> | undefined;
+      if (!tt?.[activeCat]?.[emitter]) return prev;
+      const catObj = { ...tt[activeCat], [emitter]: { ...tt[activeCat][emitter], ...patch } };
+      return {
+        ...prev!,
+        ALR67: { ...prev!.ALR67, CMDS: { ...prev!.ALR67!.CMDS, CMDS_Threat_table: { ...tt, [activeCat]: catObj } } },
+      };
+    });
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: '#aaaaaa' }}>
+        Auto countermeasures — for each threat, which CMDS program dispenses and at which RWR state it
+        triggers. <strong style={{ color: '#cccccc' }}>Program 0 = off</strong> (no auto-dispense). Program
+        number matches the CMDS program slot.
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 0, border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden' }}>
+          {cats.map((c) => (
+            <button key={c} onClick={() => setCat(c)} style={{
+              background: c === activeCat ? '#2a3a4a' : '#1a1a1a',
+              color: c === activeCat ? '#6ab4f0' : '#aaaaaa',
+              border: 'none', cursor: 'pointer', fontSize: 13, padding: '5px 14px', fontWeight: 600,
+            }}>{c}</button>
+          ))}
+        </div>
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter threats…"
+          style={{ ...monoInputStyle, width: 180, fontFamily: 'inherit' }} />
+      </div>
+      <div style={{ maxHeight: 460, overflowY: 'auto', border: '1px solid #262626', borderRadius: 6 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e0e0e0' }}>
+          <thead>
+            <tr style={{ color: '#aaaaaa', borderBottom: '1px solid #3a3a3a', background: '#1a1a1a', position: 'sticky', top: 0 }}>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Threat</th>
+              <th style={{ ...thStyle, width: 90 }}>Program</th>
+              <th style={{ ...thStyle, width: 130 }}>Trigger at</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([name, e]) => {
+              const levels = e.thresholds ?? [];
+              const curIdx = e.default_threshold?.index ?? 0;
+              return (
+                <tr key={name} style={{ borderBottom: '1px solid #1f1f1f', opacity: e.program ? 1 : 0.55 }}>
+                  <td style={{ ...tdStyle, textAlign: 'left' }}>{name}</td>
+                  <td style={tdStyle}>
+                    <input type="number" min={0} value={e.program ?? 0}
+                      onChange={(ev) => setEntry(name, { program: Number(ev.target.value) })}
+                      style={{ ...monoInputStyle, width: 60 }} />
+                  </td>
+                  <td style={tdStyle}>
+                    {levels.length > 0 ? (
+                      <select value={curIdx}
+                        onChange={(ev) => {
+                          const lvl = levels.find((l) => l.index === Number(ev.target.value));
+                          if (lvl) setEntry(name, { default_threshold: lvl });
+                        }}
+                        style={{ ...selectStyle, fontSize: 12, padding: '3px 4px' }}>
+                        {levels.map((l) => <option key={l.index} value={l.index}>{l.label}</option>)}
+                      </select>
+                    ) : <span style={{ color: '#666' }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -158,6 +158,82 @@ def _serialize_lua_value(value: Any, indent: str = "") -> str:
     return str(value)
 
 
+def _wp_task_items(task: Dict) -> List[Dict]:
+    """Return a route waypoint's task entries (ComboTask params.tasks) in order,
+    tolerating the dict (1-indexed) or list form slpp can produce."""
+    if not isinstance(task, dict):
+        return []
+    raw = task.get("params", {}).get("tasks", {}) if isinstance(task.get("params"), dict) else {}
+    if isinstance(raw, list):
+        return [t for t in raw if isinstance(t, dict)]
+    if isinstance(raw, dict):
+        def _k(k):
+            s = str(k).lstrip("-")
+            return int(k) if s.isdigit() else 1 << 30
+        return [raw[k] for k in sorted(raw, key=_k) if isinstance(raw[k], dict)]
+    return []
+
+
+def set_waypoint_orbit(wp: Dict, pattern: str = "Race-Track",
+                       altitude_m: float = None, speed_ms: float = None,
+                       duration_sec: int = 0) -> Dict:
+    """Add (or replace) an Orbit task on a waypoint so the flight loiters there.
+
+    Mutates and returns the waypoint dict. The structure matches what DCS itself
+    writes (verified against real missions):
+        {number, auto=false, id="Orbit", enabled=true,
+         params={pattern, altitude, speed, speedEdited=true}}
+    plus an optional ["stopCondition"] = {["duration"] = sec} for a timed loiter
+    (0 = orbit indefinitely). `pattern` is "Race-Track" or "Circle".
+    """
+    if pattern not in ("Race-Track", "Circle"):
+        pattern = "Race-Track"
+    if altitude_m is None:
+        altitude_m = wp.get("altitude_m", 0) or 0
+    if speed_ms is None:
+        speed_ms = wp.get("speed_ms", 0) or 0
+
+    task = wp.get("task")
+    if not isinstance(task, dict) or task.get("id") != "ComboTask":
+        task = {"id": "ComboTask", "params": {"tasks": {}}}
+
+    kept = [t for t in _wp_task_items(task) if t.get("id") != "Orbit"]  # replace existing orbit
+    for n, t in enumerate(kept, 1):
+        t["number"] = n
+
+    orbit = {
+        "number": len(kept) + 1,
+        "auto": False,
+        "id": "Orbit",
+        "enabled": True,
+        "params": {
+            "pattern": pattern,
+            "altitude": altitude_m,
+            "speed": speed_ms,
+            "speedEdited": True,
+        },
+    }
+    if duration_sec and int(duration_sec) > 0:
+        orbit["stopCondition"] = {"duration": int(duration_sec)}
+    kept.append(orbit)
+
+    task.setdefault("params", {})["tasks"] = {i + 1: t for i, t in enumerate(kept)}
+    task["id"] = "ComboTask"
+    wp["task"] = task
+    return wp
+
+
+def clear_waypoint_orbit(wp: Dict) -> Dict:
+    """Remove any Orbit task from a waypoint (stop loitering). Mutates + returns."""
+    task = wp.get("task")
+    if isinstance(task, dict):
+        kept = [t for t in _wp_task_items(task) if t.get("id") != "Orbit"]
+        for n, t in enumerate(kept, 1):
+            t["number"] = n
+        task.setdefault("params", {})["tasks"] = {i + 1: t for i, t in enumerate(kept)}
+    return wp
+
+
 def _serialize_points(waypoints: List[Dict], base_indent: str) -> str:
     """Serialize waypoints as a Lua ["points"] = { ... } block."""
     inner = base_indent + "\t"
