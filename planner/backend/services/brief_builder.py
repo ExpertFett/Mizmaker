@@ -184,9 +184,10 @@ class FlightBrief:
     frequency: str
     tacan: str
     icls: str
-    fuel_joker_lbs: int  # placeholder — squadron-specific
-    fuel_bingo_lbs: int  # placeholder
-    fuel_rtb_lbs: int    # placeholder
+    fuel_start_lbs: int  # T/O internal fuel from the loadout (0 = unknown)
+    fuel_joker_lbs: int  # derived from start when known, else placeholder
+    fuel_bingo_lbs: int  # derived from start when known, else placeholder
+    fuel_rtb_lbs: int    # derived from start when known, else placeholder
     notes: str           # special instructions for this flight, default empty
     timeline: List[Dict[str, str]]  # this flight's own schedule (TimelineRow list)
     # Per-slide route map (v1.13.x). group_name matches this flight back to its
@@ -1680,6 +1681,18 @@ def build_flight_briefs(
                 f"Divert: {divert}" if divert else (home_plate or "Recovery")))
         flight_timeline = [asdict(r) for r in ft_rows]
 
+        # Real T/O fuel from the lead unit's loadout (DCS payload fuel is kg);
+        # Joker/Bingo/RTB derive from it (35 / 20 / 13 %) like the kneeboard
+        # fuel ladder. Placeholders only when the loadout carries no fuel value.
+        _lead_kg = units[0].get("fuel_kg") if units else None
+        if _lead_kg:
+            _fuel_start = round(_lead_kg * 2.20462)
+            _fuel_joker = round(_fuel_start * 0.35)
+            _fuel_bingo = round(_fuel_start * 0.20)
+            _fuel_rtb = round(_fuel_start * 0.13)
+        else:
+            _fuel_start, _fuel_joker, _fuel_bingo, _fuel_rtb = 0, 4500, 3500, 2500
+
         brief = FlightBrief(
             mission_name=str(mission_name),
             theater=theater,
@@ -1698,10 +1711,10 @@ def build_flight_briefs(
             frequency=_format_freq(g.get("frequency")),
             tacan=tacan,
             icls=icls,
-            # Squadron-specific fuel — placeholders the editor or pilot fills
-            fuel_joker_lbs=4500,
-            fuel_bingo_lbs=3500,
-            fuel_rtb_lbs=2500,
+            fuel_start_lbs=_fuel_start,
+            fuel_joker_lbs=_fuel_joker,
+            fuel_bingo_lbs=_fuel_bingo,
+            fuel_rtb_lbs=_fuel_rtb,
             notes="",
             timeline=flight_timeline,
             group_name=g.get("groupName", ""),

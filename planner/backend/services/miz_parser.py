@@ -820,6 +820,11 @@ def _extract_group(
             lat, lon = dcs_to_latlon(unit["x"], unit["y"], theater)
             unit["lat"] = lat
             unit["lon"] = lon
+        # Internal fuel (kg) from the unit payload — drives real fuel ladders /
+        # brief T/O-fuel instead of a fixed placeholder.
+        _payload = u.get("payload")
+        if isinstance(_payload, dict) and _payload.get("fuel") is not None:
+            unit["fuel_kg"] = _num(_payload.get("fuel"))
         extracted_units.append(unit)
 
     # Extract waypoints from route.points

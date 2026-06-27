@@ -223,6 +223,28 @@ export function BriefGenTab() {
    *  .miz, so a rebuild keeps it (only the AI notes + steer reset). */
   const [missionStory, setMissionStory] = useState('');
 
+  // Persist the user-authored free text (mission story + AI steer) per session
+  // so a full browser refresh doesn't wipe it (navigation loss is already handled
+  // by keeping the tab mounted). Keyed by sessionId, which survives refresh like
+  // the editStore edits. One effect: load once per session, then save on change —
+  // the per-session ref stops the mount-time save from clobbering the draft we
+  // just loaded.
+  const briefDraftSidRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    const key = `opt.briefDraft.${sessionId}`;
+    if (briefDraftSidRef.current !== sessionId) {
+      briefDraftSidRef.current = sessionId;
+      try {
+        const d = JSON.parse(localStorage.getItem(key) || '{}');
+        if (typeof d.missionStory === 'string') setMissionStory(d.missionStory);
+        if (typeof d.aiSteer === 'string') setAiSteer(d.aiSteer);
+      } catch { /* ignore corrupt draft */ }
+      return;
+    }
+    try { localStorage.setItem(key, JSON.stringify({ missionStory, aiSteer })); } catch { /* quota */ }
+  }, [sessionId, missionStory, aiSteer]);
+
   // Inline preview pane state. Slides come from the server as base64 PNGs
   // rendered via LibreOffice → pypdfium2. Empty until user clicks Preview.
   // Edits don't auto-refresh — user clicks Refresh after a batch of edits

@@ -1936,7 +1936,11 @@ def render_flight_brief(brief: Dict[str, Any]) -> bytes:
 
     _txt(s, col2_x, Inches(1.4), col2_w, Inches(0.4),
          "FUEL LADDER", size=14, bold=True, color=ACCENT)
-    fuel_rows = [
+    fuel_rows = []
+    _start = brief.get('fuel_start_lbs', 0)
+    if _start:  # real T/O fuel from the loadout — lead with it when known
+        fuel_rows.append(("T/O Fuel", f"{_start:,} lbs"))
+    fuel_rows += [
         ("Joker",  f"{brief.get('fuel_joker_lbs', 0):,} lbs"),
         ("Bingo",  f"{brief.get('fuel_bingo_lbs', 0):,} lbs"),
         ("RTB",    f"{brief.get('fuel_rtb_lbs', 0):,} lbs"),
