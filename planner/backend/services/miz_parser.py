@@ -853,6 +853,12 @@ def _extract_group(
             "eta_locked": pt.get("ETA_locked", True),
             "speed_locked": pt.get("speed_locked", True),
             "airdrome_id": pt.get("airdromeId"),
+            # Carrier-deck link for cold/hot starts on the boat. Land starts use
+            # airdromeId; carrier starts use helipadId (+ linkUnit), both = the
+            # carrier's unitId. Dropping these turns a deck start into an AIR
+            # start when the edited route is re-serialized.
+            "helipad_id": pt.get("helipadId"),
+            "link_unit": pt.get("linkUnit"),
             "task": pt.get("task"),  # preserve original task data for round-trip
         }
         if has_projection and wp["x"] and wp["y"]:

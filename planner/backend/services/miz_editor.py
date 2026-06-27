@@ -264,6 +264,13 @@ def _serialize_points(waypoints: List[Dict], base_indent: str) -> str:
         # Preserve airdromeId for departure waypoints
         if wp.get("airdrome_id"):
             fields.append(("airdromeId", wp["airdrome_id"]))
+        # Preserve the carrier-deck link so cold/hot starts on the boat stay
+        # ground starts. Without helipadId + linkUnit (the carrier's unitId) DCS
+        # can't place the jet on the deck and falls back to an AIR start.
+        if wp.get("helipad_id"):
+            fields.append(("helipadId", int(wp["helipad_id"])))
+        if wp.get("link_unit"):
+            fields.append(("linkUnit", int(wp["link_unit"])))
 
         for key, val in fields:
             if isinstance(val, str):
