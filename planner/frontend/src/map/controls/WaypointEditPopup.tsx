@@ -5,6 +5,7 @@ import { sessionEdit } from '../../api/client';
 import { metersToFeet, feetToMeters, msToKnots, knotsToMs, formatLatLon } from '../../utils/conversions';
 import { isPlayerGroup } from '../../utils/groups';
 import { useDraggable } from './useDraggable';
+import { ResizeGrip } from './ResizeGrip';
 
 
 /* ------------------------------------------------------------------ */
@@ -66,7 +67,7 @@ export function WaypointEditPopup({
   const ref = useRef<HTMLDivElement>(null);
   const { groups, sessionId } = useMissionStore();
   const adminMode = useMapStore((s) => s.adminMode);
-  const { containerRef: dragRef, handleProps } = useDraggable('waypointEditPopup');
+  const { containerRef: dragRef, handleProps, resizeHandleProps } = useDraggable('waypointEditPopup');
 
   const group = groups.find((g) => g.groupId === groupId);
   const wp = group?.waypoints.find((w) => w.waypoint_number === wpIndex);
@@ -447,6 +448,7 @@ export function WaypointEditPopup({
           </button>
         </div>
       )}
+      <ResizeGrip {...resizeHandleProps} />
     </div>
   );
 }

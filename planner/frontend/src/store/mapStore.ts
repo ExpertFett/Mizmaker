@@ -33,6 +33,8 @@ interface MapState {
   highlightMode: boolean;
   editorMode: boolean;
   floatingPanelPos: { x: number; y: number };
+  /** User-resized flight-panel size; {w:-1,h:-1} = use the default size. */
+  floatingPanelSize: { w: number; h: number };
   selectedWpIndex: number | null;
 
   toggleLayer: (id: string) => void;
@@ -52,6 +54,7 @@ interface MapState {
   setHighlightMode: (on: boolean) => void;
   setEditorMode: (on: boolean) => void;
   setFloatingPanelPos: (pos: { x: number; y: number }) => void;
+  setFloatingPanelSize: (size: { w: number; h: number }) => void;
   setSelectedWpIndex: (idx: number | null) => void;
   /** Pin the basemap selection (one of "dark" | "light" | "satellite" | ...).
    *  Lives in the layers map alongside the boolean show/hide flags. */
@@ -91,6 +94,7 @@ export const useMapStore = create<MapState>((set) => ({
   highlightMode: false,
   editorMode: false,
   floatingPanelPos: { x: -1, y: -1 }, // -1 = use default
+  floatingPanelSize: { w: -1, h: -1 }, // -1 = use default size
   selectedWpIndex: null,
 
   toggleLayer: (id) =>
@@ -122,6 +126,7 @@ export const useMapStore = create<MapState>((set) => ({
   setHighlightMode: (on) => set({ highlightMode: on, measureMode: false, addWaypointMode: false }),
   setEditorMode: (on) => set({ editorMode: on }),
   setFloatingPanelPos: (pos) => set({ floatingPanelPos: pos }),
+  setFloatingPanelSize: (size) => set({ floatingPanelSize: size }),
   setSelectedWpIndex: (idx) => set({ selectedWpIndex: idx }),
 
   setBaseMap: (id) => set((s) => ({ layers: { ...s.layers, baseMap: id } })),

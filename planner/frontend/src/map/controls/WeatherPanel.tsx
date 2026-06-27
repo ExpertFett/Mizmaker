@@ -4,6 +4,7 @@ import { useMapStore, type SpeedMode } from '../../store/mapStore';
 import { formatTime, metersToFeet } from '../../utils/conversions';
 import { formatWind } from '../../utils/atmosphere';
 import { useDraggable } from './useDraggable';
+import { ResizeGrip } from './ResizeGrip';
 
 const SPEED_MODES: { id: SpeedMode; label: string }[] = [
   { id: 'gs', label: 'GS' },
@@ -19,7 +20,7 @@ export function WeatherPanel({
 }) {
   const overview = useMissionStore((s) => s.overview);
   const { speedMode, setSpeedMode } = useMapStore();
-  const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable('weatherPanel');
+  const { containerRef, handleProps, resizeHandleProps, resetPosition: _resetPosition } = useDraggable('weatherPanel');
   const [collapsed, setCollapsed] = useState(false);
 
   if (!overview?.weather) return null;
@@ -204,6 +205,7 @@ export function WeatherPanel({
               />
             </div>
           </div>
+      <ResizeGrip {...resizeHandleProps} />
     </div>
     </>
   );

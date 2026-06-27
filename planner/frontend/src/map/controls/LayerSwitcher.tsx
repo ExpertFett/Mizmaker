@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMapStore, type ViewMode } from '../../store/mapStore';
 import type { UnitCategory } from '../../types/mission';
 import { useDraggable } from './useDraggable';
+import { ResizeGrip } from './ResizeGrip';
 
 
 const OVERLAY_LAYERS = [
@@ -47,7 +48,7 @@ export function LayerSwitcher() {
     measureMode, setMeasureMode,
     highlightMode, setHighlightMode,
   } = useMapStore();
-  const { containerRef, handleProps, resetPosition: _resetPosition } = useDraggable('layerSwitcher');
+  const { containerRef, handleProps, resizeHandleProps, resetPosition: _resetPosition } = useDraggable('layerSwitcher');
   const [collapsed, setCollapsed] = useState(false);
   // Unit-category dropdown — collapsed by default to keep the
   // panel compact. Counts in the button label so the user knows
@@ -359,6 +360,7 @@ export function LayerSwitcher() {
               </div>
             </div>
           </div>
+      <ResizeGrip {...resizeHandleProps} />
     </div>
     </>
   );

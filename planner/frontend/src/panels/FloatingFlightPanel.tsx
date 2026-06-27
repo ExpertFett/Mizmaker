@@ -46,12 +46,13 @@ function setWpNote(groupId: number, wpIndex: number, note: string) {
 
 export function FloatingFlightPanel() {
   const { groups, selectedGroupId, selectGroup } = useMissionStore();
-  const { floatingPanelPos, setFloatingPanelPos, adminMode, setAddWaypointMode, addWaypointMode, selectedWpIndex, setSelectedWpIndex } = useMapStore();
+  const { floatingPanelPos, setFloatingPanelPos, floatingPanelSize, setFloatingPanelSize, adminMode, setAddWaypointMode, addWaypointMode, selectedWpIndex, setSelectedWpIndex } = useMapStore();
   const overview = useMissionStore((s) => s.overview);
   const wx = overview?.weather;
 
   const group = groups.find((g) => g.groupId === selectedGroupId);
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resizeState = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
   const minimized = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
@@ -246,6 +247,47 @@ export function FloatingFlightPanel() {
     setFloatingPanelPos({ x, y });
   };
 
+  // Resizable panel. Default 720 wide / content-height; once the user drags the
+  // corner we store an explicit width+height so wide content (loadout / datalink
+  // tables, the waypoint detail editor) isn't clipped on the right.
+  const DEFAULT_W = 720, MIN_W = 420, MIN_H = 260;
+  const panelW = floatingPanelSize.w > 0 ? floatingPanelSize.w : DEFAULT_W;
+  const panelH = floatingPanelSize.h > 0 ? floatingPanelSize.h : undefined;
+
+  const onResizeStart = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    resizeState.current = { startX: e.clientX, startY: e.clientY, origW: rect.width, origH: rect.height };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    if (!resizeState.current || !panelRef.current) return;
+    const el = panelRef.current;
+    let w = Math.max(MIN_W, resizeState.current.origW + (e.clientX - resizeState.current.startX));
+    let h = Math.max(MIN_H, resizeState.current.origH + (e.clientY - resizeState.current.startY));
+    // Don't let the panel grow past its container's right/bottom edge (which
+    // would re-introduce the clipping this is meant to fix).
+    const parent = el.offsetParent as HTMLElement | null;
+    const pr = parent?.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (pr) {
+      w = Math.min(w, pr.width - (r.left - pr.left) - 4);
+      h = Math.min(h, pr.height - (r.top - pr.top) - 4);
+    }
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+    el.style.maxHeight = 'none';  // an explicit size overrides the 88vh cap
+  };
+  const onResizeEnd = (e: React.PointerEvent) => {
+    if (!resizeState.current || !panelRef.current) return;
+    resizeState.current = null;
+    const rect = panelRef.current.getBoundingClientRect();
+    setFloatingPanelSize({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  };
+
   return (
     <div
       ref={panelRef}
@@ -253,8 +295,11 @@ export function FloatingFlightPanel() {
         position: 'absolute',
         left: pos.x,
         top: pos.y,
-        width: 720,
-        maxHeight: '88vh',
+        width: panelW,
+        height: panelH,
+        minWidth: MIN_W,
+        maxWidth: 'calc(100vw - 24px)',
+        maxHeight: panelH ? 'none' : '88vh',
         background: 'rgba(8, 15, 28, 0.97)',
         border: '1px solid #4a4a4a',
         borderRadius: 8,
@@ -433,6 +478,25 @@ export function FloatingFlightPanel() {
             </div>
           )}
         </>
+      )}
+
+      {/* Resize handle — bottom-right corner. Drag to widen/heighten so wide
+          loadout / datalink content isn't clipped. Size persists per session. */}
+      {!minimized.current && (
+        <div
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          title="Drag to resize"
+          style={{
+            position: 'absolute', right: 2, bottom: 2, width: 16, height: 16,
+            cursor: 'nwse-resize', zIndex: 310, touchAction: 'none',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" style={{ display: 'block' }}>
+            <path d="M15 6 L6 15 M15 11 L11 15" stroke="#6a7a8a" strokeWidth="1.5" fill="none" />
+          </svg>
+        </div>
       )}
     </div>
   );
