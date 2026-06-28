@@ -514,23 +514,35 @@ export function MissionEditor() {
             the tabs list, which then scrolls within its own area. */}
         {isMap && !isCollapsed && (
           <>
+            {/* v1.19.107 — `flex: '1 1 200px'` (was `1 1 auto` + a hard
+                `minHeight: 200`). The hard min refused to shrink, so on a
+                short viewport it shoved the Download/Export block below the
+                fold with no scroll to recover it (the whole shell is
+                position:fixed/overflow:hidden — there's no page scroll). Now
+                200px is the *preferred* height but the picker can shrink and
+                scroll internally, and the bottom block (flexShrink:0) stays
+                pinned and always visible. */}
             <div style={{
-              flex: '1 1 auto',
-              minHeight: 200,
+              flex: '1 1 200px',
+              minHeight: 0,
               overflow: 'auto',
               padding: '8px 12px',
             }}>
               <PlayerGroupsButton />
               <InviteManager />
             </div>
-            {mode === 'editing' && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
-            <ExportPanel mode={mode} />
+            <div style={{ flexShrink: 0 }}>
+              {mode === 'editing' && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
+              <ExportPanel mode={mode} />
+            </div>
           </>
         )}
 
-        {/* Export at bottom for non-map tabs */}
+        {/* Export at bottom for non-map tabs.
+            v1.19.107 — flexShrink:0 so the Download/Export block can never be
+            compressed or clipped; the scrollable tab list above yields first. */}
         {!isMap && (
-          <div style={{ marginTop: 'auto' }}>
+          <div style={{ marginTop: 'auto', flexShrink: 0 }}>
             {mode === 'editing' && <AutoSetupButton onNavigate={(id) => selectTab(id as TabId)} collapsed={isCollapsed} />}
             <ExportPanel mode={mode} />
           </div>
