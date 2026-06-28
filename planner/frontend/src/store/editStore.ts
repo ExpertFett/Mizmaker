@@ -99,6 +99,12 @@ export interface KneeboardSettings {
    *  Lets the planner write a different note per card type rather
    *  than only the standalone Notes card. (v0.9.70) */
   cardNotes: Record<string, string>;
+  /** Per-flight Fuel Ladder overrides, keyed by group name (v1.19.108).
+   *  Any of start/joker/bingo (absolute LBS) overrides the card's
+   *  auto-computed value; unset fields fall back to the loadout fuel and
+   *  the 35%/20%-of-start defaults. Lets the planner pin a real Bingo
+   *  instead of being locked to a percentage. */
+  fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
   /** Selected weapon ids for the Weapon Reference card (see weaponData.ts).
    *  Empty = card produces nothing even when cards.weaponsRef is on. */
   weaponIds: string[];
@@ -231,6 +237,7 @@ export const useEditStore = create<EditState>((set) => ({
     notesText: '',
     notesTitle: '',
     cardNotes: {},
+    fuelOverrides: {},
     weaponIds: [],
     popupAttacks: loadPopupAttacks(),
     theme: 'night',

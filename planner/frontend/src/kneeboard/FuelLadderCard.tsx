@@ -18,19 +18,34 @@ interface FuelLadderCardProps {
   overview?: MissionOverviewData;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Per-flight manual overrides (absolute LBS). Any set field wins over
+   *  the loadout-derived / percentage defaults. (v1.19.108) */
+  fuelOverride?: { start?: number; joker?: number; bingo?: number };
 }
 
-export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadderCardProps) {
+export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverride }: FuelLadderCardProps) {
   const airframe = getAircraftType(group);
   const unitType = group.units[0]?.type || '';
   const wps = group.waypoints;
   const rep = clientUnits.find((cu) => cu.groupName === group.groupName);
-  const startFuel = rep?.fuel || 0;
 
-  // Per-type empty weight from the perf DB (falls back to a default for
-  // unknown airframes) — was hardcoded to the Hornet's 25,640 lb, which
-  // showed a Hornet gross weight for F-14/F-16/etc. (Pre-beta audit P2.)
-  const emptyLbs = getAircraftPerf(unitType).emptyLbs;
+  // Per-type perf from the DB (empty weight + max internal fuel), falling
+  // back to a default for unknown airframes. (Pre-beta audit P2.)
+  const perf = getAircraftPerf(unitType);
+  const emptyLbs = perf.emptyLbs;
+
+  // DCS stores loadout fuel as KG (absolute) — or, in some older / normalised
+  // missions, as a 0–1 fraction of max internal. Convert to LBS so the card
+  // matches the Loadout tab's "≈ lb" readout and the brief's T/O fuel.
+  // (v1.19.108 — previously printed the raw kg value labeled "lbs", which
+  // under-read by ~2.2× and fed a wrong fuel weight into the burn model.)
+  const rawFuel = rep?.fuel ?? 0;
+  const loadoutLbs = rawFuel <= 1
+    ? Math.round(rawFuel * perf.maxFuelLbs)   // fraction of internal capacity
+    : Math.round(rawFuel * 2.20462);          // kg → lb
+  const startFuel = fuelOverride?.start ?? loadoutLbs;
+  const isManual = fuelOverride != null &&
+    (fuelOverride.start != null || fuelOverride.joker != null || fuelOverride.bingo != null);
   // Gross weight = empty + fuel + stores (estimate stores at 2000 lbs)
   const storesEstLbs = 2000;
 
@@ -73,8 +88,8 @@ export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadd
   }
 
   const totalBurn = startFuel - fuel;
-  const jokerFuel = Math.round(startFuel * 0.35);
-  const bingoFuel = Math.round(startFuel * 0.2);
+  const jokerFuel = fuelOverride?.joker ?? Math.round(startFuel * 0.35);
+  const bingoFuel = fuelOverride?.bingo ?? Math.round(startFuel * 0.2);
 
   function fmtEte(s: number): string {
     if (s <= 0) return '—';
@@ -92,7 +107,7 @@ export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadd
       <div style={headerStyle}>
         <div style={titleStyle}>FUEL LADDER — {group.groupName.toUpperCase()}</div>
         <div style={subtitleStyle}>
-          {airframe} | Start: {startFuel.toLocaleString()} lbs | Physics-based estimate
+          {airframe} | Start: {startFuel.toLocaleString()} lbs | {isManual ? 'Manual fuel marks' : 'Physics-based estimate'}
         </div>
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
@@ -239,7 +254,7 @@ export function FuelLadderCard({ group, clientUnits, overview, notes }: FuelLadd
 
       {/* Disclaimer */}
       <div style={{ padding: '6px 0', fontSize: 17, color: DIM, flexShrink: 0 }}>
-        * Estimates based on level cruise drag model. Actual burn varies with throttle, turns, combat, and loadout drag. Joker=35% / Bingo=20% of start fuel.
+        * Estimates based on level cruise drag model. Actual burn varies with throttle, turns, combat, and loadout drag. {isManual ? 'Fuel marks set manually.' : 'Joker=35% / Bingo=20% of start fuel.'}
       </div>
 
       {/* Notes section — fills remaining space */}

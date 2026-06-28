@@ -17,6 +17,7 @@ import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
 import { StripMapCard } from '../../kneeboard/StripMapCard';
 import { RadioPresetCard } from '../../kneeboard/RadioPresetCard';
 import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
+import { getAircraftPerf } from '../../kneeboard/fuelModel';
 import { SupportAssetsCard, supportAssetsPageCount } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
 import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
@@ -143,6 +144,8 @@ export function KneeboardTab() {
   // Per-card notes map (v0.9.70) — keyed by card type. Each card's
   // NOTES box renders cardNotes[key] when set.
   const cardNotes = kneeboardSettings.cardNotes ?? {};
+  // Per-flight Fuel Ladder overrides, keyed by group name (v1.19.108).
+  const fuelOverrides = kneeboardSettings.fuelOverrides ?? {};
   const weaponIds = kneeboardSettings.weaponIds ?? [];
   const popupAttacks = kneeboardSettings.popupAttacks ?? [];
   // Day/night color scheme (v0.9.74). Default 'night' for settings
@@ -219,7 +222,7 @@ export function KneeboardTab() {
       }
     }
     if (cards.fuelLadder) {
-      const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder });
+      const el = createElement(FuelLadderCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder, fuelOverride: fuelOverrides[g.groupName] });
       results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.homePlate) {
@@ -724,6 +727,89 @@ export function KneeboardTab() {
         })()}
       </div>
 
+      {/* Fuel Ladder overrides — per selected flight. Pin a real Start /
+          Joker / Bingo (absolute lbs) instead of the loadout-fuel + 35%/20%
+          defaults. Only shows when the Fuel Ladder card is enabled and a
+          player flight is selected. (v1.19.108) */}
+      {cards.fuelLadder && selectedGroup && isPlayerGroup(selectedGroup) && (() => {
+        const gName = selectedGroup.groupName;
+        const ovr = fuelOverrides[gName] ?? {};
+        const rep = clientUnits.find((cu) => cu.groupName === gName);
+        const perf = getAircraftPerf(selectedGroup.units[0]?.type || '');
+        const rawFuel = rep?.fuel ?? 0;
+        // Mirror the card's kg/fraction → lbs conversion for the placeholders.
+        const autoStart = rawFuel <= 1
+          ? Math.round(rawFuel * perf.maxFuelLbs)
+          : Math.round(rawFuel * 2.20462);
+        const effStart = ovr.start ?? autoStart;
+        const autoJoker = Math.round(effStart * 0.35);
+        const autoBingo = Math.round(effStart * 0.2);
+        const hasOvr = ovr.start != null || ovr.joker != null || ovr.bingo != null;
+        const parse = (s: string) => {
+          const v = parseInt(s.replace(/[^0-9]/g, ''), 10);
+          return Number.isFinite(v) ? v : undefined;
+        };
+        const setKey = (key: 'start' | 'joker' | 'bingo', val: number | undefined) => {
+          const next: { start?: number; joker?: number; bingo?: number } = { ...ovr };
+          if (val == null) delete next[key]; else next[key] = val;
+          const map = { ...fuelOverrides };
+          if (next.start == null && next.joker == null && next.bingo == null) delete map[gName];
+          else map[gName] = next;
+          setKneeboardSettings({ fuelOverrides: map });
+        };
+        const clearAll = () => {
+          const map = { ...fuelOverrides };
+          delete map[gName];
+          setKneeboardSettings({ fuelOverrides: map });
+        };
+        const field = (label: string, key: 'start' | 'joker' | 'bingo', auto: number) => (
+          <label style={{ display: 'block', fontSize: 11, color: '#aaaaaa' }}>
+            <span style={{ display: 'block', color: '#cccccc', fontWeight: 600, marginBottom: 3 }}>{label}</span>
+            <input
+              value={ovr[key] ?? ''}
+              onChange={(e) => setKey(key, parse(e.target.value))}
+              placeholder={`auto ${auto.toLocaleString()}`}
+              inputMode="numeric"
+              style={{
+                width: '100%', boxSizing: 'border-box', background: '#262626',
+                border: '1px solid #3a3a3a', borderRadius: 4, color: '#e0e0e0',
+                fontSize: 13, padding: '6px 8px', fontFamily: 'inherit',
+              }}
+            />
+          </label>
+        );
+        return (
+          <div style={{
+            marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
+            border: '1px solid #3a3a3a',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>
+                Fuel Ladder — {gName}
+              </span>
+              <span style={{ fontSize: 11, color: '#666' }}>Absolute lbs · blank = auto</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {field('Start (lbs)', 'start', autoStart)}
+              {field('Joker (lbs)', 'joker', autoJoker)}
+              {field('Bingo (lbs)', 'bingo', autoBingo)}
+            </div>
+            {hasOvr && (
+              <button
+                onClick={clearAll}
+                style={{
+                  marginTop: 8, background: '#2a2a2a', border: '1px solid #3a3a3a',
+                  borderRadius: 4, color: '#aaaaaa', fontSize: 11, padding: '4px 10px',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Reset to auto
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Standalone Mission Notes card editor — feeds the dedicated
           "Mission Notes" kneeboard card (separate from the per-card
           notes above). Typing here auto-enables that card. */}
@@ -925,6 +1011,7 @@ export function KneeboardTab() {
         notesText={notesText}
         notesTitle={notesTitle}
         cardNotes={cardNotes}
+        fuelOverrides={fuelOverrides}
         weaponIds={weaponIds}
         popupAttacks={popupAttacks}
         theme={theme}
@@ -961,6 +1048,7 @@ interface CarouselProps {
   notesText: string;
   notesTitle: string;
   cardNotes: Record<string, string>;
+  fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
   weaponIds: string[];
   popupAttacks: PopupAttackInput[];
   theme: KneeboardTheme;
@@ -987,6 +1075,7 @@ function CardCarousel({
   notesText,
   notesTitle,
   cardNotes,
+  fuelOverrides,
   weaponIds,
   popupAttacks,
   theme,
@@ -1055,7 +1144,7 @@ function CardCarousel({
       if (cards.fuelLadder) {
         list.push({
           key: 'fuelLadder', label: 'Fuel Ladder',
-          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder }),
+          element: createElement(FuelLadderCard, { group: selectedGroup, clientUnits, overview: overview || undefined, notes: cardNotes.fuelLadder, fuelOverride: fuelOverrides[selectedGroup.groupName] }),
         });
       }
       if (cards.homePlate) {
@@ -1188,7 +1277,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, weaponIds, popupAttacks]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, weaponIds, popupAttacks]);
 
   // Clamp index when list changes
   useEffect(() => {
