@@ -16,14 +16,28 @@ interface FlightCardProps {
   highlightUnitId?: number;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Per-flight fuel override (absolute lbs), shared with the Fuel Ladder
+   *  card so both cards show the same numbers. (v1.19.109) */
+  fuelOverride?: { start?: number; joker?: number; bingo?: number };
+  /** Per-flight Flight-Data overrides — fill TACAN / ICLS / IFF codes on the
+   *  card. (v1.19.109) */
+  flightDataOverride?: { tacan?: string; icls?: string; iffM1?: string; iffM3?: string };
 }
 
-export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes }: FlightCardProps) {
+export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride }: FlightCardProps) {
   const airframe = getAircraftType(group);
   const flightUnits = clientUnits.filter((cu) => cu.groupName === group.groupName);
 
   // Aggregate loadout across all pylons for first unit (representative)
   const rep = flightUnits[0];
+
+  // Loadout fuel is KG in the .miz (or a 0–1 fraction of internal). Convert to
+  // LBS to match the Fuel Ladder card + Loadout tab, and honour the per-flight
+  // override so STORES / TOLD agree with the ladder. (v1.19.109)
+  const perf = getAircraftPerf(group.units[0]?.type || '');
+  const rawFuel = rep?.fuel ?? 0;
+  const loadoutLbs = rawFuel <= 1 ? Math.round(rawFuel * perf.maxFuelLbs) : Math.round(rawFuel * 2.20462);
+  const startFuelLbs = fuelOverride?.start ?? loadoutLbs;
   const weaponSummary = rep
     ? Object.values(
         rep.pylons.reduce((acc, p) => {
@@ -54,15 +68,19 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
         borderBottom: `1px solid ${BORDER}`,
       }}>
         {(() => {
-          const tacanStr = group.tacan
-            ? `${group.tacan.channel}${group.tacan.band}` + (group.tacan.callsign ? ` (${group.tacan.callsign})` : '')
-            : '—';
-          const iclsStr = group.icls?.channel ? String(group.icls.channel) : '—';
+          const tacanStr = flightDataOverride?.tacan
+            ? flightDataOverride.tacan
+            : group.tacan
+              ? `${group.tacan.channel}${group.tacan.band}` + (group.tacan.callsign ? ` (${group.tacan.callsign})` : '')
+              : '—';
+          const iclsStr = flightDataOverride?.icls
+            ? flightDataOverride.icls
+            : group.icls?.channel ? String(group.icls.channel) : '—';
           const items = [
-            { label: 'TACAN',     value: tacanStr,    color: group.tacan ? TEXT : DIM },
-            { label: 'ICLS',      value: iclsStr,     color: group.icls ? TEXT : DIM },
-            { label: 'IFF M1',    value: '— EDIT —',  color: DIM },
-            { label: 'IFF M3',    value: '— EDIT —',  color: DIM },
+            { label: 'TACAN',  value: tacanStr, color: (flightDataOverride?.tacan || group.tacan) ? TEXT : DIM },
+            { label: 'ICLS',   value: iclsStr,  color: (flightDataOverride?.icls || group.icls) ? TEXT : DIM },
+            { label: 'IFF M1', value: flightDataOverride?.iffM1 || '— EDIT —', color: flightDataOverride?.iffM1 ? TEXT : DIM },
+            { label: 'IFF M3', value: flightDataOverride?.iffM3 || '— EDIT —', color: flightDataOverride?.iffM3 ? TEXT : DIM },
           ];
           return items.map(({ label, value, color }) => (
             <div key={label} style={{
@@ -118,7 +136,7 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
           <div style={{ padding: '4px 16px', display: 'flex', gap: 24, flexWrap: 'wrap', borderBottom: `1px solid ${BORDER}` }}>
             <div style={{ fontSize: 17 }}>
               <span style={{ color: DIM }}>FUEL </span>
-              <span style={{ color: TEXT, fontWeight: 600 }}>{rep.fuel.toLocaleString()} lbs</span>
+              <span style={{ color: TEXT, fontWeight: 600 }}>{startFuelLbs.toLocaleString()} lbs</span>
             </div>
             <div style={{ fontSize: 17 }}>
               <span style={{ color: DIM }}>FL </span>
@@ -193,14 +211,14 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
           <div style={sectionTitle}>TOLD</div>
           <div style={{ display: 'flex', gap: 0, flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
             {(() => {
-              const fuel = rep.fuel || 0;
+              const fuel = startFuelLbs;
               const storesEst = 2000;
               // Per-type empty weight (was hardcoded to the Hornet's 25,640 lb,
               // so an F-14/F-16 flight showed a Hornet gross weight). P2.
-              const emptyWt = getAircraftPerf(group.units[0]?.type || '').emptyLbs;
+              const emptyWt = perf.emptyLbs;
               const grossWt = emptyWt + fuel + storesEst;
-              const joker = Math.round(fuel * 0.35);
-              const bingo = Math.round(fuel * 0.20);
+              const joker = fuelOverride?.joker ?? Math.round(fuel * 0.35);
+              const bingo = fuelOverride?.bingo ?? Math.round(fuel * 0.20);
               const items = [
                 { label: 'GROSS WT', value: `${Math.round(grossWt).toLocaleString()} lbs`, color: TEXT },
                 { label: 'T/O FUEL', value: `${Math.round(fuel).toLocaleString()} lbs`, color: TEXT },

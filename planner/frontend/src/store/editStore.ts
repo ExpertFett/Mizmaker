@@ -105,6 +105,12 @@ export interface KneeboardSettings {
    *  the 35%/20%-of-start defaults. Lets the planner pin a real Bingo
    *  instead of being locked to a percentage. */
   fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
+  /** Per-flight Flight Card "Flight Data" overrides, keyed by group name
+   *  (v1.19.109). Fill TACAN / ICLS / IFF M1 / IFF M3 on the card. IFF codes
+   *  especially — DCS doesn't store them in the .miz, so this is the only way
+   *  to get them onto the kneeboard. TACAN/ICLS overrides only fill the card;
+   *  the TACAN tab is what actually sets them in the jet. */
+  flightDataOverrides: Record<string, { tacan?: string; icls?: string; iffM1?: string; iffM3?: string }>;
   /** Selected weapon ids for the Weapon Reference card (see weaponData.ts).
    *  Empty = card produces nothing even when cards.weaponsRef is on. */
   weaponIds: string[];
@@ -238,6 +244,7 @@ export const useEditStore = create<EditState>((set) => ({
     notesTitle: '',
     cardNotes: {},
     fuelOverrides: {},
+    flightDataOverrides: {},
     weaponIds: [],
     popupAttacks: loadPopupAttacks(),
     theme: 'night',

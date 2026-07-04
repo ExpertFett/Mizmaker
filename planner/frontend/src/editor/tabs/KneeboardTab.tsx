@@ -146,6 +146,9 @@ export function KneeboardTab() {
   const cardNotes = kneeboardSettings.cardNotes ?? {};
   // Per-flight Fuel Ladder overrides, keyed by group name (v1.19.108).
   const fuelOverrides = kneeboardSettings.fuelOverrides ?? {};
+  // Per-flight Flight Card "Flight Data" overrides (TACAN/ICLS/IFF), keyed by
+  // group name (v1.19.109).
+  const flightDataOverrides = kneeboardSettings.flightDataOverrides ?? {};
   const weaponIds = kneeboardSettings.weaponIds ?? [];
   const popupAttacks = kneeboardSettings.popupAttacks ?? [];
   // Day/night color scheme (v0.9.74). Default 'night' for settings
@@ -197,7 +200,7 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.flight) {
-      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.flight });
+      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[g.groupName], flightDataOverride: flightDataOverrides[g.groupName] });
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.comms) {
@@ -810,6 +813,83 @@ export function KneeboardTab() {
         );
       })()}
 
+      {/* Flight Card "Flight Data" overrides — per selected flight. Fill the
+          TACAN / ICLS / IFF M1 / IFF M3 row at the top of the Flight Card.
+          IFF codes live only here (DCS doesn't store them in the .miz); TACAN
+          & ICLS also have a real editor in the TACAN tab that sets them in the
+          jet — these overrides only fill the card. (v1.19.109) */}
+      {cards.flight && selectedGroup && isPlayerGroup(selectedGroup) && (() => {
+        const gName = selectedGroup.groupName;
+        const ovr = flightDataOverrides[gName] ?? {};
+        const autoTacan = selectedGroup.tacan
+          ? `${selectedGroup.tacan.channel}${selectedGroup.tacan.band}${selectedGroup.tacan.callsign ? ` (${selectedGroup.tacan.callsign})` : ''}`
+          : '';
+        const autoIcls = selectedGroup.icls?.channel ? String(selectedGroup.icls.channel) : '';
+        const hasOvr = !!(ovr.tacan || ovr.icls || ovr.iffM1 || ovr.iffM3);
+        const setKey = (key: 'tacan' | 'icls' | 'iffM1' | 'iffM3', raw: string) => {
+          const v = raw.trim();
+          const next: { tacan?: string; icls?: string; iffM1?: string; iffM3?: string } = { ...ovr };
+          if (!v) delete next[key]; else next[key] = v;
+          const map = { ...flightDataOverrides };
+          if (!next.tacan && !next.icls && !next.iffM1 && !next.iffM3) delete map[gName];
+          else map[gName] = next;
+          setKneeboardSettings({ flightDataOverrides: map });
+        };
+        const clearAll = () => {
+          const map = { ...flightDataOverrides };
+          delete map[gName];
+          setKneeboardSettings({ flightDataOverrides: map });
+        };
+        const field = (label: string, key: 'tacan' | 'icls' | 'iffM1' | 'iffM3', ph: string) => (
+          <label style={{ display: 'block', fontSize: 11, color: '#aaaaaa' }}>
+            <span style={{ display: 'block', color: '#cccccc', fontWeight: 600, marginBottom: 3 }}>{label}</span>
+            <input
+              value={ovr[key] ?? ''}
+              onChange={(e) => setKey(key, e.target.value)}
+              placeholder={ph}
+              style={{
+                width: '100%', boxSizing: 'border-box', background: '#262626',
+                border: '1px solid #3a3a3a', borderRadius: 4, color: '#e0e0e0',
+                fontSize: 13, padding: '6px 8px', fontFamily: 'inherit',
+              }}
+            />
+          </label>
+        );
+        return (
+          <div style={{
+            marginBottom: 16, padding: '10px 14px', background: '#1a1a1a', borderRadius: 6,
+            border: '1px solid #3a3a3a',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0' }}>Flight Data — {gName}</span>
+              <span style={{ fontSize: 11, color: '#666' }}>Fills the Flight Card top row</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
+              {field('TACAN', 'tacan', autoTacan || 'e.g. 51X')}
+              {field('ICLS', 'icls', autoIcls || 'e.g. 11')}
+              {field('IFF M1', 'iffM1', 'e.g. 41')}
+              {field('IFF M3', 'iffM3', 'e.g. 4300')}
+            </div>
+            <div style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 1.4 }}>
+              IFF M1/M3 live only here — DCS doesn't store them in the mission.
+              TACAN &amp; ICLS also have a real editor in the <b>TACAN tab</b> (which sets them in the jet); these fields only fill the card.
+            </div>
+            {hasOvr && (
+              <button
+                onClick={clearAll}
+                style={{
+                  marginTop: 8, background: '#2a2a2a', border: '1px solid #3a3a3a',
+                  borderRadius: 4, color: '#aaaaaa', fontSize: 11, padding: '4px 10px',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Reset to auto
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Standalone Mission Notes card editor — feeds the dedicated
           "Mission Notes" kneeboard card (separate from the per-card
           notes above). Typing here auto-enables that card. */}
@@ -1012,6 +1092,7 @@ export function KneeboardTab() {
         notesTitle={notesTitle}
         cardNotes={cardNotes}
         fuelOverrides={fuelOverrides}
+        flightDataOverrides={flightDataOverrides}
         weaponIds={weaponIds}
         popupAttacks={popupAttacks}
         theme={theme}
@@ -1049,6 +1130,7 @@ interface CarouselProps {
   notesTitle: string;
   cardNotes: Record<string, string>;
   fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
+  flightDataOverrides: Record<string, { tacan?: string; icls?: string; iffM1?: string; iffM3?: string }>;
   weaponIds: string[];
   popupAttacks: PopupAttackInput[];
   theme: KneeboardTheme;
@@ -1076,6 +1158,7 @@ function CardCarousel({
   notesTitle,
   cardNotes,
   fuelOverrides,
+  flightDataOverrides,
   weaponIds,
   popupAttacks,
   theme,
@@ -1111,7 +1194,7 @@ function CardCarousel({
       if (cards.flight) {
         list.push({
           key: 'flight', label: 'Flight Card',
-          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight }),
+          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[selectedGroup.groupName], flightDataOverride: flightDataOverrides[selectedGroup.groupName] }),
         });
       }
       if (cards.comms) {
@@ -1277,7 +1360,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, weaponIds, popupAttacks]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks]);
 
   // Clamp index when list changes
   useEffect(() => {
