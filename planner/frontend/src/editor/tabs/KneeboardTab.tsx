@@ -27,7 +27,6 @@ import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { TransponderCard } from '../../kneeboard/TransponderCard';
-import { GoalsCard } from '../../kneeboard/GoalsCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
 import { WeaponCard, weaponCardPageCount } from '../../kneeboard/WeaponCard';
@@ -39,7 +38,6 @@ import { renderCardToBlob, downloadBlob } from '../../kneeboard/renderCard';
 import { kbThemeStyle, type KneeboardTheme } from '../../kneeboard/cardStyles';
 import { KneeboardThemeCustomizer } from './KneeboardThemeCustomizer';
 import { useSopStore } from '../../sop/sopStore';
-import { useGoalsStore } from '../../store/goalsStore';
 import { useDmpiStore } from '../../store/dmpiStore';
 import type { Weather } from '../../utils/atmosphere';
 import { isPlayerGroup } from '../../utils/groups';
@@ -65,7 +63,6 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
   { key: 'transponder', label: 'Transponder / IFF', desc: 'Per-flight Mode 1/2/3 squawk plan — needs an active SOP with a transponder plan' },
-  { key: 'goalsCard', label: 'Mission Goals', desc: 'Objectives by side (BLUE/RED/NEUTRAL/ALL) + points' },
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
   { key: 'weaponsRef', label: 'Weapon Reference', desc: 'Per-store employment, switchology, mistakes — pick stores below' },
@@ -120,12 +117,8 @@ export function KneeboardTab() {
     [activeSopId, sops],
   );
 
-  // Goals feed the Mission Goals card. Even if the goals list is
-  // empty we still pass it through — the card renders an explicit
-  // empty-state placeholder so an enabled checkbox can't silently
-  // produce a blank PNG.
-  const goals = useGoalsStore((s) => s.goals);
-  // DMPIs feed the DMPI card — same pattern (v0.9.16).
+  // DMPIs feed the DMPI card. (v1.19.110 — the Mission Goals card was removed
+  // along with the Goals tab; goals were an SP-oriented objective list.)
   const dmpis = useDmpiStore((s) => s.dmpis);
 
   const coordFormat = kneeboardSettings.coordFormat;
@@ -303,18 +296,6 @@ export function KneeboardTab() {
       const el = createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined });
       results.push({ name: 'Transponder.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
-    // Mission Goals card — emitted even when the goals list is empty
-    // so the user gets a clear "no goals defined" placeholder rather
-    // than a missing card. The squadron line falls through from the
-    // active SOP for consistency with the SopCommsCard header.
-    if (cards.goalsCard) {
-      const el = createElement(GoalsCard, {
-        goals,
-        squadron: activeSop?.squadron,
-        overview: overview || undefined,
-      });
-      results.push({ name: 'Mission_Goals.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
-    }
     if (cards.dmpiCard) {
       const el = createElement(DmpiCard, {
         dmpis,
@@ -433,10 +414,15 @@ export function KneeboardTab() {
   };
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div style={{ maxWidth: 1500 }}>
       <h2 style={{ color: '#e0e0e0', fontSize: 18, margin: '0 0 16px', fontWeight: 600 }}>
         Kneeboards
       </h2>
+
+      {/* v1.19.111 — two columns: settings on the left, a STICKY live-preview
+          column on the right so card edits are visible without scrolling down. */}
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1066,8 +1052,15 @@ export function KneeboardTab() {
         </span>
       </div>
 
-      {/* Live Preview Carousel */}
-      <CardCarousel
+        </div>{/* end settings column */}
+
+        {/* Live Preview Carousel — sticky right column, sized to the native
+            600px card; a tall (850px) card scrolls within the sticky panel. */}
+        <div style={{
+          position: 'sticky', top: 8, flexShrink: 0, alignSelf: 'flex-start',
+          width: 636, maxHeight: 'calc(100vh - 60px)', overflow: 'auto',
+        }}>
+        <CardCarousel
         key={rebuildAt}
         selectedGroup={selectedGroup}
         playerGroups={playerGroups}
@@ -1086,7 +1079,6 @@ export function KneeboardTab() {
         threatFidelity={threatFidelity}
         threatMapVisible={threatMapVisible}
         activeSop={activeSop}
-        goals={goals}
         dmpis={dmpis}
         notesText={notesText}
         notesTitle={notesTitle}
@@ -1098,6 +1090,8 @@ export function KneeboardTab() {
         theme={theme}
         customThemeVars={customThemeVars}
       />
+        </div>{/* end preview column */}
+      </div>{/* end two-column row */}
     </div>
   );
 }
@@ -1124,7 +1118,6 @@ interface CarouselProps {
   threatFidelity: 'full' | 'operational' | 'realistic';
   threatMapVisible: boolean;
   activeSop: ReturnType<typeof useSopStore.getState>['sops'][number] | null;
-  goals: ReturnType<typeof useGoalsStore.getState>['goals'];
   dmpis: ReturnType<typeof useDmpiStore.getState>['dmpis'];
   notesText: string;
   notesTitle: string;
@@ -1152,7 +1145,6 @@ function CardCarousel({
   threatFidelity,
   threatMapVisible,
   activeSop,
-  goals,
   dmpis,
   notesText,
   notesTitle,
@@ -1311,17 +1303,6 @@ function CardCarousel({
         element: createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined }),
       });
     }
-    // Mission Goals card always renders when enabled, even with an
-    // empty goals list — the card has its own empty-state placeholder
-    // so the preview carousel matches what the PNG export will emit.
-    if (cards.goalsCard) {
-      list.push({
-        key: 'goalsCard', label: 'Mission Goals',
-        element: createElement(GoalsCard, {
-          goals, squadron: activeSop?.squadron, overview: overview || undefined,
-        }),
-      });
-    }
     if (cards.dmpiCard) {
       list.push({
         key: 'dmpiCard', label: 'DMPI List',
@@ -1360,7 +1341,7 @@ function CardCarousel({
     }
 
     return list;
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, goals, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks]);
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks]);
 
   // Clamp index when list changes
   useEffect(() => {

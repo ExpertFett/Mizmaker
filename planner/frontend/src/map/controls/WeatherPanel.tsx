@@ -21,7 +21,9 @@ export function WeatherPanel({
   const overview = useMissionStore((s) => s.overview);
   const { speedMode, setSpeedMode } = useMapStore();
   const { containerRef, handleProps, resizeHandleProps, resetPosition: _resetPosition } = useDraggable('weatherPanel');
-  const [collapsed, setCollapsed] = useState(false);
+  // v1.19.110 — start collapsed so the map opens clean; the bright edge tab
+  // invites a click to expand.
+  const [collapsed, setCollapsed] = useState(true);
 
   if (!overview?.weather) return null;
   const wx = overview.weather;
@@ -34,25 +36,28 @@ export function WeatherPanel({
       <div
         onClick={() => setCollapsed(false)}
         style={{
+          // top:40 clears the 30px MissionDataStrip (was 10, which floated the
+          // tab over the strip's "Discord" link). (v1.19.110)
           position: 'fixed',
-          top: 10,
+          top: 40,
           right: 0,
-          background: 'rgba(10, 20, 35, 0.95)',
-          borderRadius: '6px 0 0 6px',
-          padding: '10px 6px 10px 8px',
+          background: 'rgba(58, 110, 165, 0.96)',
+          borderRadius: '8px 0 0 8px',
+          padding: '12px 9px 12px 11px',
           zIndex: 10000,
           cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 4,
-          border: '1px solid #4a4a4a',
+          display: 'flex', alignItems: 'center', gap: 5,
+          border: '1px solid #7fb8ff',
           borderRight: 'none',
+          boxShadow: '-2px 2px 10px rgba(0,0,0,0.45)',
         }}
         title="Show mission info"
       >
-        <span style={{ color: '#4a8fd4', fontSize: 12, fontWeight: 700 }}>◀</span>
+        <span style={{ color: '#ffffff', fontSize: 14, fontWeight: 800 }}>◀</span>
         <span style={{
           writingMode: 'vertical-lr',
-          color: '#aaaaaa', fontSize: 10, fontWeight: 600,
-          letterSpacing: 1, textTransform: 'uppercase',
+          color: '#ffffff', fontSize: 11, fontWeight: 700,
+          letterSpacing: 1.2, textTransform: 'uppercase',
         }}>MISSION</span>
       </div>
     )}

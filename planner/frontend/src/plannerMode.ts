@@ -84,7 +84,7 @@ export const PLANNER_TAB_IDS: ReadonlySet<string> = new Set([
  * choice is remembered in localStorage.
  * ----------------------------------------------------------------------- */
 
-export type AppMode = 'planning' | 'editing' | 'live';
+export type AppMode = 'planning' | 'editing' | 'live' | 'aar';
 
 /** When true (VITE_PLANNER_MODE set), the app is locked to Planning and the
  *  mode switcher is hidden. */
@@ -123,5 +123,5 @@ export function saveMode(mode: AppMode): void {
 export function tabsForMode(mode: AppMode): ReadonlySet<string> | 'all' {
   if (mode === 'editing') return 'all';
   if (mode === 'planning') return PLANNER_TAB_IDS;
-  return EMPTY_TABS; // 'live' (stub)
+  return EMPTY_TABS; // 'live' + 'aar' — self-contained views, no editor tabs
 }

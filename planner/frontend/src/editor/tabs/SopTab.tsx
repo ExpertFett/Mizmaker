@@ -17,6 +17,7 @@ import { importOzpAsSop } from '../../sop/ozpImport';
 import { useAiStore } from '../../ai/aiStore';
 import { extractSopFromImages, mergePartialIntoSop } from '../../ai/sopExtractor';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
+import { TabHelp } from '../components/TabHelp';
 
 export function SopTab() {
   const sops = useSopStore((s) => s.sops);
@@ -44,9 +45,7 @@ export function SopTab() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importInfo, setImportInfo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const addImageInputRef = useRef<HTMLInputElement>(null);
-  const ozpInputRef = useRef<HTMLInputElement>(null);
 
   const selected = sops.find((s) => s.id === selectedId) || null;
   const active = sops.find((s) => s.id === activeId) || null;
@@ -364,6 +363,10 @@ export function SopTab() {
         </p>
       </div>
 
+      <TabHelp tabKey="sop">
+        An SOP holds your squadron's standard callsigns, radio frequencies, TACAN channels, laser codes and IFF. <b>Upload one</b> (a JSON file, a squadron <b>.ozp/.zip</b> kneeboard pack, or SOP <b>screenshots/PDF</b>) with the one button below — or build one from a <b>starter</b> at the bottom. Once you <b>Set Active</b>, the auto-assign buttons across the planner use its values instead of generic defaults.
+      </TabHelp>
+
       {/* Active SOP banner. When inactive, render a quick-select
           dropdown so the user can activate any library SOP without
           digging through the library list / detail-panel two-step. */}
@@ -420,31 +423,28 @@ export function SopTab() {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        {/* v1.19.110 — ONE upload button that accepts every SOP source
+            (JSON, .ozp/.zip kneeboard pack, or SOP screenshots/photos as
+            PNG/JPG/PDF). Each dropped/selected file is routed to the right
+            importer by type, so users don't have to pick the format first. */}
         <input
-          ref={fileInputRef} type="file" accept=".json,application/json"
-          style={{ display: 'none' }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleJsonUpload(f); e.target.value = ''; }}
-        />
-        <input
-          ref={imageInputRef} type="file" accept="image/*,.pdf" multiple
+          ref={fileInputRef} type="file" multiple
+          accept=".json,application/json,.ozp,.zip,application/zip,image/*,.pdf"
           style={{ display: 'none' }}
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
-            if (files.length > 0) handleImageUpload(files);
+            const ext = (f: File) => (f.name.toLowerCase().split('.').pop() || '');
+            files.filter((f) => ext(f) === 'ozp' || ext(f) === 'zip' || f.type === 'application/zip').forEach(handleOzpUpload);
+            files.filter((f) => ext(f) === 'json' || f.type === 'application/json').forEach(handleJsonUpload);
+            const imgs = files.filter((f) => f.type.startsWith('image/') || ext(f) === 'pdf'
+              || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext(f)));
+            if (imgs.length > 0) handleImageUpload(imgs);
             e.target.value = '';
           }}
         />
-        <input
-          ref={ozpInputRef} type="file" accept=".ozp,.zip,application/zip"
-          style={{ display: 'none' }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleOzpUpload(f); e.target.value = ''; }}
-        />
-        <button onClick={() => fileInputRef.current?.click()} style={btnPrimary}>
-          Upload JSON SOP
-        </button>
-        <button onClick={() => ozpInputRef.current?.click()} style={btnSecondary}
-          title="Upload a squadron kneeboard pack (.ozp / .zip). We extract the images so you can reference them while filling in the SOP fields.">
-          Upload OZP / ZIP
+        <button onClick={() => fileInputRef.current?.click()} style={btnPrimary}
+          title="Load an SOP from a JSON file, a squadron kneeboard pack (.ozp / .zip), or SOP screenshots / photos (PNG / JPG / PDF). We auto-detect each file's type.">
+          Upload SOP
         </button>
         <input
           ref={addImageInputRef} type="file" accept="image/*,.pdf" multiple
@@ -455,10 +455,6 @@ export function SopTab() {
             e.target.value = '';
           }}
         />
-        <button onClick={() => imageInputRef.current?.click()} style={btnSecondary}
-          title="Upload one or more SOP screenshots/photos as a NEW SOP entry. Multiple images are stored side-by-side as reference material.">
-          Upload Image{selected ? ' as New SOP' : 's / PDF'}
-        </button>
         {selected && (
           <button
             onClick={() => addImageInputRef.current?.click()}
@@ -487,38 +483,6 @@ export function SopTab() {
           </button>
         )}
       </div>
-
-      {/* Starter SOPs — for users without a squadron SOP. Clicking
-          builds a sensible default SOP they can edit instead of staring
-          at an empty form. */}
-      {sops.length === 0 && (
-        <div style={{
-          marginBottom: 14, padding: '12px 14px', borderRadius: 6,
-          background: 'rgba(74, 143, 212, 0.06)',
-          border: '1px solid rgba(74, 143, 212, 0.25)',
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#6ab4f0', marginBottom: 8 }}>
-            DON'T HAVE AN SOP? &nbsp;Build one from a starter
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => handleStarter('modern-carrier')} style={btnStarter}>
-              ⚓ Modern Carrier
-            </button>
-            <button onClick={() => handleStarter('modern-land')} style={btnStarter}>
-              🛩 Modern Land-Based
-            </button>
-            <button onClick={() => handleStarter('cold-war')} style={btnStarter}>
-              📻 Cold War (1985)
-            </button>
-            <button onClick={() => handleStarter('empty')} style={btnStarter}>
-              ☐ Blank Skeleton
-            </button>
-          </div>
-          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
-            Each starter ships with realistic callsigns / freqs / TACANs for the era. Tweak to match your scenario.
-          </div>
-        </div>
-      )}
 
       {(importError || importInfo) && (
         <div style={{
@@ -620,6 +584,37 @@ export function SopTab() {
           )}
         </div>
       </div>
+
+      {/* Starter SOPs — moved to the bottom (v1.19.110). Only shows when no
+          SOP exists yet; once one is loaded or created, it disappears. */}
+      {sops.length === 0 && (
+        <div style={{
+          marginTop: 16, padding: '12px 14px', borderRadius: 6,
+          background: 'rgba(74, 143, 212, 0.06)',
+          border: '1px solid rgba(74, 143, 212, 0.25)',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6ab4f0', marginBottom: 8 }}>
+            DON'T HAVE AN SOP? &nbsp;Build one from a starter
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => handleStarter('modern-carrier')} style={btnStarter}>
+              ⚓ Modern Carrier
+            </button>
+            <button onClick={() => handleStarter('modern-land')} style={btnStarter}>
+              🛩 Modern Land-Based
+            </button>
+            <button onClick={() => handleStarter('cold-war')} style={btnStarter}>
+              📻 Cold War (1985)
+            </button>
+            <button onClick={() => handleStarter('empty')} style={btnStarter}>
+              ☐ Blank Skeleton
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: '#aaaaaa', marginTop: 6 }}>
+            Each starter ships with realistic callsigns / freqs / TACANs for the era. Tweak to match your scenario.
+          </div>
+        </div>
+      )}
 
       <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>

@@ -14,7 +14,7 @@
  * on the backend — flagged as a follow-up.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import { parseRrLink, rosterUrl, rosterToRows, isSupportedRoster } from './readyRoomImport';
@@ -456,67 +456,17 @@ function ReadyRoomImportRow({ onParsed }: { onParsed: (h: string[], r: Record<st
 }
 
 // ───── After-Action Review download row ──────────────────────────────────
-// Generates a post-flight debrief skeleton (markdown / CSV / XLSX) pre-
-// filled with the mission's participants + any pilot names already
-// applied via the roster edits above. Empty engagement log + notes
-// blocks for the runner to fill in by hand. Backend: services/aar.py.
+// Posts the roster's flown pilots + a debrief summary back to Ready Room
+// (marks them Present on the linked event). Only renders when the roster was
+// imported from a Ready Room mission. Full AAR / debrief GENERATION moved to
+// its own AAR tab (v1.19.111) — this row is Ready-Room posting only now.
 function AarRow() {
-  const sessionId = useMissionStore((s) => s.sessionId);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const edits = useEditStore((s) => s.edits);
   const readyRoomLink = useMissionStore((s) => s.readyRoomLink);
-  const [format, setFormat] = useState<'md' | 'csv' | 'xlsx'>('md');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [notes, setNotes] = useState('');
-  const [durationMin, setDurationMin] = useState('');
-  // Live event count — refreshed when this row mounts + each download.
-  // Surfaces feedback that the Live mode recorder is actually capturing
-  // losses, so the planner knows the AAR will auto-populate.
-  const [eventCount, setEventCount] = useState<number | null>(null);
-
-  const refreshEventCount = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const r = await fetch(`/api/sessions/${sessionId}/events`);
-      if (!r.ok) return;
-      const j = await r.json();
-      setEventCount(Array.isArray(j.events) ? j.events.length : 0);
-    } catch { /* swallow */ }
-  }, [sessionId]);
-
-  useEffect(() => { refreshEventCount(); }, [refreshEventCount]);
-
-  const clearEvents = async () => {
-    if (!sessionId) return;
-    if (!window.confirm(`Clear ${eventCount ?? 0} recorded live event(s)? The AAR will fall back to manual entry.`)) return;
-    try {
-      const r = await fetch(`/api/sessions/${sessionId}/events`, { method: 'DELETE' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setEventCount(0);
-      setMsg('✓ Live event log cleared');
-    } catch (e) {
-      setMsg(`✗ Clear failed: ${e instanceof Error ? e.message : ''}`);
-    }
-  };
-
-  // Build signups dict from in-flight edits: callsign (unit name) → pilot name.
-  // The roster Apply step writes `unitRename` edits per unitId, so we map
-  // each unitId → display callsign + use the latest rename value.
-  const signups = useMemo(() => {
-    const idToCallsign = new Map<string, string>();
-    for (const u of clientUnits) {
-      idToCallsign.set(String(u.unitId), u.name || '');
-    }
-    const out: Record<string, string> = {};
-    for (const ed of edits as Array<{ unitId?: string | number; field: string; value: string }>) {
-      if (ed.field === 'unitRename' && ed.unitId != null) {
-        const cs = idToCallsign.get(String(ed.unitId));
-        if (cs) out[cs] = String(ed.value || '');
-      }
-    }
-    return out;
-  }, [edits, clientUnits]);
 
   // Participants to push back to Ready Room: per assigned slot, the pilot name
   // (unitRename) + modex (onboard_num) so RR can match them to members and mark
@@ -537,44 +487,6 @@ function AarRow() {
       }))
       .filter((p) => p.pilot || p.modex);
   }, [edits, clientUnits]);
-
-  const download = async () => {
-    if (!sessionId || busy) return;
-    setBusy(true); setMsg('');
-    try {
-      const body = {
-        format,
-        signups,
-        events: [],  // populated by Live session loop in a future iteration
-        notes,
-        duration_min: durationMin ? Number(durationMin) : null,
-      };
-      const r = await fetch(`/api/sessions/${sessionId}/aar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({ error: 'failed' }));
-        throw new Error(j.error || `HTTP ${r.status}`);
-      }
-      const blob = await r.blob();
-      const cd = r.headers.get('Content-Disposition') || '';
-      const m = cd.match(/filename="?([^";]+)"?/);
-      const name = m?.[1] || `aar.${format}`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = name;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setMsg(`✓ Downloaded ${name}`);
-      refreshEventCount();
-    } catch (e) {
-      setMsg(`✗ ${e instanceof Error ? e.message : 'failed'}`);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // Push the post-mission result back to Ready Room (hop 7 of the OPT ⇄ RR
   // loop). Uses the link remembered from the roster import; marks the pilots who
@@ -607,57 +519,28 @@ function AarRow() {
     }
   };
 
-  const pilotCount = Object.values(signups).filter((p) => (p || '').trim()).length;
+  // Only relevant when the roster was imported from a Ready Room mission.
+  if (!readyRoomLink) return null;
 
   return (
     <div style={{ marginBottom: 14, padding: '10px 14px', background: '#1d2530', border: `1px solid ${BORDER}`, borderRadius: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Generate AAR / debrief</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>Post results to Ready Room</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
-            Post-mission debrief skeleton — pre-filled with participants
-            {pilotCount > 0 ? ` + ${pilotCount} signed-up pilot${pilotCount === 1 ? '' : 's'}` : ''}
-            {eventCount !== null && eventCount > 0 ? (
-              <>
-                {' '}+ <span style={{ color: '#3fb950', fontWeight: 600 }}>{eventCount} live event{eventCount === 1 ? '' : 's'}</span>
-                {' '}<button onClick={clearEvents} title="Clear the recorded live event log"
-                             style={{ background: 'none', border: 'none', color: '#e0554f', cursor: 'pointer', fontSize: 10, padding: 0, textDecoration: 'underline' }}>
-                  clear
-                </button>
-              </>
-            ) : (
-              <>{' '}<span style={{ color: '#888', fontStyle: 'italic' }}>(no live events recorded yet — Live mode logs losses automatically)</span></>
-            )}.
+            Marks the flown pilots ({participants.length}) Present on the linked event and posts a debrief summary. Generate the full AAR / debrief on the <b>AAR</b> tab.
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['md', 'csv', 'xlsx'] as const).map((f) => (
-            <button key={f} onClick={() => setFormat(f)}
-                    style={{ background: format === f ? '#3a5a82' : '#2a2a2a', border: `1px solid ${format === f ? '#4a8fd4' : BORDER}`, color: format === f ? '#cfe6ff' : '#aaa', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 3, fontFamily: 'inherit', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-              {f}
-            </button>
-          ))}
-        </div>
-        <button onClick={download} disabled={!sessionId || busy} style={{ ...btn, opacity: !sessionId || busy ? 0.5 : 1, cursor: !sessionId || busy ? 'not-allowed' : 'pointer' }}>
-          {busy ? 'Generating…' : '⬇ Download'}
+        <button onClick={postToReadyRoom} disabled={busy} title={`Mark ${participants.length} pilot(s) present on "${readyRoomLink.missionName || 'the mission'}" in Ready Room and post the debrief.`}
+                style={{ ...btn, background: '#1a2a1a', border: '1px solid #3fb950', color: '#3fb950', opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}>
+          ↥ Post to Ready Room
         </button>
-        {readyRoomLink && (
-          <button onClick={postToReadyRoom} disabled={busy} title={`Mark ${participants.length} pilot(s) present on "${readyRoomLink.missionName || 'the mission'}" in Ready Room and post the debrief.`}
-                  style={{ ...btn, background: '#1a2a1a', border: '1px solid #3fb950', color: '#3fb950', opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}>
-            ↥ Post to Ready Room
-          </button>
-        )}
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'flex-start' }}>
-        <input
-          type="number" min={0} step={5}
-          value={durationMin} onChange={(e) => setDurationMin(e.target.value)}
-          placeholder="Duration (min)"
-          style={{ ...sel, width: 130 }} />
+      <div style={{ marginTop: 8 }}>
         <textarea
           value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional debrief notes — what went well, what to fix, lessons learned…"
-          style={{ ...sel, flex: 1, minHeight: 50, fontFamily: 'inherit', resize: 'vertical' }} />
+          placeholder="Optional debrief summary — what went well, what to fix, lessons learned…"
+          style={{ ...sel, width: '100%', boxSizing: 'border-box', minHeight: 50, fontFamily: 'inherit', resize: 'vertical' }} />
       </div>
       {msg && <div style={{ fontSize: 11, marginTop: 6, color: msg.startsWith('✓') ? '#3fb950' : '#e0554f' }}>{msg}</div>}
     </div>

@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { LoadoutTab } from './LoadoutTab';
 import { LaserTab } from './LaserTab';
+import { TabHelp } from '../components/TabHelp';
 
 const SUB_TABS = [
   { id: 'loadouts', label: 'Loadouts' },
@@ -18,6 +19,9 @@ export function WeaponsTab() {
 
   return (
     <div>
+      <TabHelp tabKey="loadout">
+        Set each player flight's <b>weapons + fuel</b> per pylon (or apply a preset like "Double Ugly"), and assign <b>laser codes</b>. These feed the kneeboards, the brief's weapon cards, and write to the .miz on download. The <b>Laser Codes</b> sub-tab keeps buddy-lase codes deconflicted.
+      </TabHelp>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
       {/* v1.19.67 — display:none so sub-tab state survives switching. */}
       <div style={{ display: sub === 'loadouts' ? 'block' : 'none' }}><LoadoutTab /></div>

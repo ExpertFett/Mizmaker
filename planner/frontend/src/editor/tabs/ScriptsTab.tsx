@@ -13,6 +13,9 @@ import { TicSetupPanel } from './TicSetupPanel';
 import { AegisSetupPanel } from './AegisSetupPanel';
 import { CarrierSetupPanel } from './CarrierSetupPanel';
 import { AtisConfigTab } from './AtisConfigTab';
+import { CivTrafficSetupPanel } from './CivTrafficSetupPanel';
+import { ShipTrafficSetupPanel } from './ShipTrafficSetupPanel';
+import { TabHelp } from '../components/TabHelp';
 
 // v1.19.58 — JTAC moved OUT of Scripts (it isn't a scripting framework,
 // it's a mission-config / target-designation concern). It's now a
@@ -24,6 +27,8 @@ const SUB_TABS = [
   { id: 'aegis',    label: 'AEGIS IADS',  color: '#d95050' },
   { id: 'tic',      label: 'TIC',         color: '#d29922' },
   { id: 'atis',     label: 'ATIS',        color: '#9cd0ff' },
+  { id: 'civtraffic', label: 'Civ Traffic', color: '#3fb950' },
+  { id: 'shiptraffic', label: 'Ship Traffic', color: '#4ac6d2' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -45,6 +50,10 @@ export function ScriptsTab() {
           Each script's framework lua is auto-bundled on download.
         </p>
       </div>
+
+      <TabHelp tabKey="scripts">
+        Each tab below prepares your mission for a popular DCS scripting framework and <b>bundles its .lua automatically on download</b> — no manual file wrangling. Pick a framework, fill in its options (units, zones, freqs), and the planner appends the right trigger rules + naming. <b>Carriers</b> = deck/recovery setup, <b>AEGIS</b> = layered IADS, <b>TIC</b> = troops-in-contact ground combat, <b>ATIS</b> = SRS automated airfield weather broadcasts, <b>Civ Traffic</b> = curated civilian air-traffic corridors, <b>Ship Traffic</b> = curated shipping lanes (stock ships, no mods).
+      </TabHelp>
 
       <div style={{
         display: 'flex', gap: 2, marginBottom: 16,
@@ -81,6 +90,8 @@ export function ScriptsTab() {
       <div style={{ display: sub === 'aegis'    ? 'block' : 'none' }}><AegisSetupPanel /></div>
       <div style={{ display: sub === 'tic'      ? 'block' : 'none' }}><TicSetupPanel /></div>
       <div style={{ display: sub === 'atis'     ? 'block' : 'none' }}><AtisConfigTab /></div>
+      <div style={{ display: sub === 'civtraffic' ? 'block' : 'none' }}><CivTrafficSetupPanel /></div>
+      <div style={{ display: sub === 'shiptraffic' ? 'block' : 'none' }}><ShipTrafficSetupPanel /></div>
     </div>
   );
 }

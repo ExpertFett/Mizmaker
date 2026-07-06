@@ -4,6 +4,7 @@ import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
 import type { SOP } from '../../sop/types';
 import { dtcPreview, dtcGenerate } from '../../api/client';
+import { TabHelp } from '../components/TabHelp';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -854,6 +855,9 @@ export function DtcTab() {
 
   return (
     <div>
+      <TabHelp tabKey="dtc">
+        The <b>Data Transfer Cartridge</b> pre-loads your F/A-18C's mission computer — waypoints & sequences, comm presets, TACAN, CMDS programs, RWR priorities, and the SA / threat picture. It's built here from your route + active SOP; <b>download the .dtc</b> and import it in-jet so you spawn already programmed. The sub-tabs group it by system.
+      </TabHelp>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

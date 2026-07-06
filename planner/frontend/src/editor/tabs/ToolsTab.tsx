@@ -1,14 +1,18 @@
 /**
- * Tools tab — combines Rename and Batch edit into one view.
+ * Tools tab — mission-authoring utilities: Rename, Batch edit, Livery.
+ * (v1.19.110 — Livery merged in from its own top-level tab; all three are
+ * batch/bulk authoring passes over the mission.)
  */
 
 import { useState } from 'react';
 import { RenamerTab } from './RenamerTab';
 import { BatchEditTab } from './BatchEditTab';
+import { LiveryTab } from './LiveryTab';
 
 const SUB_TABS = [
   { id: 'rename', label: 'Rename' },
   { id: 'batch', label: 'Batch Edit' },
+  { id: 'livery', label: 'Livery' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -22,6 +26,7 @@ export function ToolsTab() {
       {/* v1.19.67 — display:none so sub-tab state survives switching. */}
       <div style={{ display: sub === 'rename' ? 'block' : 'none' }}><RenamerTab /></div>
       <div style={{ display: sub === 'batch'  ? 'block' : 'none' }}><BatchEditTab /></div>
+      <div style={{ display: sub === 'livery' ? 'block' : 'none' }}><LiveryTab /></div>
     </div>
   );
 }

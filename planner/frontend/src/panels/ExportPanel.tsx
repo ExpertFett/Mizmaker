@@ -2,7 +2,7 @@ import { createElement, useState } from 'react';
 import { useMissionStore } from '../store/missionStore';
 import { EditsTab } from '../editor/tabs/EditsTab';
 import { useEditStore } from '../store/editStore';
-import { exportJson, closeSession, saveTriggers } from '../api/client';
+import { closeSession, saveTriggers } from '../api/client';
 import { useTriggerStore } from '../store/triggerStore';
 import { saveCurrentMission } from '../store/missionLibraryActions';
 import { getOriginalMiz } from '../store/originalMiz';
@@ -26,7 +26,6 @@ import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
 import { SopCommsCard } from '../kneeboard/SopCommsCard';
 import { TransponderCard } from '../kneeboard/TransponderCard';
-import { GoalsCard } from '../kneeboard/GoalsCard';
 import { DmpiCard } from '../kneeboard/DmpiCard';
 import { NotesCard } from '../kneeboard/NotesCard';
 import { renderCardToBlob } from '../kneeboard/renderCard';
@@ -62,7 +61,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export function ExportPanel({ mode }: { mode: AppMode }) {
   const [editsOpen, setEditsOpen] = useState(false);
   const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
-  const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, kneeboardSettings } = useEditStore();
+  const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, setStripRequiredModules, kneeboardSettings } = useEditStore();
   // Active SOP — needed if the user has the SOP Comms kneeboard card
   // enabled and wants it injected into the .miz on download.
   const sopList = useSopStore((s) => s.sops);
@@ -247,13 +246,6 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         if (cards.transponder && activeSop?.transponder?.assignments?.length)
           await addCard(sharedType, 'Transponder.png',
             createElement(TransponderCard, { transponder: activeSop.transponder, squadron: activeSop.squadron, overview: overview || undefined }));
-        // Mission Goals — always emitted when the toggle is on, even
-        // with an empty list. The card itself shows an explicit
-        // placeholder so a "no goals" mission still gets a visible
-        // card rather than a missing slot.
-        if (cards.goalsCard)
-          await addCard(sharedType, 'Mission_Goals.png',
-            createElement(GoalsCard, { goals, squadron: activeSop?.squadron, overview: overview || undefined }));
         if (cards.dmpiCard)
           await addCard(sharedType, 'DMPI_List.png',
             createElement(DmpiCard, { dmpis, squadron: activeSop?.squadron, overview: overview || undefined, coordFormat: kneeboardSettings.coordFormat }));
@@ -398,21 +390,6 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
     }
   };
 
-  const handleExportJson = async () => {
-    if (!sessionId) return;
-    try {
-      const data = await exportJson(sessionId);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (filename || 'mission').replace('.miz', '') + '_planning.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error('Export failed:', e);
-    }
-  };
 
   const handleNewFile = async () => {
     if (sessionId) {
@@ -450,6 +427,22 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
             </button>
           </div>
         )}
+        {/* v1.19.110 — strip-required-modules toggle relocated here from the
+            (removed) Mission → Options sub-tab. It's a download-time option,
+            so it belongs beside Download. */}
+        {mode === 'editing' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#aaaaaa', cursor: 'pointer', padding: '2px 0' }}>
+            <input
+              type="checkbox"
+              checked={stripRequiredModules}
+              onChange={(e) => setStripRequiredModules(e.target.checked)}
+              style={{ accentColor: '#4a8fd4' }}
+            />
+            <span title="Empties the .miz requiredModules block so players missing a module (mod / map / DLC) can still load the mission.">
+              Strip required modules
+            </span>
+          </label>
+        )}
         {editsOpen && (
           <div style={{
             position: 'fixed',
@@ -474,9 +467,6 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={handleExportJson} style={{ ...btnStyle, flex: 1, background: '#1a3a2a' }}>
-            JSON
-          </button>
           <button onClick={handleNewFile} style={{ ...btnStyle, flex: 1, background: '#2a1a1a', color: '#d95050' }}>
             New
           </button>

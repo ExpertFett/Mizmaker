@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { CommCardTab } from './CommCardTab';
 import { TacanTab } from './TacanTab';
 import { DatalinkTab } from './DatalinkTab';
+import { TabHelp } from '../components/TabHelp';
 
 // v1.19.74 PREVIEW — Datalink folded in as the third sub-tab. The
 // outer tab is renamed "Comms" in the sidebar; this file still exports
@@ -27,6 +28,9 @@ export function RadioTab() {
 
   return (
     <div>
+      <TabHelp tabKey="comms">
+        Build the flight's <b>radio plan</b>: comm presets per radio, <b>TACAN</b> channels, and <b>datalink</b> (Link-16) nets. Apply your active SOP to fill both radios automatically — it then flows into the DTC, the comms kneeboard card, and the brief. The three sub-tabs are all channel/net assignments.
+      </TabHelp>
       <SubTabBar tabs={SUB_TABS} active={sub} onChange={setSub} />
       <div style={{ display: sub === 'comms'    ? 'block' : 'none' }}><CommCardTab /></div>
       <div style={{ display: sub === 'tacan'    ? 'block' : 'none' }}><TacanTab /></div>

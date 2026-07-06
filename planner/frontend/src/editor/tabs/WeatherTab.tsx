@@ -3,6 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { MissionWeather } from '../../types/mission';
 import { contrailAltitudeFt } from '../../utils/atmosphere';
+import { TabHelp } from '../components/TabHelp';
 
 /* ------------------------------------------------------------------ */
 /* DCS Cloud Presets                                                   */
@@ -573,7 +574,6 @@ export function WeatherTab() {
 
   const [weather, setWeather] = useState<WeatherState | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
-  const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
 
   useEffect(() => {
     if (overview?.weather) {
@@ -666,9 +666,7 @@ export function WeatherTab() {
             Weather Editor
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#aaaaaa' }}>
-            {mode === 'simple'
-              ? 'Pick a preset or cloud layer. Switch to Advanced for full control.'
-              : 'Full control over all weather parameters.'}
+            Pick a scenario preset for one-click weather, or dial in any parameter by hand.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -689,211 +687,15 @@ export function WeatherTab() {
               Edits queued — download .miz to save
             </div>
           )}
-        <div style={{ display: 'flex', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden' }}>
-          <button
-            onClick={() => setMode('simple')}
-            style={{
-              padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
-              background: mode === 'simple' ? '#4a4a4a' : 'transparent',
-              color: mode === 'simple' ? '#e0e0e0' : '#aaaaaa', fontWeight: mode === 'simple' ? 600 : 400,
-            }}
-          >
-            Simple
-          </button>
-          <button
-            onClick={() => setMode('advanced')}
-            style={{
-              padding: '6px 14px', fontSize: 13, border: 'none', cursor: 'pointer',
-              background: mode === 'advanced' ? '#4a4a4a' : 'transparent',
-              color: mode === 'advanced' ? '#e0e0e0' : '#aaaaaa', fontWeight: mode === 'advanced' ? 600 : 400,
-            }}
-          >
-            Advanced
-          </button>
-        </div>
         </div>
       </div>
 
-      {mode === 'simple' ? (
-        <SimpleMode weather={weather} update={update} updateWind={updateWind} hasChanges={hasChanges} />
-      ) : (
-        <AdvancedMode weather={weather} update={update} updateWind={updateWind} hasChanges={hasChanges} />
-      )}
+      <TabHelp tabKey="weather">
+        Set the mission's weather. Start with a <b>Quick Preset</b> or a categorized <b>Scenario Preset</b> (VFR / IFR / precip / carrier recovery / regional) for one click, then fine-tune any parameter below — wind, clouds, fog, temperature, QNH. Edits auto-queue and write to the <b>.miz</b> on download.
+      </TabHelp>
+
+      <AdvancedMode weather={weather} update={update} updateWind={updateWind} hasChanges={hasChanges} />
     </div>
-  );
-}
-
-/* ================================================================== */
-/* SIMPLE MODE                                                        */
-/* ================================================================== */
-
-function SimpleMode({
-  weather, update, updateWind, hasChanges,
-}: {
-  weather: WeatherState;
-  update: (p: Partial<WeatherState>) => void;
-  updateWind: (layer: 'atGround' | 'at2000' | 'at8000', field: 'speed' | 'dir', value: number) => void;
-  hasChanges: boolean;
-}) {
-  return (
-    <>
-      {/* Weather summary card */}
-      <WeatherSummary weather={weather} />
-
-      {/* Quick presets */}
-      <Section title="Quick Presets" changed={hasChanges}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {QUICK_PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => update(preset.values)}
-              style={{
-                ...presetBtnStyle,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                minWidth: 90, padding: '10px 14px',
-              }}
-            >
-              <span style={{ fontSize: 20 }}>{preset.icon}</span>
-              <span>{preset.label}</span>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* DCS Cloud Preset dropdown */}
-      <Section title="DCS Cloud Layer" changed={hasChanges}>
-        <p style={{ margin: '0 0 8px', fontSize: 12, color: '#aaaaaa' }}>
-          DCS uses named cloud presets that override manual density/thickness. Select a preset to set cloud layers automatically.
-        </p>
-        <select
-          value={weather.clouds_preset}
-          onChange={(e) => update({ clouds_preset: e.target.value })}
-          style={selectStyle}
-        >
-          {DCS_CLOUD_PRESETS.map((cp) => (
-            <option key={cp.id} value={cp.id}>
-              {cp.label} — {cp.description}
-            </option>
-          ))}
-        </select>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
-          <label style={fieldLabelStyle}>
-            Cloud Base (m)
-            <input
-              type="number" value={weather.clouds_base_m} min={0} max={15000}
-              onChange={(e) => update({ clouds_base_m: Number(e.target.value) })}
-              style={numInputStyle}
-            />
-          </label>
-          <label style={{ ...fieldLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 }}>
-            <input type="checkbox" checked={weather.clouds_precipitation > 0}
-              onChange={(e) => update({ clouds_precipitation: e.target.checked ? 1 : 0 })}
-              style={{ accentColor: '#4a8fd4' }}
-            />
-            Precipitation
-          </label>
-        </div>
-      </Section>
-
-      {/* Wind with wind rose */}
-      <Section title="Wind" changed={hasChanges}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <WindRose speed={weather.wind.atGround.speed} dir={weather.wind.atGround.dir} />
-          {([
-            ['atGround', 'Ground'],
-            ['at2000', '6,600 ft'],
-            ['at8000', '26,000 ft'],
-          ] as const).map(([layer, label]) => (
-            <div key={layer} style={cardStyle}>
-              <div style={{ fontSize: 13, color: '#cccccc', fontWeight: 600, marginBottom: 8 }}>{label}</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <label style={fieldLabelStyle}>
-                  Speed (kts)
-                  <input type="number" step="1"
-                    value={Math.round(weather.wind[layer].speed * 1.94384)}
-                    min={0} max={97}
-                    onChange={(e) => updateWind(layer, 'speed', Number(e.target.value) / 1.94384)}
-                    style={numInputStyle} />
-                </label>
-                <label style={fieldLabelStyle}>
-                  Dir (deg)
-                  <input type="number" value={weather.wind[layer].dir} min={0} max={359}
-                    onChange={(e) => updateWind(layer, 'dir', Number(e.target.value))}
-                    style={numInputStyle} />
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* Key settings + QNH display */}
-      <Section title="Conditions" changed={hasChanges}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <label style={fieldLabelStyle}>
-            Temperature (C)
-            <input type="number" value={weather.temperature_c}
-              onChange={(e) => update({ temperature_c: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            QNH (mmHg)
-            <input type="number" value={weather.qnh_mmhg}
-              onChange={(e) => update({ qnh_mmhg: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            Visibility (m)
-            <input type="number" value={weather.visibility_m} min={0}
-              onChange={(e) => update({ visibility_m: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            Fog Mode
-            <select value={weather.fog_mode} onChange={(e) => update({ fog_mode: Number(e.target.value) })} style={selectStyle}>
-              <option value={0}>Off</option>
-              <option value={1}>Manual</option>
-              <option value={2}>Auto</option>
-            </select>
-          </label>
-          {weather.fog_mode > 0 && (
-            <label style={fieldLabelStyle}>
-              Fog Vis (m)
-              <input type="number" value={weather.fog_visibility} min={0}
-                onChange={(e) => update({ fog_visibility: Number(e.target.value) })} style={numInputStyle} />
-            </label>
-          )}
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <QnhDisplay mmhg={weather.qnh_mmhg} />
-        </div>
-      </Section>
-
-      {/* Date/Time with quick buttons */}
-      <Section title="Date / Time" changed={hasChanges}>
-        <TimeOfDayButtons current={weather.start_time} onSelect={(s) => update({ start_time: s })} />
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <label style={fieldLabelStyle}>
-            Day
-            <input type="number" value={weather.day} min={1} max={31}
-              onChange={(e) => update({ day: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            Month
-            <input type="number" value={weather.month} min={1} max={12}
-              onChange={(e) => update({ month: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            Year
-            <input type="number" value={weather.year}
-              onChange={(e) => update({ year: Number(e.target.value) })} style={numInputStyle} />
-          </label>
-          <label style={fieldLabelStyle}>
-            Start Time
-            <input type="text" value={formatTime(weather.start_time)} placeholder="HH:MM"
-              onChange={(e) => update({ start_time: parseTime(e.target.value) })}
-              style={{ ...numInputStyle, width: 80, fontFamily: "'B612 Mono', monospace" }} />
-          </label>
-        </div>
-      </Section>
-    </>
   );
 }
 

@@ -54,6 +54,70 @@ export const TIC_BUNDLE: FrameworkScript[] = [
   { name: 'TIC (Troops in Contact)', bundledFile: 'TIC_v1.1.lua' },
 ];
 
+/**
+ * Civilian Air Traffic — curated real-world corridors (the "anti-RAT"
+ * approach). One self-contained per-map script (config table + spawn engine
+ * inline; no MOOSE/MIST) is bundled and loaded on MISSION START. Infinite,
+ * density-capped, F10-controllable. Requires the Civil Aircraft Mod and
+ * country EGYPT in the neutrals coalition. (v1.19.110)
+ */
+const CIVTRAFFIC_BY_THEATER: Record<string, string> = {
+  caucasus: 'CivTraffic-Caucasus.lua',
+  persiangulf: 'CivTraffic-PersianGulf.lua',
+  syria: 'CivTraffic-Syria.lua',
+  nevada: 'CivTraffic-Nevada.lua',
+  marianaislands: 'CivTraffic-MarianaIslands.lua',
+  sinai: 'CivTraffic-Sinai.lua',
+  sinaimap: 'CivTraffic-Sinai.lua',
+  falklands: 'CivTraffic-Falklands.lua',
+  southatlantic: 'CivTraffic-Falklands.lua',
+  afghanistan: 'CivTraffic-Afghanistan.lua',
+  kola: 'CivTraffic-Kola.lua',
+  iraq: 'CivTraffic-Iraq.lua',
+  germanycw: 'CivTraffic-GermanyColdWar.lua',
+  germanycoldwar: 'CivTraffic-GermanyColdWar.lua',
+};
+
+/** The civilian-traffic script for a theater, or null if this map isn't
+ *  supported yet. Match is case / space / punctuation-insensitive. */
+export function civTrafficScriptForTheater(theater: string | undefined): FrameworkScript | null {
+  if (!theater) return null;
+  const key = theater.toLowerCase().replace(/[^a-z]/g, '');
+  const file = CIVTRAFFIC_BY_THEATER[key];
+  return file ? { name: `Civ Traffic (${theater})`, bundledFile: file } : null;
+}
+
+/**
+ * Civilian Ship Traffic — sister of Civ Traffic for SHIPPING (v1.19.111).
+ * Real-world lanes as TSS-style one-way pairs, pre-seeded along their length
+ * at mission start (ships are slow — the sea starts populated), anchorage
+ * queues at ports, fishing fleets inshore. Stock DCS ships — no mods needed.
+ * Water maps only: Nevada/Afghanistan are landlocked; Iraq's coastal sliver
+ * isn't covered yet.
+ */
+const SHIPTRAFFIC_BY_THEATER: Record<string, string> = {
+  caucasus: 'ShipTraffic-Caucasus.lua',
+  persiangulf: 'ShipTraffic-PersianGulf.lua',
+  syria: 'ShipTraffic-Syria.lua',
+  marianaislands: 'ShipTraffic-MarianaIslands.lua',
+  sinai: 'ShipTraffic-Sinai.lua',
+  sinaimap: 'ShipTraffic-Sinai.lua',
+  falklands: 'ShipTraffic-Falklands.lua',
+  southatlantic: 'ShipTraffic-Falklands.lua',
+  kola: 'ShipTraffic-Kola.lua',
+  germanycw: 'ShipTraffic-GermanyColdWar.lua',
+  germanycoldwar: 'ShipTraffic-GermanyColdWar.lua',
+};
+
+/** The ship-traffic script for a theater, or null if this map has no
+ *  shipping lanes (landlocked or not yet covered). */
+export function shipTrafficScriptForTheater(theater: string | undefined): FrameworkScript | null {
+  if (!theater) return null;
+  const key = theater.toLowerCase().replace(/[^a-z]/g, '');
+  const file = SHIPTRAFFIC_BY_THEATER[key];
+  return file ? { name: `Ship Traffic (${theater})`, bundledFile: file } : null;
+}
+
 /** Does the trigger list already carry a DO_SCRIPT_FILE rule for this
  *  file? Used to avoid duplicate rules on re-apply. */
 function ruleAlreadyExists(rules: TriggerRule[], bundledFile: string): boolean {

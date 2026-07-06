@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import {
-  MapIcon, SopIcon, CoalitionsIcon, MissionIcon, GoalsIcon, WeatherIcon,
+  MapIcon, SopIcon, MissionIcon, WeatherIcon,
   ScriptsIcon, TriggersIcon,
   ThreatsIcon, DmpiIcon,
-  RosterIcon, LoadoutIcon, RadioIcon, DtcIcon, LiveryIcon,
+  RosterIcon, LoadoutIcon, RadioIcon, DtcIcon,
   KneeboardIcon, BriefIcon,
   VisibilityIcon,
   DebugIcon, ToolsIcon, UploadIcon,
@@ -27,11 +27,9 @@ import { WeaponsTab } from './tabs/WeaponsTab';
 import { RadioTab } from './tabs/RadioTab';
 import { KneeboardTab } from './tabs/KneeboardTab';
 import { WeatherTab } from './tabs/WeatherTab';
-import { LiveryTab } from './tabs/LiveryTab';
 import { MissionEditTab } from './tabs/MissionEditTab';
 import { ToolsTab } from './tabs/ToolsTab';
 import { ThreatLibraryTab } from './tabs/ThreatLibraryTab';
-import { CoalitionsTab } from './tabs/CoalitionsTab';
 import { MissionDebugTab } from './tabs/MissionDebugTab';
 // v1.19.57 — SopTab + SopCheckTab live behind SopTabContainer now (sub-
 // tab toggle). One sidebar entry, two sub-tabs (SOPs / Check). Apply
@@ -40,7 +38,6 @@ import { SopTabContainer } from './tabs/SopTabContainer';
 // v1.19.74 PREVIEW — EditsTab moved to a drawer beside the Download
 // button (see ExportPanel). DmpiTab + JtacSetupPanel now mounted via
 // the new TargetsTab container.
-import { GoalsTab } from './tabs/GoalsTab';
 import { AutoSetupButton } from './AutoSetupButton';
 import { VisibilityTab } from './tabs/VisibilityTab';
 import { BriefGenTab } from './tabs/BriefGenTab';
@@ -50,6 +47,7 @@ import { TriggerTab } from './tabs/TriggerTab';
 import { UploadPanel } from '../panels/UploadPanel';
 import { MetarReadout } from '../panels/MetarReadout';
 import { LiveTerminal } from './live/LiveTerminal';
+import { AarView } from './aar/AarView';
 import { LiveErrorBoundary } from './live/LiveErrorBoundary';
 import { LOCK_TO_PLANNING, loadInitialMode, saveMode, tabsForMode, type AppMode } from '../plannerMode';
 
@@ -77,12 +75,10 @@ const SIDEBAR: SidebarItem[] = [
   // pre-configured for the squadron / era you're flying.
   { kind: 'tab', id: 'sop',         label: 'SOP',         icon: <SopIcon /> },
   // v1.19.57 — SOP Check folded under SOP as a sub-tab.
-  { kind: 'tab', id: 'coalitions',  label: 'Coalitions',  icon: <CoalitionsIcon /> },
-  { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: <MissionIcon /> },
-  // Mission Goals — squadron-style objective list. Sits next to
-  // Mission because that's where the briefing-adjacent settings
-  // live. Tokens flow into Brief tab via {goals.*}.
-  { kind: 'tab', id: 'goals',       label: 'Goals',       icon: <GoalsIcon /> },
+  // v1.19.110 — Coalitions + Goals removed (Coalitions was a niche country-
+  // reassign editor; Goals was an SP-oriented objective list). The Mission
+  // tab (Briefing + Commanders) moved to the MISSION MAKER section — the
+  // in-game briefing is written last, after the mission is built.
   { kind: 'tab', id: 'weather',     label: 'Weather',     icon: <WeatherIcon /> },
 
   { kind: 'section', label: 'ENTITIES' },
@@ -124,7 +120,8 @@ const SIDEBAR: SidebarItem[] = [
   // TACAN / Datalink) are net/channel assignments feeding DTC.
   { kind: 'tab', id: 'radio',       label: 'Comms',       icon: <RadioIcon /> },
   { kind: 'tab', id: 'dtc',         label: 'DTC',         icon: <DtcIcon /> },
-  { kind: 'tab', id: 'livery',      label: 'Livery',      icon: <LiveryIcon /> },
+  // v1.19.110 — Livery merged into Tools (both are batch mission-authoring
+  // utilities); it's a sub-tab there now, not a top-level entry.
 
   { kind: 'section', label: 'OUTPUT' },
   { kind: 'tab', id: 'kneeboard',   label: 'Kneeboard',   icon: <KneeboardIcon /> },
@@ -133,17 +130,16 @@ const SIDEBAR: SidebarItem[] = [
   // staged-diff review sibling of the Download action, so it now
   // lives as a drawer that opens from a chip beside Download .miz.
 
-  // MISSION MAKER — tools the mission AUTHOR uses to control what
-  // joining players see / can do. Distinct from PLANNING (which is what
-  // a flight lead does WITHIN the constraints the mission already sets).
-  // Visibility was previously under PLANNING but Fett moved it here
-  // because it's an authoring decision, not a planning one. (v1.19.54)
+  // MISSION MAKER — authoring + utility tools the mission author uses.
+  // (v1.19.110 — merged the old UTIL and MISSION MAKER sections into one:
+  // Visibility, Tools (incl. Livery), Debug, and the mission (re)loader.)
   { kind: 'section', label: 'MISSION MAKER' },
   { kind: 'tab', id: 'visibility',  label: 'Visibility',  icon: <VisibilityIcon /> },
-
-  { kind: 'section', label: 'UTIL' },
-  { kind: 'tab', id: 'debug',       label: 'Debug',       icon: <DebugIcon /> },
   { kind: 'tab', id: 'tools',       label: 'Tools',       icon: <ToolsIcon /> },
+  { kind: 'tab', id: 'debug',       label: 'Debug',       icon: <DebugIcon /> },
+  // Mission (Briefing + Commanders) sits near the end — the in-game briefing
+  // is the last thing you write, once the mission is otherwise built.
+  { kind: 'tab', id: 'missionEdit', label: 'Mission',     icon: <MissionIcon /> },
   { kind: 'tab', id: 'upload',      label: 'Upload',      icon: <UploadIcon /> },
 ];
 
@@ -156,13 +152,21 @@ type TabId = (typeof TABS)[number]['id'];
 // subset), and Live (Olympus bridge — stub for now). The sidebar shows only
 // the tabs for the active mode; section headers left with no tabs are dropped.
 // Editing returns SIDEBAR unchanged — zero behaviour change.
+// Tabs kept in SIDEBAR (so Planning can still show them) but hidden from the
+// EDITOR sidebar — Threats + Targets are flight-planning surfaces, not
+// mission-authoring ones, so they only appear in Planning mode. (v1.19.110)
+const EDITOR_HIDDEN_TAB_IDS: ReadonlySet<string> = new Set(['threats', 'dmpi']);
+
 function sidebarForMode(mode: AppMode): SidebarItem[] {
   const allow = tabsForMode(mode);
-  if (allow === 'all') return SIDEBAR;
   const out: SidebarItem[] = [];
   for (const item of SIDEBAR) {
-    if (item.kind === 'section') out.push(item); // provisional; pruned below
-    else if (allow.has(item.id)) out.push(item);
+    if (item.kind === 'section') { out.push(item); continue; } // provisional; pruned below
+    if (allow === 'all') {
+      if (!EDITOR_HIDDEN_TAB_IDS.has(item.id)) out.push(item);
+    } else if (allow.has(item.id)) {
+      out.push(item);
+    }
   }
   // Drop section headers not immediately followed by a tab.
   return out.filter((item, i) => {
@@ -179,6 +183,25 @@ export function MissionEditor() {
   // Planning when the build sets VITE_PLANNER_MODE.
   const [mode, setModeState] = useState<AppMode>(loadInitialMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // v1.19.110 — collapsible sidebar SECTIONS. The full editor shows 21 tabs
+  // across 7 phase sections; folding the low-traffic ones cuts the "wall of
+  // tabs" that new users find daunting. UTIL + MISSION MAKER start folded
+  // (rarely touched by a flight lead); choice persists in localStorage.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('dcsopt.sidebarCollapsedSections');
+      if (raw) return new Set<string>(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set<string>(['MISSION MAKER']);
+  });
+  const toggleSection = (label: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      try { localStorage.setItem('dcsopt.sidebarCollapsedSections', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
   // Track which editor tabs have been opened. Once mounted, we keep them in
   // the DOM (hidden with display:none) so local useState edits survive tab
   // switches — the previous pattern (`{activeTab === 'x' && <Tab />}`) unmounted
@@ -220,6 +243,25 @@ export function MissionEditor() {
 
   // Sidebar tabs for the active mode (Editing = full SIDEBAR).
   const visibleSidebar = useMemo(() => sidebarForMode(mode), [mode]);
+  // Tag each sidebar item with its owning section label (sections precede
+  // their tabs), and count tabs per section — used to fold/unfold sections
+  // and to show a "(N)" badge on a folded header. (v1.19.110)
+  const taggedSidebar = useMemo(() => {
+    let cur = '';
+    return visibleSidebar.map((item) => {
+      if (item.kind === 'section') cur = item.label;
+      return { item, section: cur };
+    });
+  }, [visibleSidebar]);
+  const sectionTabCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    let cur = '';
+    for (const it of visibleSidebar) {
+      if (it.kind === 'section') { cur = it.label; counts[cur] = 0; }
+      else if (cur) counts[cur] = (counts[cur] || 0) + 1;
+    }
+    return counts;
+  }, [visibleSidebar]);
 
   const switchMode = (m: AppMode) => {
     setModeState(m);
@@ -235,7 +277,7 @@ export function MissionEditor() {
 
   // Live mode shows a placeholder (not the map), so treat it as non-map for
   // sidebar width / flight-picker / map-content gating.
-  const isMap = activeTab === 'map' && mode !== 'live';
+  const isMap = activeTab === 'map' && mode !== 'live' && mode !== 'aar';
   // Only allow collapse on map page
   const isCollapsed = isMap && sidebarCollapsed;
   const sidebarWidth = isCollapsed ? 44 : isMap ? 280 : 140;
@@ -405,7 +447,7 @@ export function MissionEditor() {
           overflowX: 'hidden',
           overflowY: isCollapsed ? 'hidden' : 'auto',
         }}>
-          {visibleSidebar.map((item, idx) => {
+          {taggedSidebar.map(({ item, section }, idx) => {
             if (item.kind === 'section') {
               if (isCollapsed) {
                 // Collapsed sidebar: render a thin divider line instead of the label
@@ -415,22 +457,33 @@ export function MissionEditor() {
                   }} />
                 );
               }
+              // v1.19.110 — section headers fold/unfold the tabs beneath them.
+              // A folded header shows a "(N)" count so hidden tabs stay
+              // discoverable.
+              const folded = collapsedSections.has(item.label);
+              const count = sectionTabCounts[item.label] || 0;
               return (
-                <div
+                <button
                   key={`sec-${idx}`}
+                  onClick={() => toggleSection(item.label)}
+                  title={folded ? `Show ${item.label} (${count})` : `Hide ${item.label}`}
                   style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: '#5a6878',
-                    letterSpacing: 1.5,
-                    padding: '10px 14px 4px',
-                    textTransform: 'uppercase',
+                    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontSize: 9, fontWeight: 700, color: '#5a6878', letterSpacing: 1.5,
+                    padding: '10px 14px 4px', textTransform: 'uppercase',
+                    fontFamily: 'inherit', textAlign: 'left',
                   }}
                 >
-                  {item.label}
-                </div>
+                  <span style={{ fontSize: 8, width: 8, flexShrink: 0, color: '#6b7a8d' }}>{folded ? '▸' : '▾'}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {folded && <span style={{ color: '#4a5568', letterSpacing: 0.5 }}>{count}</span>}
+                </button>
               );
             }
+            // Hide tabs whose section is folded (expanded sidebar only — the
+            // icon-only collapsed rail always shows every tab as an icon).
+            if (!isCollapsed && collapsedSections.has(section)) return null;
             const isActive = activeTab === item.id;
             // SOP-aware tab indicators — small green dot on the SOP and
             // SOP Check tabs when an SOP is active, so "is an SOP
@@ -554,7 +607,8 @@ export function MissionEditor() {
         {/* Live mode — the multi-tenant DM terminal (login → group → server
             profile → terminal). Self-contained; doesn't touch Editor/Plan. */}
         {mode === 'live' && <LiveErrorBoundary><LiveTerminal /></LiveErrorBoundary>}
-        {mode !== 'live' && (
+        {mode === 'aar' && <AarView />}
+        {mode !== 'live' && mode !== 'aar' && (
         <>
         {/* Map tab — map + floating panel */}
         {isMap && (
@@ -580,11 +634,6 @@ export function MissionEditor() {
             Now the Map renders alongside the hidden container and tab state
             survives the round-trip. */}
         <div style={{ height: '100%', overflow: 'auto', padding: 24, display: isMap ? 'none' : 'block' }}>
-            {visitedTabs.has('coalitions') && (
-              <div style={{ display: activeTab === 'coalitions' ? 'block' : 'none' }}>
-                <CoalitionsTab />
-              </div>
-            )}
             {visitedTabs.has('threats') && (
               <div style={{ display: activeTab === 'threats' ? 'block' : 'none' }}>
                 <ThreatLibraryTab onGoToMap={() => selectTab('map')} />
@@ -621,19 +670,9 @@ export function MissionEditor() {
                 {mode === 'planning' ? <MetarReadout /> : <WeatherTab />}
               </div>
             )}
-            {visitedTabs.has('livery') && (
-              <div style={{ display: activeTab === 'livery' ? 'block' : 'none' }}>
-                <LiveryTab />
-              </div>
-            )}
             {visitedTabs.has('missionEdit') && (
               <div style={{ display: activeTab === 'missionEdit' ? 'block' : 'none' }}>
                 <MissionEditTab />
-              </div>
-            )}
-            {visitedTabs.has('goals') && (
-              <div style={{ display: activeTab === 'goals' ? 'block' : 'none' }}>
-                <GoalsTab />
               </div>
             )}
             {visitedTabs.has('debug') && (

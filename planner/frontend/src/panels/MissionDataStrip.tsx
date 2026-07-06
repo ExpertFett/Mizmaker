@@ -78,16 +78,19 @@ interface CellProps {
   sub?: string;
 }
 
+type StripMode = 'editing' | 'planning' | 'live' | 'aar';
+
 interface ModeSegmentedProps {
-  mode: 'editing' | 'planning' | 'live';
-  onChange: (m: 'editing' | 'planning' | 'live') => void;
+  mode: StripMode;
+  onChange: (m: StripMode) => void;
 }
 
 function ModeSegmented({ mode, onChange }: ModeSegmentedProps) {
-  const modes: { id: 'editing' | 'planning' | 'live'; label: string; title: string }[] = [
+  const modes: { id: StripMode; label: string; title: string }[] = [
     { id: 'editing', label: 'Editor',  title: 'Editing mode (full editor)' },
     { id: 'planning', label: 'Plan',   title: 'Planning mode (no .miz editing)' },
     { id: 'live', label: 'Live',       title: 'Live server / Olympus bridge' },
+    { id: 'aar', label: 'AAR',         title: 'After-Action Review — post-mission debrief' },
   ];
   return (
     <div style={{
@@ -154,8 +157,8 @@ function Cell({ label, value, sub }: CellProps) {
 }
 
 interface MissionDataStripProps {
-  mode?: 'editing' | 'planning' | 'live';
-  onModeChange?: (m: 'editing' | 'planning' | 'live') => void;
+  mode?: StripMode;
+  onModeChange?: (m: StripMode) => void;
 }
 
 export function MissionDataStrip({ mode, onModeChange }: MissionDataStripProps = {}) {

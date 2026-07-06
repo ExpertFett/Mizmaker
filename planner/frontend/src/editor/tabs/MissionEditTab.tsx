@@ -8,20 +8,15 @@
 
 import { useState } from 'react';
 import { BriefingTab } from './BriefingTab';
-import { MissionOptionsTab } from './MissionOptionsTab';
-import { DrawingsTab } from './DrawingsTab';
 import { BattlefieldCommandersTab } from './BattlefieldCommandersTab';
 
-// Sub-tab order follows mission-setup workflow:
-//   Briefing   → set the story / sortie title first
-//   Options    → forcedOptions (Easy Flight, labels, etc.)
-//   Commanders → battlefield commander assignments
-//   Drawings   → map markers / shapes (visual polish)
+// Sub-tab order follows mission-setup workflow. (v1.19.110 — Options and
+// Drawings removed: the forced-options editor was dropped and its
+// strip-required-modules toggle moved to the Download panel; Drawings is
+// superseded by DTC map annotations.)
 const SUB_TABS = [
   { id: 'briefing', label: 'Briefing' },
-  { id: 'options', label: 'Options' },
   { id: 'commanders', label: 'Commanders' },
-  { id: 'drawings', label: 'Drawings' },
 ] as const;
 
 type SubTab = (typeof SUB_TABS)[number]['id'];
@@ -35,8 +30,6 @@ export function MissionEditTab() {
       {/* v1.19.67 — display:none so sub-tab state survives switching. */}
       <div style={{ display: sub === 'briefing'   ? 'block' : 'none' }}><BriefingTab /></div>
       <div style={{ display: sub === 'commanders' ? 'block' : 'none' }}><BattlefieldCommandersTab /></div>
-      <div style={{ display: sub === 'options'    ? 'block' : 'none' }}><MissionOptionsTab /></div>
-      <div style={{ display: sub === 'drawings'   ? 'block' : 'none' }}><DrawingsTab /></div>
     </div>
   );
 }
