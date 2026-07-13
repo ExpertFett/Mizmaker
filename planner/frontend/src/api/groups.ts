@@ -277,6 +277,23 @@ export function commsStreamUrl(gid: string): string {
   return `/api/groups/${gid}/comms/stream`;
 }
 
+/** WebSocket URL for the SRS voice bridge (ws/wss by page protocol, same origin).
+ *  Initial tune + identity ride as query params; the bridge can retune live. */
+export function srsVoiceWsUrl(
+  gid: string,
+  opts: { coalition?: 'blue' | 'red'; freqHz?: number; mod?: number; name?: string; loopback?: boolean } = {},
+): string {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const p = new URLSearchParams();
+  if (opts.loopback) p.set('loopback', '1');
+  if (opts.coalition) p.set('coalition', opts.coalition);
+  if (opts.freqHz != null && Number.isFinite(opts.freqHz)) p.set('freq', String(Math.round(opts.freqHz)));
+  if (opts.mod != null) p.set('mod', String(opts.mod));
+  if (opts.name) p.set('name', opts.name);
+  const q = p.toString();
+  return `${proto}//${window.location.host}/api/groups/${gid}/srs/ws${q ? `?${q}` : ''}`;
+}
+
 // ─── SRS-Server stats (v1.17.8 — optional, env-gated on the backend) ────────
 export interface SrsStatusFreq { freq_mhz: number; modulation: number }
 export interface SrsStatusClient { name: string; coalition: string; freqs: SrsStatusFreq[] }

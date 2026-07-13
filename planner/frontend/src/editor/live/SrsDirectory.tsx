@@ -1,10 +1,11 @@
 /**
  * SRS Directory — Phase 2 of the LotATC-style controller scope.
  *
- * SRS (Simple Radio Standalone) is a native Windows audio driver — there's
- * no browser voice client we can ship. What we CAN do for the controller
- * (DM) is hand them a clean lookup table of every flight's radio frequency
- * so they don't have to dig through .miz files mid-mission.
+ * SRS (Simple Radio Standalone) is a native Windows audio driver. As of
+ * v1.19.112 the Live panel DOES ship a browser voice client (SrsRadioPanel,
+ * via the EAM bridge) — the "🎙" per-row button hands its frequency straight
+ * to that panel. This directory remains the clean lookup table of every
+ * flight's radio frequency so the DM doesn't dig through .miz files mid-mission.
  *
  * Data sources, in order of preference per entry:
  *   1. ClientUnit.radioPresets[0].channels[0].freq_mhz / .modulation
@@ -96,7 +97,7 @@ function formatTacan(g: MissionGroup): string | undefined {
   return `${g.tacan.channel}${g.tacan.band || ''}${g.tacan.callsign ? ` (${g.tacan.callsign})` : ''}`;
 }
 
-export function SrsDirectory({ groupId, onClose }: { groupId?: string; onClose?: () => void }) {
+export function SrsDirectory({ groupId, onClose, onTune }: { groupId?: string; onClose?: () => void; onTune?: (freqMhz: number, mod: number) => void }) {
   const groups = useMissionStore((s) => s.groups);
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('blue');
@@ -297,7 +298,13 @@ export function SrsDirectory({ groupId, onClose }: { groupId?: string; onClose?:
                       })()}
                     </td>
                     <td style={{ ...td, color: C.textDim, fontSize: 10, letterSpacing: 0.5 }}>{r.role}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {onTune && (
+                        <button onClick={() => onTune(r.freqMhz, r.modulation)} title="Tune the SRS voice panel to this frequency"
+                                style={{ background: 'transparent', border: `1px solid ${C.borderHi}`, color: C.accent, padding: '2px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer', marginRight: 4 }}>
+                          🎙
+                        </button>
+                      )}
                       <button onClick={() => copy(r.freqMhz.toFixed(3))} title="Copy frequency to clipboard"
                               style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.textDim, padding: '2px 5px', fontSize: 10, borderRadius: 3, cursor: 'pointer' }}>
                         copy

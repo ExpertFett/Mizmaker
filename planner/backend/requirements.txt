@@ -18,6 +18,9 @@ mgrs>=1.4
 srtm.py>=0.3.7
 gunicorn>=22.0
 gevent>=24.0
+# WebSocket support for the SRS voice bridge (rides the same -k gevent worker
+# as the SSE streams; simple-websocket handles the gunicorn/gevent handshake).
+flask-sock>=0.7
 pydcs @ https://github.com/dcs-retribution/pydcs/archive/refs/heads/retribution.tar.gz
 # Brief generator — squadron PPTX template token replacement
 python-pptx>=1.0

@@ -44,6 +44,7 @@ import type { IadsArea } from './iadsRecipes';
 import { computeBra, formatBra, metresToFeet, type LL } from './braCalc';
 import { buildPictureCall, formatPictureCall, type PictureTrack } from './pictureCall';
 import { SrsDirectory } from './SrsDirectory';
+import { SrsRadioPanel, type SrsTuneRequest } from './SrsRadioPanel';
 import { CommsLog } from './CommsLog';
 import { bullseyeBR, formatBullseye } from './bullseye';
 import { BrevityCard } from './BrevityCard';
@@ -907,6 +908,21 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
     try { localStorage.setItem('dcsopt.live.srsOpen', next ? '1' : '0'); } catch { /* ignore */ }
     return next;
   });
+  const [srsVoiceOpen, setSrsVoiceOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('dcsopt.live.srsVoiceOpen') === '1'; } catch { return false; }
+  });
+  const toggleSrsVoice = () => setSrsVoiceOpen((p) => {
+    const next = !p;
+    try { localStorage.setItem('dcsopt.live.srsVoiceOpen', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
+  // A directory-row "🎙" click opens the voice panel and tunes it to that freq.
+  const [voiceTuneReq, setVoiceTuneReq] = useState<SrsTuneRequest | null>(null);
+  const requestVoiceTune = (freqMhz: number, mod: number) => {
+    setVoiceTuneReq((prev) => ({ freqMhz, mod, seq: (prev?.seq ?? 0) + 1 }));
+    setSrsVoiceOpen(true);
+    try { localStorage.setItem('dcsopt.live.srsVoiceOpen', '1'); } catch { /* ignore */ }
+  };
   const [commsOpen, setCommsOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('dcsopt.live.commsOpen') === '1'; } catch { return false; }
   });
@@ -2324,6 +2340,7 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
                     badge={charts.length || undefined} />
 
         <SidebarSection>Comms</SidebarSection>
+        <SidebarBtn icon="🎙" label="SRS voice" active={srsVoiceOpen} onClick={toggleSrsVoice} hint="Listen + push-to-talk on SRS in the browser — no DCS needed (Chrome/Edge)" />
         <SidebarBtn icon="📻" label="SRS directory" active={srsOpen} onClick={toggleSrs} hint="Every flight's freq + TACAN, with copy buttons" />
         <SidebarBtn icon="💬" label="Comms log" active={commsOpen} onClick={toggleComms} hint="Typed broadcast lane (canCommand-only composer)" />
         <SidebarBtn icon="📖" label="Brevity reference" active={brevityOpen} onClick={toggleBrevity} hint="NATO / USN GCI brevity quick lookup" />
@@ -2870,10 +2887,17 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         </div>
       )}
 
+      {/* ── SRS voice ─ FloatingPanel (browser voice via EAM bridge) ────────── */}
+      {srsVoiceOpen && (
+        <FloatingPanel id="srsvoice" zIndex={5} defaultRect={{ x: 56, y: 56, w: 300, h: 420 }}>
+          <SrsRadioPanel groupId={group.id} tuneRequest={voiceTuneReq} onClose={toggleSrsVoice} />
+        </FloatingPanel>
+      )}
+
       {/* ── SRS directory ─ FloatingPanel (v1.19.48: draggable + resizable) ── */}
       {srsOpen && (
         <FloatingPanel id="srs" zIndex={4} defaultRect={{ x: 56, y: 56, w: 320, h: 480 }}>
-          <SrsDirectory groupId={group.id} onClose={toggleSrs} />
+          <SrsDirectory groupId={group.id} onClose={toggleSrs} onTune={requestVoiceTune} />
         </FloatingPanel>
       )}
 

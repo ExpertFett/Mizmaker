@@ -31,6 +31,7 @@ import os
 import time
 import uuid
 from flask import Flask, request, jsonify, send_file, send_from_directory, Response
+from flask_sock import Sock
 from flask_cors import CORS
 import io
 import hmac
@@ -119,6 +120,100 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=None)
 
 CORS(app)
+
+# WebSocket support (v1.19.112) — flask-sock rides the SAME gunicorn gevent
+# worker that already serves our SSE streams (session_stream / comms_stream),
+# so no new worker class is needed. Used by the SRS voice bridge. (Verified the
+# `-k gevent` worker upgrades WebSockets + round-trips frames in a local spike.)
+sock = Sock(app)
+
+
+# --- SRS voice bridge (browser ⇄ cloud bridge ⇄ SRS via External-AWACS Mode) ---
+# Config is global env for v1 (per-group SRS profile is a v2 follow-up). Degrades
+# gracefully: an unset host or coalition password returns None and the panel is
+# told "not configured", exactly like the SRS status poll (services/srs_status.py).
+def _srs_voice_config(coalition: str):
+    host = os.environ.get("SRS_VOICE_HOST", "").strip()
+    if not host:
+        return None
+    try:
+        port = int(os.environ.get("SRS_VOICE_PORT", "5002") or "5002")
+    except ValueError:
+        port = 5002
+    if coalition == "red":
+        password = os.environ.get("SRS_EAM_PASSWORD_RED", "").strip()
+        cint = 1  # SRS coalition ints: 1=Red, 2=Blue (0=Spectator)
+    else:
+        password = os.environ.get("SRS_EAM_PASSWORD_BLUE", "").strip()
+        cint = 2
+    if not password:
+        return None
+    return {"host": host, "port": port, "password": password, "coalition": cint}
+
+
+@sock.route("/api/groups/<gid>/srs/ws")
+def _srs_voice_ws(ws, gid):
+    """Full-duplex SRS voice for a Live-panel member. Member-gated (same auth as
+    the comms SSE stream). The browser sends Opus frames + control JSON; the
+    bridge relays to the squadron's SRS server. Only ever talks to this member —
+    the SRS host + EAM password stay server-side."""
+    from services.auth import current_user
+    from services.supabase_client import get_supabase
+    from services.groups import ensure_user, role_in_group
+
+    def _fail(error: str) -> None:
+        try:
+            ws.send(json.dumps({"type": "status", "state": "error", "error": error}))
+        except Exception:
+            pass
+
+    # Auth — mirror groups._ctx(): logged in + Supabase configured + a member.
+    discord = current_user()
+    if not discord:
+        return _fail("Not logged in.")
+    sb = get_supabase()
+    if sb is None:
+        return _fail("Live features are not configured on this server.")
+    try:
+        user = ensure_user(sb, discord)
+    except Exception as e:  # noqa: BLE001 — surface the reason, don't crash the WS
+        return _fail(f"User lookup failed: {e}")
+    if role_in_group(sb, user["id"], gid) is None:
+        return _fail("You are not a member of this group.")
+
+    # Loopback "radio check" — echo the browser's own frames, no SRS needed.
+    # Still member-gated, but doesn't require the SRS server to be configured.
+    if request.args.get("loopback") == "1":
+        from services.srs_voice.bridge import run_loopback
+        run_loopback(ws)
+        return
+
+    coalition = (request.args.get("coalition") or "blue").strip().lower()
+    if coalition not in ("blue", "red"):
+        coalition = "blue"
+    cfg = _srs_voice_config(coalition)
+    if cfg is None:
+        return _fail("SRS voice is not configured on this server.")
+
+    try:
+        freq = float(request.args.get("freq") or 251_000_000)
+    except (ValueError, TypeError):
+        freq = 251_000_000.0
+    try:
+        mod = int(request.args.get("mod") or 0)
+    except (ValueError, TypeError):
+        mod = 0
+    name = ((request.args.get("name") or user.get("username") or "DCS:OPT").strip() or "DCS:OPT")[:32]
+    unit_id = int.from_bytes(os.urandom(3), "big") or 1
+
+    from services.srs_voice.bridge import run_bridge
+    run_bridge(
+        ws,
+        host=cfg["host"], port=cfg["port"], coalition=cfg["coalition"],
+        password=cfg["password"], name=name, freq_hz=freq, modulation=mod,
+        unit_id=unit_id, log=lambda m: app.logger.info("[srs] %s", m),
+    )
+
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB — kneeboard mod packs can be 50-100+ MB
 app.secret_key = os.environ.get("APP_SECRET_KEY", "dev-insecure-secret-change-me")
 
