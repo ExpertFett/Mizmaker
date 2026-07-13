@@ -5,11 +5,12 @@
  * approach we built) and wires its MISSION-START load trigger, just like the
  * AEGIS / TIC / Carriers frameworks. One self-contained .lua per theater
  * (config + spawn engine inline; no MOOSE/MIST): infinite spawning along
- * real-world airways/hubs/GA regions, density-capped, F10-controllable.
+ * real-world airways/hubs/GA regions, density-capped. Fire-and-forget:
+ * no in-game controls — players cannot touch the ambient traffic.
  */
 import { useCallback, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
-import { addFrameworkTriggers, civTrafficScriptForTheater } from './frameworkTriggers';
+import { applyFrameworkTriggers, civTrafficScriptForTheater } from './frameworkTriggers';
 
 const SUPPORTED = [
   'Caucasus', 'Persian Gulf', 'Syria', 'Nevada', 'Mariana Islands',
@@ -19,19 +20,25 @@ const SUPPORTED = [
 
 export function CivTrafficSetupPanel() {
   const overview = useMissionStore((s) => s.overview);
+  const sessionId = useMissionStore((s) => s.sessionId);
   const theater = overview?.theater;
   const script = civTrafficScriptForTheater(theater);
   const [applied, setApplied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const apply = useCallback(() => {
+  const apply = useCallback(async () => {
     if (!script) return;
-    const added = addFrameworkTriggers([script]);
-    setApplied(true);
-    setMsg(added.length
-      ? `Load trigger added — ${script.bundledFile} bundles on download.`
-      : 'Load trigger was already present (nothing to add).');
-  }, [script]);
+    if (!sessionId) { setMsg('Load a mission first.'); return; }
+    try {
+      const added = await applyFrameworkTriggers(sessionId, [script]);
+      setApplied(true);
+      setMsg(added.length
+        ? `Load trigger added — ${script.bundledFile} bundles on download.`
+        : 'Load trigger was already present (nothing to add).');
+    } catch (e) {
+      setMsg(`Failed to add trigger: ${e instanceof Error ? e.message : 'error'}`);
+    }
+  }, [script, sessionId]);
 
   const card: React.CSSProperties = {
     background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
@@ -45,7 +52,7 @@ export function CivTrafficSetupPanel() {
           Civilian Air Traffic — curated corridors
         </h3>
         <p style={{ margin: '4px 0 0', fontSize: 12, color: '#aaaaaa' }}>
-          Real-world airways, airport hubs, and GA regions — the "anti-RAT" approach. Infinite runtime spawning, density-capped, controllable in-game from the <b>F10 "Civ Traffic"</b> menu (status / pause / resume / density).
+          Real-world airways, airport hubs, and GA regions — the "anti-RAT" approach. Infinite runtime spawning, tuned for a busy-but-safe density (air + ship traffic combined stays well under ~120 concurrent units per map, so even low-end servers cope). <b>Fire-and-forget</b> — no in-game menu; players can't touch the traffic.
         </p>
       </div>
 

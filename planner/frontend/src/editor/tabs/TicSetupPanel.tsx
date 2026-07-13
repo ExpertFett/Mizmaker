@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
-import { addFrameworkTriggers, TIC_BUNDLE } from './frameworkTriggers';
+import { applyFrameworkTriggers, TIC_BUNDLE } from './frameworkTriggers';
 
 /**
  * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
@@ -424,6 +424,7 @@ const STATUS_LABEL: Record<GroupStatus, string> = {
 export function TicSetupPanel() {
   const allGroupsRenamer = useMissionStore((s) => s.allGroupsRenamer);
   const missionGroups = useMissionStore((s) => s.groups);  // for per-group waypoints
+  const sessionId = useMissionStore((s) => s.sessionId);
   const addEdit = useEditStore((s) => s.addEdit);
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
@@ -651,7 +652,7 @@ export function TicSetupPanel() {
   }, []);
 
   // Apply all renames + waypoint tasks
-  const applyAll = useCallback(() => {
+  const applyAll = useCallback(async () => {
     for (const a of assignments) {
       // groupRename handles both group name + all unit names in one edit
       const unitNamesObj: Record<number, string> = {};
@@ -715,9 +716,12 @@ export function TicSetupPanel() {
     setDirtyGroups(new Set());
     // v1.19.54 — auto-add MOOSE + MIST + TIC load triggers so the user
     // doesn't have to hand-wire them on the Triggers tab. Idempotent —
-    // re-applying after a tweak doesn't duplicate.
-    addFrameworkTriggers(TIC_BUNDLE);
-  }, [assignments, addEdit, taskAssignments]);
+    // re-applying after a tweak doesn't duplicate. v1.19.113: self-persist
+    // (fetch-merge-save) so they survive download without a Triggers-tab visit.
+    if (sessionId) {
+      try { await applyFrameworkTriggers(sessionId, TIC_BUNDLE); } catch { /* non-fatal */ }
+    }
+  }, [assignments, addEdit, taskAssignments, sessionId]);
 
   // Summary stats — must be before any early return to satisfy Rules of Hooks
   const categoryStats = useMemo(() => {

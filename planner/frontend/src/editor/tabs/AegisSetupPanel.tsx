@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { GroupRenamerData } from '../../types/mission';
-import { addFrameworkTriggers, AEGIS_BUNDLE } from './frameworkTriggers';
+import { applyFrameworkTriggers, AEGIS_BUNDLE } from './frameworkTriggers';
 
 /**
  * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
@@ -206,6 +206,7 @@ function buildAegisName(a: AegisAssignment): string {
 export function AegisSetupPanel() {
   const allGroupsRenamer = useMissionStore((s) => s.allGroupsRenamer);
   const allUnits = useMissionStore((s) => s.units);
+  const sessionId = useMissionStore((s) => s.sessionId);
   const addEdit = useEditStore((s) => s.addEdit);
 
   const [coalitionFilter, setCoalitionFilter] = useState<'all' | 'blue' | 'red'>('all');
@@ -354,7 +355,7 @@ export function AegisSetupPanel() {
     );
   }, []);
 
-  const applyAll = useCallback(() => {
+  const applyAll = useCallback(async () => {
     for (const a of assignments) {
       const unitNamesObj: Record<number, string> = {};
       for (let i = 0; i < a.units.length; i++) {
@@ -377,9 +378,13 @@ export function AegisSetupPanel() {
     // so the user doesn't have to bounce over to the Triggers tab and
     // hand-add them. Idempotent: re-applying after a tweak doesn't add
     // duplicates (the helper checks for existing DO_SCRIPT_FILE rules).
-    addFrameworkTriggers(AEGIS_BUNDLE);
+    // v1.19.113: self-persist (fetch-merge-save) so the load triggers survive
+    // download even if the user never opens the Triggers tab.
+    if (sessionId) {
+      try { await applyFrameworkTriggers(sessionId, AEGIS_BUNDLE); } catch { /* non-fatal */ }
+    }
     setApplied(true);
-  }, [assignments, addEdit]);
+  }, [assignments, addEdit, sessionId]);
 
   const roleStats = useMemo(() => {
     const stats = new Map<AegisRole, number>();

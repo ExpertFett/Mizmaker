@@ -9,7 +9,7 @@
  */
 import { useCallback, useState } from 'react';
 import { useMissionStore } from '../../store/missionStore';
-import { addFrameworkTriggers, shipTrafficScriptForTheater } from './frameworkTriggers';
+import { applyFrameworkTriggers, shipTrafficScriptForTheater } from './frameworkTriggers';
 
 const SUPPORTED = [
   'Caucasus', 'Persian Gulf', 'Syria', 'Sinai', 'Mariana Islands',
@@ -18,19 +18,25 @@ const SUPPORTED = [
 
 export function ShipTrafficSetupPanel() {
   const overview = useMissionStore((s) => s.overview);
+  const sessionId = useMissionStore((s) => s.sessionId);
   const theater = overview?.theater;
   const script = shipTrafficScriptForTheater(theater);
   const [applied, setApplied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const apply = useCallback(() => {
+  const apply = useCallback(async () => {
     if (!script) return;
-    const added = addFrameworkTriggers([script]);
-    setApplied(true);
-    setMsg(added.length
-      ? `Load trigger added — ${script.bundledFile} bundles on download.`
-      : 'Load trigger was already present (nothing to add).');
-  }, [script]);
+    if (!sessionId) { setMsg('Load a mission first.'); return; }
+    try {
+      const added = await applyFrameworkTriggers(sessionId, [script]);
+      setApplied(true);
+      setMsg(added.length
+        ? `Load trigger added — ${script.bundledFile} bundles on download.`
+        : 'Load trigger was already present (nothing to add).');
+    } catch (e) {
+      setMsg(`Failed to add trigger: ${e instanceof Error ? e.message : 'error'}`);
+    }
+  }, [script, sessionId]);
 
   const card: React.CSSProperties = {
     background: '#222222', border: '1px solid #3a3a3a', borderRadius: 6,
@@ -44,7 +50,7 @@ export function ShipTrafficSetupPanel() {
           Civilian Ship Traffic — curated shipping lanes
         </h3>
         <p style={{ margin: '4px 0 0', fontSize: 12, color: '#aaaaaa' }}>
-          Real-world shipping lanes (TSS-style one-way pairs), anchorage queues at the ports, fishing fleets inshore. Lanes <b>pre-seed at mission start</b> — ships are slow, so the sea starts populated instead of filling over hours. Density-capped, controllable in-game from the <b>F10 "Ship Traffic"</b> menu. Runs happily alongside Civ Traffic.
+          Real-world shipping lanes (TSS-style one-way pairs), anchorage queues at the ports, fishing fleets inshore. Lanes <b>pre-seed at mission start</b> — ships are slow, so the sea starts populated instead of filling over hours. Every hull is placed on water at runtime (no beached ships). Tuned busy — the Hormuz Strait runs ~30+ vessels — while staying inside a shared air+ship budget so servers cope. <b>Fire-and-forget</b> — no in-game menu; players can't touch it. Runs happily alongside Civ Traffic.
         </p>
       </div>
 

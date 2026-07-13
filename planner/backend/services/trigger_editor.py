@@ -1029,6 +1029,18 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
             to_append.append(rule)
             continue
         start, end, rule_id = bounds
+        # ── Lossy-round-trip guard (v1.19.113) ──────────────────────────────
+        # `extract_triggers` cannot read INLINE-format action/condition BODIES
+        # — it returns them empty. So the frontend store (and the full list the
+        # export flush sends back here) carries every existing inline rule with
+        # an EMPTY body. Re-rendering that empty copy over the real entry would
+        # WIPE its actions — e.g. carrier-light triggers lose
+        # `a_set_carrier_illumination_mode`. If the incoming rule has neither
+        # conditions nor actions, treat it as "unchanged" and leave the existing
+        # entry byte-for-byte intact. Rules that actually carry a body (genuine
+        # edits, F10-menu regen, framework DO_SCRIPT_FILE adds) still replace.
+        if not rule.get("conditions") and not rule.get("actions"):
+            continue
         replacement = _render_inline_rule(rule, rule_id, indent="\t\t")
         # Preserve the trailing newline that would have followed the
         # original entry by appending one if the slice didn't already

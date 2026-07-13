@@ -18,6 +18,7 @@
  */
 
 import { useTriggerStore } from '../../store/triggerStore';
+import { getTriggers, saveTriggers } from '../../api/client';
 import type { TriggerRule } from '../../types/mission';
 
 export interface FrameworkScript {
@@ -58,8 +59,8 @@ export const TIC_BUNDLE: FrameworkScript[] = [
  * Civilian Air Traffic — curated real-world corridors (the "anti-RAT"
  * approach). One self-contained per-map script (config table + spawn engine
  * inline; no MOOSE/MIST) is bundled and loaded on MISSION START. Infinite,
- * density-capped, F10-controllable. Requires the Civil Aircraft Mod and
- * country EGYPT in the neutrals coalition. (v1.19.110)
+ * density-capped, fire-and-forget (no in-game controls). Requires the Civil
+ * Aircraft Mod and country EGYPT in the neutrals coalition. (v1.19.110)
  */
 const CIVTRAFFIC_BY_THEATER: Record<string, string> = {
   caucasus: 'CivTraffic-Caucasus.lua',
@@ -155,6 +156,59 @@ export function addFrameworkTriggers(scripts: FrameworkScript[]): string[] {
       actions: [{ type: 'DO_SCRIPT_FILE', params: { file: s.bundledFile } } as never],
     });
     added.push(s.name);
+  }
+  return added;
+}
+
+/**
+ * Self-persisting variant (v1.19.113) — fetch → merge → save immediately,
+ * mirroring AtisConfigTab / CarrierSetupPanel.
+ *
+ * Why this exists: `addFrameworkTriggers` only mutates the shared store and
+ * relies on the export-time flush to persist. But that flush is gated on the
+ * store being `loaded`, which only happens once the user opens the Triggers
+ * tab. So a user who applies Civ Traffic / Ship Traffic / AEGIS / TIC and
+ * downloads WITHOUT visiting the Triggers tab got the trigger silently dropped
+ * — the script never ran. This version always fetches the mission's current
+ * triggers first, so the save carries the existing rules regardless, and the
+ * framework trigger is written to the session .miz right away.
+ *
+ * Passing the full (existing + new) list to the backend is safe: the inline
+ * append path leaves untouched rules byte-for-byte (see the lossy-round-trip
+ * guard in trigger_editor.append_inline_rules), and the indexed replace path
+ * gets a fully-seeded list.
+ *
+ * Returns the names of newly-added scripts (empty = all already present).
+ */
+export async function applyFrameworkTriggers(
+  sessionId: string,
+  scripts: FrameworkScript[],
+): Promise<string[]> {
+  const data = await getTriggers(sessionId);
+  const merged: TriggerRule[] = [...(data.rules || [])];
+  let nextId = merged.reduce((max, r) => Math.max(max, r.id), 0);
+
+  const added: string[] = [];
+  for (const s of scripts) {
+    if (ruleAlreadyExists(merged, s.bundledFile)) continue;
+    nextId += 1;
+    merged.push({
+      id: nextId,
+      name: `Script: ${s.name}`,
+      enabled: true,
+      oneTime: false,
+      eventType: 'onMissionStart',
+      conditions: [],
+      actions: [{ type: 'DO_SCRIPT_FILE', params: { file: s.bundledFile } } as never],
+    });
+    added.push(s.name);
+  }
+
+  if (added.length > 0) {
+    await saveTriggers(sessionId, { rules: merged });
+    // Sync the shared store so the Triggers tab reflects the change and the
+    // later export flush is a clean no-op (loaded + not dirty).
+    useTriggerStore.getState().loadTriggers(merged, data.flags || [], data.audioFiles || []);
   }
   return added;
 }
