@@ -187,10 +187,18 @@ export async function applyFrameworkTriggers(
   const data = await getTriggers(sessionId);
   const merged: TriggerRule[] = [...(data.rules || [])];
   let nextId = merged.reduce((max, r) => Math.max(max, r.id), 0);
+  // Scripts the mission ALREADY bundles/loads (e.g. a MOOSE carrier mission
+  // that ships Moose_.lua). Re-adding a load for one of these double-loads the
+  // framework mid-mission — MOOSE reset wipes MENU_COALITION F10 menus. Skip
+  // them; the mission's own load stays. (This catches the case ruleAlreadyExists
+  // can't: an existing load referenced via resource key / a different rule name,
+  // which inline extraction can't see.)
+  const loaded = new Set((data.loadedScripts || []).map((f) => f.toLowerCase()));
 
   const added: string[] = [];
   for (const s of scripts) {
     if (ruleAlreadyExists(merged, s.bundledFile)) continue;
+    if (loaded.has(s.bundledFile.toLowerCase())) continue;
     nextId += 1;
     merged.push({
       id: nextId,

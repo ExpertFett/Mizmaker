@@ -9,26 +9,7 @@
  */
 
 import type { MissionWeather } from '../types/mission';
-
-// Cloud preset → coverage category (mirrors WeatherBriefCard's CLOUD_PRESETS)
-function presetCoverage(preset: string): 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC' {
-  if (!preset) return 'CLR';
-  const n = parseInt(preset.replace(/[^\d]/g, ''), 10);
-  if (isNaN(n)) return 'CLR';
-  // Preset 1-4: Few, 5-9: Scattered, 10-16: Broken, 17+: Overcast
-  if (n <= 4) return 'FEW';
-  if (n <= 9) return 'SCT';
-  if (n <= 16) return 'BKN';
-  return 'OVC';
-}
-
-function densityCoverage(d: number): 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC' {
-  if (d <= 0) return 'CLR';
-  if (d <= 2) return 'FEW';
-  if (d <= 4) return 'SCT';
-  if (d <= 7) return 'BKN';
-  return 'OVC';
-}
+import { resolveClouds } from './cloudPresets';
 
 function pad2(n: number): string { return String(Math.abs(Math.round(n))).padStart(2, '0'); }
 function pad3(n: number): string { return String(Math.abs(Math.round(n))).padStart(3, '0'); }
@@ -80,21 +61,22 @@ export function generateMetar(
   else if (wx.fog_enabled) parts.push('BR');
   if (wx.dust_enabled) parts.push('DU');
 
-  // Precipitation
-  if (wx.clouds_precipitation === 2) parts.push('TS');
-  else if (wx.clouds_precipitation === 1) parts.push('RA');
+  // Clouds + precipitation — driven by the preset (authoritative), falling back
+  // to the legacy density scale. Precip: a rainy/stormy preset OR an explicit
+  // clouds_precipitation field. This is why RainyPreset1 now reads OVC + RA
+  // instead of the old "FEW, no rain".
+  const clouds = resolveClouds(wx.clouds_preset, wx.clouds_density);
+  const isStorm = clouds.storm || wx.clouds_precipitation === 2;
+  const isRain = clouds.rain || wx.clouds_precipitation === 1;
+  if (isStorm) parts.push('TS');
+  else if (isRain) parts.push('RA');
 
-  // Clouds: coverage + ceiling in hundreds of feet
-  const coverage = wx.clouds_preset
-    ? presetCoverage(wx.clouds_preset)
-    : densityCoverage(wx.clouds_density);
-
-  if (coverage === 'CLR') {
+  if (clouds.cat === 'CLR') {
     parts.push('CLR');
   } else {
     const ceilFt = Math.round(metersToFeet(wx.clouds_base_m));
     const ceilHundreds = pad3(Math.round(ceilFt / 100));
-    parts.push(`${coverage}${ceilHundreds}`);
+    parts.push(`${clouds.cat}${ceilHundreds}`);
   }
 
   // Temperature (no dewpoint from DCS — show temp only with slash)

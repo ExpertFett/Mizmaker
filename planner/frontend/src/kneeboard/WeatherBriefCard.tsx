@@ -11,6 +11,7 @@ import {
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 import { generateMetar } from '../utils/metar';
+import { resolveClouds } from '../utils/cloudPresets';
 
 interface WeatherBriefCardProps {
   overview: MissionOverviewData;
@@ -32,53 +33,9 @@ function fmtWind(layer: { speed: number; dir: number }): string {
  * When a mission uses a preset, the legacy density field is meaningless — the
  * preset is the source of truth.
  */
-const CLOUD_PRESETS: Record<string, { coverage: string; rain?: boolean; storm?: boolean }> = {
-  Preset1: { coverage: 'Light Scattered 1' },
-  Preset2: { coverage: 'Light Scattered 2' },
-  Preset3: { coverage: 'High Scattered 1' },
-  Preset4: { coverage: 'High Scattered 2' },
-  Preset5: { coverage: 'Scattered 1' },
-  Preset6: { coverage: 'Scattered 2' },
-  Preset7: { coverage: 'Scattered 3' },
-  Preset8: { coverage: 'High Scattered 3' },
-  Preset9: { coverage: 'Scattered 4' },
-  Preset10: { coverage: 'Broken 1' },
-  Preset11: { coverage: 'Broken 2' },
-  Preset12: { coverage: 'Broken 3' },
-  Preset13: { coverage: 'Broken 4' },
-  Preset14: { coverage: 'Broken 5' },
-  Preset15: { coverage: 'Broken 6' },
-  Preset16: { coverage: 'Broken 7' },
-  Preset17: { coverage: 'Broken 8 (Rain)', rain: true },
-  Preset18: { coverage: 'Overcast 1' },
-  Preset19: { coverage: 'Overcast 2' },
-  Preset20: { coverage: 'Overcast 3' },
-  Preset21: { coverage: 'Overcast 4 (Rain)', rain: true },
-  Preset22: { coverage: 'Overcast 5 (Rain)', rain: true },
-  Preset23: { coverage: 'Overcast 6 (Rain)', rain: true },
-  Preset24: { coverage: 'Overcast 7 (Rain)', rain: true },
-  Preset25: { coverage: 'Overcast 8 (Rain)', rain: true },
-  Preset26: { coverage: 'Overcast 9 (Storm)', rain: true, storm: true },
-  Preset27: { coverage: 'Overcast 10 (Storm)', rain: true, storm: true },
-  RainyPreset1: { coverage: 'Overcast (Rain)', rain: true },
-  RainyPreset2: { coverage: 'Overcast (Rain Heavy)', rain: true },
-  RainyPreset3: { coverage: 'Overcast (Storm)', rain: true, storm: true },
-};
-
-function describeClouds(preset: string, density: number): { coverage: string; rain: boolean; storm: boolean } {
-  // Prefer preset when set — legacy density is unreliable with presets.
-  if (preset && preset.trim()) {
-    const known = CLOUD_PRESETS[preset];
-    if (known) return { coverage: known.coverage, rain: !!known.rain, storm: !!known.storm };
-    return { coverage: preset, rain: false, storm: false };  // unknown preset, show raw name
-  }
-  // Legacy 0-10 density scale
-  if (density <= 0) return { coverage: 'Clear', rain: false, storm: false };
-  if (density <= 2) return { coverage: `Few (${density}/10)`, rain: false, storm: false };
-  if (density <= 4) return { coverage: `Scattered (${density}/10)`, rain: false, storm: false };
-  if (density <= 7) return { coverage: `Broken (${density}/10)`, rain: false, storm: false };
-  return { coverage: `Overcast (${density}/10)`, rain: false, storm: false };
-}
+// Cloud preset → coverage/precip now lives in utils/cloudPresets.ts (shared with
+// the METAR generator + Current Weather page so all three agree). `.label` is
+// the descriptive coverage string this card renders.
 
 const rowStyle: React.CSSProperties = {
   display: 'flex',
@@ -124,8 +81,8 @@ export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
   const tempF = Math.round(wx.temperature_c * 9 / 5 + 32);
 
   // Determine cloud coverage from preset (preferred) or density (legacy)
-  const cloudInfo = describeClouds(wx.clouds_preset, wx.clouds_density);
-  const hasOvercast = /Overcast|Broken/i.test(cloudInfo.coverage);
+  const cloudInfo = resolveClouds(wx.clouds_preset, wx.clouds_density);
+  const hasOvercast = /Overcast|Broken/i.test(cloudInfo.label);
 
   // Flight condition — use ceiling only if Broken/Overcast (per FAA convention)
   const ceilCheck = hasOvercast ? ceilFt : 99999;
@@ -221,9 +178,9 @@ export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
       <div style={sectionTitle}>CLOUDS</div>
       <div style={rowStyle}>
         <span style={lbl}>Coverage</span>
-        <span style={val}>{cloudInfo.coverage}</span>
+        <span style={val}>{cloudInfo.label}</span>
       </div>
-      {(cloudInfo.coverage !== 'Clear') && ceilFt > 0 && (
+      {(cloudInfo.label !== 'Clear') && ceilFt > 0 && (
         <div style={rowStyle}>
           <span style={lbl}>Base / Thickness</span>
           <span style={val}>

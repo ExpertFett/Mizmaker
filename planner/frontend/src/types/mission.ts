@@ -471,4 +471,7 @@ export interface TriggerData {
   rules: TriggerRule[];
   flags: FlagInfo[];
   audioFiles: AudioFile[];
+  /** Basenames (lowercased) of .lua scripts already bundled in the .miz — used
+   *  to avoid re-adding a framework load (e.g. MOOSE) the mission already has. */
+  loadedScripts?: string[];
 }

@@ -21,32 +21,11 @@ import { useMissionStore } from '../store/missionStore';
 import { generateMetar } from '../utils/metar';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 import { contrailAltitudeFt } from '../utils/atmosphere';
+import { resolveClouds, type CloudCategory } from '../utils/cloudPresets';
 import type { MissionWeather } from '../types/mission';
 
-type Coverage = 'CLR' | 'FEW' | 'SCT' | 'BKN' | 'OVC';
-
-function coverageOf(preset: string, density: number): Coverage {
-  if (preset && preset.trim()) {
-    const n = parseInt(preset.replace(/[^\d]/g, ''), 10);
-    if (isNaN(n)) return 'SCT';
-    if (n <= 4) return 'FEW';
-    if (n <= 9) return 'SCT';
-    if (n <= 16) return 'BKN';
-    return 'OVC';
-  }
-  if (density <= 0) return 'CLR';
-  if (density <= 2) return 'FEW';
-  if (density <= 4) return 'SCT';
-  if (density <= 7) return 'BKN';
-  return 'OVC';
-}
-
-const COVERAGE_WORD: Record<Coverage, string> = {
+const COVERAGE_WORD: Record<CloudCategory, string> = {
   CLR: 'Clear', FEW: 'Few', SCT: 'Scattered', BKN: 'Broken', OVC: 'Overcast',
-};
-
-const PRECIP_WORD: Record<number, string> = {
-  0: 'None', 1: 'Rain', 2: 'Thunderstorm', 3: 'Snow', 4: 'Snow storm',
 };
 
 /** Seconds-of-day → "HHMM" (no leading zero handling needed at int math).
@@ -109,7 +88,8 @@ function Readout({ metar, wx, date, startSec }: {
   date?: string;
   startSec?: number;
 }) {
-  const cov = coverageOf(wx.clouds_preset, wx.clouds_density);
+  const clouds = resolveClouds(wx.clouds_preset, wx.clouds_density);
+  const cov = clouds.cat;
   const ceilFt = Math.round(metersToFeet(wx.clouds_base_m));
   const visSM = wx.visibility_m / 1609.34;
   const visKm = wx.visibility_m / 1000;
@@ -170,7 +150,14 @@ function Readout({ metar, wx, date, startSec }: {
     : `${COVERAGE_WORD[cov]} @ ${ceilFt.toLocaleString()} ft`
       + (cloudTopFt ? ` · tops ${cloudTopFt.toLocaleString()} ft` : '')
       + (wx.clouds_preset ? ` · ${wx.clouds_preset}` : '');
-  const precip = PRECIP_WORD[wx.clouds_precipitation] || 'None';
+  const precip =
+      clouds.storm ? 'Thunderstorm'
+    : clouds.rain ? 'Rain'
+    : wx.clouds_precipitation === 4 ? 'Snow storm'
+    : wx.clouds_precipitation === 3 ? 'Snow'
+    : wx.clouds_precipitation === 2 ? 'Thunderstorm'
+    : wx.clouds_precipitation === 1 ? 'Rain'
+    : 'None';
 
   // Hazards (only render when active)
   const fogActive = wx.fog_enabled && wx.fog_visibility > 0;
@@ -228,7 +215,7 @@ function Readout({ metar, wx, date, startSec }: {
       <Row label="Layer" value={cloudStr} />
       <Row label="Visibility" value={`${visKm.toFixed(1)} km / ${visSM > 6 ? '10+' : visSM.toFixed(1)} SM`} />
       <Row label="Precipitation" value={precip}
-           valueColor={wx.clouds_precipitation >= 2 ? '#d29922' : undefined} />
+           valueColor={clouds.storm || wx.clouds_precipitation >= 2 ? '#d29922' : undefined} />
       {wx.halo_preset && wx.halo_preset.trim() !== '' && (
         <Row label="Halo / Pillar" value={wx.halo_preset} />
       )}

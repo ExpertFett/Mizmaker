@@ -622,6 +622,10 @@ export function WeatherTab() {
           dust_enabled: next.dust_enabled,
           dust_density: next.dust_density,
           turbulence: next.ground_turbulence,
+          // Must be synced too — the [overview] effect rebuilds the local form
+          // from the store, so omitting this reverted the Ice Halo dropdown to
+          // its old value on every change (the .miz edit was already correct).
+          halo_preset: next.halo_preset,
         },
         date: `${next.year}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`,
         start_time: next.start_time,
