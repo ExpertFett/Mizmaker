@@ -15,6 +15,10 @@ SLPP>=1.2.3
 zstandard>=0.22
 pyproj>=3.6
 mgrs>=1.4
+# jsonschema — validates /api/export/community output against the vendored
+# MCT Community Standard schemas (backend/mct_community/schemas/) before it
+# leaves the server, so we never publish a non-conformant document.
+jsonschema>=4.20
 srtm.py>=0.3.7
 gunicorn>=22.0
 gevent>=24.0

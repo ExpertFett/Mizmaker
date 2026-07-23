@@ -94,6 +94,13 @@ from services.dtc_builder import (
 )
 from services.projection import THEATERS
 from services.waypoint_service import recompute_route
+
+# MCT Community Standards v2.0.0 interop (mctoolbox.uk). Vendored under
+# backend/mct_community/ rather than pip-installed: Railway builds from
+# requirements.txt and a local path dependency would not deploy. The
+# canonical copy lives in Claude Dump/MCT-Interop — re-sync from there.
+from mct_community import validate as mct_validate
+from mct_community.adapters import dcsopt as mct_dcsopt
 from services.stats import bump_missions_edited, get_missions_edited
 # Session store selection: when SUPABASE_URL is configured, sessions persist to
 # Supabase (survive Railway restarts); otherwise fall back to the in-memory
@@ -1494,6 +1501,122 @@ def export_json():
         return jsonify({"error": f"Export failed: {str(e)}"}), 400
 
 
+def _read_miz_dictionary(miz_bytes: bytes) -> dict:
+    """Pull l10n/DEFAULT/dictionary out of a .miz.
+
+    DCS keeps user-facing strings (sortie name, briefing, task text) here
+    and stores only DictKey references in the mission file. Without this
+    the community export would publish raw keys like "DictKey_sortie_5"
+    as the package name.
+    """
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(miz_bytes)) as z:
+            raw = z.read("l10n/DEFAULT/dictionary").decode("utf-8", errors="replace")
+    except (KeyError, zipfile.BadZipFile, TypeError):
+        return {}
+    try:
+        from slpp import SLPP
+        body = raw.split("=", 1)[1] if "=" in raw else raw
+        parsed = SLPP().decode(body.strip())
+    except Exception:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {k: v for k, v in parsed.items() if isinstance(v, str)}
+
+
+@app.route("/api/export/community", methods=["POST"])
+def export_community():
+    """Export the session as MCT Community Standard v2.0.0 document(s).
+
+    This is the interop export - the format other milsim tools (MCT /
+    mctoolbox.uk and anything else adopting the standard) can import.
+    The existing /api/export/json stays as-is; it emits our raw DCS-group
+    shape and nothing consumes it externally.
+
+    Body:
+        sessionId   required
+        coalition   "blue" | "red" | "all"  (default "all")
+        format      "op-task-air" | "flightplan"  (default "op-task-air")
+        validate    bool, default true - validate before returning
+
+    A document carries exactly one coalition, so "all" returns one
+    document per side that actually has flights.
+    """
+    body = request.get_json() or {}
+    sid = body.get("sessionId")
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    want_side = str(body.get("coalition") or "all").lower()
+    fmt = str(body.get("format") or "op-task-air").lower()
+    do_validate = body.get("validate", True)
+
+    try:
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        data = extract_full_mission_data(mission_dict, session["theater"])
+
+        # Same server-authoritative waypoint state the JSON export applies,
+        # so both exports describe the same routes.
+        for group in data["groups"]:
+            server_wps = session["group_waypoints"].get(group["groupName"])
+            if server_wps:
+                group["waypoints"] = server_wps
+            if group["waypoints"]:
+                group["waypoints"] = recompute_route(group["waypoints"])
+
+        dictionary = _read_miz_dictionary(session.get("miz_bytes"))
+
+        sides = mct_dcsopt.coalitions_present(data)
+        if want_side != "all":
+            sides = [s for s in sides if s == want_side]
+        if not sides:
+            return jsonify({
+                "error": f"No flights found for coalition '{want_side}'",
+                "available": mct_dcsopt.coalitions_present(data),
+            }), 400
+
+        emit = (mct_dcsopt.to_flight_plan if fmt == "flightplan"
+                else mct_dcsopt.to_op_task_air)
+
+        documents, problems = [], []
+        for side in sides:
+            doc = emit(
+                data,
+                theater=session["theater"],
+                coalition=side,
+                dictionary=dictionary,
+                filename=session.get("filename"),
+                tool_source="DCS:OPT",
+            )
+            if do_validate:
+                result = mct_validate.validate(doc)
+                if not result.is_valid:
+                    problems.append({
+                        "coalition": side,
+                        "errors": [{"path": e.path, "message": e.message}
+                                   for e in result.errors[:25]],
+                    })
+            documents.append(doc)
+
+        payload = {
+            "schema_version": mct_validate.load_schema(
+                documents[0]["schema"])["$id"].split("/")[-2],
+            "documents": documents,
+            "valid": not problems,
+        }
+        if problems:
+            payload["validation"] = problems
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({"error": f"Community export failed: {str(e)}"}), 400
+
+
 # --------------------------------------------------------------------------
 # Weapon / Launcher settings
 # --------------------------------------------------------------------------
@@ -1792,7 +1915,23 @@ def get_triggers():
         mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
         trigger_data = extract_triggers(mission_dict)
         audio_files = list_audio_files(session["miz_bytes"])
-        return jsonify({**trigger_data, "audioFiles": audio_files})
+        # Scripts already bundled in the .miz (basename, lowercased). The
+        # framework-trigger add uses this to avoid re-loading a script the
+        # mission already loads — e.g. a MOOSE-heavy carrier mission that
+        # already ships Moose_.lua. A second MOOSE load resets MOOSE mid-
+        # mission and wipes MENU_COALITION F10 menus (Fett's carrier bug).
+        loaded_scripts = []
+        try:
+            import io as _io
+            import zipfile as _zf
+            with _zf.ZipFile(_io.BytesIO(session["miz_bytes"])) as _z:
+                loaded_scripts = sorted({
+                    n.split("/")[-1].lower() for n in _z.namelist()
+                    if n.lower().endswith(".lua")
+                })
+        except Exception:
+            pass
+        return jsonify({**trigger_data, "audioFiles": audio_files, "loadedScripts": loaded_scripts})
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500

@@ -1,0 +1,2237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mctoolbox.uk/schema/v2.0.0/op-task-air.schema.json",
+  "title": "Community OpTaskAir",
+  "description": "Community standard schema for a simulation Op Task Air.  This describes the environment along with who is present and their intended plan.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "id",
+    "created_at",
+    "coalition",
+    "mission_context",
+    "package",
+    "assets",
+    "routes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "community-op-task-air",
+      "description": "Fixed identifier confirming this is a community-op-task-air document."
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$",
+      "description": "Semantic version of the schema this file conforms to. Parsers should reject files whose major version exceeds their supported major.",
+      "examples": [
+        "1.0.1-alpha.1+build.004"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique identifier for this Op Task Air (UUID)."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of when this plan was first created."
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of the last modification. Null if never updated after creation."
+    },
+    "tool_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Free-form user-agent string identifying the tool and version that produced this file (e.g. 'MCToolbox/1.2.0').",
+      "examples": [
+        "MCToolbox/1.2.0",
+        "LotATC-Generator/4.1"
+      ]
+    },
+    "coalition": {
+      "type": "string",
+      "enum": [
+        "BLUE",
+        "RED",
+        "NEUTRAL",
+        "OTHER"
+      ],
+      "description": "The coalition this Op Task Air belongs to."
+    },
+    "mission_context": {
+      "$ref": "#/$defs/MissionContext"
+    },
+    "package": {
+      "type": "array",
+      "description": "A flight asset participating in the package.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Package"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "A flight asset participating in the package.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Asset"
+      }
+    },
+    "routes": {
+      "type": "array",
+      "description": "Route definitions. Each Asset references one route by route_id.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Route"
+      }
+    },
+    "waypoints": {
+      "type": "array",
+      "description": "List of waypoints available for use in route legs. Each RouteLeg references a waypoint by start_waypoint and end_waypoint",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/Waypoint"
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "description": "Track definitions. Each waypoint can optionally references a track by track_id.",
+      "minItems": 0,
+      "items": {
+        "$ref": "#/$defs/Track"
+      }
+    },
+    "extensions": {
+      "$ref": "#/$defs/Extensions"
+    },
+    "airfields": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Definitions of non-standard or custom airfields / operating locations used in this plan (road bases, carriers, FARPs, etc.). Standard ICAO airfields do not need an entry here.",
+      "items": {
+        "$ref": "#/$defs/AirfieldDefinition"
+      }
+    }
+  },
+  "$defs": {
+    "MissionContext": {
+      "type": "object",
+      "description": "Anchors the plan in time, space, and environment.",
+      "required": [
+        "theatre",
+        "date",
+        "time_seconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "theatre": {
+          "type": "string",
+          "description": "Map / theatre name as recognised by the target sim.",
+          "examples": [
+            "Caucasus",
+            "Nevada",
+            "Syria",
+            "PersianGulf",
+            "Marianas",
+            "SouthAtlantic"
+          ]
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Mission UTC date in ISO 8601 format (YYYY-MM-DD)."
+        },
+        "time_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86399,
+          "description": "Mission start time expressed as seconds elapsed since midnight (UTC real-world time)."
+        },
+        "bullseye": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Bullseye reference points per coalition. Null if not used.",
+          "additionalProperties": false,
+          "properties": {
+            "blue": {
+              "$ref": "#/$defs/LatLon"
+            },
+            "red": {
+              "$ref": "#/$defs/LatLon"
+            }
+          }
+        },
+        "weather": {
+          "$ref": "#/$defs/Weather"
+        }
+      }
+    },
+    "Weather": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Meteorological conditions for the mission. Null if unknown or not applicable.",
+      "additionalProperties": false,
+      "properties": {
+        "temperature_c": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Surface temperature in degrees Celsius."
+        },
+        "qnh_hpa": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Altimeter setting (QNH) in hectopascals (hPa / mbar)."
+        },
+        "visibility_m": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Surface visibility in metres."
+        },
+        "winds": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Wind layers. Surface wind required; altitude layers optional.",
+          "additionalProperties": false,
+          "properties": {
+            "surface": {
+              "$ref": "#/$defs/WindLayer"
+            },
+            "altitude": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "description": "Upper wind layers ordered by ascending altitude.",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/WindLayer"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "altitude_ft"
+                    ],
+                    "properties": {
+                      "altitude_ft": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Altitude MSL in feet at which this wind layer applies."
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "clouds": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Cloud layer definition.",
+          "additionalProperties": false,
+          "properties": {
+            "density": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9,
+              "description": "Cloud density from 0 (clear) to 9 (overcast)."
+            },
+            "base_ft": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "Cloud base altitude MSL in feet."
+            },
+            "thickness_ft": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "Cloud layer thickness in feet."
+            }
+          }
+        }
+      }
+    },
+    "WindLayer": {
+      "type": "object",
+      "description": "A single wind observation at a given level.",
+      "required": [
+        "from_deg",
+        "speed_kts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from_deg": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 359,
+          "description": "Wind direction in degrees true (the direction the wind is coming FROM)."
+        },
+        "speed_kts": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wind speed in knots."
+        },
+        "altitude_ft": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Altitude MSL in feet (present only in altitude wind layer entries)."
+        }
+      }
+    },
+    "Package": {
+      "type": "object",
+      "description": "Groups assets into a tactical unit and holds shared comms and intel references.",
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this package."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable package name (e.g. 'PACKAGE SWIFT')."
+        },
+        "package_commander": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Callsign of the package commander / mission commander."
+        },
+        "comms_plan": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Ordered list of communications entries shared across the package.",
+          "items": {
+            "$ref": "#/$defs/CommsEntry"
+          }
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text planning notes for the package."
+        }
+      }
+    },
+    "CommsEntry": {
+      "type": "object",
+      "description": "A single communications channel definition.",
+      "required": [
+        "frequency_mhz",
+        "modulation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "ASSET",
+            "ATC",
+            "AWACS",
+            "FAC",
+            "GCI",
+            "JTAC",
+            "OTHER",
+            "PACKAGE",
+            "TANKER"
+          ],
+          "description": "Functional role for this frequency (e.g. 'ASSET', 'GCI', 'jtac', 'TANKER')."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable label for the channel (e.g. 'STRIKE COMMON', 'MAGIC 1')."
+        },
+        "frequency_mhz": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Frequency in megahertz."
+        },
+        "modulation": {
+          "type": "string",
+          "enum": [
+            "AM",
+            "FM",
+            "HF",
+            "UHF",
+            "VHF"
+          ],
+          "description": "Radio modulation type."
+        },
+        "callsign": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Callsign of the station on this frequency (e.g. 'MAGIC', 'SHELL 1')."
+        }
+      }
+    },
+    "Asset": {
+      "type": "object",
+      "description": "A flight asset participating in the package.",
+      "required": [
+        "id",
+        "package_id",
+        "callsign",
+        "flight_number",
+        "flight_type",
+        "flight_rules",
+        "flight_oversight",
+        "control_type",
+        "airframe",
+        "mission_type",
+        "route_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this asset."
+        },
+        "package_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier of the package the asset belongs to."
+        },
+        "callsign": {
+          "type": "string",
+          "description": "Flight callsign (e.g. 'VIPER 1')."
+        },
+        "tactical_callsign": {
+          "type": "string",
+          "description": "Tactical callsign, if blank assumed to be the same as callsign (e.g. 'VIPER 1')."
+        },
+        "flight_number": {
+          "type": [
+            "integer"
+          ],
+          "minimum": 1,
+          "maximum": 4,
+          "description": "The number of expected flight members for an asset."
+        },
+        "flight_type": {
+          "type": "string",
+          "enum": [
+            "S",
+            "N",
+            "G",
+            "M",
+            "X"
+          ],
+          "description": "ICAO Compliant Flight Type value (S=Scheduled air service, N=Non-scheduled air transport, G=General aviation, M=Military, X=Other than the above)"
+        },
+        "flight_rules": {
+          "type": "string",
+          "enum": [
+            "I",
+            "V",
+            "Y",
+            "Z"
+          ],
+          "description": "ICAO Compliant Flight Rules value (I=IFR, V=VFR, Y=IFR then VFR, Z=VFR then IFR).  Applied to whole route if not specified on a leg-by-leg basis."
+        },
+        "flight_oversight": {
+          "type": "string",
+          "enum": [
+            "Public",
+            "Restricted",
+            "Classified"
+          ],
+          "description": "Flight environment visibility - Public=Any consumer may display this leg.  Restricted=Consumers should restrict visibility according to their authorisation model.  Classified=Consumers should not disclose the leg except to explicitly authorised users.  Applied to whole route if not specified on a leg-by-leg basis."
+        },
+        "control_type":{
+          "type": "string",
+          "enum": [
+            "Human",
+            "AI",
+            "Unknown"
+          ],
+          "description": "Identifies whether the asset's flight members are currently controlled by a human participant or by AI.  Can be overridden at the flight_member level."
+        },
+        "flight_members": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "List of flight members, if known, that belong to an asset.",
+          "items": {
+            "$ref": "#/$defs/Flight_Member"
+          }
+        },
+        "airframe": {
+          "type": "string",
+          "description": "Aircraft type designation (e.g. 'F-16CM', 'F/A-18C', 'AH-64D').",
+          "examples": [
+            "F-16CM",
+            "F/A-18C",
+            "F-15C",
+            "F-15E",
+            "A-10CII",
+            "AH-64D",
+            "AV-8B",
+            "M-2000C",
+            "Su-27",
+            "Ka-50"
+          ]
+        },
+        "mission_type": {
+          "type": "string",
+          "enum": [
+            "AAR",
+            "AI",
+            "Airlift",
+            "AIRMOBILE",
+            "AMBUSHCAP",
+            "ASUW",
+            "ASW",
+            "AWACS",
+            "BAI",
+            "BARCAP",
+            "CAP",
+            "CAS",
+            "CAS_ON_CALL",
+            "DCA",
+            "DEAD",
+            "ESCORT",
+            "FAC(A)",
+            "HAVCAP",
+            "NUCLEAR",
+            "INTERDICTION",
+            "INTERCEPT",
+            "OCA_STRIKE",
+            "RESCAP",
+            "RECON",
+            "SEAD",
+            "STEALTH",
+            "STRIKE",
+            "TARCAP",
+            "TASMO",
+            "TRAINING",
+            "TRANSPORT",
+            "OTHER"
+          ],
+          "description": "Controlled vocabulary of mission types."
+        },
+        "primary_target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text description of the primary target or objective."
+        },
+        "dmpi_refs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Array of DMPI coordinates assigned to this package.",
+          "minItems": 0,
+          "items": {
+            "$ref": "#/$defs/LatLon"
+          }
+        },
+        "route_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference to the Route object (routes[].id) for this asset."
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text notes specific to this asset (e.g. stores load, special instructions)."
+        }
+      }
+    },
+    "Flight_Member": {
+      "type": "object",
+      "description": "One entry per flight member in the asset.",
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "LEAD",
+                "WING",
+                "ELEMENT_LEAD",
+                "ELEMENT_WING",
+                "SOLO",
+                null
+              ],
+              "description": "Role within the flight."
+          },
+          "tail_number": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Aircraft tail / side number."
+          },
+          "onboard_number": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "DCS onboard number (used for kneeboard and DTC generation)."
+          },
+          "pilot_name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Pilot's callsign or name for personalisation."
+          },
+          "control_type":{
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "Human",
+              "AI",
+              "Unknown"
+            ],
+            "description": "Identifies whether the flight member is currently controlled by a human participant or by AI.  Supersedes control_type at the asset level if supplied."
+          },
+          "transponder": {
+              "$ref": "#/$defs/Transponder"
+          },
+          "codes": {
+              "$ref": "#/$defs/Codes"
+          }   
+      }
+    },
+    "Transponder": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "IFF transponder settings. Null if not applicable.",
+      "additionalProperties": false,
+      "properties": {
+        "mode1": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{2}$|^00$",
+          "description": "Mode 1 code (2 digits). '00' = inactive."
+        },
+        "mode2": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}$|^0000$",
+          "description": "Mode 2 code (4 digits). '0000' = inactive."
+        },
+        "mode3": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}$|^0000$",
+          "description": "Mode 3/A code (4 octal digits). '0000' = inactive."
+        },
+        "mode4": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "active",
+            "inactive",
+            null
+          ],
+          "description": "Mode 4 status."
+        },
+        "mode_s": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9A-Fa-f]{6}$|^000000$",
+          "description": "Mode S hex address (6 hex digits). '000000' = inactive."
+        },
+        "emergency_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "7500",
+            "7600",
+            "7700",
+            null
+          ],
+          "description": "Pre-set emergency squawk code."
+        }
+      }
+    },
+    "Codes": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Additional IFF and weapon guidance codes. Null if not applicable.",
+      "additionalProperties": false,
+      "properties": {
+        "laser_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1111,
+          "maximum": 9999,
+          "description": "Laser designation code (4 digits, each 1-9)."
+        },
+        "laser_pulse": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Laser pulse repetition frequency identifier if required."
+        },
+        "sadl_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "SADL / JTIDS track identity for A-10 / F-15E coordination."
+        }
+      }
+    },
+    "Route": {
+      "type": "object",
+      "description": "Sequence of legs used by an asset.",
+      "required": [
+        "id",
+        "asset_id",
+        "legs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this route."
+        },
+        "asset_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference back to the Asset (assets[].id) that flies this route."
+        },
+        "tot_offset_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Offset in seconds from the package TOT reference used to stagger assets. Negative = early."
+        },
+        "fuel_plan": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Basic fuel planning data.",
+          "additionalProperties": false,
+          "properties": {
+            "bingo_lbs": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Bingo fuel state in pounds."
+            },
+            "joker_lbs": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Joker fuel state in pounds."
+            },
+            "initial_fuel_lbs": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Planned initial fuel load in pounds."
+            }
+          }
+        },
+        "legs": {
+          "type": "array",
+          "description": "List of legs that make the total route.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/RouteLeg"
+          }
+        }
+      }
+    },
+    "RouteLeg":{
+      "type": "object",
+      "description": "A navigational leg connecting two waypoints.",
+      "required": [
+        "leg_name",
+        "start_waypoint",
+        "end_waypoint"
+      ],
+      "additionalProperties": false,
+      "properties":{
+        "leg_name": {
+          "type": "string",
+          "description": "Unique name for this leg within the route"
+        },
+        "start_waypoint": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference to the starting Waypoint object (waypoints[].id) for this leg."
+        },
+        "end_waypoint": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference to the ending Waypoint object (waypoints[].id) for this leg."
+        },
+        "flight_rules": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "I",
+            "V",
+            "Y",
+            "Z"
+          ],
+          "description": "ICAO Compliant Flight Rules value (I=IFR, V=VFR, Y=IFR then VFR, Z=VFR then IFR).  Overrides Asset level value for this leg only."
+        },
+        "flight_oversight": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "Public",
+            "Restricted",
+            "Classified"
+          ],
+          "description": "Flight environment visibility - Public=Any consumer may display this leg.  Restricted=Consumers should restrict visibility according to their authorisation model.  Classified=Consumers should not disclose the leg except to explicitly authorised users.  Overrides Asset level value for this leg only."
+        }
+      }
+    },
+    "Waypoint": {
+      "type": "object",
+      "description": "A single navigation point on a route.",
+      "required": [
+        "id",
+        "type",
+        "latitude",
+        "longitude"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this waypoint."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ARRIVAL",
+            "BINGO",
+            "BULLSEYE",
+            "CP",
+            "CUSTOM",
+            "DEPARTURE",
+            "DIVERT",
+            "EGRESS",
+            "FENCE_IN",
+            "FENCE_OUT",
+            "FLYBY",
+            "FLYOVER",
+            "HAZARD",
+            "HOLDING",
+            "IP",
+            "MARKPOINT",
+            "PUSH",
+            "REFUEL",
+            "TURNAROUND",
+            "TGT",
+            "TCP"
+          ],
+          "description": "Semantic type of this waypoint. CUSTOM allows tool-specific types described in the notes field."
+        },
+        "track_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid",
+          "description": "Reference to a Track object (tracks[].id) for this waypoint."
+        },
+        "custom_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When type is CUSTOM, a free-text label describing the waypoint purpose."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable waypoint name or identifier (e.g. 'IP ALPHA', 'UGKO')."
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS-84). Positive = North."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS-84). Positive = East."
+        },
+        "altitude_ft": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Planned altitude in feet. Null if not altitude-constrained (e.g. a ground point)."
+        },
+        "altitude_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "MSL",
+            "AGL",
+            "FL",
+            null
+          ],
+          "description": "Altitude reference: mean sea level (MSL), above ground level (AGL), or flight level (FL)."
+        },
+        "speed": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Planned airspeed. Null if unconstrained."
+        },
+        "speed_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "IAS",
+            "TAS",
+            "CAS",
+            "EAS",
+            "GS",
+            "MACH"
+          ],
+          "description": "Speed type qualifier.  Null if speed unconstrained."
+        },
+        "eta_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86399,
+          "description": "Estimated time of arrival at this waypoint in seconds since midnight (UTC real-world time)."
+        },
+        "fixed_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86399,
+          "description": "Hard time-on-point in seconds since midnight"
+        },
+        "leave_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 86399,
+          "description": "Time expected to leave this waypoint in seconds since midnight"
+        },
+        "track_deg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 359,
+          "description": "Planned track / heading in degrees true from this waypoint."
+        },
+        "activity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Short description of what occurs at this waypoint (e.g. 'Commence attack run', 'Begin CAP racetrack')."
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Extended free-text notes for this waypoint."
+        },
+        "tacan_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "TACAN station identifier associated with this waypoint (e.g. '12X' for a tanker or navaid)."
+        },
+        "airfield_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Reference to an airfield at this waypoint. For standard ICAO aerodromes use the 4-character code (e.g. 'UGKO'). For custom/non-standard locations use the UUID of an entry in the top-level airfields array.",
+          "examples": [
+            "UGKO",
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          ]
+        }
+      }
+    },
+    "Track":{
+      "type": "object",
+      "description": "A track that one or more assets can use.",
+      "required": [
+        "id",
+        "initial_bearing",
+        "initial_altitude",
+        "track_length",
+        "track_width"
+      ],
+      "additionalProperties": false,
+      "properties":{
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this route."
+        },
+        "fix_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the initial fix for this track, if known."
+        },
+        "initial_bearing": {
+          "type": [
+            "integer"
+          ],
+          "minimum": 1,
+          "maximum": 359,
+          "description": "The True bearing to enter this track."
+        },
+        "initial_altitude": {
+          "type": [
+            "integer"
+          ],
+          "description": "The altitude in feet to enter this track."
+        },
+        "altitude_seperation": {
+          "type": [
+            "integer"
+          ],
+          "minimum": 0,
+          "description": "The altitude in feet between each stacked aircraft."
+        },
+        "track_length": {
+          "type": [
+            "integer"
+          ],
+          "minimum": 0,
+          "description": "The length in nautical miles of this track."
+        },
+        "track_width": {
+          "type": [
+            "integer"
+          ],
+          "minimum": 0,
+          "description": "The width in nautical miles of this track."
+        },
+        "points": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "A list of outer coordinates that define this tracks shape, starting with the entry.",
+          "minItems": 0,
+          "items": {
+            "$ref": "#/$defs/LatLon"
+          }
+        }
+      }
+    },
+    "LatLon": {
+      "type": "object",
+      "description": "A geographic coordinate pair (WGS-84 decimal degrees).",
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees. Positive = North."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees. Positive = East."
+        }
+      }
+    },
+    "Extensions": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Tool-specific extension data. Each key is a tool namespace (e.g. 'mctoolbox', 'lotatc', 'dcs_dtc'). Parsers from other tools must silently ignore namespaces they do not recognise.",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Tool-specific payload. Internal structure is defined by the owning tool."
+      },
+      "properties": {
+        "mctoolbox": {
+          "type": "object",
+          "description": "MCToolbox-specific extension data.",
+          "additionalProperties": true,
+          "properties": {
+            "package_asset_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "MCToolbox internal package asset identifier."
+            },
+            "kneeboard_template": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Name of the kneeboard template to use when generating kneeboards from this plan."
+            },
+            "intel_picture_hash": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Hash of the Intel picture snapshot at the time of export, for consistency checking."
+            },
+            "op_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "MCToolbox Operation ID this plan belongs to."
+            },
+            "mission_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "description": "MCToolbox Mission ID this plan belongs to."
+            }
+          }
+        },
+        "lotatc": {
+          "type": "object",
+          "description": "LotATC-specific extension data for GCI picture generation.",
+          "additionalProperties": true,
+          "properties": {
+            "detection_range_m": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Distance radius of maximum radar detection in metres."
+            },
+            "threat_range_m": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Distance radius of threat in metres."
+            },
+            "rcs": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Radar cross-section value for this unit."
+            },
+            "is_carrier": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Marks this asset as a carrier (enables approach / marshal procedures in LotATC)."
+            },
+            "track_number": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "LotATC track number (TN) for this asset."
+            },
+            "radar": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "Radar parameters for assets that have an emitting radar.",
+              "additionalProperties": true,
+              "properties": {
+                "radar_status": {
+                  "type": "boolean"
+                },
+                "scan_period": {
+                  "type": "number"
+                },
+                "aperture": {
+                  "type": "number"
+                },
+                "pitch": {
+                  "type": "number"
+                },
+                "scan_volume": {
+                  "type": "object",
+                  "properties": {
+                    "azimuth": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "elevation": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "dcs_dtc": {
+          "type": "object",
+          "description": "DCS-DTC / native DTC export extension data.",
+          "additionalProperties": true,
+          "properties": {
+            "profile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "DTC profile name (e.g. 'f16-viper', 'f18-hornet')."
+            },
+            "cmds_program": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "description": "Selected countermeasures (CMDS) program number."
+            },
+            "mfd_pages": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "MFD page configuration, structure depends on airframe.",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    "AirfieldDefinition": {
+      "type": "object",
+      "description": "Definition of a non-standard or custom airfield / operating location.",
+      "required": [
+        "id",
+        "type",
+        "name",
+        "latitude",
+        "longitude"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this airfield definition, used as the airfield_ref value on waypoints."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ICAO",
+            "CARRIER",
+            "ROAD_BASE",
+            "FARP",
+            "CUSTOM"
+          ],
+          "description": "Classification of the operating location."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name (e.g. 'Valtatie 4 Strip', 'CVN-71 Theodore Roosevelt', 'FARP EAGLE')."
+        },
+        "icao_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z0-9]{4}$",
+          "description": "ICAO code if one exists. Null for road bases, FARPs, carriers, and other non-ICAO locations."
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS-84). For carriers, the planned position at mission start."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS-84). For carriers, the planned position at mission start."
+        },
+        "elevation_ft": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Elevation above MSL in feet. Typically 0 for carriers."
+        },
+        "magnetic_variation_deg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Local magnetic variation in degrees. Positive = East, negative = West."
+        },
+        "runways": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Runway or landing surface definitions at this location.",
+          "items": {
+            "$ref": "#/$defs/RunwayDefinition"
+          }
+        },
+        "carrier": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Carrier-specific properties. Populated only when type is CARRIER.",
+          "additionalProperties": false,
+          "required": [
+            "ship_name",
+            "tacan_channel",
+            "tacan_band"
+          ],
+          "properties": {
+            "ship_name": {
+              "type": "string",
+              "description": "Full ship name / hull designation."
+            },
+            "ship_class": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Ship class (e.g. 'Nimitz', 'Ford', 'Queen Elizabeth')."
+            },
+            "course_deg": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 359,
+              "description": "Planned Base Recovery Course (BRC) in degrees true."
+            },
+            "speed_kts": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "Planned carrier speed in knots."
+            },
+            "tacan_channel": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 126,
+              "description": "TACAN channel."
+            },
+            "tacan_band": {
+              "type": "string",
+              "enum": [
+                "X",
+                "Y"
+              ],
+              "description": "TACAN band."
+            },
+            "tacan_callsign": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 4,
+              "description": "TACAN callsign (max 4 chars)."
+            },
+            "icls_channel": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 20,
+              "description": "ICLS channel."
+            },
+            "acls_capable": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Whether the carrier supports ACLS."
+            },
+            "link4a_frequency_mhz": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Link 4A datalink frequency in MHz for ACLS."
+            },
+            "marshal_frequency_mhz": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Marshal / approach control frequency in MHz."
+            },
+            "lso_frequency_mhz": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "LSO frequency in MHz."
+            },
+            "deck_state": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "GREEN",
+                "YELLOW",
+                "RED"
+              ],
+              "description": "Planned deck state at recovery time."
+            }
+          }
+        },
+        "road_base": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Road base / highway strip specific properties. Populated only when type is ROAD_BASE.",
+          "additionalProperties": false,
+          "properties": {
+            "road_name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Road or highway designation (e.g. 'Valtatie 4', 'E18 Kotka Strip')."
+            },
+            "surface": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "ASPHALT",
+                "CONCRETE",
+                "GRAVEL",
+                "DIRT",
+                "GRASS",
+                "ICE",
+                "OTHER"
+              ],
+              "description": "Surface type."
+            },
+            "usable_length_m": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "Usable landing/take-off run in metres after obstacles are cleared."
+            },
+            "width_m": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "Usable strip width in metres."
+            },
+            "obstacles_cleared": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Whether road furniture has been cleared for the exercise."
+            },
+            "approach_aids": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "description": "Temporary approach aids deployed (e.g. 'Portable TACAN', 'PAPI', 'Smoke').",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "farp": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "FARP-specific properties. Populated only when type is FARP.",
+          "additionalProperties": false,
+          "properties": {
+            "designation": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "FARP designation or callsign (e.g. 'FARP EAGLE')."
+            },
+            "fuel_types": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "description": "Available fuel grades.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "AVGAS",
+                  "JET-A",
+                  "JP-8",
+                  "JP-4",
+                  "JP-5",
+                  "F-34",
+                  "F-44",
+                  "OTHER"
+                ]
+              }
+            },
+            "capacity_lbs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Total fuel capacity in pounds."
+            },
+            "rearming": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Whether rearming capability is available."
+            },
+            "frequency_mhz": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 1000,
+              "description": "FARP operations frequency in MHz."
+            },
+            "pad_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "description": "Number of simultaneous servicing pads."
+            }
+          }
+        },
+        "comms": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Communications channels for this airfield (tower, ground, approach, LSO, etc.).",
+          "items": {
+            "$ref": "#/$defs/CommsEntry"
+          }
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text notes (NOTAMs, special instructions, etc.)."
+        }
+      }
+    },
+    "RunwayDefinition": {
+      "type": "object",
+      "description": "A single runway, landing strip, or carrier landing spot.",
+      "required": [
+        "identifier"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "Runway or spot identifier (e.g. '13', '31L', 'SPOT 3', 'N/S STRIP')."
+        },
+        "track_deg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 359,
+          "description": "True heading of the landing direction."
+        },
+        "length_m": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Length in metres."
+        },
+        "width_m": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Width in metres."
+        },
+        "surface": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "ASPHALT",
+            "CONCRETE",
+            "GRAVEL",
+            "DIRT",
+            "GRASS",
+            "DECK",
+            "ICE",
+            "OTHER"
+          ],
+          "description": "Surface type. Use DECK for carrier landing areas."
+        },
+        "ils_frequency_mhz": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "ILS localiser frequency in MHz. Null if no ILS."
+        },
+        "ils_course_deg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 359,
+          "description": "ILS inbound course in degrees true."
+        },
+        "threshold_latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude of the runway threshold."
+        },
+        "threshold_longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude of the runway threshold."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema": "community-op-task-air",
+      "schema_version": "2.0.0",
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "created_at": "2025-03-15T14:30:00Z",
+      "updated_at": null,
+      "tool_source": "MCToolbox/1.0.0",
+      "coalition": "BLUE",
+      "mission_context": {
+        "theatre": "Caucasus",
+        "date": "2025-03-15",
+        "time_seconds": 25200,
+        "bullseye": {
+          "blue": {
+            "latitude": 41.123,
+            "longitude": 44.567
+          },
+          "red": {
+            "latitude": 40.888,
+            "longitude": 45.001
+          }
+        },
+        "weather": {
+          "temperature_c": 12,
+          "qnh_hpa": 1013,
+          "visibility_m": 10000,
+          "winds": {
+            "surface": {
+              "from_deg": 270,
+              "speed_kts": 10
+            },
+            "altitude": [
+              {
+                "altitude_ft": 10000,
+                "from_deg": 290,
+                "speed_kts": 35
+              },
+              {
+                "altitude_ft": 20000,
+                "from_deg": 310,
+                "speed_kts": 55
+              }
+            ]
+          },
+          "clouds": {
+            "density": 3,
+            "base_ft": 8000,
+            "thickness_ft": 2000
+          }
+        }
+      },
+      "package": [
+        {
+          "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          "name": "PACKAGE SWIFT",
+          "package_commander": "VIPER 1",
+          "comms_plan": [
+            {
+              "role": "ASSET",
+              "label": "STRIKE COMMON",
+              "frequency_mhz": 264.0,
+              "modulation": "AM",
+              "callsign": null
+            },
+            {
+              "role": "PACKAGE",
+              "label": "MAGIC",
+              "frequency_mhz": 251.0,
+              "modulation": "AM",
+              "callsign": "MAGIC"
+            }
+          ],
+          "notes": "TOT 07:30 local. Egress north via CP BRAVO."
+        }
+      ],
+      "assets": [
+        {
+          "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+          "package_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          "callsign": "VIPER 1",
+          "tactical_callsign": "APOLLO-1",
+          "flight_number": 2,
+          "flight_type": "M",
+          "flight_rules": "I",
+          "flight_oversight": "Restricted",
+          "control_type": "Human",
+          "flight_members":[
+            {
+              "role": "LEAD",
+              "tail_number": "AF-86",
+              "onboard_number": "1",
+              "pilot_name": "Morty",
+              "control_type": "Human",
+              "transponder": {
+                "mode1": "13",
+                "mode2": "4521",
+                "mode3": "4521",
+                "mode4": "active",
+                "mode_s": "A34E12",
+                "emergency_code": "7700"
+              },
+              "codes": {
+                "laser_code": 1741,
+                "laser_pulse": null,
+                "sadl_id": null
+              }
+            },
+            {
+              "role": "WING",
+              "tail_number": "AF-87",
+              "onboard_number": "2",
+              "pilot_name": "Boris",
+              "control_type": "Human",
+              "transponder": {
+                "mode1": null,
+                "mode2": null,
+                "mode3": "4522",
+                "mode4": "active",
+                "mode_s": "A35E13",
+                "emergency_code": "7700"
+              },
+              "codes": {
+                "laser_code": 1742,
+                "laser_pulse": null,
+                "sadl_id": null
+              }
+            }
+          ],
+          "airframe": "F-16CM",
+          "mission_type": "STRIKE",
+          "primary_target": "Batumi SAM site",
+          "dmpi_refs": null,
+          "route_id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+          "notes": "GBU-12 x4, AIM-120 x2, AIM-9 x2"
+        }
+      ],
+      "routes": [
+        {
+          "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+          "asset_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+          "tot_offset_seconds": 0,
+          "fuel_plan": {
+            "bingo_lbs": 2500,
+            "joker_lbs": 3500,
+            "initial_fuel_lbs": 7000
+          },
+          "legs":[
+            {
+              "leg_name": "leg 1",
+              "start_waypoint": "22e01f1b-c671-4b15-adb6-cb8b852cfa84",
+              "end_waypoint": "28bc1d4a-6747-4f60-9cae-407597b00887",
+              "flight_rules": null,
+              "flight_oversight": null
+            },
+            {
+              "leg_name": "leg 2",
+              "start_waypoint": "28bc1d4a-6747-4f60-9cae-407597b00887",
+              "end_waypoint": "8ba5e9aa-1b4d-4f00-8d0f-fa13951c6eec",
+              "flight_rules": null,
+              "flight_oversight": null
+            },
+            {
+              "leg_name": "leg 3",
+              "start_waypoint": "8ba5e9aa-1b4d-4f00-8d0f-fa13951c6eec",
+              "end_waypoint": "fca73ce2-ba26-4148-9125-8c0fc7f58c74",
+              "flight_rules": null,
+              "flight_oversight": null
+            },
+            {
+              "leg_name": "leg 4",
+              "start_waypoint": "fca73ce2-ba26-4148-9125-8c0fc7f58c74",
+              "end_waypoint": "d23d07a3-da63-4b6d-9787-6fbca1edfa3a",
+              "flight_rules": null,
+              "flight_oversight": null
+            },
+            {
+              "leg_name": "leg 5",
+              "start_waypoint": "d23d07a3-da63-4b6d-9787-6fbca1edfa3a",
+              "end_waypoint": "3b914967-562c-4331-ae99-f8bb72e82fd2",
+              "flight_rules": null,
+              "flight_oversight": null
+            },
+            {
+              "leg_name": "leg 6",
+              "start_waypoint": "3b914967-562c-4331-ae99-f8bb72e82fd2",
+              "end_waypoint": "22e01f1b-c671-4b15-adb6-cb8b852cfa84",
+              "flight_rules": "V",
+              "flight_oversight": null
+            }
+          ]
+        }
+      ],
+      "waypoints": [
+            {
+              "id": "22e01f1b-c671-4b15-adb6-cb8b852cfa84",
+              "type": "DEPARTURE",
+              "track_id": null,
+              "custom_type": null,
+              "name": "UGKO",
+              "latitude": 42.1673,
+              "longitude": 41.611,
+              "altitude_ft": 0,
+              "altitude_ref": "AGL",
+              "speed": 0,
+              "speed_type": "GS",
+              "eta_seconds": 25200,
+              "fixed_seconds": null,
+              "leave_seconds": null,
+              "track_deg": 130,
+              "activity": "Takeoff",
+              "notes": "Runway 13. Expect radar trail departure.",
+              "tacan_ref": null,
+              "airfield_ref": "UGKO"
+            },
+            {
+              "id": "28bc1d4a-6747-4f60-9cae-407597b00887",
+              "type": "FENCE_IN",
+              "track_id": null,
+              "custom_type": null,
+              "name": "FENCE IN",
+              "latitude": 41.95,
+              "longitude": 43.1,
+              "altitude_ft": 20000,
+              "altitude_ref": "MSL",
+              "speed": 480,
+              "speed_type": "TAS",
+              "eta_seconds": 26700,
+              "fixed_seconds": null,
+              "leave_seconds": null,
+              "track_deg": 195,
+              "activity": "Fence in, master arm on",
+              "notes": null,
+              "tacan_ref": null,
+              "airfield_ref": null
+            },
+            {
+              "id": "8ba5e9aa-1b4d-4f00-8d0f-fa13951c6eec",
+              "type": "IP",
+              "track_id": null,
+              "custom_type": null,
+              "name": "IP ALPHA",
+              "latitude": 41.89,
+              "longitude": 43.21,
+              "altitude_ft": 20000,
+              "altitude_ref": "MSL",
+              "speed": 480,
+              "speed_type": "TAS",
+              "eta_seconds": 26940,
+              "fixed_seconds": null,
+              "leave_seconds": null,
+              "track_deg": 200,
+              "activity": "Commence attack run",
+              "notes": null,
+              "tacan_ref": null,
+              "airfield_ref": null
+            },
+            {
+              "id": "fca73ce2-ba26-4148-9125-8c0fc7f58c74",
+              "type": "TGT",
+              "track_id": null,
+              "custom_type": null,
+              "name": "AO",
+              "latitude": 41.7,
+              "longitude": 41.65,
+              "altitude_ft": 15000,
+              "altitude_ref": "MSL",
+              "speed": 450,
+              "speed_type": "TAS",
+              "eta_seconds": 27000,
+              "fixed_seconds": 27000,
+              "leave_seconds": null,
+              "track_deg": 210,
+              "activity": "Weapons release",
+              "notes": "GBU-12 LASING 1688",
+              "tacan_ref": null,
+              "airfield_ref": null
+            },
+            {
+              "id": "d23d07a3-da63-4b6d-9787-6fbca1edfa3a",
+              "type": "EGRESS",
+              "track_id": null,
+              "custom_type": null,
+              "name": "CP BRAVO",
+              "latitude": 41.6,
+              "longitude": 41.9,
+              "altitude_ft": 5000,
+              "altitude_ref": "MSL",
+              "speed": 420,
+              "speed_type": "TAS",
+              "eta_seconds": 27180,
+              "fixed_seconds": null,
+              "leave_seconds": null,
+              "track_deg": 340,
+              "activity": "Egress north",
+              "notes": null,
+              "tacan_ref": null,
+              "airfield_ref": null
+            },
+            {
+              "id": "3b914967-562c-4331-ae99-f8bb72e82fd2",
+              "type": "ARRIVAL",
+              "track_id": null,
+              "custom_type": null,
+              "name": "UGKO",
+              "latitude": 42.1673,
+              "longitude": 41.611,
+              "altitude_ft": 0,
+              "altitude_ref": "AGL",
+              "speed": null,
+              "speed_type": null,
+              "eta_seconds": 28800,
+              "fixed_seconds": null,
+              "leave_seconds": null,
+              "track_deg": null,
+              "activity": "Recovery",
+              "notes": null,
+              "tacan_ref": null,
+              "airfield_ref": "UGKO"
+            }
+          ],
+      "tracks":[
+        {
+          "id": "252aa576-fd74-44e1-bf82-292b79196682",
+          "fix_name": "LSV",
+          "initial_bearing": 29,
+          "initial_altitude": 10300,
+          "altitude_seperation": 1000,
+          "track_length": 7,
+          "track_width": 1,
+          "points": [
+            {
+              "latitude": 35.9984,
+              "longitude": -115.3744
+            }
+          ]
+        }
+      ],
+      "extensions": {
+        "mctoolbox": {
+          "package_asset_id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+          "kneeboard_template": "f16-standard",
+          "intel_picture_hash": "sha256:abc123",
+          "op_id": "a7b8c9d0-e1f2-3456-abcd-567890123456",
+          "mission_id": "b8c9d0e1-f2a3-4567-bcde-678901234567"
+        },
+        "lotatc": {
+          "detection_range_m": 50000,
+          "threat_range_m": 70000,
+          "rcs": 6,
+          "is_carrier": false,
+          "track_number": "TN1234",
+          "radar": null
+        },
+        "dcs_dtc": {
+          "profile": "f16-viper",
+          "cmds_program": 1,
+          "mfd_pages": null
+        },
+        "DKS": {
+          "template_id": "02554d85-ad98-414b-a282-17e4af73d4f9",
+          "profile_id": "6d59caec-2d6d-4ec6-be5d-05c2e5377bcf"
+        }
+      },
+      "airfields": [
+        {
+          "id": "c1d2e3f4-a5b6-7890-cdef-123456789abc",
+          "type": "ROAD_BASE",
+          "name": "Valtatie 4 Kemi Strip",
+          "icao_code": null,
+          "latitude": 65.73,
+          "longitude": 24.58,
+          "elevation_ft": 16,
+          "magnetic_variation_deg": 8.5,
+          "runways": [
+            {
+              "identifier": "18/36",
+              "track_deg": 180,
+              "length_m": 2100,
+              "width_m": 18,
+              "surface": "ASPHALT",
+              "ils_frequency_mhz": null,
+              "ils_course_deg": null,
+              "threshold_latitude": 65.739,
+              "threshold_longitude": 24.58
+            }
+          ],
+          "carrier": null,
+          "road_base": {
+            "road_name": "Valtatie 4",
+            "surface": "ASPHALT",
+            "usable_length_m": 2100,
+            "width_m": 18,
+            "obstacles_cleared": true,
+            "approach_aids": [
+              "Portable PAPI",
+              "Smoke"
+            ]
+          },
+          "farp": null,
+          "comms": [
+            {
+              "role": "ATC",
+              "label": "KEMI OPS",
+              "frequency_mhz": 122.7,
+              "modulation": "AM",
+              "callsign": "KEMI"
+            }
+          ],
+          "notes": "Road furniture cleared 500m either side of threshold. RWY 18 preferred. Max crosswind 15kt."
+        },
+        {
+          "id": "d2e3f4a5-b6c7-8901-defa-234567890bcd",
+          "type": "CARRIER",
+          "name": "CVN-71 Theodore Roosevelt",
+          "icao_code": null,
+          "latitude": 36.5,
+          "longitude": 33.2,
+          "elevation_ft": 0,
+          "magnetic_variation_deg": 4.2,
+          "runways": [
+            {
+              "identifier": "CATIII",
+              "track_deg": 9,
+              "length_m": 310,
+              "width_m": 24,
+              "surface": "DECK",
+              "ils_frequency_mhz": null,
+              "ils_course_deg": null,
+              "threshold_latitude": null,
+              "threshold_longitude": null
+            }
+          ],
+          "carrier": {
+            "ship_name": "CVN-71 Theodore Roosevelt",
+            "ship_class": "Nimitz",
+            "course_deg": 9,
+            "speed_kts": 25,
+            "tacan_channel": 71,
+            "tacan_band": "X",
+            "tacan_callsign": "TDR",
+            "icls_channel": 1,
+            "acls_capable": true,
+            "link4a_frequency_mhz": 336.0,
+            "marshal_frequency_mhz": 263.0,
+            "lso_frequency_mhz": 264.0,
+            "deck_state": "GREEN"
+          },
+          "road_base": null,
+          "farp": null,
+          "comms": [
+            {
+              "role": "ATC",
+              "label": "MARSHALL",
+              "frequency_mhz": 263.0,
+              "modulation": "AM",
+              "callsign": "MARSHALL"
+            },
+            {
+              "role": "ATC",
+              "label": "PADDLES",
+              "frequency_mhz": 264.0,
+              "modulation": "AM",
+              "callsign": "PADDLES"
+            }
+          ],
+          "notes": "BRC 009. CV-1 approach. Expect Case III at night. ACLS active on Link 4A 336.000."
+        }
+      ]
+    }
+  ]
+}
