@@ -10,7 +10,8 @@
 CivTrafficCFG = {
   mapName = "GermanyColdWar",
   country = "EGYPT",
-  maxActive = 28,
+  maxActive = 42,
+  density = 0.58,
   lanes = {
     {
       name = "G3E",
@@ -403,7 +404,7 @@ end
 local function turningPoint(x, y, alt, speed, first)
   return {
     x = x, y = y, alt = alt, alt_type = "BARO",
-    type = "Turning Point", action = "Turning Point",
+    type = "Turning Point", action = "Turning Point", name = "",
     speed = speed, speed_locked = true, ETA = 0, ETA_locked = first or false,
     formation_template = "",
     task = first and optionsTask() or { id = "ComboTask", params = { tasks = {} } },
@@ -413,7 +414,7 @@ end
 local function landPoint(x, y, airdromeId, speed)
   return {
     x = x, y = y, alt = 0, alt_type = "BARO",
-    type = "Land", action = "Landing", airdromeId = airdromeId,
+    type = "Land", action = "Landing", airdromeId = airdromeId, name = "",
     speed = speed, speed_locked = true, ETA = 0, ETA_locked = false,
     formation_template = "",
     task = { id = "ComboTask", params = { tasks = {} } },
@@ -423,7 +424,7 @@ end
 local function parkingPoint(x, y, airdromeId, speed)
   return {
     x = x, y = y, alt = 20, alt_type = "BARO",
-    type = "TakeOffParking", action = "From Parking Area", airdromeId = airdromeId,
+    type = "TakeOffParking", action = "From Parking Area", airdromeId = airdromeId, name = "",
     speed = speed, speed_locked = true, ETA = 0, ETA_locked = true,
     formation_template = "",
     task = optionsTask(),
@@ -450,8 +451,10 @@ local function addPlane(spec)
   }
   if livs then unit.livery_id = pick(livs) end
   local group = {
-    name = name, task = "Transport",
-    communication = true, frequency = 251, modulation = 0,
+    name = name, task = "Transport", tasks = {},
+    communication = true, frequency = 251, modulation = 0, radioSet = false,
+    hidden = false, hiddenOnPlanner = false, hiddenOnMFD = false,
+    uncontrolled = false, start_time = 0,
     x = spec.points[1].x, y = spec.points[1].y,
     units = { unit },
     route = { points = spec.points },
@@ -461,6 +464,15 @@ local function addPlane(spec)
   end)
   if ok then
     CT.spawned[name] = { dieAt = spec.dieAfter and (timer.getTime() + spec.dieAfter) or nil }
+    -- addGroup can "succeed" without creating anything; verify shortly after
+    timer.scheduleFunction(function()
+      local g = Group.getByName(name)
+      if not (g and g:isExist()) then
+        CT.log("SPAWN SILENTLY REJECTED by DCS: " .. name)
+        CT.spawned[name] = nil
+      end
+      return nil
+    end, nil, timer.getTime() + 5)
   else
     CT.log("SPAWN FAILED " .. name .. ": " .. tostring(err))
   end
@@ -599,39 +611,18 @@ local function gaLoop(region)
   return timer.getTime() + region.cad * (0.75 + math.random() * 0.5) * CT.densityMul
 end
 
--- -------------------------------------------------------------- F10 menu --
-local function buildMenu()
-  local root = missionCommands.addSubMenu("Civ Traffic")
-  missionCommands.addCommand("Status", root, function()
-    trigger.action.outText(string.format(
-      "CivTraffic: %d aircraft active | paused=%s | density x%.2g",
-      aliveCount(), tostring(CT.paused), 1 / CT.densityMul), 15)
-  end)
-  missionCommands.addCommand("Pause spawning", root, function()
-    CT.paused = true
-    trigger.action.outText("CivTraffic: spawning PAUSED (aircraft aloft continue)", 10)
-  end)
-  missionCommands.addCommand("Resume spawning", root, function()
-    CT.paused = false
-    trigger.action.outText("CivTraffic: spawning RESUMED", 10)
-  end)
-  missionCommands.addCommand("Density: low", root, function()
-    CT.densityMul = 2.0
-    trigger.action.outText("CivTraffic density: LOW (half rate)", 10)
-  end)
-  missionCommands.addCommand("Density: normal", root, function()
-    CT.densityMul = 1.0
-    trigger.action.outText("CivTraffic density: NORMAL", 10)
-  end)
-  missionCommands.addCommand("Density: high", root, function()
-    CT.densityMul = 0.6
-    trigger.action.outText("CivTraffic density: HIGH", 10)
-  end)
+-- -------------------------------------------------------- heartbeat log --
+-- No F10 menu by design: a fire-and-forget template (like the baked air
+-- missions) - players cannot touch the traffic. Health goes to dcs.log.
+local function heartbeat()
+  CT.log(string.format("active=%d  spawnedTotal=%d", aliveCount(), CT.counter))
+  return timer.getTime() + 120
 end
 
 -- ------------------------------------------------------------------ start --
 local function start()
   math.random()  -- warm the RNG
+  CT.densityMul = CT.cfg.density or 1.0  -- <1 = denser (baked per map, no UI)
   local t0 = timer.getTime()
   local stagger = 0
   for _, lane in ipairs(CT.cfg.lanes or {}) do
@@ -657,12 +648,10 @@ local function start()
     stagger = stagger + 23
   end
   timer.scheduleFunction(reaper, nil, t0 + 120)
-  buildMenu()
+  timer.scheduleFunction(heartbeat, nil, t0 + 120)
   CT.log(string.format("started: %d lanes, %d hubs, %d GA regions, cap %d",
                        #(CT.cfg.lanes or {}), #(CT.cfg.hubs or {}),
                        #(CT.cfg.ga or {}), CT.cfg.maxActive or 40))
-  trigger.action.outText("CivTraffic " .. (CT.cfg.mapName or "") ..
-                         " running - F10 menu: Civ Traffic", 15)
 end
 
 start()

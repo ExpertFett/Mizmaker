@@ -10,14 +10,14 @@
 ShipTrafficCFG = {
   mapName = "Kola",
   country = "EGYPT",
-  maxActive = 14,
+  maxActive = 24,
   lanes = {
     {
       name = "KB1A",
       cad = 3000,
       speed = 8,
       types = { "Dry-cargo ship-1", "Dry-cargo ship-2", "HandyWind", "ELNYA" },
-      seed = 3,
+      seed = 5,
       fixes = {
         {
           x = 317227,
@@ -48,7 +48,7 @@ ShipTrafficCFG = {
       cad = 3600,
       speed = 8,
       types = { "Dry-cargo ship-1", "Dry-cargo ship-2", "HandyWind", "ELNYA" },
-      seed = 2,
+      seed = 3,
       fixes = {
         {
           x = 292776,
@@ -70,7 +70,7 @@ ShipTrafficCFG = {
       cad = 3600,
       speed = 9,
       types = { "Dry-cargo ship-1", "Dry-cargo ship-2", "HandyWind" },
-      seed = 3,
+      seed = 5,
       fixes = {
         {
           x = -42394,
@@ -105,7 +105,7 @@ ShipTrafficCFG = {
       cad = 3600,
       speed = 9,
       types = { "Dry-cargo ship-1", "Dry-cargo ship-2", "HandyWind" },
-      seed = 2,
+      seed = 3,
       fixes = {
         {
           x = 242635,
@@ -132,7 +132,7 @@ ShipTrafficCFG = {
       name = "BARF",
       box = { 280000, 340000, 150000, 350000 },
       types = { "ZWEZDNY" },
-      maxActive = 4,
+      maxActive = 7,
       cad = 900
     },
   }
@@ -173,6 +173,99 @@ local function routeLen(fixes, fromIdx)
 end
 
 local function pick(t) return t[math.random(#t)] end
+
+-- ---- WATER GATE: never spawn / route a ship onto land -----------------
+-- DCS land.getSurfaceType returns 1=LAND 2=SHALLOW_WATER 3=WATER 4=ROAD
+-- 5=RUNWAY. Hand-drawn lanes can't be verified offline (no coastline data in
+-- the generator), so the ENGINE rejects definite-land points. FAIL-OPEN: we
+-- blacklist only LAND/ROAD/RUNWAY and allow everything else (incl. a failed
+-- API call or an enum we don't recognise) - a broken check must never be able
+-- to zero out all traffic. Better a rare stray hull than an empty sea.
+local NOTWATER = { [1] = true, [4] = true, [5] = true }  -- LAND, ROAD, RUNWAY
+if land and land.SurfaceType then
+  NOTWATER = {
+    [land.SurfaceType.LAND] = true,
+    [land.SurfaceType.ROAD] = true,
+    [land.SurfaceType.RUNWAY] = true,
+  }
+end
+ST.landRejects = 0
+
+local function isWater(p)
+  if not (land and land.getSurfaceType) then return true end  -- API absent: allow
+  local ok, st = pcall(land.getSurfaceType, { x = p.x, y = p.y })
+  if not ok then return true end               -- call failed: allow (fail-open)
+  return NOTWATER[st] ~= true                   -- reject only definite land
+end
+
+-- ---- ROUTE REPAIR --------------------------------------------------------
+-- Rejecting bad routes isn't enough: hand-drawn lanes can't be verified
+-- offline, so in fjord terrain (Kola) most candidate legs clip land and we'd
+-- either reject nearly everything or let a hull sail into a headland. Instead
+-- the engine REPAIRS a route at runtime, where the land data actually lives:
+--   * sample every leg finely (islands/inlets can be well under 1 km),
+--   * if a leg crosses land, search perpendicular for a water DETOUR,
+--   * if no detour exists, TRUNCATE at the last reachable point.
+-- Result: waypoints and the legs between them are never over land.
+local SAMPLE_M = 600
+local MAX_SAMPLES = 60
+
+local function legIsWater(a, b)
+  if not isWater(a) or not isWater(b) then return false end
+  local d = dist(a, b)
+  local steps = math.floor(d / SAMPLE_M)
+  if steps > MAX_SAMPLES then steps = MAX_SAMPLES end
+  for s = 1, steps do
+    local f = s / (steps + 1)
+    if not isWater({ x = a.x + (b.x - a.x) * f,
+                     y = a.y + (b.y - a.y) * f }) then
+      return false
+    end
+  end
+  return true
+end
+
+-- perpendicular search for a mid-waypoint that gets a->b around the obstacle
+local DETOURS = { 2500, 5000, 9000, 15000, 24000, 36000 }
+local function findDetour(a, b)
+  local dx, dy = b.x - a.x, b.y - a.y
+  local L = math.sqrt(dx * dx + dy * dy)
+  if L < 1 then return nil end
+  local nx, ny = -dy / L, dx / L                 -- unit normal to the leg
+  local mx, my = (a.x + b.x) / 2, (a.y + b.y) / 2
+  for _, off in ipairs(DETOURS) do
+    for _, sgn in ipairs({ 1, -1 }) do
+      local p = { x = mx + nx * off * sgn, y = my + ny * off * sgn }
+      if isWater(p) and legIsWater(a, p) and legIsWater(p, b) then
+        return p
+      end
+    end
+  end
+  return nil
+end
+
+-- pts: shipPoint tables. Returns a repaired list (>=1 pt) or nil if the
+-- spawn point itself is on land. `mk(x,y)` builds a new intermediate point.
+local function repairRoute(pts, mk)
+  if #pts == 0 or not isWater(pts[1]) then return nil end
+  local out = { pts[1] }
+  for i = 2, #pts do
+    local a, b = out[#out], pts[i]
+    if legIsWater(a, b) then
+      out[#out + 1] = b
+    else
+      local d = findDetour(a, b)
+      if d then
+        out[#out + 1] = mk(d.x, d.y)
+        out[#out + 1] = b
+        ST.detours = (ST.detours or 0) + 1
+      else
+        break                       -- truncate: rest of the route is unreachable
+      end
+    end
+  end
+  return out
+end
 
 -- position `d` meters along a fix list; returns point and index of NEXT fix
 local function pointAlong(fixes, d)
@@ -224,7 +317,7 @@ local function shipPoint(x, y, speed, first)
     } } }
   end
   return { x = x, y = y, alt = 0, alt_type = "BARO",
-           type = "Turning Point", action = "Turning Point",
+           type = "Turning Point", action = "Turning Point", name = "",
            speed = speed, speed_locked = true, ETA = 0,
            ETA_locked = first or false, formation_template = "", task = task }
 end
@@ -237,12 +330,17 @@ local function addShip(spec)
     hdg = math.atan2(spec.points[2].y - spec.points[1].y,
                      spec.points[2].x - spec.points[1].x)
   end
+  -- group shape mirrors an ME-placed naval group exactly (coalition.addGroup
+  -- rejects malformed tables SILENTLY - no error, no unit; v1 shipped a
+  -- plane-style table with task="Transport" and no frequency, hence no boats)
   local group = {
-    name = name, task = "Transport",
+    name = name, visible = false, taskSelected = true, tasks = {},
+    hidden = false, hiddenOnPlanner = false, hiddenOnMFD = false,
+    start_time = 0,
     x = spec.points[1].x, y = spec.points[1].y,
     units = { { type = spec.stype, name = name .. "-1", skill = "Average",
                 x = spec.points[1].x, y = spec.points[1].y,
-                heading = hdg, transportable = { randomTransportable = false } } },
+                heading = hdg, frequency = 127500000 } },
     route = { points = spec.points },
   }
   local ok, err = pcall(function()
@@ -250,6 +348,15 @@ local function addShip(spec)
   end)
   if ok then
     ST.spawned[name] = { dieAt = spec.dieAfter and (timer.getTime() + spec.dieAfter) or nil }
+    -- addGroup can "succeed" without creating anything; verify shortly after
+    timer.scheduleFunction(function()
+      local g = Group.getByName(name)
+      if not (g and g:isExist()) then
+        ST.log("SPAWN SILENTLY REJECTED by DCS: " .. name)
+        ST.spawned[name] = nil
+      end
+      return nil
+    end, nil, timer.getTime() + 5)
   else
     ST.log("SPAWN FAILED " .. name .. ": " .. tostring(err))
   end
@@ -285,11 +392,41 @@ local function laneRoute(lane, frac)
   return pts, dieAfter
 end
 
+local MIN_VOYAGE_M = 12000   -- a hull with nowhere to go isn't worth spawning
+
 local function spawnLaneShip(lane, frac)
   if aliveCount() >= (ST.cfg.maxActive or 25) then return false end
   local pts, dieAfter = laneRoute(lane, frac)
+  -- repair rather than reject: detour around land, truncate what's unreachable
+  local fixed = repairRoute(pts, function(x, y)
+    return shipPoint(x, y, lane.speed)
+  end)
+  if not fixed or #fixed < 2 then
+    ST.landRejects = ST.landRejects + 1
+    return false
+  end
+  local voyage = 0
+  for i = 1, #fixed - 1 do voyage = voyage + dist(fixed[i], fixed[i + 1]) end
+  if voyage < MIN_VOYAGE_M then
+    ST.landRejects = ST.landRejects + 1
+    return false
+  end
+  -- route was shortened: retime the cleanup so it isn't reaped mid-voyage
+  dieAfter = voyage / lane.speed + 1800
   return addShip { tag = lane.name, stype = pick(lane.types),
-                   points = pts, dieAfter = dieAfter }
+                   points = fixed, dieAfter = dieAfter }
+end
+
+-- seeding wants a RELIABLE placement near `frac`: a single land-reject would
+-- silently drop a seeded ship (why Hormuz showed ~9 of 12). Retry with small
+-- frac jitter so the seed count actually lands on water.
+local function seedLaneShip(lane, frac)
+  for attempt = 1, 10 do
+    local f = math.max(0.02, math.min(0.97, frac + (math.random() - 0.5) * 0.08 * attempt))
+    if spawnLaneShip(lane, f) then return true end
+    if aliveCount() >= (ST.cfg.maxActive or 25) then return false end  -- cap, not land
+  end
+  return false
 end
 
 local function laneLoop(lane)
@@ -314,17 +451,32 @@ local function spawnFisher(region)
   if aliveCount() >= (ST.cfg.maxActive or 25) then return end
   if fleetAlive(region) >= (region.maxActive or 4) then return end
   local b = region.box
-  local function rp()
-    return { x = b[1] + math.random() * (b[2] - b[1]),
-             y = b[3] + math.random() * (b[4] - b[3]) }
+  -- random point that is ON WATER (retry a few times; give up if the box is
+  -- mostly land so we never beach a trawler)
+  local function waterPoint()
+    for _ = 1, 10 do
+      local p = { x = b[1] + math.random() * (b[2] - b[1]),
+                  y = b[3] + math.random() * (b[4] - b[3]) }
+      if isWater(p) then return p end
+    end
+    return nil
   end
   local speed = 3 + math.random() * 4
-  local p1 = rp()
+  local p1 = waterPoint()
+  if not p1 then ST.landRejects = ST.landRejects + 1; return end
   local pts = { shipPoint(p1.x, p1.y, speed, true) }
+  -- inshore trawlers work right against the coast, so each hop must be a
+  -- clear water LEG, not just two water endpoints with a headland between
   for _ = 1, 2 + math.random(2) do
-    local p = rp()
-    pts[#pts + 1] = shipPoint(p.x, p.y, speed)
+    for _ = 1, 6 do
+      local p = waterPoint()
+      if p and legIsWater(pts[#pts], p) then
+        pts[#pts + 1] = shipPoint(p.x, p.y, speed)
+        break
+      end
+    end
   end
+  if #pts < 2 then ST.landRejects = ST.landRejects + 1; return end
   addShip { tag = region.name, stype = pick(region.types),
             points = pts, dieAfter = 5400 + math.random(3600) }
 end
@@ -334,34 +486,32 @@ local function fisherLoop(region)
   return timer.getTime() + region.cad * (0.7 + math.random() * 0.6) * ST.densityMul
 end
 
--- -------------------------------------------------------------- F10 menu --
-local function buildMenu()
-  local root = missionCommands.addSubMenu("Ship Traffic")
-  missionCommands.addCommand("Status", root, function()
-    trigger.action.outText(string.format(
-      "ShipTraffic: %d vessels active | paused=%s | density x%.2g",
-      aliveCount(), tostring(ST.paused), 1 / ST.densityMul), 15)
-  end)
-  missionCommands.addCommand("Pause spawning", root, function()
-    ST.paused = true
-    trigger.action.outText("ShipTraffic: spawning PAUSED (vessels underway continue)", 10)
-  end)
-  missionCommands.addCommand("Resume spawning", root, function()
-    ST.paused = false
-    trigger.action.outText("ShipTraffic: spawning RESUMED", 10)
-  end)
-  missionCommands.addCommand("Density: low", root, function()
-    ST.densityMul = 2.0
-    trigger.action.outText("ShipTraffic density: LOW", 10)
-  end)
-  missionCommands.addCommand("Density: normal", root, function()
-    ST.densityMul = 1.0
-    trigger.action.outText("ShipTraffic density: NORMAL", 10)
-  end)
-  missionCommands.addCommand("Density: high", root, function()
-    ST.densityMul = 0.6
-    trigger.action.outText("ShipTraffic density: HIGH", 10)
-  end)
+-- ------------------------------------------------------------- top-up ----
+-- Awkward coastlines (Kola's fjords) make the repair reject a lot of
+-- candidate routes, which would leave the sea thin. Periodically top the
+-- fleet back up toward the cap by seeding at random points along random
+-- lanes, so density self-heals no matter how hostile the terrain is.
+local function topUp()
+  local lanes = ST.cfg.lanes or {}
+  if not ST.paused and #lanes > 0 then
+    local cap = ST.cfg.maxActive or 25
+    local tries = 0
+    while aliveCount() < cap and tries < 12 do
+      tries = tries + 1
+      seedLaneShip(pick(lanes), 0.05 + math.random() * 0.9)
+    end
+  end
+  return timer.getTime() + 180
+end
+
+-- -------------------------------------------------------- heartbeat log --
+-- No F10 menu by design: this is a fire-and-forget template (like the baked
+-- air missions) - players cannot touch the traffic. Health is logged to
+-- dcs.log periodically so it stays diagnosable without any in-game UI.
+local function heartbeat()
+  ST.log(string.format("active=%d  spawnedTotal=%d  land-skips=%d  detours=%d",
+                       aliveCount(), ST.counter, ST.landRejects, ST.detours or 0))
+  return timer.getTime() + 120
 end
 
 -- ------------------------------------------------------------------ start --
@@ -374,7 +524,7 @@ local function start()
     for s = 1, (lane.seed or 0) do
       local frac = (s - 0.5 + (math.random() - 0.5) * 0.6) / (lane.seed)
       timer.scheduleFunction(function()
-        spawnLaneShip(lane, math.max(0.02, math.min(0.95, frac)))
+        seedLaneShip(lane, math.max(0.02, math.min(0.95, frac)))
         return nil
       end, nil, t0 + 3 + stagger + s * 4)
     end
@@ -393,12 +543,11 @@ local function start()
     stagger = stagger + 13
   end
   timer.scheduleFunction(reaper, nil, t0 + 180)
-  buildMenu()
+  timer.scheduleFunction(heartbeat, nil, t0 + 120)
+  timer.scheduleFunction(topUp, nil, t0 + 200)
   ST.log(string.format("started: %d lanes, %d fishing regions, cap %d",
                        #(ST.cfg.lanes or {}), #(ST.cfg.fishing or {}),
                        ST.cfg.maxActive or 25))
-  trigger.action.outText("ShipTraffic " .. (ST.cfg.mapName or "") ..
-                         " running - F10 menu: Ship Traffic", 15)
 end
 
 start()
