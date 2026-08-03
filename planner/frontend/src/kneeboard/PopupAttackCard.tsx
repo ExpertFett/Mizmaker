@@ -187,7 +187,7 @@ export function PopupAttackCard({ input, overview, index, total }: PopupAttackCa
         <Param k="Popup alt"      v={`${input.popupAltitudeFtMsl.toLocaleString()} ft MSL`} />
         <Param k="Popup angle"    v={`${input.popupAngleDeg}°`} />
         <Param k="Dive angle"     v={`${input.diveAngleDeg}°`} />
-        <Param k="Angle offset"   v={`${input.angleOffsetDeg}°`} />
+        <Param k="Angle offset"   v={`${input.angleOffsetDeg}° ${(input.runInSide ?? 'left') === 'left' ? 'Left' : 'Right'}`} />
         <Param k="Release alt"    v={`${input.releaseAltitudeFtAgl.toLocaleString()} ft AGL`} />
         <Param k="Release speed"  v={`${input.releaseSpeedKts} kt`} />
         <Param k="Ingress alt"    v={`${input.ingressAltitudeFtAgl.toLocaleString()} ft AGL`} />
@@ -245,7 +245,11 @@ function PlanView({ profile, input }: { profile: ReturnType<typeof computePopupA
   const apDist = ap?.distanceNm ?? 0;
   const runInLenNm = Math.max(0, apDist - ipDist);
   const offsetRad = (Math.max(0, Math.min(85, input.angleOffsetDeg)) * Math.PI) / 180;
-  const ipLatNm = runInLenNm * Math.sin(offsetRad);     // perpendicular offset
+  // Mirror the run-in dogleg to the correct side of the target axis. 'left' =
+  // offset to the attacker's left (drawn below the run line), pull-down turns
+  // right onto the target; 'right' is the mirror image.
+  const sideSign = (input.runInSide ?? 'left') === 'left' ? -1 : 1;
+  const ipLatNm = sideSign * runInLenNm * Math.sin(offsetRad);   // perpendicular offset
 
   type PV = { label: string; along: number; lat: number; color: string; note?: string };
   const pvPoints: PV[] = [];
@@ -311,7 +315,7 @@ function PlanView({ profile, input }: { profile: ReturnType<typeof computePopupA
         <text x={(xy(ip.distanceNm, ipLatNm)[0] + xy(ap.distanceNm, 0)[0]) / 2}
               y={(xy(ip.distanceNm, ipLatNm)[1] + xy(ap.distanceNm, 0)[1]) / 2 - 6}
               fontSize={10} fontFamily={FONT} fill={DIM} textAnchor="middle">
-          {input.angleOffsetDeg}° offset
+          {input.angleOffsetDeg}° offset {(input.runInSide ?? 'left') === 'left' ? 'L' : 'R'}
         </text>
       )}
 

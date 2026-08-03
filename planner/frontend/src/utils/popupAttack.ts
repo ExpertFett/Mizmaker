@@ -56,9 +56,16 @@ export interface PopupAttackInput {
   popupAltitudeFtMsl: number;
   /** Climb angle held during the popup (deg). */
   popupAngleDeg: number;
-  /** Ingress heading offset from target heading (deg) — for note only; the
-   *  side profile is along-track and doesn't visualise the lateral offset. */
+  /** Ingress heading offset from target heading (deg). Magnitude only; the
+   *  side (which way you're offset from the target axis) is `runInSide`. The
+   *  side profile is along-track so it doesn't show the lateral offset, but the
+   *  plan (top-down) view mirrors to the correct side. */
   angleOffsetDeg: number;
+  /** Which side of the target's attack axis the run-in is flown, from the
+   *  attacker's seat. 'left' → offset left of course, pull-down turns RIGHT
+   *  onto the target; 'right' → offset right, pull-down turns LEFT. Defaults
+   *  to 'left' when omitted (old profiles). */
+  runInSide?: 'left' | 'right';
   diveAngleDeg: number;
   /** Release altitude above target ground (ft AGL). */
   releaseAltitudeFtAgl: number;
@@ -207,9 +214,12 @@ export function computePopupAttack(input: PopupAttackInput): PopupAttackProfile 
   const popupHorizFt = popupVertFt / Math.tan((Math.max(1, input.popupAngleDeg) * Math.PI) / 180);
   const popupHorizNm = Math.max(0, popupHorizFt / FT_PER_NM);
   const pdpDist = apDist + popupHorizNm;
+  // Run-in offset LEFT of the target axis ⇒ roll/pull to the RIGHT onto the
+  // target at the apex, and vice-versa.
+  const pullTurn = (input.runInSide ?? 'left') === 'left' ? 'right' : 'left';
   points.push({
     label: 'PDP', distanceNm: pdpDist, altitudeFtMsl: input.popupAltitudeFtMsl,
-    note: `Apex · roll & pull ${input.diveAngleDeg}°`,
+    note: `Apex · roll ${pullTurn} & pull ${input.diveAngleDeg}°`,
   });
 
   const diveVertFt = input.popupAltitudeFtMsl - releaseMsl;
@@ -265,6 +275,7 @@ export function defaultPopupAttack(
     targetElevationFt: 100,
     vipDistanceNm: 8,
     angleOffsetDeg: 25,
+    runInSide: 'left',
     releaseSpeedKts: 480,
     ingressSpeedKts: 480,
     recoveryAltitudeFtAgl: 500,

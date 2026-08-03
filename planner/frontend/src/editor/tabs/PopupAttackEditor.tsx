@@ -128,6 +128,22 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
         <Field label="Popup alt (ft MSL)" v={profile.popupAltitudeFtMsl} onChange={(n) => onPatch({ popupAltitudeFtMsl: n })} />
         <Field label="Popup ° " v={profile.popupAngleDeg} onChange={(n) => onPatch({ popupAngleDeg: n })} />
         <Field label="Offset °" v={profile.angleOffsetDeg} onChange={(n) => onPatch({ angleOffsetDeg: n })} />
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4 }}>Run-in</span>
+          <div style={{ display: 'flex', border: '1px solid #3a3a3a', borderRadius: 4, overflow: 'hidden', height: 27 }}
+               title="Which side of the target axis the run-in is flown. Left = offset left, pull down turning right onto target (and vice-versa).">
+            {(['left', 'right'] as const).map((s) => {
+              const active = (profile.runInSide ?? 'left') === s;
+              return (
+                <button key={s} type="button" onClick={() => onPatch({ runInSide: s })}
+                        style={{ flex: 1, background: active ? '#2a68b8' : '#1a1a1a', color: active ? '#fff' : '#888',
+                                 border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}>
+                  {s === 'left' ? 'L' : 'R'}
+                </button>
+              );
+            })}
+          </div>
+        </label>
         <Field label="Dive °" v={profile.diveAngleDeg} onChange={(n) => onPatch({ diveAngleDeg: n })} />
         <Field label="Release alt (ft AGL)" v={profile.releaseAltitudeFtAgl} onChange={(n) => onPatch({ releaseAltitudeFtAgl: n })} />
         <Field label="Release kt" v={profile.releaseSpeedKts} onChange={(n) => onPatch({ releaseSpeedKts: n })} />
