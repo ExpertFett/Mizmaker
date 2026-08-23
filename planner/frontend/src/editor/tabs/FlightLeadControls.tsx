@@ -178,6 +178,18 @@ export function FlightLeadControls({ value, onChange }: Props) {
         <Num label="Joker margin" hint="Kept at least this far above bingo"
              value={value.fuel.jokerMarginLbs} step={100} min={0}
              suffix="lb" onChange={(n) => set('fuel', { jokerMarginLbs: n })} />
+        <Num label="Known cruise flow" hint="Scales the burn model to a gauge reading; 0 = model only"
+             value={value.fuel.knownCruisePph} step={100} min={0}
+             suffix="pph" onChange={(n) => set('fuel', { knownCruisePph: n })} />
+        <label style={row}>
+          <Label hint="Compare recovery fuel to the landing weight limit">Recovery weight check</Label>
+          <input type="checkbox" checked={value.fuel.checkRecoveryWeight}
+                 onChange={(e) => set('fuel', { checkRecoveryWeight: e.target.checked })}
+                 style={{ justifySelf: 'start' }} />
+        </label>
+        <Num label="Trap limit override" hint="0 = published figure for the airframe"
+             value={value.fuel.trapLimitLbs} step={500} min={0}
+             suffix="lb" onChange={(n) => set('fuel', { trapLimitLbs: n })} />
       </Group>
 
       <Group title="Threats" scope="Flight" open={open === 'threats'} onToggle={() => toggle('threats')}>
@@ -187,6 +199,19 @@ export function FlightLeadControls({ value, onChange }: Props) {
         <Num label="Site clustering" hint="Same system within this merges to one row"
              value={value.threats.siteRadiusNm} step={0.5} min={0}
              suffix="nm" onChange={(n) => set('threats', { siteRadiusNm: n })} />
+        <Choice label="Ring shows" hint="What the drawn circle means"
+                value={value.threats.ringBasis}
+                options={[
+                  { v: 'max', t: 'Max range' },
+                  { v: 'practical', t: 'Practical' },
+                  { v: 'both', t: 'Both rings' },
+                ] as const}
+                onChange={(v) => set('threats', { ringBasis: v })} />
+        {value.threats.ringBasis !== 'max' && (
+          <Num label="Practical factor" hint="Fraction of max range; no per-system WEZ data exists"
+               value={Math.round(value.threats.practicalFactor * 100)} step={5} min={10} max={100}
+               suffix="%" onChange={(n) => set('threats', { practicalFactor: n / 100 })} />
+        )}
       </Group>
 
       <Group title="Navigation &amp; terrain" scope="SOP" open={open === 'nav'} onToggle={() => toggle('nav')}>
@@ -199,6 +224,16 @@ export function FlightLeadControls({ value, onChange }: Props) {
         <Num label="Waypoints / strip sheet" hint="Fewer means a bigger map"
              value={value.nav.waypointsPerStripPage} step={1} min={2} max={20}
              onChange={(n) => set('nav', { waypointsPerStripPage: n })} />
+        <Choice label="Strip orientation" hint="Track-up rotates each sheet so the leg runs up the page"
+                value={value.nav.stripOrientation}
+                options={[
+                  { v: 'north', t: 'North-up' },
+                  { v: 'track', t: 'Track-up' },
+                ] as const}
+                onChange={(v) => set('nav', { stripOrientation: v })} />
+        <Num label="Pinned scale" hint="NM across the frame; 0 = each map fits its own legs"
+             value={value.nav.pinnedScaleNm} step={5} min={0}
+             suffix="nm" onChange={(n) => set('nav', { pinnedScaleNm: n })} />
         <Choice label="Map base layer" value={value.nav.mapLayer}
                 options={[
                   { v: 'satellite', t: 'Satellite' },
@@ -318,6 +353,19 @@ export function FlightLeadControls({ value, onChange }: Props) {
                   { v: 'half', t: 'Half card' },
                 ] as const}
                 onChange={(v) => set('layout', { notesSize: v })} />
+        <label style={row}>
+          <Label hint="Card types in deck order, comma separated; unlisted keep their place">
+            Card order
+          </Label>
+          <input
+            type="text"
+            value={value.layout.cardOrder.join(', ')}
+            onChange={(e) => set('layout', {
+              cardOrder: e.target.value.split(',').map((x) => x.trim()).filter(Boolean),
+            })}
+            style={inputStyle}
+          />
+        </label>
         <Choice label="Store names" hint="On the station loadout diagram"
                 value={value.layout.storeNames}
                 options={[

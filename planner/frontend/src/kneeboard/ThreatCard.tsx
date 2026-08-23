@@ -263,6 +263,7 @@ export function ThreatCard({
           minLon={minLon}
           maxLon={maxLon}
           fidelity={fidelity}
+          opts={opts}
         />
       )}
 
@@ -306,6 +307,13 @@ export function ThreatCard({
         <>
           <div style={sectionTitle}>
             {isFirstPage ? 'THREAT INVENTORY' : "THREAT INVENTORY — CONT'D"}
+            {opts.threats.ringBasis !== 'max' && (
+              <span style={{ color: DIM, fontWeight: 400, marginLeft: 6, fontSize: 13 }}>
+                {opts.threats.ringBasis === 'practical'
+                  ? `practical ${Math.round(opts.threats.practicalFactor * 100)}% of max`
+                  : 'practical + max rings'}
+              </span>
+            )}
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -345,7 +353,12 @@ export function ThreatCard({
                       </td>
                     )}
                     <td style={{ ...cell, textAlign: 'center' }}>
-                      {t.info ? `${t.info.rangeKm}km` : `${metersToNm(t.range).toFixed(0)}nm`}
+                      {(() => {
+                        const km = t.info ? t.info.rangeKm : metersToNm(t.range) * 1.852;
+                        const shown = opts.threats.ringBasis === 'practical'
+                          ? km * opts.threats.practicalFactor : km;
+                        return t.info ? `${Math.round(shown)}km` : `${(shown / 1.852).toFixed(0)}nm`;
+                      })()}
                     </td>
                     <td style={{ ...cell, textAlign: 'center', color: DIM }}>
                       {t.info ? `${(t.info.altMaxFt / 1000).toFixed(0)}k ft` : '—'}
@@ -411,8 +424,9 @@ export function ThreatCard({
 /* ------------------------------------------------------------------ */
 
 function ThreatMap({
-  threats, mapW, mapH, minLat, maxLat, minLon, maxLon, fidelity,
+  threats, mapW, mapH, minLat, maxLat, minLon, maxLon, fidelity, opts,
 }: {
+  opts: KneeboardOptions;
   threats: (ThreatRing & { info: SamInfo | null })[];
   mapW: number;
   mapH: number;
@@ -484,14 +498,27 @@ function ThreatMap({
             threats.map((t, i) => {
               if (t.lat == null || t.lon == null) return null;
               const [tx, ty] = proj.project(t.lat, t.lon);
-              const r = proj.metersToPixels(t.range);
+              const rMax = proj.metersToPixels(t.range);
+              // The ring can mean full kinematic range or the range it will
+              // realistically engage at. There is no per-system WEZ data in
+              // the mission or the SAM table, so 'practical' is one documented
+              // fraction of max rather than invented per-system numbers.
+              const rPractical = rMax * opts.threats.practicalFactor;
+              const basis = opts.threats.ringBasis;
+              const r = basis === 'practical' ? rPractical : rMax;
               if (r < 2) return null;
               const cat = t.info?.category || 'unknown';
               const color = CAT_COLORS[cat] || '#d95050';
               return (
                 <g key={`ring-${i}`}>
+                  {basis === 'both' && (
+                    // Practical filled inside, max as the dashed outer edge.
+                    <circle cx={tx} cy={ty} r={rPractical}
+                      fill={`${color}18`} stroke={color} strokeWidth={1}
+                      strokeOpacity={0.75} />
+                  )}
                   <circle cx={tx} cy={ty} r={r}
-                    fill={`${color}10`}
+                    fill={basis === 'both' ? 'none' : `${color}10`}
                     stroke={color}
                     strokeWidth={1}
                     strokeDasharray="4 2"

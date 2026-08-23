@@ -65,6 +65,41 @@ interface AircraftPerf {
  *   DCS cemax = 1.24 kg/(kgf·h) ≈ 1.24 lb/(lbf·h) (same units).
  *   Real mil SFC = 0.81, but cruise throttle is less efficient → ~0.95-1.1.
  */
+/**
+ * Recovery weight limits, lbs gross.
+ *
+ * `trap` is the carrier arrested-landing limit; `field` is the runway
+ * limit. Absent means the airframe has no carrier limit worth checking
+ * (land-based types) or we do not carry a figure for it.
+ *
+ * These are published/community figures used as a planning seed, in the same
+ * spirit as the popup protocol limits: a squadron SOP number overrides them,
+ * and the card says which it used. They are deliberately the conservative
+ * end of what is quoted — a card that under-reports your margin is safer
+ * than one that over-reports it.
+ */
+export interface RecoveryLimits {
+  trapLbs?: number;
+  fieldLbs?: number;
+}
+
+export const RECOVERY_LIMITS: Record<string, RecoveryLimits> = {
+  'FA-18C_hornet': { trapLbs: 33000, fieldLbs: 44000 },
+  'F-14A-135-GR': { trapLbs: 51800, fieldLbs: 58000 },
+  'F-14B': { trapLbs: 51800, fieldLbs: 58000 },
+  'AV8BNA': { trapLbs: 20500, fieldLbs: 31000 },
+  'F-16C_50': { fieldLbs: 32500 },
+  'F-15C': { fieldLbs: 46000 },
+  'F-15ESE': { fieldLbs: 65000 },
+  'A-10C': { fieldLbs: 42000 },
+  'A-10C_2': { fieldLbs: 42000 },
+};
+
+/** Recovery limits for an airframe, or an empty object when we carry none. */
+export function recoveryLimitsFor(aircraftType: string): RecoveryLimits {
+  return RECOVERY_LIMITS[aircraftType] ?? {};
+}
+
 const AIRCRAFT_DB: Record<string, AircraftPerf> = {
   'FA-18C_hornet': {
     S: 37.16,       // 400 ft² wing area
@@ -176,6 +211,11 @@ export function estimateFuelFlow(
   speedMs: number,
   weightLbs: number,
   aircraftType: string,
+  /** Known cruise flow in PPH. When set, the physics model is scaled so it
+   *  reproduces this number at a nominal cruise and keeps its shape
+   *  everywhere else — a flight lead who has flown the jet and read the gauge
+   *  is a better source than a tuned coefficient. 0/undefined = model only. */
+  knownCruisePph?: number,
 ): number {
   const perf = AIRCRAFT_DB[aircraftType] || DEFAULT_PERF;
   const rho = airDensity(altFt);
@@ -198,10 +238,35 @@ export function estimateFuelFlow(
   // Fuel flow = SFC × thrust_required (thrust = drag in level flight)
   const fuelFlowLbsHr = perf.sfcCruise * drag_lbf;
 
+  // Scale the whole curve so it passes through a flow the crew has actually
+  // seen. NOMINAL_* is the condition the calibration is defined at: mid
+  // cruise altitude and speed at a typical gross weight.
+  let flow = fuelFlowLbsHr;
+  if (knownCruisePph && knownCruisePph > 0) {
+    const nominal = nominalCruiseFlow(aircraftType);
+    if (nominal > 0) flow = fuelFlowLbsHr * (knownCruisePph / nominal);
+  }
+
   // Clamp to reasonable range: idle flow (~1200 PPH for twin) to mil (~18000 PPH)
   const idleFlow = perf.nEngines * 600;
   const maxFlow = perf.nEngines * 10000;
-  return Math.max(idleFlow, Math.min(maxFlow, fuelFlowLbsHr));
+  return Math.max(idleFlow, Math.min(maxFlow, flow));
+}
+
+/** Conditions the known-cruise calibration is anchored at. */
+const NOMINAL_ALT_FT = 25000;
+const NOMINAL_SPEED_MS = 220;      // ~M0.75 at altitude
+
+/** What the model predicts at the nominal cruise, used as the calibration
+ *  denominator. Computed without the scaling so it cannot recurse. */
+function nominalCruiseFlow(aircraftType: string): number {
+  const perf = AIRCRAFT_DB[aircraftType] || DEFAULT_PERF;
+  const weight = perf.emptyLbs + perf.maxFuelLbs * 0.5 + 2000;
+  const rho = airDensity(NOMINAL_ALT_FT);
+  const qS = 0.5 * rho * NOMINAL_SPEED_MS * NOMINAL_SPEED_MS * perf.S;
+  const CL = (weight * 4.44822) / qS;
+  const CD = perf.Cd0 + perf.K * CL * CL;
+  return perf.sfcCruise * ((CD * qS) / 4.44822);
 }
 
 /**
@@ -253,6 +318,8 @@ export function computeFuelLegs(
     unitType: string;
     /** Stores estimate folded into gross weight. */
     storesLbs?: number;
+    /** Known cruise PPH; scales the burn model. See estimateFuelFlow. */
+    knownCruisePph?: number;
   },
 ): FuelLeg[] {
   const stores = opts.storesLbs ?? 2000;
@@ -271,7 +338,7 @@ export function computeFuelLegs(
 
     const flowRate = i === 0
       ? 0
-      : estimateFuelFlow(altFt, wp.speed_ms || 100, gwLbs, opts.unitType);
+      : estimateFuelFlow(altFt, wp.speed_ms || 100, gwLbs, opts.unitType, opts.knownCruisePph);
     const burn = i === 0 ? 0 : Math.round(flowRate * legHours);
 
     fuel = Math.max(0, fuel - burn);

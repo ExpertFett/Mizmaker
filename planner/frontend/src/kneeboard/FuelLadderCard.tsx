@@ -9,7 +9,7 @@
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN, MissionDateLine } from './cardStyles';
 import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
-import { getAircraftPerf, computeFuelLegs, computeJokerBingo, BINGO_FLOOR_LBS } from './fuelModel';
+import { getAircraftPerf, computeFuelLegs, recoveryLimitsFor, computeJokerBingo, BINGO_FLOOR_LBS } from './fuelModel';
 import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface FuelLadderCardProps {
@@ -58,10 +58,29 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
     emptyLbs,
     unitType,
     storesLbs: storesEstLbs,
+    knownCruisePph: opts.fuel.knownCruisePph,
   });
   const fuel = legs.length ? legs[legs.length - 1].remaining : startFuel;
 
   const totalBurn = startFuel - fuel;
+
+  // Recovery weight against the airframe's landing limit. Carrier flights are
+  // checked against the trap number, everyone else against the field number.
+  const recoveryCheck = (() => {
+    if (!opts.fuel.checkRecoveryWeight) return null;
+    const limits = recoveryLimitsFor(unitType);
+    const isBoat = (group.waypoints?.[0]?.link_unit ?? null) != null;
+    const seed = isBoat ? limits.trapLbs : (limits.fieldLbs ?? limits.trapLbs);
+    const limitLbs = opts.fuel.trapLimitLbs > 0 ? opts.fuel.trapLimitLbs : seed;
+    if (!limitLbs) return null;
+    const grossLbs = Math.round(emptyLbs + storesEstLbs + fuel);
+    return {
+      grossLbs,
+      limitLbs,
+      overLbs: grossLbs - limitLbs,
+      label: opts.fuel.trapLimitLbs > 0 ? 'SOP' : (isBoat ? 'TRAP' : 'FIELD'),
+    };
+  })();
   // Floored bingo (see fuelModel.computeJokerBingo) — shared with the Flight
   // Card and the Kneeboard tab so all three agree.
   const { joker: jokerFuel, bingo: bingoFuel, bingoFloored } =
@@ -243,6 +262,32 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
           color: fuel <= bingoFuel ? '#d95050' : fuel <= jokerFuel ? WARN : TEXT,
         }}>LANDING FUEL: {fuel.toLocaleString()} lbs</span>
       </div>
+
+      {/* Recovery weight. Bingo drives trap weight, so a fuel card that never
+          compares the two leaves the check to memory. Seed limits are
+          published figures — the SOP number overrides them. */}
+      {recoveryCheck && (
+        <div style={{
+          padding: '5px 0', borderBottom: `1px solid ${BORDER}`,
+          fontSize: 17, flexShrink: 0,
+        }}>
+          <span style={{ color: DIM }}>GROSS AT RECOVERY </span>
+          <span style={{ color: TEXT_BRIGHT, fontWeight: 600 }}>
+            {recoveryCheck.grossLbs.toLocaleString()} lbs
+          </span>
+          {' · '}
+          <span style={{ color: DIM }}>{recoveryCheck.label} LIMIT </span>
+          <span style={{ color: TEXT }}>{recoveryCheck.limitLbs.toLocaleString()} lbs</span>
+          {' · '}
+          <span style={{
+            color: recoveryCheck.overLbs > 0 ? '#d95050' : '#7fd97f', fontWeight: 600,
+          }}>
+            {recoveryCheck.overLbs > 0
+              ? `${recoveryCheck.overLbs.toLocaleString()} lbs OVER`
+              : `${Math.abs(recoveryCheck.overLbs).toLocaleString()} lbs under`}
+          </span>
+        </div>
+      )}
 
       {/* Disclaimer */}
       <div style={{ padding: '6px 0', fontSize: 17, color: DIM, flexShrink: 0 }}>

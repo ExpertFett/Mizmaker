@@ -33,6 +33,15 @@ export interface FuelOptions {
   /** Joker is forced at least this far above bingo, so the two calls never
    *  collapse into each other on a short-legged jet. */
   jokerMarginLbs: number;
+  /** Known cruise flow in PPH. Scales the physics burn model so it passes
+   *  through a number the crew has actually seen on the gauge. 0 = model
+   *  only. */
+  knownCruisePph: number;
+  /** Check recovery fuel against the airframe's landing weight limit. */
+  checkRecoveryWeight: boolean;
+  /** Override the trap limit for this squadron. 0 = use the published seed
+   *  in fuelModel's RECOVERY_LIMITS. */
+  trapLimitLbs: number;
 }
 
 /* --------------------------------------------------------------- threats */
@@ -44,6 +53,16 @@ export interface ThreatOptions {
   minRangeKm: number;
   /** Same system within this distance merges into one site row. */
   siteRadiusNm: number;
+  /** What the threat ring represents.
+   *  'max'       — full published kinematic range (as before)
+   *  'practical' — a planning fraction of it, the range it will realistically
+   *                engage and hit at
+   *  'both'      — practical filled, max as a dashed outer ring */
+  ringBasis: 'max' | 'practical' | 'both';
+  /** Practical ring as a fraction of max range. There is no per-system WEZ
+   *  data in the mission or the SAM table, so this is deliberately one
+   *  documented planning factor rather than invented per-system numbers. */
+  practicalFactor: number;
 }
 
 /* ---------------------------------------------------- navigation/terrain */
@@ -58,6 +77,12 @@ export interface NavOptions {
   waypointsPerStripPage: number;
   /** Base layer under the route and target maps. */
   mapLayer: 'satellite' | 'dark' | 'none';
+  /** Pin every route map to one scale, in NM across the frame, so sheets in a
+   *  deck match. 0 = each map picks its own. */
+  pinnedScaleNm: number;
+  /** Strip map orientation. 'track' rotates each sheet so the leg runs up the
+   *  page, which is what a paper strip map actually was. */
+  stripOrientation: 'north' | 'track';
 }
 
 /* --------------------------------------------------------------- diverts */
@@ -116,6 +141,9 @@ export interface LayoutOptions {
   notesSize: 'none' | 'quarter' | 'half';
   /** Truncate store names on the station diagram, or print them in full. */
   storeNames: 'short' | 'full';
+  /** Card order for the deck, as card keys. Anything not listed keeps its
+   *  derived position after the ones that are. Empty = built-in order. */
+  cardOrder: string[];
 }
 
 export interface KneeboardOptions {
@@ -139,16 +167,23 @@ export const DEFAULT_OPTIONS: KneeboardOptions = {
     jokerPct: 0.35,
     bingoPct: 0.20,
     jokerMarginLbs: 1000,
+    knownCruisePph: 0,
+    checkRecoveryWeight: true,
+    trapLimitLbs: 0,
   },
   threats: {
     minRangeKm: 0,
     siteRadiusNm: 3,
+    ringBasis: 'max',
+    practicalFactor: 0.75,
   },
   nav: {
     msaBufferFt: 1000,
     msaCorridorNm: 5,
     waypointsPerStripPage: 7,
     mapLayer: 'satellite',
+    pinnedScaleNm: 0,
+    stripOrientation: 'north',
   },
   diverts: {
     count: 8,
@@ -180,6 +215,7 @@ export const DEFAULT_OPTIONS: KneeboardOptions = {
     density: 'normal',
     notesSize: 'quarter',
     storeNames: 'short',
+    cardOrder: [],
   },
 };
 

@@ -188,7 +188,49 @@ export function StripMapCard({
   const padLon = (maxLon - minLon) * MAP_PADDING_PCT;
   minLat -= padLat; maxLat += padLat; minLon -= padLon; maxLon += padLon;
 
-  const proj = createProjection(minLat, maxLat, minLon, maxLon, MAP_W, MAP_H);
+  // Pinned scale: force the frame to a fixed width in NM so every sheet in a
+  // deck is drawn at the same scale, instead of each one fitting its own legs.
+  if (opts.nav.pinnedScaleNm > 0) {
+    const cLat = (minLat + maxLat) / 2, cLon = (minLon + maxLon) / 2;
+    const halfLon = opts.nav.pinnedScaleNm / 2 / (60 * Math.cos((cLat * Math.PI) / 180));
+    // Keep the frame's aspect ratio so the projection does not distort.
+    const halfLat = (halfLon * Math.cos((cLat * Math.PI) / 180)) * (MAP_H / MAP_W);
+    minLon = cLon - halfLon; maxLon = cLon + halfLon;
+    minLat = cLat - halfLat; maxLat = cLat + halfLat;
+  }
+
+  // Track-up rotates the whole sheet so the leg runs up the page, which is
+  // what a paper strip map was. The projection stays north-up and the rendered
+  // block is rotated instead — rotating the projection would mean rotating
+  // every overlay's maths too. See ROTATION_INFLATE.
+  const trackUp = opts.nav.stripOrientation === 'track';
+  const legCourse = (() => {
+    if (!trackUp || pageWps.length < 2) return 0;
+    const a0 = pageWps[0], b0 = pageWps[pageWps.length - 1];
+    const dLon = (b0.lon! - a0.lon!) * Math.cos((a0.lat! * Math.PI) / 180);
+    const dLat = b0.lat! - a0.lat!;
+    return (Math.atan2(dLon, dLat) * 180) / Math.PI;
+  })();
+
+  // A rotated square has to be sqrt(2) bigger than its window or the corners
+  // come up empty. Inflate the drawn area and the bbox together so the visible
+  // window stays full whatever the rotation.
+  const inflate = trackUp ? Math.SQRT2 : 1;
+  if (inflate > 1) {
+    const cLat = (minLat + maxLat) / 2, cLon = (minLon + maxLon) / 2;
+    const hLat = ((maxLat - minLat) / 2) * inflate;
+    const hLon = ((maxLon - minLon) / 2) * inflate;
+    minLat = cLat - hLat; maxLat = cLat + hLat;
+    minLon = cLon - hLon; maxLon = cLon + hLon;
+  }
+  /** Counter-rotation keeping a label upright inside a rotated sheet. */
+  const upright = (x: number | string, y: number | string) =>
+    (trackUp ? `rotate(${legCourse}, ${x}, ${y})` : undefined);
+
+  const drawW = Math.round(MAP_W * inflate);
+  const drawH = Math.round(MAP_H * inflate);
+
+  const proj = createProjection(minLat, maxLat, minLon, maxLon, drawW, drawH);
   const projected: Projected[] = pageWps.map((wp) => {
     const [x, y] = proj.project(wp.lat!, wp.lon!);
     return { x, y, wp };
@@ -256,6 +298,9 @@ export function StripMapCard({
       fontFamily: FONT,
       color: TEXT,
       boxSizing: 'border-box',
+      // Every other card root clips; this one did not, which the inflated
+      // track-up rotation layer would happily escape through.
+      overflow: 'hidden',
     }}>
       {/* Header */}
       <div style={{
@@ -300,10 +345,23 @@ export function StripMapCard({
             Not enough waypoints with coordinates to render a strip map.
           </div>
         ) : (
-          <TileMap width={MAP_W} height={MAP_H}
+          <div style={{
+            width: MAP_W, height: MAP_H, overflow: 'hidden', position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute',
+              // The drawn block is inflated, so pull it back by half the
+              // overhang to keep its centre on the window's centre.
+              left: -(drawW - MAP_W) / 2,
+              top: -(drawH - MAP_H) / 2,
+              width: drawW, height: drawH,
+              transform: trackUp ? `rotate(${-legCourse}deg)` : undefined,
+              transformOrigin: 'center center',
+            }}>
+          <TileMap width={drawW} height={drawH}
                    minLat={minLat} maxLat={maxLat} minLon={minLon} maxLon={maxLon}
                    layer={opts.nav.mapLayer === 'dark' ? 'dark' : 'satellite'}>
-          <svg width={MAP_W} height={MAP_H} viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+          <svg width={drawW} height={drawH} viewBox={`0 0 ${drawW} ${drawH}`}
                xmlns="http://www.w3.org/2000/svg">
             {/* Threat rings that reach this sheet. Drawn first so the route
                 and doghouses stay legible on top of them. */}
@@ -311,7 +369,7 @@ export function StripMapCard({
               <g key={`thr-${i}`}>
                 <circle cx={o.x} cy={o.y} r={o.r} fill="rgba(217,80,80,0.10)"
                         stroke="rgba(217,80,80,0.85)" strokeWidth={1.2} strokeDasharray="5 4" />
-                <text x={o.x} y={o.y - 4} fontSize={11} fill="#ff8a8a" textAnchor="middle"
+                <text transform={upright(o.x, o.y - 4)} x={o.x} y={o.y - 4} fontSize={11} fill="#ff8a8a" textAnchor="middle"
                       stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={700}>
                   {/* Short designator, not the raw unit name: "S-300PS", not
                       "301 S-300PS 40B6M tr | 3rd Co, 202nd AD Bde". */}
@@ -325,22 +383,26 @@ export function StripMapCard({
               <g key={`div-${i}`}>
                 <circle cx={o.x} cy={o.y} r={4} fill="none" stroke="#7fd97f" strokeWidth={1.6} />
                 <line x1={o.x - 6} y1={o.y} x2={o.x + 6} y2={o.y} stroke="#7fd97f" strokeWidth={1.2} />
-                <text x={o.x + 8} y={o.y + 4} fontSize={11} fill="#7fd97f"
+                <text transform={upright(o.x + 8, o.y + 4)} x={o.x + 8} y={o.y + 4} fontSize={11} fill="#7fd97f"
                       stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={600}>
                   {o.a.name} {Math.round(o.nm)}
                 </text>
               </g>
             ))}
 
-            {/* North arrow. This card is deliberately north-up: a real strip
-                map is route-up, but that is a low-level corridor product, and
-                a strike-fighter kneeboard carries a north-up route chart
-                instead. Saying so on the card removes the ambiguity — the
-                reader should never have to guess the orientation. */}
-            <g transform={`translate(${MAP_W - 30}, 26)`}>
+            {/* North arrow. Drawn in frame space, so on a track-up sheet the
+                rotation carries it round automatically and it points at true
+                north on the page — which is exactly what it is for. Only the
+                "N" needs holding upright. The card header states the
+                orientation either way; the reader should never have to guess.
+
+                The arrow sits at the top-right of the WINDOW, not the inflated
+                drawing, so it stays visible once the sheet is rotated and
+                clipped. */}
+            <g transform={`translate(${(drawW + MAP_W) / 2 - 30}, ${(drawH - MAP_H) / 2 + 26})`}>
               <line x1={0} y1={20} x2={0} y2={-8} stroke={TEXT_MUTED} strokeWidth={1.6} />
               <polygon points="0,-14 -4.5,-2 4.5,-2" fill={TEXT_BRIGHT} />
-              <text x={0} y={34} fontSize={12} fontFamily={FONT} fill={TEXT_MUTED}
+              <text transform={upright(0, 34)} x={0} y={34} fontSize={12} fontFamily={FONT} fill={TEXT_MUTED}
                     textAnchor="middle" fontWeight={700}>N</text>
             </g>
 
@@ -385,54 +447,54 @@ export function StripMapCard({
                     rx={3} ry={3}
                   />
                   {/* Doghouse contents — four rows */}
-                  <text x={boxX + 6} y={boxY + 14}
+                  <text transform={upright(boxX + 6, boxY + 14)} x={boxX + 6} y={boxY + 14}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>MC</text>
-                  <text x={boxX + boxW - 6} y={boxY + 14}
+                  <text transform={upright(boxX + boxW - 6, boxY + 14)} x={boxX + boxW - 6} y={boxY + 14}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={13} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtMc(wp.leg_bearing_deg)}</text>
 
-                  <text x={boxX + 6} y={boxY + 28}
+                  <text transform={upright(boxX + 6, boxY + 28)} x={boxX + 6} y={boxY + 28}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>DIST</text>
-                  <text x={boxX + boxW - 6} y={boxY + 28}
+                  <text transform={upright(boxX + boxW - 6, boxY + 28)} x={boxX + boxW - 6} y={boxY + 28}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={13} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtDist(wp.leg_distance_nm)} nm</text>
 
-                  <text x={boxX + 6} y={boxY + 42}
+                  <text transform={upright(boxX + 6, boxY + 42)} x={boxX + 6} y={boxY + 42}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>TIME</text>
-                  <text x={boxX + boxW - 6} y={boxY + 42}
+                  <text transform={upright(boxX + boxW - 6, boxY + 42)} x={boxX + boxW - 6} y={boxY + 42}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={13} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtTime(legEta)}</text>
 
-                  <text x={boxX + 6} y={boxY + 56}
+                  <text transform={upright(boxX + 6, boxY + 56)} x={boxX + 6} y={boxY + 56}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>ALT</text>
-                  <text x={boxX + boxW - 6} y={boxY + 56}
+                  <text transform={upright(boxX + boxW - 6, boxY + 56)} x={boxX + boxW - 6} y={boxY + 56}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={12} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtAlt(wp.altitude_m, wp.altitude_type)}</text>
 
                   {/* ETE is the leg; ELAP is time since takeoff. The second is
                       what you actually cross-check against a time hack. */}
-                  <text x={boxX + 6} y={boxY + 70}
+                  <text transform={upright(boxX + 6, boxY + 70)} x={boxX + 6} y={boxY + 70}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>ELAP</text>
-                  <text x={boxX + boxW - 6} y={boxY + 70}
+                  <text transform={upright(boxX + boxW - 6, boxY + 70)} x={boxX + boxW - 6} y={boxY + 70}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={12} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtTime(wp.cumulative_eta || 0)}</text>
 
                   {/* Fuel remaining at this point — same model the Fuel Ladder
                       card uses, so the two cards agree. */}
-                  <text x={boxX + 6} y={boxY + 84}
+                  <text transform={upright(boxX + 6, boxY + 84)} x={boxX + 6} y={boxY + 84}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={11} fill={TEXT_MUTED}>FUEL</text>
-                  <text x={boxX + boxW - 6} y={boxY + 84}
+                  <text transform={upright(boxX + boxW - 6, boxY + 84)} x={boxX + boxW - 6} y={boxY + 84}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={12} fontWeight="bold" fill={ACCENT}
                         textAnchor="end">
@@ -452,14 +514,14 @@ export function StripMapCard({
                   <circle cx={p.x} cy={p.y} r={isOrigin ? 7 : 5}
                           fill={isOrigin ? '#3fb950' : '#ffa500'}
                           stroke="#fff" strokeWidth={1.5} />
-                  <text x={p.x + 9} y={p.y - 6}
+                  <text transform={upright(p.x + 9, p.y - 6)} x={p.x + 9} y={p.y - 6}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={13} fontWeight="bold" fill="#fff"
                         stroke="#000" strokeWidth={3}
                         paintOrder="stroke">
                     {p.wp.waypoint_number}{abbr ? ` ${abbr}` : ''}
                   </text>
-                  <text x={p.x + 9} y={p.y - 6}
+                  <text transform={upright(p.x + 9, p.y - 6)} x={p.x + 9} y={p.y - 6}
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={13} fontWeight="bold" fill="#fff">
                     {p.wp.waypoint_number}{abbr ? ` ${abbr}` : ''}
@@ -470,19 +532,21 @@ export function StripMapCard({
             {/* Match lines — this sheet is a cut from a longer route, so say
                 where it joins the next one. */}
             {page > 0 && (
-              <text x={8} y={16} fontSize={12} fill={ACCENT} fontWeight={700}
+              <text transform={upright((drawW - MAP_W) / 2 + 8, (drawH - MAP_H) / 2 + 16)} x={(drawW - MAP_W) / 2 + 8} y={(drawH - MAP_H) / 2 + 16} fontSize={12} fill={ACCENT} fontWeight={700}
                     stroke="#000" strokeWidth={2.5} paintOrder="stroke">
                 ◀ MATCH SHEET {page}
               </text>
             )}
             {page < totalPages - 1 && (
-              <text x={MAP_W - 8} y={MAP_H - 8} fontSize={12} fill={ACCENT} fontWeight={700}
+              <text transform={upright((drawW + MAP_W) / 2 - 8, (drawH + MAP_H) / 2 - 8)} x={(drawW + MAP_W) / 2 - 8} y={(drawH + MAP_H) / 2 - 8} fontSize={12} fill={ACCENT} fontWeight={700}
                     textAnchor="end" stroke="#000" strokeWidth={2.5} paintOrder="stroke">
                 MATCH SHEET {page + 2} ▶
               </text>
             )}
           </svg>
           </TileMap>
+            </div>
+          </div>
         )}
       </div>
 

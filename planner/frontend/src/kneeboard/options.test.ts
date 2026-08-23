@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_OPTIONS, resolveOptions, DENSITY_ROWS, NOTES_FRACTION,
 } from './options';
-import { computeJokerBingo } from './fuelModel';
+import { computeJokerBingo, estimateFuelFlow, recoveryLimitsFor } from './fuelModel';
 import { validatePopupAttack, DEFAULT_POPUP_LIMITS } from '../utils/popupValidation';
 import { contrailSummary } from './contrails';
 import { presetLabel } from './radioPresets';
@@ -152,5 +152,88 @@ describe('presentation tables', () => {
     expect(NOTES_FRACTION.none).toBe(0);
     expect(NOTES_FRACTION.quarter).toBeLessThan(NOTES_FRACTION.half);
     expect(NOTES_FRACTION.half).toBeLessThanOrEqual(0.5);
+  });
+});
+
+describe('burn model calibration', () => {
+  const cruise = (pph?: number) =>
+    estimateFuelFlow(25000, 220, 40000, 'FA-18C_hornet', pph);
+
+  it('leaves the model alone when no cruise figure is given', () => {
+    expect(cruise(undefined)).toBe(cruise(0));
+  });
+
+  it('scales the curve to pass near a known gauge reading', () => {
+    // Calibration is anchored at a nominal cruise; asking for a flow at a
+    // heavier weight than nominal lands near, not exactly on, the figure.
+    const asked = 6000;
+    const got = cruise(asked);
+    expect(got).toBeGreaterThan(asked * 0.6);
+    expect(got).toBeLessThan(asked * 1.8);
+  });
+
+  it('a higher known flow always burns more than a lower one', () => {
+    expect(cruise(9000)).toBeGreaterThan(cruise(4500));
+  });
+
+  it('keeps the model shape — faster still burns more after calibration', () => {
+    const slow = estimateFuelFlow(25000, 180, 40000, 'FA-18C_hornet', 6000);
+    const fast = estimateFuelFlow(25000, 320, 40000, 'FA-18C_hornet', 6000);
+    expect(fast).toBeGreaterThan(slow);
+  });
+
+  it('stays inside the idle and military clamps', () => {
+    expect(cruise(1)).toBeGreaterThan(0);
+    expect(cruise(999999)).toBeLessThanOrEqual(2 * 10000);
+  });
+});
+
+describe('recovery limits', () => {
+  it('gives the Hornet a trap limit below its field limit', () => {
+    const h = recoveryLimitsFor('FA-18C_hornet');
+    expect(h.trapLbs).toBeGreaterThan(0);
+    expect(h.trapLbs!).toBeLessThan(h.fieldLbs!);
+  });
+
+  it('gives a land-based jet a field limit and no trap limit', () => {
+    const viper = recoveryLimitsFor('F-16C_50');
+    expect(viper.fieldLbs).toBeGreaterThan(0);
+    expect(viper.trapLbs).toBeUndefined();
+  });
+
+  it('returns nothing for an airframe we carry no figure for', () => {
+    expect(recoveryLimitsFor('Su-27')).toEqual({});
+    expect(recoveryLimitsFor('')).toEqual({});
+  });
+});
+
+describe('card order', () => {
+  // Mirrors the ranking the carousel and the export both apply.
+  const rank = (key: string, order: string[]) => {
+    const i = order.indexOf(key.split('-')[0]);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const sortKeys = (keys: string[], order: string[]) =>
+    [...keys].sort((a, b) => rank(a, order) - rank(b, order));
+
+  it('puts listed types in the order given', () => {
+    expect(sortKeys(['flight', 'lineup', 'comms'], ['comms', 'lineup', 'flight']))
+      .toEqual(['comms', 'lineup', 'flight']);
+  });
+
+  it('keeps every page of a multi-sheet card with its type', () => {
+    const out = sortKeys(['threatCard-0', 'lineup', 'threatCard-1'], ['threatCard', 'lineup']);
+    expect(out).toEqual(['threatCard-0', 'threatCard-1', 'lineup']);
+  });
+
+  it('leaves unlisted types after the listed ones', () => {
+    const out = sortKeys(['flight', 'weather', 'comms'], ['comms']);
+    expect(out[0]).toBe('comms');
+    expect(out.slice(1).sort()).toEqual(['flight', 'weather']);
+  });
+
+  it('is a no-op for an empty order', () => {
+    const keys = ['flight', 'lineup', 'comms'];
+    expect(sortKeys(keys, [])).toEqual(keys);
   });
 });

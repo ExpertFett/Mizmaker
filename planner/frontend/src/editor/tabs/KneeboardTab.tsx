@@ -219,6 +219,19 @@ export function KneeboardTab() {
   const coalition = playerGroups[0]?.coalition || 'blue';
 
   /** Render all enabled card PNGs for a single group. Returns name+blob pairs. */
+  /** Sort rendered card files into the planner's deck order. The filename
+   *  carries the card type after the flight name, which is what the order
+   *  keys on. Unlisted types keep their derived position at the end. */
+  const inDeckOrder = (files: { name: string; blob: Blob }[]) => {
+    const order = opts.layout.cardOrder;
+    if (order.length === 0) return files;
+    const rank = (n: string) => {
+      const i = order.findIndex((k) => n.toLowerCase().includes(k.toLowerCase()));
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return [...files].sort((a, b) => rank(a.name) - rank(b.name));
+  };
+
   const renderGroupCards = async (g: typeof selectedGroup): Promise<{ name: string; blob: Blob }[]> => {
     if (!g) return [];
     const results: { name: string; blob: Blob }[] = [];
@@ -320,7 +333,7 @@ export function KneeboardTab() {
         results.push({ name: `${safeName}_W_${id}.png`, blob: await renderCardToBlob(el, theme, themeVars) });
       }
     }
-    return results;
+    return inDeckOrder(results);
   };
 
   /** Render enabled shared cards. */
@@ -430,7 +443,7 @@ export function KneeboardTab() {
         results.push({ name: `Popup_${i + 1}_${safe}.png`, blob: await renderCardToBlob(el, theme, themeVars) });
       }
     }
-    return results;
+    return inDeckOrder(results);
   };
 
   const enabledPerFlightCount = PER_FLIGHT_CARDS.filter((c) => cards[c.key]).length;
@@ -1631,7 +1644,18 @@ function CardCarousel({
       }
     }
 
-    return list;
+    // Planner's deck order. Keys are card types, so every page of a
+    // multi-sheet card travels with its type and stays in sequence. Anything
+    // the order does not mention keeps its derived position, after the ones
+    // that do — a stale order degrades to a partial preference.
+    const order = opts.layout.cardOrder;
+    if (order.length === 0) return list;
+    const rank = (key: string) => {
+      const type = key.split('-')[0];
+      const i = order.indexOf(type);
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return [...list].sort((a, b) => rank(a.key) - rank(b.key));
   }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks]);
 
   // Clamp index when list changes
