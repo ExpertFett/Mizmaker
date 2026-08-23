@@ -8,6 +8,7 @@
  * in utils/popupAttack.ts; the rendered card is kneeboard/PopupAttackCard.tsx.
  */
 
+import { PopupProfileCanvas } from './PopupProfileCanvas';
 import { computePopupAttack, defaultPopupAttack, ATTACK_TYPE_LABEL, ATTACK_TYPE_DESC, type PopupAttackInput, type AttackType } from '../../utils/popupAttack';
 import { AIRCRAFT_PRESET_LABEL, AIRCRAFT_NOTES, applyAircraftPreset, type AircraftPreset } from '../../utils/popupAttackPresets';
 
@@ -122,7 +123,12 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
           ✈ {AIRCRAFT_PRESET_LABEL[profile.aircraft as AircraftPreset]}: {AIRCRAFT_NOTES[profile.aircraft as AircraftPreset]}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+      {/* Draw the profile, don't just type it. Handles write back into the
+          same input the fields below edit, and the protocol checks render on
+          the chart where they happen. */}
+      <PopupProfileCanvas profile={profile} onPatch={onPatch} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 8 }}>
         <Field label="TGT elev (ft MSL)" v={profile.targetElevationFt} onChange={(n) => onPatch({ targetElevationFt: n })} />
         <Field label="VIP dist (NM)" v={profile.vipDistanceNm} onChange={(n) => onPatch({ vipDistanceNm: n })} step={0.5} />
         <Field label="Popup alt (ft MSL)" v={profile.popupAltitudeFtMsl} onChange={(n) => onPatch({ popupAltitudeFtMsl: n })} />
