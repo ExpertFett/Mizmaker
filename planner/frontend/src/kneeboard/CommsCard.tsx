@@ -5,6 +5,7 @@
 
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, MissionDateLine } from './cardStyles';
 import type { MissionGroup, MissionOverviewData, Airbase } from '../types/mission';
+import { toMhz } from '../utils/frequency';
 import { getAircraftType } from '../utils/groups';
 
 /** Nautical miles between two lat/lon points. */
@@ -130,7 +131,7 @@ export function CommsCard({ group, allGroups, overview, notes, airbases = [], so
                   </td>
                   <td style={cell} />
                   <td style={{ ...cell, textAlign: 'center', width: 120, fontWeight: 600 }}>
-                    {c.frequency.toFixed(3)}
+                    {toMhz(c.frequency).toFixed(3)}
                   </td>
                 </tr>
               ))}

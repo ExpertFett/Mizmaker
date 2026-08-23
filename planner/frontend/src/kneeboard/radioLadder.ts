@@ -16,6 +16,7 @@
  */
 
 import type { Airbase, MissionGroup } from '../types/mission';
+import { toMhz } from '../utils/frequency';
 
 /** Ordering is the point of this card — the numbers are the ladder. */
 export const PHASES = [
@@ -86,10 +87,26 @@ export function buildRadioLadder(input: BuildInput): LadderRow[] {
   const rows: LadderRow[] = [];
   const push = (r: LadderRow) => {
     // A rung needs to tell the pilot something: a frequency, or failing that
-    // a TACAN. One rung per frequency per phase, so a field whose ground and
-    // tower share a radio does not eat two.
+    // a TACAN.
     if (r.freqMhz <= 0 && !r.note) return;
-    if (r.freqMhz > 0 && rows.some((x) => x.freqMhz === r.freqMhz && x.phase === r.phase)) return;
+
+    // One rung per frequency per phase — a field whose ground and tower share
+    // a radio should not eat two. But when several AGENCIES share a frequency
+    // (a squadron running every tanker on one push), dropping the duplicates
+    // silently hid every callsign but the first. Name them all on the one
+    // rung instead: the frequency is shared, the callsigns are not.
+    const existing = r.freqMhz > 0
+      ? rows.find((x) => x.freqMhz === r.freqMhz && x.phase === r.phase)
+      : undefined;
+    if (existing) {
+      if (!existing.agency.split(' / ').includes(r.agency)) {
+        existing.agency = `${existing.agency} / ${r.agency}`;
+      }
+      if (r.note && !existing.note?.includes(r.note)) {
+        existing.note = existing.note ? `${existing.note} · ${r.note}` : r.note;
+      }
+      return;
+    }
     rows.push(r);
   };
 
@@ -110,8 +127,10 @@ export function buildRadioLadder(input: BuildInput): LadderRow[] {
   }
 
   // --- check-in with the controlling agency ----------------------------
+  // SOP frequencies bypass the mission parser, so normalise here — a sheet
+  // read by the vision extractor can come back in Hz.
   for (const c of sopComms.filter((c) => COMMAND_RE.test(c.role) && c.frequency > 0)) {
-    push({ id: `cmd-${c.role}`, phase: 'CHECK-IN', agency: c.role, freqMhz: c.frequency, modulation: 0 });
+    push({ id: `cmd-${c.role}`, phase: 'CHECK-IN', agency: c.role, freqMhz: toMhz(c.frequency), modulation: 0 });
   }
 
   // --- the flight's own net --------------------------------------------
@@ -156,16 +175,21 @@ export function buildRadioLadder(input: BuildInput): LadderRow[] {
     // Marshal/tower for the boat live in the SOP; the .miz gives a carrier no
     // group frequency at all.
     for (const c of sopComms.filter((c) => MARSHAL_RE.test(c.role) && c.frequency > 0)) {
-      push({ id: `mar-${c.role}`, phase: 'MARSHAL', agency: c.role, freqMhz: c.frequency, modulation: 0 });
+      push({ id: `mar-${c.role}`, phase: 'MARSHAL', agency: c.role, freqMhz: toMhz(c.frequency), modulation: 0 });
     }
     for (const c of sopComms.filter((c) => BOAT_TOWER_RE.test(c.role) && c.frequency > 0)) {
-      push({ id: `cvt-${c.role}`, phase: 'RECOVERY', agency: c.role, freqMhz: c.frequency, modulation: 0 });
+      push({ id: `cvt-${c.role}`, phase: 'RECOVERY', agency: c.role, freqMhz: toMhz(c.frequency), modulation: 0 });
     }
   }
   if (carrier) {
+    // A carrier's radio lives on the UNIT, not the group — the group reads 0.
+    // Prefer the deck the flight is actually tied to.
+    const deck = (carrier.units || []).find((u) => u.unitId === motherUnit)
+      ?? (carrier.units || []).find((u) => CARRIER_RE.test(u.type || ''));
     push({
       id: `rec-cv-${carrier.groupId}`, phase: 'RECOVERY', agency: carrier.groupName,
-      freqMhz: carrier.frequency, modulation: carrier.modulation,
+      freqMhz: carrier.frequency > 0 ? carrier.frequency : (deck?.frequency ?? 0),
+      modulation: carrier.modulation,
       note: carrier.tacan
         ? `${carrier.tacan.channel}${carrier.tacan.band}${carrier.tacan.callsign ? ' ' + carrier.tacan.callsign : ''}`
         : undefined,

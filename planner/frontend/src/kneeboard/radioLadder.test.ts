@@ -79,6 +79,69 @@ describe('buildRadioLadder', () => {
     expect(rows.at(-1)?.phase).toBe('GUARD');
   });
 
+  it('names every agency sharing a frequency instead of dropping all but one', () => {
+    // A squadron running all its tankers on one push. The old behaviour kept
+    // the first callsign and silently discarded the rest.
+    const shared = {
+      ...base,
+      allGroups: [
+        BENGAL,
+        grp({ groupId: 3, groupName: 'Texaco-2', task: 'Refueling', frequency: 250.0 }),
+        grp({ groupId: 4, groupName: 'Texaco-3', task: 'Refueling', frequency: 250.0 }),
+        grp({ groupId: 5, groupName: 'Shell-1', task: 'Refueling', frequency: 250.0 }),
+      ],
+    };
+    const tankers = buildRadioLadder(shared).filter((r) => r.phase === 'TANKER');
+    expect(tankers).toHaveLength(1);
+    expect(tankers[0].agency).toBe('Texaco-2 / Texaco-3 / Shell-1');
+  });
+
+  it('does not repeat an agency already named on a shared rung', () => {
+    const dup = {
+      ...base,
+      allGroups: [
+        BENGAL,
+        grp({ groupId: 3, groupName: 'Texaco-2', task: 'Refueling', frequency: 250.0 }),
+        grp({ groupId: 4, groupName: 'Texaco-2', task: 'Refueling', frequency: 250.0 }),
+      ],
+    };
+    const tankers = buildRadioLadder(dup).filter((r) => r.phase === 'TANKER');
+    expect(tankers[0].agency).toBe('Texaco-2');
+  });
+
+  it('keeps the TACANs of every tanker sharing a frequency', () => {
+    const shared = {
+      ...base,
+      allGroups: [
+        BENGAL,
+        grp({ groupId: 3, groupName: 'Texaco-2', task: 'Refueling', frequency: 250.0,
+              tacan: { channel: 119, band: 'Y', callsign: 'TX2' } }),
+        grp({ groupId: 4, groupName: 'Texaco-3', task: 'Refueling', frequency: 250.0,
+              tacan: { channel: 120, band: 'Y', callsign: 'TX3' } }),
+      ],
+    };
+    const tkr = buildRadioLadder(shared).find((r) => r.phase === 'TANKER');
+    expect(tkr!.note).toContain('119Y');
+    expect(tkr!.note).toContain('120Y');
+  });
+
+  it('reads a carrier radio off the unit, since the group carries none', () => {
+    const carrier = grp({
+      groupId: 9, groupName: 'Washington', category: 'ship', frequency: 0,
+      units: [{ unitId: 1348, type: 'CVN_73', frequency: 228.6 }],
+    });
+    const deckLaunched = grp({
+      groupId: 1, groupName: 'Bengal-3', task: 'CAS', frequency: 305.0,
+      waypoints: [{ ...wp(69.5, 30.5), link_unit: 1348 }, wp(69.0, 31.0)],
+    });
+    const rows = buildRadioLadder({
+      ...base, group: deckLaunched, allGroups: [deckLaunched, carrier],
+    });
+    const rec = rows.find((r) => r.phase === 'RECOVERY');
+    expect(rec?.agency).toBe('Washington');
+    expect(rec?.freqMhz).toBe(228.6);
+  });
+
   it('does not spend two rungs on one frequency in the same phase', () => {
     const rows = buildRadioLadder(base);
     const tower = rows.filter((r) => r.phase === 'TOWER').map((r) => r.freqMhz);

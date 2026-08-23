@@ -43,6 +43,10 @@ export interface MissionUnit {
   country: string;
   groupName: string;
   groupId: number;
+  /** Unit radio in MHz, normalised at the parser. Ships carry their radio
+   *  here rather than on the group — a carrier's group frequency is 0 while
+   *  the unit holds the real number. 0 when the unit has none. (v1.19.123) */
+  frequency?: number;
 }
 
 export interface MissionGroup {

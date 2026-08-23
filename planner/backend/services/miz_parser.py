@@ -277,6 +277,32 @@ def _parse_mission_indexed_form(text: str) -> dict:
     return out
 
 
+def normalize_freq_mhz(value) -> float:
+    """Radio frequency in MHz, whatever unit the mission stored it in.
+
+    DCS is not consistent about this. Group frequencies come through in MHz
+    (251.0), but unit frequencies are Hz — a carrier reads 127500000 for
+    127.5 MHz — and both live in the same file. A card that formatted the raw
+    number printed "127500000.000 AM".
+
+    Normalising on magnitude is safe because the ranges do not overlap: no
+    real radio frequency is 1000 MHz or more in this context (DCS radios top
+    out around 400 MHz), and none is below 1 MHz, so anything at 1e6 or above
+    must be Hz and anything from 1e3 up must be kHz.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if f <= 0:
+        return 0.0
+    if f >= 1e6:
+        return f / 1e6          # Hz
+    if f >= 1e3:
+        return f / 1e3          # kHz
+    return f                    # already MHz
+
+
 def _merge_warehouse_airfields(airbases: list, warehouses_text: str | None) -> None:
     """Stamp real ownership and supply state onto the theater airbase list.
 
@@ -873,6 +899,11 @@ def _extract_group(
             "x": _num(u.get("x")),
             "y": _num(u.get("y")),
             "skill": u.get("skill", ""),
+            # Unit radio, in MHz. Ships carry theirs here rather than on the
+            # group — a carrier's group frequency is 0 while the unit holds
+            # the real number — so without this the recovery frequency for a
+            # deck-launched flight was simply missing.
+            "frequency": normalize_freq_mhz(u.get("frequency")),
             "category": category,
             "coalition": coalition,
             "country": country,
@@ -941,7 +972,7 @@ def _extract_group(
         "country": country,
         "category": category,
         "task": group.get("task", ""),
-        "frequency": _num(group.get("frequency")),
+        "frequency": normalize_freq_mhz(group.get("frequency")),
         "modulation": group.get("modulation", 0),
         "tacan": tacan,
         "icls": icls,
