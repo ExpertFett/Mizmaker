@@ -246,7 +246,11 @@ def _minimal_wing_brief() -> dict:
         "logo_base64": "", "cover_image_base64": "",
         "theatre_overview": "Overview.", "scenario": "Scenario.",
         "commanders_intent": "Purpose: x\nMethod: y\nEnd State: z",
-        "mission_flow": "1. Push", "notes": "",
+        "mission_flow": "1. Push",
+        # Non-empty: unwritten prose sections are now OMITTED, so a blank
+        # value here would drop the slide and skew the count assertions.
+        # Omission itself is covered by TestOmitsUnwrittenSections.
+        "notes": "ROE: weapons tight.",
         "timeline": [{"phase": "PUSH", "time_zulu": "0815Z", "note": "go"}],
         "threats": [{"name": "SA-11", "type": "SAM", "coalition": "red",
                      "range_km": 35, "location": "Kobuleti"}],
@@ -645,17 +649,51 @@ class TestScenarioFleshOut:
             {"date": "2026-07-09", "start_time": 28800, "description": "Retake the field."},
             {}, groups=groups, threats=threats, theater="Caucasus",
         )
-        assert "SITUATION" in out and "FRIENDLY FORCES" in out and "ADVERSARY" in out
+        assert "SITUATION" in out and "FRIENDLY FORCES" in out and "ENEMY FORCES" in out
         assert "Retake the field." in out   # mission's own text leads
         assert "F/A-18C" in out             # friendly package
-        assert "Su-27" in out               # enemy air
-        assert "SA-11" in out               # surface threat
+        assert "SA-11" in out               # surface threat, narrated by family
+        # Narrated as consequence, not an inventory line.
+        assert "1x SA-11" not in out
 
-    def test_empty_mission_still_produces_sections(self):
+    def test_empty_mission_omits_rather_than_padding(self):
+        """An empty mission gets no ADVERSARY section at all.
+
+        It used to assert "no enemy aircraft detected" — filler that reads as
+        briefed fact. Sections with nothing behind them are now dropped so the
+        renderer omits the slide entirely.
+        """
         from services.brief_builder import _build_scenario
         out = _build_scenario({}, {}, groups=[], threats=[], theater="Caucasus")
-        assert "ADVERSARY" in out
-        assert "no enemy aircraft detected" in out.lower()
+        assert "ADVERSARY" not in out
+        assert "FRIENDLY FORCES" not in out
+        assert "0000Z" not in out          # no start time != midnight
+
+    def test_machine_generated_description_is_not_quoted_back(self):
+        """Generator boilerplate baked into the .miz must not reach the brief."""
+        from services.brief_builder import _build_scenario
+        machine = (
+            "SITUATION BRIEFING\\nTheater: Kola\\nDate: 2006-11-08\\n"
+            "THREAT LAYDOWN (46 SAM/AAA):\\n  - 1x Ground-9-1\\n"
+            "  - 1x Murmansk AAA-2-1\\n"
+        )
+        out = _build_scenario(
+            {"date": "2006-11-08", "start_time": 51900, "description": machine},
+            {}, groups=[], threats=[], theater="Kola",
+        )
+        assert "Ground-9-1" not in out
+        assert "THREAT LAYDOWN" not in out
+        assert "\\n" not in out            # inline Lua escapes unescaped
+
+    def test_intent_and_flow_never_emit_placeholders(self):
+        """No bracketed prompts or 'author this' instructions in output."""
+        from services.brief_builder import _build_commanders_intent, _build_mission_flow
+        assert _build_commanders_intent([]) == ""
+        assert _build_mission_flow([], []) == ""
+        flow = _build_mission_flow(
+            [{"phase": "Takeoff", "time_zulu": "1425Z", "note": ""},
+             {"phase": "RTB", "time_zulu": "1600Z", "note": ""}], [])
+        assert "[" not in flow and "TOT-15" not in flow
 
 
 # ---------------------------------------------------------------------------
@@ -887,3 +925,37 @@ class TestPopupAttackFlightSlide:
         )
         assert len(out) == 1
         assert out[0]["popup_attacks"] == profiles
+
+
+class TestOmitsUnwrittenSections:
+    """Unwritten prose sections are dropped, not padded with a prompt.
+
+    The renderer used to emit every prose slide unconditionally, printing
+    "Edit this section to add ROE..." and the commander's-intent template
+    verbatim whenever the mission maker had not filled them in.
+    """
+
+    def _titles(self, brief):
+        from services.brief_renderer import render_wing_brief
+        prs = Presentation(io.BytesIO(render_wing_brief(brief)))
+        return [" ".join(sh.text_frame.text for sh in s.shapes if sh.has_text_frame)
+                for s in prs.slides]
+
+    def test_empty_notes_slide_is_omitted(self):
+        b = _minimal_wing_brief(); b["notes"] = ""
+        joined = " ".join(self._titles(b))
+        assert "SPECIAL INSTRUCTIONS" not in joined
+        assert "Edit this section" not in joined
+
+    def test_empty_intent_and_flow_slides_are_omitted(self):
+        b = _minimal_wing_brief()
+        b["commanders_intent"] = ""
+        b["mission_flow"] = ""
+        joined = " ".join(self._titles(b))
+        assert "COMMANDER'S INTENT" not in joined
+        assert "MISSION FLOW" not in joined
+
+    def test_written_sections_still_render(self):
+        joined = " ".join(self._titles(_minimal_wing_brief()))
+        assert "SPECIAL INSTRUCTIONS" in joined
+        assert "COMMANDER'S INTENT" in joined

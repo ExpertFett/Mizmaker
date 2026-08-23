@@ -1106,22 +1106,41 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     bottom_bar.line.fill.background()
 
     # ---------- Slide 2: Theatre overview -------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "THEATRE OVERVIEW")
-    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-         brief["theatre_overview"], size=16, color=LIGHT)
+    # Omitted when empty: a brief should never carry a blank slide
+    # or a "go author this" prompt.
+    if (brief.get("theatre_overview") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "THEATRE OVERVIEW")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["theatre_overview"], size=16, color=LIGHT)
 
     # ---------- Slide 3: Scenario ----------------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "SCENARIO")
-    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-         brief["scenario"], size=16, color=LIGHT)
+    # Omitted when empty: a brief should never carry a blank slide
+    # or a "go author this" prompt.
+    if (brief.get("scenario") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "SCENARIO")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["scenario"], size=16, color=LIGHT)
+
+    # ---------- Slide 3b: Weather ----------------------------------------
+    # A brief always briefs the sky. The wing brief carried no weather at all
+    # until v1.19.116; weather_brief states it as consequence (icing, night
+    # recovery, instrument approach) rather than a row of raw values.
+    if (brief.get("weather_brief") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "WEATHER")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["weather_brief"], size=16, color=LIGHT)
 
     # ---------- Slide 4: Commander's intent ------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "COMMANDER'S INTENT")
-    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-         brief["commanders_intent"], size=16, color=LIGHT)
+    # Omitted when empty: a brief should never carry a blank slide
+    # or a "go author this" prompt.
+    if (brief.get("commanders_intent") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "COMMANDER'S INTENT")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["commanders_intent"], size=16, color=LIGHT)
 
     # ---------- Slide 4b: Route overview map (client-rendered) -----------
     # All flight tracks + threat rings on one image (captureOverviewImage,
@@ -1168,7 +1187,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             # Lead-line on first page only
             tier_count = sum(1 for r in threats_list)
             _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
-                 f"{tier_count} threat area(s) — position is bearing/range (nm) "
+                 f"{tier_count} threat area{'' if tier_count == 1 else 's'} — position is bearing/range (nm) "
                  f"from bullseye; WEZ is max engagement range in cluster.",
                  size=11, color=DIM, italic=True)
 
@@ -1281,7 +1300,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             _slide_header(s, a_title)
             if pidx == 0:
                 _txt(s, Inches(0.6), Inches(1.15), Inches(12.1), Inches(0.4),
-                     f"{n_air} enemy airframe type(s) on the map — A2A weapons and "
+                     f"{n_air} enemy airframe type{'' if n_air == 1 else 's'} on the map — A2A weapons and "
                      f"how to fight each.",
                      size=11, color=DIM, italic=True)
             A_TOP = Inches(1.7) if pidx == 0 else Inches(1.3)
@@ -1349,10 +1368,13 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
              size=17, color=LIGHT, bold=True)
 
     # ---------- Slide 8: Mission flow -----------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "MISSION FLOW")
-    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-         brief["mission_flow"], size=15, color=LIGHT)
+    # Omitted when empty: a brief should never carry a blank slide
+    # or a "go author this" prompt.
+    if (brief.get("mission_flow") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "MISSION FLOW")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["mission_flow"], size=15, color=LIGHT)
 
     # ---------- Slide 9: Timeline ---------------------------------------
     s = prs.slides.add_slide(BLANK); _apply_bg(s)
@@ -1367,16 +1389,14 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         )
 
     # ---------- Slide 10: Notes -----------------------------------------
-    s = prs.slides.add_slide(BLANK); _apply_bg(s)
-    _slide_header(s, "SPECIAL INSTRUCTIONS / NOTES")
-    notes_text = brief.get("notes") or (
-        "Edit this section to add ROE, special procedures, contingency "
-        "plans, fragments of code-words, divert decisions, etc."
-    )
-    is_placeholder = not brief.get("notes")
-    _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-         notes_text, size=15, color=DIM if is_placeholder else LIGHT,
-         italic=is_placeholder)
+    # Omitted when unwritten. It used to print "Edit this section to add ROE,
+    # special procedures..." in italics — an instruction to the author that
+    # went out to aircrew on every unedited brief.
+    if (brief.get("notes") or "").strip():
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "SPECIAL INSTRUCTIONS / NOTES")
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+             brief["notes"], size=15, color=LIGHT)
 
     # ---------- Slide 11: Popup attack profiles (optional) ---------------
     # Pages through the kneeboard popup-attack profiles, one row per

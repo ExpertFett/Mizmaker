@@ -27,6 +27,7 @@ import { isPlayerGroup } from '../../utils/groups';
 import { captureRouteImage, captureOverviewImage } from '../../kneeboard/captureRoute';
 import { useAiStore } from '../../ai/aiStore';
 import { generateCommandersIntent } from '../../ai/commandersIntent';
+import { CommandersIntentEditor } from './commandersIntent';
 import { generateThreatNarrative } from '../../ai/threatNarrative';
 import { generateFullBrief } from '../../ai/briefWriter';
 import { generateSpeakerNotes, speakerNotesToBriefMap } from '../../ai/speakerNotes';
@@ -54,6 +55,10 @@ interface WingBrief {
   cover_image_base64: string;
   theatre_overview: string;
   scenario: string;
+  /** Weather stated as consequence (icing, night recovery, instrument
+   *  approach) rather than raw values. Auto-built from the mission; editable
+   *  here. Empty means the renderer omits the slide. */
+  weather_brief: string;
   commanders_intent: string;
   threat_narrative: string;
   mission_flow: string;
@@ -1270,6 +1275,11 @@ export function BriefGenTab() {
                       onChange={(e) => set('theatre_overview', e.target.value)} />
           </Card>
 
+          <Card title="Weather">
+            <textarea style={textareaStyle} rows={4} value={brief.weather_brief || ''}
+                      onChange={(e) => set('weather_brief', e.target.value)} />
+          </Card>
+
           <Card title="Scenario">
             <textarea style={textareaStyle} rows={8} value={brief.scenario}
                       onChange={(e) => set('scenario', e.target.value)} />
@@ -1458,12 +1468,13 @@ export function BriefGenTab() {
                 />
               </div>
             )}
-            <textarea
-              style={textareaStyle}
-              rows={6}
+            {/* Guided Purpose / Method / End State rather than a blank box.
+                The prompts are UI-only — an unfilled field contributes
+                nothing, so the intent stays empty and the slide is omitted. */}
+            <CommandersIntentEditor
               value={brief.commanders_intent}
-              onChange={(e) => {
-                set('commanders_intent', e.target.value);
+              onChange={(next) => {
+                set('commanders_intent', next);
                 setAiNote(null);
               }}
             />

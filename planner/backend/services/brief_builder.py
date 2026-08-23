@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +243,10 @@ class WingBrief:
     # surface-threats table when present. User-editable like the other prose
     # sections; defaults empty so old missions/clients without it still render.
     threat_narrative: str = ""
+    # Weather stated as consequence, not a data dump (v1.19.116). A real
+    # brief always briefs the sky; the wing brief previously carried no
+    # weather at all. Empty -> the renderer omits the slide.
+    weather_brief: str = ""
     # Popup-attack profiles (v1.17.6). Mirrors the Kneeboard tab's profile
     # list (PopupAttackInput[] shape). When non-empty, the renderer adds a
     # POPUP ATTACK slide with one row per profile; empty = no slide. Pure
@@ -286,100 +290,57 @@ class WingBrief:
 
 THEATRE_BLURBS: Dict[str, str] = {
     "Caucasus":
-        "Western Caucasus region. Eastern Black Sea coast bounded by the "
-        "Greater Caucasus mountain range to the south. Spans the Russian "
-        "Federation, Georgia, and Abkhazia. Terrain ranges from coastal "
-        "lowlands and Black Sea naval approaches in the west to peaks "
-        "exceeding 4,000 m on the southern border. Climate is mild on the "
-        "coast, alpine in the mountains. Multiple coalition airfields are "
-        "available; Russian-side airbases are concentrated in the Krasnodar "
-        "and Sochi area.",
+        "Black Sea coast backed by a 4,000 m ridgeline. Coalition fields on "
+        "the coast, Russian fields around Krasnodar and Sochi. The valleys "
+        "mask well — they also put you below radar coverage.",
     "Syria":
-        "Eastern Mediterranean. Spans coastal Syria, Lebanon, southern "
-        "Turkey, Cyprus, northern Israel and parts of Jordan. Terrain "
-        "transitions from Mediterranean coast through coastal mountains "
-        "to the Bekaa Valley and Syrian desert plateau. Multiple national "
-        "air forces in close proximity — IFF and ROE discipline is critical.",
+        "Eastern Mediterranean: coast, coastal range, Bekaa, desert plateau. "
+        "Several national air forces sit minutes apart. IFF discipline is not "
+        "optional here.",
     "PersianGulf":
-        "Strait of Hormuz and surrounding Gulf states. Covers Iran, the "
-        "United Arab Emirates, Oman, parts of Saudi Arabia and Qatar. "
-        "Terrain is largely flat coastal desert with the Zagros mountains "
-        "rising along the Iranian side. Naval traffic in the Strait is "
-        "heavy. Range to most operating areas is medium; tanker support "
-        "extends loiter time significantly.",
+        "Gulf littoral. Long overwater legs, few diverts, and summer heat that "
+        "costs real performance. Civil traffic density is high — know the "
+        "corridors.",
     "Nevada":
-        "Nevada Test and Training Range, centred on Nellis AFB. High "
-        "desert with elevations from approximately 2,000 to 12,000 ft MSL. "
-        "Restricted military airspace dominates the area, including the "
-        "Tonopah and Sally Corridor ranges. Hot/high density-altitude "
-        "considerations apply for both performance and weapons employment.",
+        "High desert. Field elevations above 5,000 ft; density altitude drives "
+        "every takeoff, landing and climb number you brief.",
     "SinaiMap":
-        "Sinai Peninsula and surrounding region. Covers Egypt, Israel, "
-        "and parts of Jordan and Saudi Arabia. Terrain is largely arid "
-        "desert with the Sinai mountain range to the south and the "
-        "Mediterranean coast to the north. Multiple national borders "
-        "with sensitive overflight rules.",
+        "Sinai and the Nile delta. Open desert with little terrain masking, "
+        "adjoining Israeli and Egyptian airspace, sparse diverts inland.",
     "Normandy":
-        "North-western France, late spring 1944. English Channel coast "
-        "with the Cotentin Peninsula to the west and the city of Caen to "
-        "the east. Bocage country (hedge-lined fields) inland complicates "
-        "ground manoeuvre and target acquisition. Allied airfields "
-        "concentrated in southern England; expect short transit times "
-        "and limited loiter on station.",
+        "1944 northern France. Short legs, poor weather, unimproved strips. "
+        "Navigation is visual — assume no meaningful radio aids.",
     "TheChannel":
-        "English Channel between southern England and the French "
-        "coast, WWII era. Short overwater transits, weather-driven "
-        "operations, and dense flak corridors along both coasts.",
+        "Channel coast, England to Calais. Very short legs, marginal weather, "
+        "and an overwater ditching problem on every sortie.",
     "MarianaIslands":
-        "Western Pacific, centred on Guam, Tinian, and Saipan. Operations "
-        "are largely overwater; carrier-based assets and USAF Andersen "
-        "AFB on Guam dominate the airfield picture. Expect long ferry "
-        "ranges and weather-driven divert planning.",
+        "Open Pacific. Guam and Saipan are effectively the only diverts, so "
+        "overwater fuel planning is the mission.",
     "Falklands":
-        "South Atlantic, 1982 era. Falkland Islands and surrounding "
-        "ocean approximately 800 km east of southern Argentina. "
-        "Long ranges from mainland bases, harsh maritime weather, and "
-        "limited divert options. Carrier-based ops dominate.",
+        "South Atlantic. Severe weather, high winds, very long overwater legs "
+        "and almost no divert. Weather is the primary threat.",
     "Kola":
-        "Kola Peninsula and northern Fennoscandia, approximately 65–70°N. "
-        "Spans northern Norway, Finland, Sweden, and the Russian Murmansk "
-        "Oblast. Terrain mixes Arctic tundra, fjords, and forested "
-        "lowlands. Long ranges, harsh weather, low sun angles in winter, "
-        "and limited diverts make planning unforgiving. Airfields cluster "
-        "in northern Norway (NATO) and the Murmansk-Severomorsk area "
-        "(Russia).",
+        "Arctic, 65-70N — northern Norway, Finland, and the Murmansk / "
+        "Severomorsk complex. Long ranges, few diverts, and low sun with short "
+        "daylight in winter.",
     "Afghanistan":
-        "Central Asian highlands. Hindu Kush mountains dominate central "
-        "and northern terrain with elevations regularly above 12,000 ft. "
-        "Density-altitude impacts both aircraft performance and weapons "
-        "employment. Limited modern infrastructure outside major cities. "
-        "Operating areas are widely dispersed.",
+        "High mountain terrain. Elevation and ridgelines drive performance; "
+        "thin air, hot days, and long distances between diverts.",
     "Iraq":
-        "Mesopotamian basin. Tigris-Euphrates river valley with desert "
-        "to the west and the Zagros foothills to the east. Terrain is "
-        "largely flat with sparse vegetation. Multiple operational eras "
-        "supported by the map; verify timeline-specific orders of battle.",
+        "Mesopotamian plain and western desert. Open terrain, little masking, "
+        "long sight lines in both directions.",
     "TopEndAustralia":
-        "Top End of the Northern Territory of Australia. Tropical "
-        "savannah with monsoon-driven seasonal weather. Sparse "
-        "population, very limited diverts. Long overwater transits to "
-        "operating areas across the Timor and Arafura seas.",
+        "Northern Australia. Vast and sparsely based — long overland and "
+        "overwater legs with very few diverts.",
     "SouthEastAsia":
-        "South-East Asia, Vietnam-era. Jungle terrain with monsoon "
-        "weather, riverine targets and dense AAA/MANPADS belts along "
-        "established corridors. Limited precision navigation aids; "
-        "DR/visual nav skills matter.",
+        "Jungle and karst. Poor visual acuity against the terrain and weather "
+        "that builds fast through the afternoon.",
     "GermanyCW":
-        "Cold War Germany. Inner German border between NATO and Warsaw "
-        "Pact forces. Dense distribution of military airfields on both "
-        "sides; short ranges between adversary FEBA and rear airfields. "
-        "Expect heavy IADS density and minimal warning time.",
+        "Cold War inner-German border. Dense airspace, short reaction times, "
+        "and heavy SAM and AAA coverage on both sides of the line.",
 }
 
-DEFAULT_THEATRE_BLURB = (
-    "Theatre overview not yet authored for this map. Edit this section "
-    "to describe the operational area, terrain, and coalition disposition."
-)
+DEFAULT_THEATRE_BLURB = ""  # unknown map -> omit the slide rather than print an "author this" note to aircrew
 
 
 # Default mission names per theater — used when the .miz has no sortie
@@ -432,13 +393,29 @@ def _add_minutes(seconds: Optional[float], minutes: int) -> str:
     return _format_zulu(seconds + minutes * 60)
 
 
-def _format_freq(hz: Optional[float]) -> str:
-    # Floor at 1 MHz: a sub-MHz value is never a valid radio frequency, so a
-    # stray 0 / mis-scaled value won't render as a bogus "0.000" on the brief.
-    # Treat those as "no frequency" (empty) so callers can show a dash instead.
-    if not hz or hz < 1_000_000:
+def _format_freq(value: Optional[float]) -> str:
+    """Format a group radio frequency as MHz to 3 dp.
+
+    DCS is inconsistent about units and a single .miz mixes them: most groups
+    store MHz (124, 251, 128.3) while some store Hz (128300000). The previous
+    implementation assumed Hz and floored at 1e6, so every MHz-stored group —
+    i.e. nearly all of them — rendered blank on the comms and flight tables.
+    Normalise on magnitude instead of trusting the unit.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
         return ""
-    return f"{hz / 1_000_000:.3f}"
+    if f <= 0:
+        return ""
+    if f >= 1_000_000:          # Hz
+        f /= 1_000_000
+    elif f >= 1_000:            # kHz
+        f /= 1_000
+    # Outside any plausible aviation radio band -> treat as no frequency.
+    if f < 1 or f > 3_000:
+        return ""
+    return f"{f:.3f}"
 
 
 def _infer_role_from_task(task: str) -> str:
@@ -506,15 +483,333 @@ def _build_theatre_overview(theater: str) -> str:
 
 # One-line framing per mission type for the scenario's SITUATION lead.
 _MISSION_FRAME: Dict[str, str] = {
-    "strike":   "a coordinated strike against fixed/known targets.",
-    "cas":      "close air support for friendly ground forces in contact.",
-    "dca":      "defensive counter-air protecting friendly airspace and assets.",
-    "sead":     "suppression of enemy air defences to open the ingress corridor.",
-    "antiship": "an anti-shipping strike against enemy surface vessels.",
-    "recon":    "a reconnaissance / AFAC tasking over the area of interest.",
-    "tanker":   "aerial-refuelling support for the package.",
-    "mixed":    "a mixed-role package running multiple simultaneous taskings.",
+    "strike":   "Strike on fixed targets.",
+    "cas":      "Close air support for troops in contact.",
+    "dca":      "Defensive counter-air.",
+    "sead":     "SEAD to open the ingress corridor.",
+    "antiship": "Anti-shipping strike.",
+    "recon":    "Reconnaissance / AFAC.",
+    "tanker":   "Air-refuelling support.",
+    "mixed":    "Multi-role package.",
 }
+
+
+# Some mission generators bake a machine-written summary into the .miz
+# description and coalition tasks. It restates what this brief already renders
+# as tables, using raw DCS group names — "1x Ground-9-1" means nothing to
+# aircrew — and it goes stale the moment the mission is re-saved. Strip it and
+# keep only what a human actually wrote.
+_MACHINE_HEADERS = re.compile(
+    r"^\s*(SITUATION BRIEFING|BLUE COALITION TASK ORDER|RED COALITION"
+    r"|THREAT LAYDOWN|FORCES:|PLAYER FLIGHTS|SUPPORT:|CARRIER OPS:"
+    r"|Theater:|Date:\s*\d{4}-|Weather:\s*Wind"
+    r"|AVAILABLE AIRBASES"
+    r"|(Blue|Red):\s*\d+\s+air groups"
+    r"|(Air|Ground):\s*\d+\s+groups\s*$"
+    r"|IADS:\s*\d)", re.IGNORECASE)
+# A long, comma-heavy line with no sentence punctuation is a dumped name list
+# (airbases, group names), not prose someone wrote. Requires 5+ commas so a
+# genuine long sentence isn't mistaken for one.
+_MACHINE_LIST = re.compile(r"^(?=(?:[^,]*,){5,})[^.!?]{60,}$")
+_MACHINE_BULLET = re.compile(
+    r"^\s*[-*]\s.*?(\b\d+\s*x\s|\bMHz\b|\bTACAN\b|\bICLS\b|\bAAA-\d|\bGround-\d)",
+    re.IGNORECASE)
+
+
+def _clean_inline(text: str) -> str:
+    """Un-escape mission text stored INLINE rather than behind a DictKey.
+
+    Only dictionary-resolved strings pass through the Lua unescaper, so an
+    inline description reached the brief with its escapes intact and we
+    printed a literal backslash-n instead of breaking the line.
+    """
+    if not text or "\\" not in text:
+        return text or ""
+    # Order matters: some generators double-escape ("\\n"), so collapse the
+    # double form before the single one or a stray backslash survives.
+    return (text.replace("\\\\n", "\n")
+                .replace("\\n", "\n")
+                .replace("\\\\r", "")
+                .replace("\\r", "")
+                .replace('\\"', '"')
+                .replace("\\\\", "\\"))
+
+
+def _scrub_machine_text(text: str) -> str:
+    """Drop generator-written boilerplate, keep human prose.
+
+    Returns "" when nothing human survives, so the caller can omit the section
+    instead of quoting a machine summary back at the aircrew.
+    """
+    if not text:
+        return ""
+    lines = _clean_inline(text).splitlines()
+    kept = [ln for ln in lines
+            if not _MACHINE_HEADERS.match(ln)
+            and not _MACHINE_BULLET.match(ln)
+            and not _MACHINE_LIST.match(ln.strip())]
+    out = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    if not out:
+        return ""
+    # Only apply the "is this still prose?" floor when we actually stripped
+    # something — otherwise a short but genuine human line (e.g. "Maintain ROE
+    # in a tense situation") would be thrown away for being brief.
+    if len(kept) < len(lines) and len(out) < 40:
+        return ""
+    return out
+
+
+def _format_brief_date(iso: Optional[str]) -> str:
+    """YYYY-MM-DD -> '08 NOV 06'. Briefs don't print ISO dates."""
+    if not iso:
+        return ""
+    try:
+        y, m, d = str(iso).split("-")
+        months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+        return f"{int(d):02d} {months[int(m) - 1]} {y[-2:]}"
+    except (ValueError, IndexError, TypeError):
+        return str(iso)
+
+
+# ---------------------------------------------------------------------------
+# Narrative synthesis
+#
+# A brief is not an inventory. Listing "5x S-300PS 40B6M tr" tells aircrew
+# nothing they can fly on; "an S-300 belt reaches 65 NM from bullseye 125/214,
+# and nothing inside it is survivable until it's rolled back" does. Everything
+# below is derived from the mission — the value added is interpretation and
+# consequence, never invented fact.
+# ---------------------------------------------------------------------------
+
+# DCS unit-type fragment -> (short name, family tier). Tier drives the
+# consequence sentence, not the exact model.
+_SAM_FAMILIES: List[Tuple[str, str, str]] = [
+    (r"S-300|SA-10",              "SA-10",   "long"),
+    (r"S-200|SA-5",               "SA-5",    "long"),
+    (r"Patriot|SAM Patriot",      "Patriot", "long"),
+    (r"SA-11|Buk|9K37",           "SA-11",   "medium"),
+    (r"Kub|1S91|SA-6",            "SA-6",    "medium"),
+    (r"Hawk",                     "Hawk",    "medium"),
+    (r"S-125|5p73|SA-3",          "SA-3",    "medium"),
+    (r"Tor|9A331|SA-15",          "SA-15",   "short"),
+    (r"Osa|9A33|SA-8",            "SA-8",    "short"),
+    (r"Tunguska|2S6|SA-19",       "SA-19",   "short"),
+    (r"Strela-10|SA-13",          "SA-13",   "short"),
+    (r"Strela-1|SA-9",            "SA-9",    "short"),
+    (r"Igla|Manpad|Stinger",      "MANPADS", "short"),
+    (r"Roland",                   "Roland",  "short"),
+    (r"Rapier",                   "Rapier",  "short"),
+    (r"Gepard|Vulcan|ZSU|Shilka|ZU-23|AAA", "AAA", "aaa"),
+]
+
+
+def _sam_family(type_name: str) -> Tuple[str, str]:
+    """Map a DCS SAM/AAA unit type to (short name, tier)."""
+    t = type_name or ""
+    for pattern, short, tier in _SAM_FAMILIES:
+        if re.search(pattern, t, re.IGNORECASE):
+            return short, tier
+    return (t.split()[0] if t else "Unknown"), "medium"
+
+
+def _narrate_enemy(threat_rows: List[Dict[str, Any]],
+                   air_rows: List[Dict[str, Any]]) -> str:
+    """Turn the computed threat tables into a briefable enemy picture."""
+    paras: List[str] = []
+
+    # ---- Air: what will come up, and what it means ----
+    fighters, helos, other = [], [], []
+    for a in air_rows or []:
+        if (a.get("coalition") or "red") == "blue":
+            continue
+        comp = str(a.get("composition") or "").strip()
+        cls = str(a.get("airframe_class") or "").lower()
+        if not comp:
+            continue
+        # A civil airliner wandering the map is not an enemy air picture.
+        if any(k in cls for k in ("unknown", "civil", "airliner")):
+            continue
+        if "helicopter" in cls or "helo" in cls:
+            helos.append(comp)
+        elif any(k in cls for k in ("bomber", "transport", "tanker", "awacs", "recon")):
+            other.append(comp)
+        else:
+            fighters.append(comp)
+
+    if fighters:
+        lead = "Enemy fighters: " + ", ".join(fighters) + "."
+        paras.append(lead + " Expect them airborne early and committed against "
+                     "whatever they see first.")
+    if helos:
+        paras.append("Rotary: " + ", ".join(helos) + ". They work low and in the "
+                     "terrain — you will lose them against the ground if you are "
+                     "not looking for them.")
+    if other:
+        paras.append("Also airborne: " + ", ".join(other) + ".")
+
+    # ---- Surface: lead with the system that actually shapes the plan ----
+    red = [t for t in (threat_rows or []) if (t.get("coalition") or "red") != "blue"]
+    if red:
+        byfam: Dict[str, Dict[str, Any]] = {}
+        for t in red:
+            short, tier = _sam_family(str(t.get("type") or t.get("name") or ""))
+            e = byfam.setdefault(short, {"tier": tier, "n": 0, "nm": 0.0, "loc": ""})
+            e["n"] += 1
+            try:
+                nm = float(t.get("range_nm") or 0)
+            except (TypeError, ValueError):
+                nm = 0.0
+            if nm > e["nm"]:
+                e["nm"] = nm
+                e["loc"] = str(t.get("location") or "")
+
+        ranked = sorted(byfam.items(), key=lambda kv: -kv[1]["nm"])
+        top, td = ranked[0]
+        rest = [k for k, _ in ranked[1:] if byfam[k]["tier"] != "aaa"]
+        aaa = [k for k, v in ranked if v["tier"] == "aaa"]
+
+        loc = re.sub(r"^BE\s*", "", str(td.get("loc") or "")).strip()
+        where = f" from bullseye {loc}" if loc else ""
+        if td["tier"] == "long" and td["nm"] >= 1:
+            s = (f"The air-defence picture is the problem. {top} reaches "
+                 f"{td['nm']:.0f} NM{where}, and nothing inside that ring is "
+                 f"survivable until it is rolled back.")
+        elif td["nm"] >= 1:
+            s = (f"{top} covers the approaches out to {td['nm']:.0f} NM{where} — "
+                 f"plan around it or have it suppressed before you commit.")
+        else:
+            s = f"{top} is emplaced in the target area."
+        if rest:
+            s += " Layered under it: " + ", ".join(rest) + "."
+        if aaa:
+            s += (" Heavy AAA wherever their units sit — anything low over them "
+                  "is exposed.")
+        paras.append(s)
+
+    return "\n\n".join(paras)
+
+
+def _narrate_friendly(groups: List[dict]) -> str:
+    """Describe the package as a force, not a parts list."""
+    from collections import Counter
+    blue = [g for g in groups if _is_player_group(g) and g.get("coalition") == "blue"]
+    if not blue:
+        return ""
+
+    # Player flights, grouped by airframe, expressed in flights not raw jets.
+    by_ac: Counter = Counter()
+    jets: Counter = Counter()
+    for g in blue:
+        t = ((g.get("units") or [{}])[0].get("type")) or "?"
+        by_ac[t] += 1
+        jets[t] += len(g.get("units") or [])
+    bits = []
+    for t, nfl in by_ac.most_common(4):
+        name = _airframe_profile(t)["name"]
+        bits.append(f"{nfl} {name} flight{'' if nfl == 1 else 's'} "
+                    f"({jets[t]} aircraft)")
+    lines = [_join_prose(bits) + "."]
+
+    # Where they come from: carriers if any are present.
+    carriers = []
+    for g in groups:
+        if g.get("coalition") != "blue" or g.get("category") != "ship":
+            continue
+        for u in (g.get("units") or []):
+            if re.search(r"CVN|CV_|LHA|LHD|Stennis|Forrestal",
+                         str(u.get("type") or ""), re.IGNORECASE):
+                carriers.append(_short_callsign(g.get("groupName")))
+                break
+    carriers = [c for c in carriers if c]
+    if carriers:
+        lines.append("Flying from " + _join_prose(carriers) + ".")
+
+    # Support that changes how the fight is run.
+    awacs = [g.get("groupName") for g in groups
+             if g.get("coalition") == "blue" and (g.get("task") or "").lower() == "awacs"]
+    tankers = [g.get("groupName") for g in groups
+               if g.get("coalition") == "blue" and (g.get("task") or "").lower() == "refueling"]
+    sup = []
+    if awacs:
+        sup.append(f"{_short_callsign(awacs[0])} carries the picture")
+    if tankers:
+        names = sorted({_short_callsign(t) for t in tankers if t})
+        sup.append(_join_prose(names) + " hold the tanker tracks")
+    if sup:
+        s = _join_prose(sup)
+        lines.append(s[:1].upper() + s[1:] + ".")
+
+    return " ".join(lines)
+
+
+def _short_callsign(group_name: Optional[str]) -> str:
+    """'Texaco-2-1' -> 'Texaco'. Brief prose uses the callsign, not the
+    DCS group index."""
+    base = re.split(r"[-_ ]\d", str(group_name or ""), maxsplit=1)[0]
+    return base.strip() or str(group_name or "")
+
+
+def _join_prose(items: List[str]) -> str:
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _narrate_weather(wx: Optional[dict], start_seconds: Optional[float]) -> str:
+    """Weather as consequence, not a data dump. A brief says what the sky will
+    do to the sortie."""
+    if not wx:
+        return ""
+    out: List[str] = []
+    try:
+        temp = float(wx.get("temperature_c"))
+    except (TypeError, ValueError):
+        temp = None
+    vis_km = (wx.get("visibility_m") or 0) / 1000.0
+    base_ft = (wx.get("clouds_base_m") or 0) * 3.28084
+    preset = str(wx.get("clouds_preset") or "")
+    rain = bool(re.search(r"rain|storm", preset, re.IGNORECASE))
+    storm = bool(re.search(r"storm", preset, re.IGNORECASE))
+    overcast = bool(re.search(r"rainy|overcast|preset1[0-9]|preset2[0-7]",
+                              preset, re.IGNORECASE))
+
+    if storm:
+        out.append(f"Thunderstorms with a ceiling near {base_ft:,.0f} ft. "
+                   "Expect turbulence, poor visibility in the cells and a real "
+                   "chance the recovery goes to the alternate.")
+    elif rain or overcast:
+        out.append(f"Overcast around {base_ft:,.0f} ft"
+                   + (" with rain" if rain else "") +
+                   ". Plan for an instrument recovery and brief the approach.")
+    elif base_ft > 0:
+        out.append(f"Broken to scattered around {base_ft:,.0f} ft — workable.")
+    else:
+        out.append("Clear.")
+
+    if vis_km >= 40:
+        out.append("Visibility is unrestricted.")
+    elif vis_km > 0:
+        out.append(f"Visibility {vis_km:.0f} km.")
+
+    if temp is not None and temp <= 2:
+        out.append(f"Surface temperature {temp:.0f}C — icing is live in the "
+                   "climb and on the tanks.")
+    elif temp is not None and temp >= 32:
+        out.append(f"Surface temperature {temp:.0f}C — expect degraded takeoff "
+                   "performance and long legs on the numbers.")
+
+    if start_seconds is not None:
+        hour = (int(start_seconds) // 3600) % 24
+        if 4 <= hour <= 7:
+            out.append("Dawn launch: low light for the first cycle.")
+        elif hour >= 19 or hour <= 3:
+            out.append("Night launch: plan for a night recovery.")
+
+    return " ".join(out)
 
 
 def _build_scenario(
@@ -523,23 +818,28 @@ def _build_scenario(
     groups: Optional[List[dict]] = None,
     threats: Optional[List[dict]] = None,
     theater: Optional[str] = None,
+    threat_rows: Optional[List[Dict[str, Any]]] = None,
+    air_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """Build the scenario blurb. The mission's OWN text (description + blue/red
-    tasks, resolved from the dictionary) always leads; around it we synthesise
-    an operational picture from the parsed mission — SITUATION (where/when +
-    the kind of fight), FRIENDLY FORCES (package composition + tasking), and
-    ADVERSARY (surface + air at a glance) — so the slide reads like a real
-    brief even when the .miz description is thin. The user edits afterwards,
-    and the AI "Generate Full Brief" replaces this wholesale when used.
+    """SCENARIO: the situation, then what the enemy will do, then what we have.
+
+    Written as prose a flight lead could read aloud. The mission's own words
+    lead when the mission maker wrote any; the enemy and friendly paragraphs
+    are synthesised from the computed threat tables (see _narrate_enemy /
+    _narrate_friendly) so the slide carries consequence rather than an
+    inventory of unit types.
+
+    Returns "" when the mission carries nothing worth briefing so the renderer
+    drops the slide instead of printing a prompt to go author one.
     """
-    from collections import Counter
     groups = groups or []
     threats = threats or []
 
     def _resolve(key: str) -> str:
         v = str(resolve_dict_key(overview.get(key) or "", dictionary)).strip()
-        # Drop literal DictKey_... fall-through (means the lookup failed)
-        return "" if v.startswith("DictKey_") else v
+        if v.startswith("DictKey_"):          # lookup failed
+            return ""
+        return _scrub_machine_text(v)
 
     desc = _resolve("description")
     blue_task = _resolve("descriptionBlueTask")
@@ -547,70 +847,46 @@ def _build_scenario(
 
     parts: List[str] = []
 
-    # --- SITUATION: where / when + the kind of fight ---
+    # ---- SITUATION ----
     mtype = _detect_mission_type(groups)
-    when_bits = [b for b in (
-        theater or "",
-        overview.get("date") or "",
-        _format_zulu(overview.get("start_time") or 0),
-    ) if b]
-    sit_text = " — ".join(b for b in (", ".join(when_bits), _MISSION_FRAME.get(mtype, "")) if b)
-    if sit_text:
-        parts.append("SITUATION\n" + sit_text)
+    when = " ".join(x for x in (
+        _format_brief_date(overview.get("date")),
+        # No start time is not "0000Z" — say nothing rather than a wrong time.
+        _format_zulu(overview["start_time"])
+        if overview.get("start_time") is not None else "",
+    ) if x)
+    stamp = ". ".join(x for x in (theater or "", when) if x)
+    lead = " ".join(x for x in ((stamp + "." if stamp else ""),
+                                _MISSION_FRAME.get(mtype, "")) if x).strip()
+    sit = [s for s in (lead, desc) if s]
+    if sit:
+        parts.append("SITUATION\n" + "\n\n".join(sit))
 
-    # The mission's own description leads the narrative when present.
-    if desc:
-        parts.append(desc)
-
-    # --- FRIENDLY FORCES: package composition + tasking ---
-    blue_flights = [g for g in groups if _is_player_group(g) and g.get("coalition") == "blue"]
-    if blue_flights or blue_task:
-        ff_lines: List[str] = []
-        if blue_flights:
-            ac: Counter = Counter()
-            for g in blue_flights:
-                for u in (g.get("units") or []):
-                    ac[u.get("type") or "?"] += 1
-            comp = ", ".join(f"{n}× {_airframe_profile(t)['name']}" for t, n in ac.most_common())
-            roles = sorted({
-                (_infer_role_from_task(g.get("task", "")) or (g.get("task") or "").strip())
-                for g in blue_flights
-            } - {""})
-            line = f"Package: {len(blue_flights)} player flight(s) — {comp}."
-            if roles:
-                line += f"  Tasking: {', '.join(roles)}."
-            ff_lines.append(line)
-        if blue_task:
-            ff_lines.append(blue_task)
-        parts.append("FRIENDLY FORCES\n" + "\n".join(ff_lines))
-
-    # --- ADVERSARY: surface + air at a glance ---
-    adv_lines: List[str] = []
-    if threats:
-        snames: Counter = Counter((t.get("name") or "?") for t in threats)
-        top = ", ".join(f"{n}× {nm}" for nm, n in snames.most_common(4))
-        extra = "" if len(snames) <= 4 else f" (+{len(snames) - 4} more)"
-        adv_lines.append(f"Surface: {top}{extra}.")
-    else:
-        adv_lines.append("Surface: no SAM/AAA threats detected.")
-    air: Counter = Counter()
-    for g in groups:
-        if g.get("category") in ("plane", "helicopter") and g.get("coalition") != "blue":
-            for u in (g.get("units") or []):
-                air[u.get("type") or "?"] += 1
-    if air:
-        adv_lines.append("Air: " + ", ".join(
-            f"{n}× {_airframe_profile(t)['name']}" for t, n in air.most_common(5)) + ".")
-    else:
-        adv_lines.append("Air: no enemy aircraft detected.")
+    # ---- ENEMY ----
+    # Prefer the computed threat rows (they carry range_nm + bullseye position).
+    # Fall back to the raw threat list so a caller that doesn't pass them still
+    # gets an enemy picture rather than a silently missing section.
+    rows = list(threat_rows or [])
+    if not rows and threats:
+        rows = [{
+            "type": t.get("type") or t.get("name"),
+            "coalition": t.get("coalition"),
+            "range_nm": (float(t.get("range") or 0) / 1852.0) or 0.0,
+            "location": "",
+        } for t in threats]
+    enemy = _narrate_enemy(rows, air_rows or [])
     if red_task:
-        adv_lines.append(red_task)
-    parts.append("ADVERSARY\n" + "\n".join(adv_lines))
+        enemy = (enemy + "\n\n" + red_task).strip() if enemy else red_task
+    if enemy:
+        parts.append("ENEMY FORCES\n" + enemy)
 
-    if not parts:
-        return ("No scenario description in the mission file. Edit this "
-                "section to describe the operational situation, friendly "
-                "and adversary posture, and what's at stake.")
+    # ---- FRIENDLY ----
+    friendly = _narrate_friendly(groups)
+    if blue_task:
+        friendly = (friendly + " " + blue_task).strip() if friendly else blue_task
+    if friendly:
+        parts.append("FRIENDLY FORCES\n" + friendly)
+
     return "\n\n".join(parts)
 
 
@@ -656,120 +932,81 @@ def _detect_mission_type(groups: List[dict]) -> str:
     return role_buckets.most_common(1)[0][0]
 
 
-_INTENT_TEMPLATES: Dict[str, str] = {
-    "strike": (
-        "Purpose: Destroy [NAMED TARGET / target set] to deny the enemy "
-        "[capability or terrain] for the duration of the operation.\n\n"
-        "Method: Single coordinated push from marshal at TOT-15. SEAD/escort "
-        "[if present] suppresses threats inside the MEZ; strike package runs "
-        "the IP-to-target leg low-to-medium and egresses on the planned "
-        "corridor. Battle damage assessment via [tasked asset].\n\n"
-        "End State: Target struck and confirmed destroyed. Strike package "
-        "RTB with all assets accounted for; AO pushed forward by [phase line]."
-    ),
-    "cas": (
-        "Purpose: Provide close air support to friendly ground forces "
-        "operating in [AREA / grid]. Maintain freedom of manoeuvre for the "
-        "ground commander.\n\n"
-        "Method: Check in with the JTAC / FAC(A) on [primary freq] at the "
-        "CAP/holding point. Work CAS 9-line on demand; observe ROE for any "
-        "danger-close calls. Hand off to follow-on flight at bingo / on "
-        "relief by next vul.\n\n"
-        "End State: Ground commander reports satisfied with on-station "
-        "support. All flights RTB safe. No friendly fire or collateral "
-        "damage incidents."
-    ),
-    "dca": (
-        "Purpose: Defend [AOR / asset] against airborne threats. Deny the "
-        "enemy the ability to penetrate friendly airspace and engage "
-        "high-value assets.\n\n"
-        "Method: Establish CAP at [station / racetrack] under GCI control. "
-        "Engage all hostile contacts inside ROE / WEZ; positive ID required "
-        "before BVR shots. Maintain mutual support and cycle pairs through "
-        "tanker as needed.\n\n"
-        "End State: No enemy aircraft penetrate the defended area. CAP "
-        "maintained until [relief / mission end]. All friendlies RTB."
-    ),
-    "sead": (
-        "Purpose: Suppress / destroy enemy SAM systems threatening the strike "
-        "package's ingress and egress corridors. Open and hold the door.\n\n"
-        "Method: Push 5-10 minutes ahead of strike. Establish SEAD orbit "
-        "outside the engagement zone of the threat ring. Trigger reactive "
-        "shots on emitting threats; pre-emptive HARM on known sites per "
-        "mission planning. Coordinate with strike lead on any threat "
-        "re-radiations.\n\n"
-        "End State: Threat picture inside MEZ degraded sufficiently to allow "
-        "strike package access. SEAD asset RTB safe; threat sites destroyed "
-        "or suppressed for the duration of the strike window."
-    ),
-    "antiship": (
-        "Purpose: Destroy / disable [SHIP CLASS / named vessel] in the "
-        "[MARITIME AOR] to deny enemy sea control of the operating area.\n\n"
-        "Method: Coordinated package with [escort / SEAD as required]. "
-        "Anti-ship ordnance employment from outside the ship's air-defence "
-        "engagement zone where possible. Deconflict with friendly shipping "
-        "via the ATO / blue-on-blue ROE.\n\n"
-        "End State: Target vessel struck and assessed as a mission kill. "
-        "Sea lines of communication contested. Package RTB with all "
-        "assets accounted for."
-    ),
-    "recon": (
-        "Purpose: Gain situational awareness of [TARGET AREA / activity] to "
-        "inform follow-on tasking. No engagement unless self-defence.\n\n"
-        "Method: Transit to the AOR; conduct [visual / sensor] reconnaissance "
-        "of the assigned target set. Report findings to [HQ / AWACS] in real "
-        "time on the recon push freq. Egress on the planned route.\n\n"
-        "End State: Target area imaged / observed. Intelligence handed to "
-        "the follow-on tasking authority. Recon asset RTB safe."
-    ),
-    "tanker": (
-        "Purpose: Provide aerial refuelling support to enable extended "
-        "on-station time and divert reserve for the strike / DCA package.\n\n"
-        "Method: Establish AAR track at [coordinate / fix]. Service receivers "
-        "in flow per the comm card; observe pre-contact / contact / post-"
-        "contact procedures. Maintain 100% give over the planned refuel "
-        "window.\n\n"
-        "End State: All scheduled receivers serviced. Tanker offload meets "
-        "or exceeds planned. Tanker RTB to [home plate]."
-    ),
-    "mixed": (
-        "Purpose: This package combines multiple mission types — author the "
-        "intent across all elements. Cover the strike objective, the DCA / "
-        "SEAD / support roles enabling it, and the desired end state for the "
-        "package as a whole.\n\n"
-        "Method: Sequence the elements (push order, mutual support, "
-        "deconfliction). Identify the priority of effort and how the "
-        "supporting flights enable the main effort.\n\n"
-        "End State: All elements complete their tasking. Package RTB safe. "
-        "Strategic objective achieved."
-    ),
-    "unknown": (
-        "Purpose: Why we are flying this mission (the strategic objective).\n\n"
-        "Method: How we will accomplish it (the high-level plan in 1-2 "
-        "sentences).\n\n"
-        "End State: What the AO looks like when we are done."
-    ),
+def _build_commanders_intent(groups: List[dict]) -> str:
+    """Commander's intent is the mission maker's to write.
+
+    This used to emit a fill-in-the-blanks template — "[NAMED TARGET]",
+    "author the intent across all elements" — which shipped verbatim to
+    aircrew whenever nobody edited it. Return "" instead: the renderer omits
+    the slide, and a missing intent is obvious to the author in a way a
+    plausible-looking fake one is not.
+    """
+    return ""
+
+
+# What the package actually does once it's on station, by mission type.
+_FLOW_ACTION: Dict[str, str] = {
+    "strike":   "Run the IP-to-target leg and egress on the planned corridor.",
+    "cas":      "Check in with the JTAC and work 9-lines on station.",
+    "dca":      "Hold assigned stations; commit on the AWACS picture.",
+    "sead":     "Suppress threats inside the MEZ ahead of the strike.",
+    "antiship": "Run the attack on the surface group and clear the area.",
+    "recon":    "Work the area of interest and report.",
+    "tanker":   "Hold the track and pass fuel as tasked.",
+    "mixed":    "Execute assigned tasking; supporting flights enable the main effort.",
 }
 
 
-def _build_commanders_intent_placeholder(groups: List[dict]) -> str:
-    """Return a starter intent matched to the package's mission type.
+def _build_mission_flow(timeline: List[Dict[str, str]], groups: List[dict]) -> str:
+    """Scheme of manoeuvre, derived from this mission.
 
-    The mission maker always edits this section — a mission-type-aware
-    starter makes the editing one of polish rather than from-scratch.
+    Previously a fixed six-line block printed on every brief ever generated —
+    "Push at TOT-15" — while the computed timeline sat unused on the next
+    slide. Emit only the lines the mission actually supports, and return ""
+    when that is fewer than two, so the slide is dropped rather than padded.
     """
-    return _INTENT_TEMPLATES[_detect_mission_type(groups)]
+    timeline = timeline or []
+    groups = groups or []
+    waves = [r for r in timeline
+             if str(r.get("phase", "")).strip().lower().startswith("cv wave")]
+    by_phase = {str(r.get("phase", "")).strip().lower(): r for r in timeline}
+    lines: List[str] = []
 
+    if waves:
+        first = waves[0].get("time_zulu", "")
+        last = waves[-1].get("time_zulu", "")
+        span = f" through {last}" if last and last != first else ""
+        lines.append(f"Launch     {len(waves)} carrier waves from {first}{span}.")
+    elif by_phase.get("takeoff"):
+        lines.append(f"Launch     Takeoff {by_phase['takeoff'].get('time_zulu', '')}.")
 
-def _build_mission_flow_placeholder() -> str:
-    return (
-        "1. Ground ops — pre-flight, taxi, takeoff in flow per timeline.\n"
-        "2. Join — flights rejoin and sequence into push order at the marshal point.\n"
-        "3. Push — single coordinated push at TOT-15 (see timeline).\n"
-        "4. Action — execute tasking; observe ROE and IFF discipline.\n"
-        "5. Egress — withdraw on planned route; expect handoff to GCI.\n"
-        "6. Recovery — RTB to home plate; divert per assigned alternates."
-    )
+    push, tot = by_phase.get("push"), by_phase.get("tot")
+    if push and tot and push.get("time_zulu") != tot.get("time_zulu"):
+        lines.append(f"Push       {push.get('time_zulu')}, TOT {tot.get('time_zulu')}.")
+    elif push and push.get("time_zulu"):
+        lines.append(f"Push       Coordinated push {push.get('time_zulu')}.")
+
+    action = _FLOW_ACTION.get(_detect_mission_type(groups), "")
+    if action:
+        lines.append(f"Action     {action}")
+
+    support = set()
+    for g in groups:
+        if g.get("coalition") != "blue":
+            continue
+        task = (g.get("task") or "").strip().lower()
+        if task == "refueling":
+            support.add("Tankers")
+        elif task == "awacs":
+            support.add("AWACS")
+    if support:
+        lines.append("Support    " + " and ".join(sorted(support))
+                     + " on station. Cycle to hold coverage.")
+
+    if by_phase.get("rtb"):
+        lines.append("Recovery   RTB home plate or alternate. Divert per brief.")
+
+    return "\n".join(lines) if len(lines) >= 2 else ""
 
 
 def _waypoint_time(wp: dict, takeoff_eta: float, mission_start: float) -> Optional[float]:
@@ -1002,7 +1239,8 @@ def _build_timeline(
     egress_note = ("All flights clear of MEZ"
                    + (" (from waypoint data)" if egress_times else ""))
     rtb_note = ("Recovery to home plate or alternate"
-                + (f" (from waypoint data, {len(rtb_times)} flight(s))" if rtb_times else ""))
+                + (f" (from waypoint data, {len(rtb_times)} flight"
+                   f"{'' if len(rtb_times) == 1 else 's'})" if rtb_times else ""))
 
     # Mission types that spend significant time over the AO get an
     # on-station WINDOW (start/end) instead of a single TOT — for CAS,
@@ -1771,6 +2009,12 @@ def build_wing_brief(
     else:
         mission_name = DEFAULT_MISSION_NAMES.get(theater) or filename or "Untitled Mission"
 
+    # Build the structured tables first: the scenario narrates from the threat
+    # rows, and the mission flow is derived from the timeline.
+    _timeline = _build_timeline(start_seconds, groups, _detect_mission_type(groups))
+    _threat_rows = _build_threats(threats, overview.get("bullseye"))
+    _air_rows = _build_air_threats(groups, overview.get("bullseye"))
+
     brief = WingBrief(
         mission_name=str(mission_name),
         theater=theater,
@@ -1779,14 +2023,16 @@ def build_wing_brief(
         coalition="blue",
 
         theatre_overview=_build_theatre_overview(theater),
-        scenario=_build_scenario(overview, dictionary, groups=groups, threats=threats, theater=theater),
-        commanders_intent=_build_commanders_intent_placeholder(groups),
-        mission_flow=_build_mission_flow_placeholder(),
+        scenario=_build_scenario(overview, dictionary, groups=groups, threats=threats,
+                                 theater=theater, threat_rows=_threat_rows, air_rows=_air_rows),
+        commanders_intent=_build_commanders_intent(groups),
+        mission_flow=_build_mission_flow(_timeline, groups),
+        weather_brief=_narrate_weather(overview.get("weather"), start_seconds),
         notes="",
 
-        timeline=_build_timeline(start_seconds, groups, _detect_mission_type(groups)),
-        threats=_build_threats(threats, overview.get("bullseye")),
-        air_threats=_build_air_threats(groups, overview.get("bullseye")),
+        timeline=_timeline,
+        threats=_threat_rows,
+        air_threats=_air_rows,
         flights=_build_flights(groups, airbases),
 
         comms=_build_comms(groups),

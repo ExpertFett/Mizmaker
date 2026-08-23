@@ -18,6 +18,22 @@ from __future__ import annotations
 import pytest
 
 
+def _slides_xml(pptx_bytes: bytes) -> str:
+    """Deck content only, ignoring the zip container.
+
+    A .pptx is a zip and its entry headers carry a timestamp, so two renders
+    that straddle a clock tick differ byte-for-byte even when the slides are
+    identical. Comparing raw bytes made the tests below fail intermittently in
+    a full-suite run (never in isolation). Compare the XML instead.
+    """
+    import io as _io
+    import zipfile as _zf
+    with _zf.ZipFile(_io.BytesIO(pptx_bytes)) as z:
+        names = sorted(n for n in z.namelist()
+                       if n.startswith("ppt/") and n.endswith(".xml"))
+        return chr(10).join(z.read(n).decode("utf-8", "replace") for n in names)
+
+
 @pytest.fixture
 def minimal_brief() -> dict:
     """Identical shape to test_speaker_notes.py — enough to render."""
@@ -74,7 +90,7 @@ def test_invalid_hex_falls_through_to_default(minimal_brief):
     baseline = render_wing_brief(minimal_brief)
     minimal_brief["theme_colors"] = {"accent": "not-a-hex"}
     rendered = render_wing_brief(minimal_brief)
-    assert rendered == baseline
+    assert _slides_xml(rendered) == _slides_xml(baseline)
 
 
 def test_short_hex_works(minimal_brief):
@@ -95,7 +111,7 @@ def test_empty_value_falls_through(minimal_brief):
     baseline = render_wing_brief(minimal_brief)
     minimal_brief["theme_colors"] = {"accent": "", "bg": ""}
     rendered = render_wing_brief(minimal_brief)
-    assert rendered == baseline
+    assert _slides_xml(rendered) == _slides_xml(baseline)
 
 
 def test_no_hash_prefix_accepted(minimal_brief):
@@ -106,7 +122,7 @@ def test_no_hash_prefix_accepted(minimal_brief):
     with_hash = render_wing_brief(minimal_brief)
     minimal_brief["theme_colors"] = {"accent": "ff0000"}
     no_hash = render_wing_brief(minimal_brief)
-    assert with_hash == no_hash
+    assert _slides_xml(with_hash) == _slides_xml(no_hash)
 
 
 def test_partial_override(minimal_brief):
@@ -120,6 +136,6 @@ def test_partial_override(minimal_brief):
     only_bg = render_wing_brief(minimal_brief)
     minimal_brief["theme_colors"] = {"bg": "#101820", "accent": "#ff00ff"}
     bg_and_accent = render_wing_brief(minimal_brief)
-    assert only_bg != baseline
-    assert bg_and_accent != only_bg
-    assert bg_and_accent != baseline
+    assert _slides_xml(only_bg) != _slides_xml(baseline)
+    assert _slides_xml(bg_and_accent) != _slides_xml(only_bg)
+    assert _slides_xml(bg_and_accent) != _slides_xml(baseline)
