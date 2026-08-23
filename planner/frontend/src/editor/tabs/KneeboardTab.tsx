@@ -28,6 +28,7 @@ import { HomePlateCard } from '../../kneeboard/HomePlateCard';
 import { SopCommsCard } from '../../kneeboard/SopCommsCard';
 import { TransponderCard } from '../../kneeboard/TransponderCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
+import { TargetImageryCard } from '../../kneeboard/TargetImageryCard';
 import { NotesCard } from '../../kneeboard/NotesCard';
 import { WeaponCard, weaponCardPageCount } from '../../kneeboard/WeaponCard';
 import { WEAPONS, matchWeaponsToLoadout } from '../../kneeboard/weaponData';
@@ -64,6 +65,7 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
   { key: 'sopComms', label: 'SOP Comms', desc: 'Callsigns, freqs, GUARD, laser base — needs active SOP' },
   { key: 'transponder', label: 'Transponder / IFF', desc: 'Per-flight Mode 1/2/3 squawk plan — needs an active SOP with a transponder plan' },
   { key: 'dmpiCard', label: 'DMPI List', desc: 'Designated targets with coords + weapon delivery' },
+  { key: 'targetImagery', label: 'Target Imagery', desc: 'Overhead satellite picture of each DMPI, aim point marked' },
   { key: 'notesCard', label: 'Mission Notes', desc: 'Free-text planner notes — type below' },
   { key: 'weaponsRef', label: 'Weapon Reference', desc: 'Per-store employment, switchology, mistakes — pick stores below' },
   { key: 'popupAttack', label: 'Popup Attack Profiles', desc: 'Physics-based popup/lay-down side-profile cards — define profiles below' },
@@ -304,6 +306,18 @@ export function KneeboardTab() {
         coordFormat,
       });
       results.push({ name: 'DMPI_List.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    if (cards.targetImagery && dmpis.length > 0) {
+      const valid = dmpis.filter((d) => d.name.trim() && (d.lat !== 0 || d.lon !== 0));
+      for (let i = 0; i < valid.length; i++) {
+        const el = createElement(TargetImageryCard, {
+          dmpi: valid[i], index: i + 1, total: valid.length,
+          overview: overview || undefined, coordFormat,
+          squadron: activeSop?.squadron,
+        });
+        const safe = (valid[i].name || `Target_${i + 1}`).replace(/\s+/g, '_');
+        results.push({ name: `Target_${i + 1}_${safe}.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+      }
     }
     if (cards.notesCard) {
       const el = createElement(NotesCard, {
@@ -1309,6 +1323,19 @@ function CardCarousel({
         element: createElement(DmpiCard, {
           dmpis, squadron: activeSop?.squadron, overview: overview || undefined, coordFormat,
         }),
+      });
+    }
+    if (cards.targetImagery && dmpis.length > 0) {
+      const valid = dmpis.filter((d) => d.name.trim() && (d.lat !== 0 || d.lon !== 0));
+      valid.forEach((d, i) => {
+        list.push({
+          key: `targetImagery-${d.id}`, label: `Target — ${d.name}`,
+          element: createElement(TargetImageryCard, {
+            dmpi: d, index: i + 1, total: valid.length,
+            overview: overview || undefined, coordFormat,
+            squadron: activeSop?.squadron,
+          }),
+        });
       });
     }
     if (cards.notesCard) {

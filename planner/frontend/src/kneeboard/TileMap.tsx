@@ -7,7 +7,31 @@
  */
 
 const TILE_SIZE = 256;
-const TILE_URL = 'https://basemaps.cartocdn.com/dark_all';
+
+export type BaseLayer = 'dark' | 'satellite';
+
+/* Two basemaps. Both send `Access-Control-Allow-Origin: *`, so html2canvas can
+   capture the card without tainting the canvas. Note the URL schemes differ:
+   CARTO is {z}/{x}/{y}, ESRI is {z}/{row}/{col} i.e. {z}/{y}/{x}. Swapping them
+   silently returns valid-but-wrong tiles rather than a 404. */
+const LAYERS: Record<BaseLayer, {
+  url: (z: number, x: number, y: number) => string;
+  opacity: number;
+  credit: string;
+}> = {
+  dark: {
+    url: (z, x, y) => `https://basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png`,
+    opacity: 0.7,
+    credit: '(c) OpenStreetMap, (c) CARTO',
+  },
+  satellite: {
+    url: (z, x, y) =>
+      `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
+    // Held back slightly so route lines and threat rings stay readable on top.
+    opacity: 0.9,
+    credit: 'Imagery (c) Esri',
+  },
+};
 
 /* ---- Slippy-map tile math ---- */
 
@@ -55,6 +79,11 @@ export interface TileMapProps {
   maxLon: number;
   /** SVG overlay rendered on top of tiles */
   children?: React.ReactNode;
+  /** Basemap style. Real imagery is the default — it is what makes a target
+   *  area recognisable from the air. */
+  layer?: BaseLayer;
+  /** Suppress the attribution strip (only when the caller draws its own). */
+  hideCredit?: boolean;
 }
 
 /**
@@ -107,7 +136,10 @@ export function TileMap({
   minLon,
   maxLon,
   children,
+  layer = 'satellite',
+  hideCredit = false,
 }: TileMapProps) {
+  const base = LAYERS[layer] ?? LAYERS.satellite;
   const zoom = fitZoom(minLat, maxLat, minLon, maxLon, width, height);
 
   // Center of the bbox in tile-space
@@ -156,7 +188,7 @@ export function TileMap({
       {tiles.map((t) => (
         <img
           key={`${zoom}-${t.x}-${t.y}`}
-          src={`${TILE_URL}/${zoom}/${t.x}/${t.y}.png`}
+          src={base.url(zoom, t.x, t.y)}
           crossOrigin="anonymous"
           width={TILE_SIZE}
           height={TILE_SIZE}
@@ -166,7 +198,7 @@ export function TileMap({
             top: t.top,
             display: 'block',
             imageRendering: 'auto',
-            opacity: 0.7,
+            opacity: base.opacity,
           }}
           alt=""
         />
@@ -175,6 +207,16 @@ export function TileMap({
       {children && (
         <div style={{ position: 'absolute', top: 0, left: 0, width, height }}>
           {children}
+        </div>
+      )}
+      {/* Attribution — required by both providers' terms of use. */}
+      {!hideCredit && (
+        <div style={{
+          position: 'absolute', right: 3, bottom: 2, fontSize: 9,
+          color: 'rgba(255,255,255,0.55)', textShadow: '0 0 3px #000',
+          pointerEvents: 'none',
+        }}>
+          {base.credit}
         </div>
       )}
     </div>

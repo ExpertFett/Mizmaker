@@ -29,6 +29,9 @@ export interface KneeboardCards {
    *  delivery. Pulls from useDmpiStore. Renders an empty-state
    *  placeholder when the DMPI list is empty. (v0.9.16) */
   dmpiCard: boolean;
+  /** One overhead satellite chip per DMPI, aim point marked. Built from the
+   *  DMPI list — no upload needed. */
+  targetImagery: boolean;
   /** Notes Card — free-text mission notes the planner types in the
    *  Kneeboard tab. Renders the planner's notesText verbatim as a
    *  printable card. Empty-state placeholder when no text. (v0.9.69) */
@@ -254,7 +257,7 @@ export const useEditStore = create<EditState>((set) => ({
       // Notes + weapon-reference + popup-attack cards default OFF — only emit
       // them when the planner has opted in (notes written / weapons picked /
       // profiles defined), so an empty card doesn't ride along every download.
-      sopComms: true, goalsCard: true, dmpiCard: true, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
+      sopComms: true, goalsCard: true, dmpiCard: true, targetImagery: true, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
       // Strip Map defaults ON for player flights — it's the kind of card
       // every aviator wants in the kneeboard pack by default. Mission
       // makers who don't want it can untick.
