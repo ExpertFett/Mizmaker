@@ -22,12 +22,15 @@ import { getAircraftType } from '../utils/groups';
 import { MissionDateLine } from './cardStyles';
 import { TileMap, createProjection } from './TileMap';
 import { getAircraftPerf, computeFuelLegs } from './fuelModel';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 /** Waypoints carried per page. A long route squeezed onto one 600x850 card is
  *  unreadable, so it continues across cards with a match line — the same way a
  *  paper chart is cut. Pages overlap by one waypoint so the joining leg shows
  *  on both. */
-const WPS_PER_PAGE = 7;
+/** Default waypoints per sheet; the flight lead can trade sheets for map
+ *  size. */
+const WPS_PER_PAGE_DEFAULT = 7;
 
 /** Nautical miles between two lat/lon points. */
 function nmBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -40,7 +43,8 @@ function nmBetween(aLat: number, aLon: number, bLat: number, bLon: number): numb
 }
 
 /** How many cards this flight's route needs. */
-export function stripMapPageCount(group: MissionGroup): number {
+export function stripMapPageCount(group: MissionGroup, perPage = WPS_PER_PAGE_DEFAULT): number {
+  const WPS_PER_PAGE = Math.max(2, perPage);
   const n = (group.waypoints || []).filter((w) => w.lat != null && w.lon != null).length;
   if (n <= WPS_PER_PAGE) return 1;
   return Math.ceil((n - 1) / (WPS_PER_PAGE - 1));
@@ -59,6 +63,8 @@ interface StripMapCardProps {
   /** Used with fuelOverride to annotate fuel remaining in each doghouse. */
   clientUnits?: ClientUnit[];
   fuelOverride?: { start?: number; joker?: number; bingo?: number };
+  /** Flight lead controls — sheet density and base layer. */
+  opts?: KneeboardOptions;
 }
 
 const W = 600;
@@ -139,12 +145,14 @@ function doghouseOffset(legIdx: number): { dx: number; dy: number; anchor: 'star
 export function StripMapCard({
   group, overview, notes, page = 0,
   threats = [], airbases = [], clientUnits = [], fuelOverride,
+  opts = DEFAULT_OPTIONS,
 }: StripMapCardProps) {
+  const WPS_PER_PAGE = Math.max(2, opts.nav.waypointsPerStripPage);
   const wps = group.waypoints;
   const airframe = getAircraftType(group);
 
   const allWps = (wps || []).filter((w) => w.lat != null && w.lon != null);
-  const totalPages = stripMapPageCount(group);
+  const totalPages = stripMapPageCount(group, WPS_PER_PAGE);
   // Pages overlap by one waypoint so the joining leg appears on both cards.
   const startIdx = page * (WPS_PER_PAGE - 1);
   const pageWps = allWps.slice(startIdx, startIdx + WPS_PER_PAGE);
@@ -294,7 +302,7 @@ export function StripMapCard({
         ) : (
           <TileMap width={MAP_W} height={MAP_H}
                    minLat={minLat} maxLat={maxLat} minLon={minLon} maxLon={maxLon}
-                   layer="satellite">
+                   layer={opts.nav.mapLayer === 'dark' ? 'dark' : 'satellite'}>
           <svg width={MAP_W} height={MAP_H} viewBox={`0 0 ${MAP_W} ${MAP_H}`}
                xmlns="http://www.w3.org/2000/svg">
             {/* Threat rings that reach this sheet. Drawn first so the route

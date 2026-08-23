@@ -50,8 +50,9 @@ const COMMAND_RE = /command|strike|check.?in|c2|control/i;
 const MARSHAL_RE = /marshal|approach|paddles|lso/i;
 const BOAT_TOWER_RE = /boat.?tower|cv.?tower|mother/i;
 
-/** International emergency frequencies. Always the bottom rung. */
-const GUARD_UHF = 243.0;
+/** International emergency frequency. Always the bottom rung, unless the
+ *  caller supplies its own list — some squadrons brief 121.5 alongside it. */
+const GUARD_DEFAULT = [243.0];
 
 interface BuildInput {
   /** The flight this ladder is for. Drives home plate and intra-flight. */
@@ -61,6 +62,8 @@ interface BuildInput {
   coalition: string;
   airbases: Airbase[];
   sopComms: { role: string; frequency: number }[];
+  /** Guard frequencies in MHz. Empty drops the rung entirely. */
+  guardMhz?: number[];
 }
 
 function nmBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -84,6 +87,7 @@ function fieldAt(airbases: Airbase[], lat?: number, lon?: number): Airbase | und
 
 export function buildRadioLadder(input: BuildInput): LadderRow[] {
   const { group, allGroups, coalition, airbases, sopComms } = input;
+  const guardList = input.guardMhz ?? GUARD_DEFAULT;
   const rows: LadderRow[] = [];
   const push = (r: LadderRow) => {
     // A rung needs to tell the pilot something: a frequency, or failing that
@@ -203,7 +207,15 @@ export function buildRadioLadder(input: BuildInput): LadderRow[] {
   }
 
   // --- guard -----------------------------------------------------------
-  push({ id: 'guard', phase: 'GUARD', agency: 'GUARD', freqMhz: GUARD_UHF, modulation: 0 });
+  for (const [i, mhz] of guardList.entries()) {
+    push({
+      id: i === 0 ? 'guard' : `guard-${i}`,
+      phase: 'GUARD',
+      agency: guardList.length > 1 ? `GUARD ${mhz >= 200 ? 'UHF' : 'VHF'}` : 'GUARD',
+      freqMhz: mhz,
+      modulation: 0,
+    });
+  }
 
   return sortByPhase(rows);
 }

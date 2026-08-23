@@ -48,11 +48,15 @@ function altitudeForTemp(surfaceTempC: number, targetC: number): number | null {
   return ft > TROPOPAUSE_FT ? null : ft;
 }
 
-export function contrailBand(surfaceTempC: number): ContrailBand {
+export function contrailBand(
+  surfaceTempC: number,
+  onsetC: number = ONSET_C,
+  topC: number = TOP_C,
+): ContrailBand {
   if (!Number.isFinite(surfaceTempC)) return { onsetFt: null, topFt: null };
   return {
-    onsetFt: altitudeForTemp(surfaceTempC, ONSET_C),
-    topFt: altitudeForTemp(surfaceTempC, TOP_C),
+    onsetFt: altitudeForTemp(surfaceTempC, onsetC),
+    topFt: altitudeForTemp(surfaceTempC, topC),
   };
 }
 
@@ -62,9 +66,13 @@ export function toFlightLevel(ft: number): string {
 }
 
 /** One-line summary for the weather card. */
-export function contrailSummary(surfaceTempC: number): string {
-  const { onsetFt, topFt } = contrailBand(surfaceTempC);
-  if (onsetFt == null) return 'None — air stays warmer than -40°C to the tropopause';
+export function contrailSummary(
+  surfaceTempC: number,
+  onsetC: number = ONSET_C,
+  topC: number = TOP_C,
+): string {
+  const { onsetFt, topFt } = contrailBand(surfaceTempC, onsetC, topC);
+  if (onsetFt == null) return `None — air stays warmer than ${onsetC}°C to the tropopause`;
   const from = onsetFt === 0 ? 'surface' : `${toFlightLevel(onsetFt)} (${onsetFt.toLocaleString()} ft)`;
   if (topFt == null) return `${from} and above`;
   return `${from} to ${toFlightLevel(topFt)} (${topFt.toLocaleString()} ft)`;

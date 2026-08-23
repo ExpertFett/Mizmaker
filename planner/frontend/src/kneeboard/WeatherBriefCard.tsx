@@ -13,8 +13,11 @@ import { metersToFeet, msToKnots } from '../utils/conversions';
 import { generateMetar } from '../utils/metar';
 import { resolveClouds } from '../utils/cloudPresets';
 import { contrailSummary } from './contrails';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface WeatherBriefCardProps {
+  /** Flight lead controls — contrail thresholds. */
+  opts?: KneeboardOptions;
   overview: MissionOverviewData;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
@@ -47,8 +50,10 @@ const rowStyle: React.CSSProperties = {
 const lbl: React.CSSProperties = { color: TEXT_MUTED, width: 160, flexShrink: 0, fontSize: 17 };
 const val: React.CSSProperties = { color: TEXT, fontWeight: 500, fontSize: 19 };
 
-export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
+export function WeatherBriefCard({ overview, notes, opts = DEFAULT_OPTIONS,
+}: WeatherBriefCardProps) {
   const wx = overview.weather;
+  const wxOpts = opts.weather;
   // Guard: a mission with no weather block would crash every dereference
   // below (and generateMetar). Render a graceful placeholder instead.
   if (!wx) {
@@ -162,10 +167,14 @@ export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
       {/* A visible trail gives the flight away, so where it starts is
           tactical information, not trivia. Estimated from surface temp —
           see contrails.ts for the method and its limits. */}
-      <div style={rowStyle}>
-        <span style={lbl}>Contrails</span>
-        <span style={val}>{contrailSummary(wx.temperature_c)}</span>
-      </div>
+      {wxOpts.showContrails && (
+        <div style={rowStyle}>
+          <span style={lbl}>Contrails</span>
+          <span style={val}>
+            {contrailSummary(wx.temperature_c, wxOpts.contrailOnsetC, wxOpts.contrailTopC)}
+          </span>
+        </div>
+      )}
 
       {/* Wind layers */}
       <div style={sectionTitle}>WINDS</div>

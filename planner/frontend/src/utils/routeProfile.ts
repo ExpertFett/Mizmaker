@@ -122,7 +122,10 @@ export function roundMsa(ft: number): number {
 }
 
 /** Highest corridor terrain per leg, plus the buffer. */
-export function msaPerLeg(samples: RouteSample[]): Map<number, number> {
+export function msaPerLeg(
+  samples: RouteSample[],
+  bufferFt: number = MSA_BUFFER_FT,
+): Map<number, number> {
   const worst = new Map<number, number>();
   for (const s of samples) {
     const h = s.corridorFt ?? s.terrainFt;
@@ -131,7 +134,7 @@ export function msaPerLeg(samples: RouteSample[]): Map<number, number> {
     if (cur == null || h > cur) worst.set(s.leg, h);
   }
   const out = new Map<number, number>();
-  for (const [leg, h] of worst) out.set(leg, roundMsa(Math.max(0, h) + MSA_BUFFER_FT));
+  for (const [leg, h] of worst) out.set(leg, roundMsa(Math.max(0, h) + bufferFt));
   return out;
 }
 
@@ -142,12 +145,15 @@ export function msaPerLeg(samples: RouteSample[]): Map<number, number> {
  * server groups them by source tile, so asking for three times the points
  * costs very little more than asking for one.
  */
-export async function fetchRouteTerrain(samples: RouteSample[]): Promise<RouteSample[]> {
+export async function fetchRouteTerrain(
+  samples: RouteSample[],
+  corridorNm: number = MSA_CORRIDOR_NM,
+): Promise<RouteSample[]> {
   if (samples.length === 0) return samples;
 
   const points: [number, number][] = [];
   for (const s of samples) points.push([s.lat, s.lon]);
-  for (let i = 0; i < samples.length; i++) points.push(...corridorPoints(samples, i));
+  for (let i = 0; i < samples.length; i++) points.push(...corridorPoints(samples, i, corridorNm));
 
   let elev: (number | null)[];
   try {

@@ -9,6 +9,7 @@ import type { ThreatRing, MissionOverviewData } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';
 import { clusterThreatSites } from './threatSites';
+import { DEFAULT_OPTIONS, DENSITY_ROWS, type KneeboardOptions } from './options';
 
 /** How much of the threat picture to reveal on the kneeboard. Used as
  *  a "difficulty" slider — full intelligence for a teaching mission,
@@ -48,6 +49,8 @@ interface ThreatCardProps {
   notes?: string;
   /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
   coordFormat?: CoordFormat;
+  /** Flight lead controls — threat floor, clustering, density. */
+  opts?: KneeboardOptions;
 }
 
 /** First-page inventory has the map above it, so it fits fewer rows
@@ -58,30 +61,43 @@ interface ThreatCardProps {
  *  and the whole footer off the bottom edge — silently, because cardRoot is
  *  overflow:hidden. The row budget has to leave room for what sits BELOW the
  *  table (legend ~59px + notes ~41px + footer ~25px), not just the table. */
-const PAGE1_ROWS = 8;
-const PAGEN_ROWS = 18;
 
 /** Compute how many cards a given threat list needs. */
 /** Enemy threats collapsed to one entry per emplacement, longest-ranged
  *  first. Both the page count and the render go through here so they can
  *  never disagree about how many rows exist. */
-function threatRows(threats: ThreatRing[], playerCoalition: string) {
+function threatRows(
+  threats: ThreatRing[],
+  playerCoalition: string,
+  opts: KneeboardOptions = DEFAULT_OPTIONS,
+) {
   const enemy = threats.filter(
     (t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
-  const enriched = enemy.map((t) => ({ ...t, info: lookupSam(t.type) }));
+  const enriched = enemy.map((t) => ({ ...t, info: lookupSam(t.type) }))
+    // Threat floor: a package at 25,000 ft does not need a page of AAA it
+    // cannot be touched by. 0 keeps everything, which is right down low.
+    .filter((t) => {
+      const km = t.info?.rangeKm ?? metersToNm(t.range) * 1.852;
+      return km >= opts.threats.minRangeKm;
+    });
   // Family = NATO designation, so an S-300's search and track radars group
   // as one SA-10 site instead of reading as three separate threats.
   return clusterThreatSites(
     enriched,
     (t) => t.info?.nato || t.type,
     (t) => (t.info?.rangeKm ?? metersToNm(t.range)),
+    opts.threats.siteRadiusNm,
   ).map((site) => ({ ...site.lead, siteCount: site.count }));
 }
 
-export function threatCardPageCount(props: Pick<ThreatCardProps, 'threats' | 'playerCoalition'>): number {
-  const rows = threatRows(props.threats, props.playerCoalition);
-  if (rows.length <= PAGE1_ROWS) return 1;
-  return 1 + Math.ceil((rows.length - PAGE1_ROWS) / PAGEN_ROWS);
+export function threatCardPageCount(
+  props: Pick<ThreatCardProps, 'threats' | 'playerCoalition'> & { opts?: KneeboardOptions },
+): number {
+  const o = props.opts ?? DEFAULT_OPTIONS;
+  const { page1, pageN } = DENSITY_ROWS[o.layout.density];
+  const rows = threatRows(props.threats, props.playerCoalition, o);
+  if (rows.length <= page1) return 1;
+  return 1 + Math.ceil((rows.length - page1) / pageN);
 }
 
 /* ---- SAM lookup (mirrors ThreatLibraryTab) ---- */
@@ -136,15 +152,16 @@ const CAT_COLORS: Record<string, string> = {
 
 export function ThreatCard({
   threats, playerCoalition, overview, page = 0, fidelity = 'full',
-  mapVisible = true, notes, coordFormat = 'mgrs',
+  mapVisible = true, notes, coordFormat = 'mgrs', opts = DEFAULT_OPTIONS,
 }: ThreatCardProps) {
   // One row per emplacement, not per vehicle. 44 raw units on Kola M4 were
   // 7 systems; paginating the raw list produced 2nd and 3rd cards that
   // repeated the first.
-  const enriched = threatRows(threats, playerCoalition);
+  const enriched = threatRows(threats, playerCoalition, opts);
 
-  // Page slicing: page 0 holds map + first PAGE1_ROWS rows; pages 1+
-  // carry additional PAGEN_ROWS rows each (no map repeated).
+  // Page slicing: page 0 holds map + a first batch of rows; pages 1+ carry
+  // more (no map repeated). Row counts come from the density setting.
+  const { page1: PAGE1_ROWS, pageN: PAGEN_ROWS } = DENSITY_ROWS[opts.layout.density];
   const isFirstPage = page === 0;
   const pageStart = isFirstPage ? 0 : PAGE1_ROWS + (page - 1) * PAGEN_ROWS;
   const pageEnd = isFirstPage ? PAGE1_ROWS : pageStart + PAGEN_ROWS;

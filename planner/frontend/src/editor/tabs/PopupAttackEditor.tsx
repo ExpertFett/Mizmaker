@@ -11,13 +11,16 @@
 import { PopupProfileCanvas } from './PopupProfileCanvas';
 import { computePopupAttack, defaultPopupAttack, ATTACK_TYPE_LABEL, ATTACK_TYPE_DESC, type PopupAttackInput, type AttackType } from '../../utils/popupAttack';
 import { AIRCRAFT_PRESET_LABEL, AIRCRAFT_NOTES, applyAircraftPreset, type AircraftPreset } from '../../utils/popupAttackPresets';
+import type { PopupLimits } from '../../utils/popupValidation';
 
 interface Props {
   profiles: PopupAttackInput[];
   onChange: (next: PopupAttackInput[]) => void;
+  /** Squadron popup limits, from the flight lead controls. */
+  limits?: PopupLimits;
 }
 
-export function PopupAttackEditor({ profiles, onChange }: Props) {
+export function PopupAttackEditor({ profiles, onChange, limits }: Props) {
   const update = (i: number, patch: Partial<PopupAttackInput>) =>
     onChange(profiles.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
   const remove = (i: number) => onChange(profiles.filter((_, idx) => idx !== i));
@@ -51,14 +54,14 @@ export function PopupAttackEditor({ profiles, onChange }: Props) {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {profiles.map((p, i) => (
-          <ProfileRow key={i} idx={i} profile={p} onPatch={(patch) => update(i, patch)} onRemove={() => remove(i)} />
+          <ProfileRow key={i} idx={i} profile={p} limits={limits} onPatch={(patch) => update(i, patch)} onRemove={() => remove(i)} />
         ))}
       </div>
     </div>
   );
 }
 
-function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile: PopupAttackInput; onPatch: (patch: Partial<PopupAttackInput>) => void; onRemove: () => void }) {
+function ProfileRow({ idx, profile, onPatch, onRemove, limits }: { idx: number; profile: PopupAttackInput; onPatch: (patch: Partial<PopupAttackInput>) => void; onRemove: () => void; limits?: PopupLimits }) {
   // Compute a quick TTT/totals readout so the planner sees the math reacting
   // as they edit the params — without having to flip to the preview.
   const prof = computePopupAttack(profile);
@@ -126,7 +129,7 @@ function ProfileRow({ idx, profile, onPatch, onRemove }: { idx: number; profile:
       {/* Draw the profile, don't just type it. Handles write back into the
           same input the fields below edit, and the protocol checks render on
           the chart where they happen. */}
-      <PopupProfileCanvas profile={profile} onPatch={onPatch} />
+      <PopupProfileCanvas profile={profile} onPatch={onPatch} limits={limits} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 8 }}>
         <Field label="TGT elev (ft MSL)" v={profile.targetElevationFt} onChange={(n) => onPatch({ targetElevationFt: n })} />

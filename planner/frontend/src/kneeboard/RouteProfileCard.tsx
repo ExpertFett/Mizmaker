@@ -17,7 +17,8 @@ import {
   MissionDateLine,
 } from './cardStyles';
 import type { MissionGroup, MissionOverviewData } from '../types/mission';
-import { msaPerLeg, MSA_CORRIDOR_NM, type RouteSample } from '../utils/routeProfile';
+import { msaPerLeg, type RouteSample } from '../utils/routeProfile';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface Props {
   group: MissionGroup;
@@ -26,6 +27,8 @@ interface Props {
   samples: RouteSample[];
   overview?: MissionOverviewData;
   notes?: string;
+  /** Flight lead controls — MSA buffer and corridor width. */
+  opts?: KneeboardOptions;
 }
 
 const CHART_W = 552;
@@ -36,9 +39,9 @@ function fmtAlt(ft: number): string {
   return ft >= 1000 ? `${(ft / 1000).toFixed(0)}k` : String(Math.round(ft / 100) * 100);
 }
 
-export function RouteProfileCard({ group, samples, overview, notes }: Props) {
+export function RouteProfileCard({ group, samples, overview, notes, opts = DEFAULT_OPTIONS }: Props) {
   const hasTerrain = samples.some((s) => s.terrainFt != null);
-  const msa = msaPerLeg(samples);
+  const msa = msaPerLeg(samples, opts.nav.msaBufferFt);
 
   const maxDist = samples.length ? samples[samples.length - 1].distNm : 1;
   const peakTerrain = Math.max(0, ...samples.map((s) => s.corridorFt ?? s.terrainFt ?? 0));
@@ -92,7 +95,7 @@ export function RouteProfileCard({ group, samples, overview, notes }: Props) {
       <div style={headerStyle}>
         <div style={titleStyle}>ROUTE PROFILE</div>
         <div style={subtitleStyle}>
-          {group.groupName} | {maxDist.toFixed(0)} NM | MSA over ±{MSA_CORRIDOR_NM} NM corridor
+          {group.groupName} | {maxDist.toFixed(0)} NM | MSA over ±{opts.nav.msaCorridorNm} NM corridor, +{opts.nav.msaBufferFt.toLocaleString()} ft
         </div>
         {overview && (
           <MissionDateLine date={overview.date} startTime={overview.start_time}

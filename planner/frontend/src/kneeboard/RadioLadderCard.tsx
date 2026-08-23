@@ -20,6 +20,7 @@ import {
 import type { Airbase, MissionGroup, MissionOverviewData, RadioPresetRadio } from '../types/mission';
 import { buildRadioLadder, applyLadderOrder } from './radioLadder';
 import { presetLabel } from './radioPresets';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface RadioLadderCardProps {
   groups: MissionGroup[];
@@ -36,6 +37,8 @@ interface RadioLadderCardProps {
   order?: string[];
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Flight lead controls — guard frequencies and radio labels. */
+  opts?: KneeboardOptions;
 }
 
 function formatFreq(freq: number, mod: number): string {
@@ -47,10 +50,13 @@ function formatFreq(freq: number, mod: number): string {
 
 export function RadioLadderCard({
   groups, coalition, overview, group, airbases = [], sopComms = [],
-  presets, order, notes,
+  presets, order, notes, opts = DEFAULT_OPTIONS,
 }: RadioLadderCardProps) {
   const rows = applyLadderOrder(
-    buildRadioLadder({ group, allGroups: groups, coalition, airbases, sopComms }),
+    buildRadioLadder({
+      group, allGroups: groups, coalition, airbases, sopComms,
+      guardMhz: opts.comms.guardMhz,
+    }),
     order,
   );
 
@@ -76,7 +82,7 @@ export function RadioLadderCard({
         </thead>
         <tbody>
           {rows.map((r, i) => {
-            const chan = presetLabel(r.freqMhz, presets);
+            const chan = presetLabel(r.freqMhz, presets, opts.comms.radioLabels);
             return (
               <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
                 <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{i + 1}</td>

@@ -51,6 +51,7 @@ import { BrevityCard } from './BrevityCard';
 import { NineLineBuilder } from './NineLineBuilder';
 import { TriggersPanel } from './TriggersPanel';
 import { FloatingPanel, resetAllFloatingPositions } from './FloatingPanel';
+import { CommanderPanel } from './ai/CommanderPanel';
 import { postComms, postToDiscord } from '../../api/groups';
 import { useMissionStore } from '../../store/missionStore';
 import { useAiStore } from '../../ai/aiStore';
@@ -863,6 +864,18 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
   // Ref so the once-registered cluster style sees the current bullseye each render.
   const bullseyeRef = useRef<{ lat: number; lng: number } | null>(null);
   bullseyeRef.current = bullseyePin ? { lat: bullseyePin.lat, lng: bullseyePin.lng } : null;
+
+  // AI Commander (v1.19.116). Reads the live picture through stable refs rather
+  // than props so the panel doesn't re-render on every 5s unit poll — and so
+  // the agent validates unit IDs against the CURRENT snapshot at execution
+  // time, not whatever was on screen when it proposed the action.
+  const [commanderOpen, setCommanderOpen] = useState(false);
+  const getUnitsForCommander = useCallback(
+    () => Object.values(unitsRef.current).map((x) => x.u).filter((u) => u.alive !== 0),
+    [],
+  );
+  const getAirbasesForCommander = useCallback(() => airfieldListRef.current, []);
+  const getBullseyeForCommander = useCallback(() => bullseyeRef.current, []);
 
   // Named markers — colored labeled pins the DM drops anywhere (anchors,
   // station points, target reference points). Persisted across reloads
@@ -2347,6 +2360,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         {(canToolsJtac || canCommand) && (
           <SidebarBtn icon="📋" label="9-line builder" onClick={() => setNineLineOpen(true)} hint="Structured CAS check-in → comms broadcast" />
         )}
+        {canCommand && (
+          <SidebarBtn icon="🤖" label="AI Commander" active={commanderOpen} onClick={() => setCommanderOpen((o) => !o)}
+                      hint="Speak or type orders — a Claude agent runs them through Olympus (BYOK)" />
+        )}
 
         {/* v1.19.27 — Olympus modes + protected lock + every filter
             (controllers / coalitions / categories / overlays) live on
@@ -2919,6 +2936,20 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
       {triggersOpen && (
         <FloatingPanel id="triggers" zIndex={5} defaultRect={{ x: typeof window !== 'undefined' ? Math.max(56, window.innerWidth - 1000) : 230, y: 56, w: 360, h: 540 }}>
           <TriggersPanel group={group} profile={profile} onClose={toggleTriggers} />
+        </FloatingPanel>
+      )}
+
+      {/* ── AI Commander ─ FloatingPanel ─────────────────────────────────── */}
+      {commanderOpen && canCommand && (
+        <FloatingPanel id="commander" zIndex={6} defaultRect={{ x: 56, y: 56, w: 420, h: 600 }}>
+          <CommanderPanel
+            group={group}
+            profile={profile}
+            getUnits={getUnitsForCommander}
+            getAirbases={getAirbasesForCommander}
+            getBullseye={getBullseyeForCommander}
+            onClose={() => setCommanderOpen(false)}
+          />
         </FloatingPanel>
       )}
 

@@ -10,7 +10,7 @@
 ShipTrafficCFG = {
   mapName = "PersianGulf",
   country = "EGYPT",
-  maxActive = 60,
+  maxActive = 48,
   lanes = {
     {
       name = "PB1A",
@@ -230,11 +230,40 @@ if land and land.SurfaceType then
 end
 ST.landRejects = 0
 
+-- PERFORMANCE: land.getSurfaceType is a synchronous sim-thread C call. Route
+-- repair on a fjord coast hit it ~20k times IN ONE FRAME (topUp x retries x
+-- detour search) -> ~100ms+ stalls -> the server lag reported 2026-07-21.
+-- Two guards:
+--   1. GRID CACHE: quantise to a coarse grid and memoise. The detour search
+--      and fine sampling revisit the same neighbourhood constantly, so the
+--      hit rate is very high; a mission touches a bounded set of cells.
+--   2. PER-FRAME BUDGET: cap real lookups per scheduled invocation. When the
+--      budget is spent the check returns "land" (cheap, safe) so the spawn
+--      just retries next tick instead of freezing the sim.
+local GRID = 120
+local _wcache = {}
+local _wcacheN = 0
+ST.surfBudget = 0
+local BUDGET_PER_FRAME = 250
+
+local function budgetReset() ST.surfBudget = BUDGET_PER_FRAME end
+
 local function isWater(p)
   if not (land and land.getSurfaceType) then return true end  -- API absent: allow
-  local ok, st = pcall(land.getSurfaceType, { x = p.x, y = p.y })
-  if not ok then return true end               -- call failed: allow (fail-open)
-  return NOTWATER[st] ~= true                   -- reject only definite land
+  local gx = math.floor(p.x / GRID)
+  local gy = math.floor(p.y / GRID)
+  local key = gx * 4000000 + gy
+  local c = _wcache[key]
+  if c ~= nil then return c end
+  if ST.surfBudget <= 0 then return false end   -- out of budget: treat as land, bail
+  ST.surfBudget = ST.surfBudget - 1
+  ST.surfCalls = (ST.surfCalls or 0) + 1
+  local ok, st = pcall(land.getSurfaceType,
+                       { x = gx * GRID + GRID / 2, y = gy * GRID + GRID / 2 })
+  local res
+  if not ok then res = true else res = (NOTWATER[st] ~= true) end
+  if _wcacheN < 300000 then _wcache[key] = res; _wcacheN = _wcacheN + 1 end
+  return res
 end
 
 -- ---- ROUTE REPAIR --------------------------------------------------------
@@ -460,15 +489,17 @@ end
 -- silently drop a seeded ship (why Hormuz showed ~9 of 12). Retry with small
 -- frac jitter so the seed count actually lands on water.
 local function seedLaneShip(lane, frac)
-  for attempt = 1, 10 do
+  for attempt = 1, 5 do
     local f = math.max(0.02, math.min(0.97, frac + (math.random() - 0.5) * 0.08 * attempt))
     if spawnLaneShip(lane, f) then return true end
+    if ST.surfBudget <= 0 then return false end                        -- frame budget spent
     if aliveCount() >= (ST.cfg.maxActive or 25) then return false end  -- cap, not land
   end
   return false
 end
 
 local function laneLoop(lane)
+  budgetReset()
   if not ST.paused then spawnLaneShip(lane, 0) end
   local jitter = 0.7 + math.random() * 0.6
   return timer.getTime() + lane.cad * jitter * ST.densityMul
@@ -521,36 +552,86 @@ local function spawnFisher(region)
 end
 
 local function fisherLoop(region)
+  budgetReset()
   if not ST.paused then spawnFisher(region) end
   return timer.getTime() + region.cad * (0.7 + math.random() * 0.6) * ST.densityMul
 end
 
 -- ------------------------------------------------------------- top-up ----
--- Awkward coastlines (Kola's fjords) make the repair reject a lot of
--- candidate routes, which would leave the sea thin. Periodically top the
--- fleet back up toward the cap by seeding at random points along random
--- lanes, so density self-heals no matter how hostile the terrain is.
+-- Awkward coastlines (Kola) make the repair reject a lot of routes, thinning
+-- the sea. Top up toward the cap - but GENTLY: at most a couple of attempts
+-- per call, bounded by the per-frame water budget, and BACK OFF when a coast
+-- won't fill (so we don't grind land lookups forever, the server-lag cause).
+local ST_topInterval = 90
 local function topUp()
+  budgetReset()
   local lanes = ST.cfg.lanes or {}
+  local added = 0
   if not ST.paused and #lanes > 0 then
     local cap = ST.cfg.maxActive or 25
-    local tries = 0
-    while aliveCount() < cap and tries < 12 do
-      tries = tries + 1
-      seedLaneShip(pick(lanes), 0.05 + math.random() * 0.9)
+    local attempts = 0
+    while aliveCount() < cap and attempts < 3 and ST.surfBudget > 0 do
+      attempts = attempts + 1
+      if seedLaneShip(pick(lanes), 0.05 + math.random() * 0.9) then
+        added = added + 1
+      end
     end
   end
-  return timer.getTime() + 180
+  -- adaptive interval: if we couldn't add anything (hostile coast / already
+  -- full) slow down toward 6 min; when it's working, stay responsive at 45 s.
+  if added == 0 then
+    ST_topInterval = math.min(360, ST_topInterval + 45)
+  else
+    ST_topInterval = 45
+  end
+  return timer.getTime() + ST_topInterval
 end
 
 -- -------------------------------------------------------- heartbeat log --
--- No F10 menu by design: this is a fire-and-forget template (like the baked
--- air missions) - players cannot touch the traffic. Health is logged to
--- dcs.log periodically so it stays diagnosable without any in-game UI.
 local function heartbeat()
   ST.log(string.format("active=%d  spawnedTotal=%d  land-skips=%d  detours=%d",
                        aliveCount(), ST.counter, ST.landRejects, ST.detours or 0))
   return timer.getTime() + 120
+end
+
+-- ---------------------------------------------------------- F10 control --
+-- "Ship Traffic" menu (cfg.f10menu ~= false). Lets the host pause / clear /
+-- resume / re-density the ambient shipping mid-mission.
+local function removeAll()
+  for name in pairs(ST.spawned) do
+    local g = Group.getByName(name)
+    if g and g:isExist() then pcall(function() g:destroy() end) end
+    ST.spawned[name] = nil
+  end
+end
+
+local function buildMenu()
+  if ST.cfg.f10menu == false then return end
+  local root = missionCommands.addSubMenu("Ship Traffic")
+  missionCommands.addCommand("Status", root, function()
+    trigger.action.outText(string.format(
+      "Ship Traffic: %d vessels | %s | density x%.2g | detours %d",
+      aliveCount(), ST.paused and "PAUSED" or "running",
+      1 / ST.densityMul, ST.detours or 0), 15)
+  end)
+  missionCommands.addCommand("Turn OFF (stop + clear all)", root, function()
+    ST.paused = true; removeAll()
+    trigger.action.outText("Ship Traffic: OFF - all vessels removed, spawning stopped", 12)
+  end)
+  missionCommands.addCommand("Turn ON (resume spawning)", root, function()
+    ST.paused = false
+    trigger.action.outText("Ship Traffic: ON - spawning resumed", 10)
+  end)
+  local den = missionCommands.addSubMenu("Density", root)
+  missionCommands.addCommand("Low", den, function()
+    ST.densityMul = 2.0; trigger.action.outText("Ship Traffic density: LOW", 10)
+  end)
+  missionCommands.addCommand("Normal", den, function()
+    ST.densityMul = 1.0; trigger.action.outText("Ship Traffic density: NORMAL", 10)
+  end)
+  missionCommands.addCommand("High", den, function()
+    ST.densityMul = 0.6; trigger.action.outText("Ship Traffic density: HIGH", 10)
+  end)
 end
 
 -- ------------------------------------------------------------------ start --
@@ -562,20 +643,23 @@ local function start()
     -- pre-seed the lane: ships already distributed along it at mission start
     for s = 1, (lane.seed or 0) do
       local frac = (s - 0.5 + (math.random() - 0.5) * 0.6) / (lane.seed)
+      -- 6 s apart so each seed is its own frame with a fresh water budget:
+      -- the whole fleet is never built in one tick (that was the freeze)
       timer.scheduleFunction(function()
+        budgetReset()
         seedLaneShip(lane, math.max(0.02, math.min(0.95, frac)))
         return nil
-      end, nil, t0 + 3 + stagger + s * 4)
+      end, nil, t0 + 3 + stagger + s * 6)
     end
     timer.scheduleFunction(function() return laneLoop(lane) end, nil,
                            t0 + 60 + stagger)
-    stagger = stagger + 17
+    stagger = stagger + 19
   end
   for _, region in ipairs(ST.cfg.fishing or {}) do
-    -- seed half the fleet immediately
+    -- seed half the fleet immediately (one per frame, fresh budget)
     for s = 1, math.floor((region.maxActive or 4) / 2) do
-      timer.scheduleFunction(function() spawnFisher(region) return nil end,
-                             nil, t0 + 10 + stagger + s * 5)
+      timer.scheduleFunction(function() budgetReset(); spawnFisher(region) return nil end,
+                             nil, t0 + 10 + stagger + s * 6)
     end
     timer.scheduleFunction(function() return fisherLoop(region) end, nil,
                            t0 + 45 + stagger)
@@ -584,6 +668,7 @@ local function start()
   timer.scheduleFunction(reaper, nil, t0 + 180)
   timer.scheduleFunction(heartbeat, nil, t0 + 120)
   timer.scheduleFunction(topUp, nil, t0 + 200)
+  buildMenu()
   ST.log(string.format("started: %d lanes, %d fishing regions, cap %d",
                        #(ST.cfg.lanes or {}), #(ST.cfg.fishing or {}),
                        ST.cfg.maxActive or 25))

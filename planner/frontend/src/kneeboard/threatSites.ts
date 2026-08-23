@@ -58,6 +58,7 @@ export function clusterThreatSites<T extends ThreatLike>(
   threats: T[],
   familyOf: (t: T) => string,
   rangeOf: (t: T) => number,
+  radiusNm: number = SITE_RADIUS_NM,
 ): ThreatSite<T>[] {
   // Longest-ranged first, so each cluster's first member is its lead and the
   // site inherits the designation that actually matters to the aircrew.
@@ -70,7 +71,7 @@ export function clusterThreatSites<T extends ThreatLike>(
     const home = sites.find((s) =>
       familyOf(s.lead) === family &&
       s.lead.lat != null && s.lead.lon != null &&
-      roughNm(s.lead.lat, s.lead.lon, t.lat!, t.lon!) <= SITE_RADIUS_NM);
+      roughNm(s.lead.lat, s.lead.lon, t.lat!, t.lon!) <= radiusNm);
     if (home) {
       home.members.push(t);
       home.count++;

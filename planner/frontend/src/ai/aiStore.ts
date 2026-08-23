@@ -25,12 +25,16 @@ const GEMINI_MODEL_STORAGE    = 'mizresearch.ai.gemini_model.v1';
 // v1 → v2 migration source key (single key + model from the pre-v0.8 era)
 const LEGACY_MODEL_STORAGE  = 'mizresearch.ai.model.v1';
 
-const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-5';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
 const DEFAULT_GEMINI_MODEL    = 'gemini-2.5-flash';
 
+// Refreshed v1.19.116. Previously pinned to the 4.5 generation, which still
+// works but is a generation behind — the AI Commander's tool-use loop in
+// particular benefits from the newer models. Stored values are left alone:
+// the old IDs are still valid, so nobody's saved setting breaks.
 const ANTHROPIC_PRESETS = [
-  'claude-sonnet-4-5',
-  'claude-opus-4-5',
+  'claude-sonnet-5',
+  'claude-opus-5',
   'claude-haiku-4-5',
 ] as const;
 

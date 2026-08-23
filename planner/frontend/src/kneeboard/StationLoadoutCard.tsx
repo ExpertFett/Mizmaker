@@ -23,6 +23,7 @@ import type { MissionGroup, MissionOverviewData, ClientUnit } from '../types/mis
 import { getAircraftType } from '../utils/groups';
 import { planformFor, planformPath, subShapePath } from './aircraftPlanform';
 import { assignFlightLaserCodes, DEFAULT_LASER_BASE } from '../sop/flightLaserCodes';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface Props {
   group: MissionGroup;
@@ -31,20 +32,23 @@ interface Props {
   /** SOP ladder start for the per-aircrew codes. */
   laserCodeBase?: number;
   notes?: string;
+  /** Flight lead controls — store-name length. */
+  opts?: KneeboardOptions;
 }
 
 const DIAGRAM_H = 272;
 
 /** Trim a store name to something that fits a station box. */
-function storeLabel(p: { shortName?: string; name?: string }): string {
+function storeLabel(p: { shortName?: string; name?: string }, full = false): string {
   const raw = (p.shortName || p.name || '').trim();
   // Drop the bracketed qualifiers DCS names carry ("Mk-82 [Snakeye]") — the
   // box has room for the store, not its footnote.
-  return raw.replace(/\s*[[(].*$/, '').slice(0, 14);
+  const clean = raw.replace(/\s*[[(].*$/, '');
+  return full ? clean : clean.slice(0, 14);
 }
 
 export function StationLoadoutCard({
-  group, clientUnits, overview, laserCodeBase, notes,
+  group, clientUnits, overview, laserCodeBase, notes, opts = DEFAULT_OPTIONS,
 }: Props) {
   const airframe = getAircraftType(group);
   const flightUnits = clientUnits.filter((u) => u.groupName === group.groupName);
@@ -151,7 +155,7 @@ export function StationLoadoutCard({
                 <text x={cx} y={boxTop + 15} fill={ACCENT} fontSize={13} fontWeight={700}
                       textAnchor="middle">{p.number}</text>
                 <text x={cx} y={boxTop + 31} fill={TEXT} fontSize={11} textAnchor="middle">
-                  {storeLabel(p)}
+                  {storeLabel(p, opts.layout.storeNames === 'full')}
                 </text>
                 {code != null && (
                   <text x={cx} y={boxTop + 46} fill={WARN} fontSize={11} textAnchor="middle">

@@ -27,6 +27,7 @@ import type { Dmpi } from '../store/dmpiStore';
 import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet } from '../utils/conversions';
 import { formatCoord, type CoordFormat } from './coords';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 const IMG_W = 568;
 const IMG_H = 452;
@@ -34,7 +35,7 @@ const IMG_H = 452;
 /** Half-width of the imagery chip, in nautical miles. ~0.65 NM gives roughly a
  *  1.3 NM square — tight enough to identify a building or revetment, wide
  *  enough to show the approach to it. */
-const CHIP_HALF_NM = 0.65;
+const CHIP_HALF_NM_DEFAULT = 0.65;
 const NM_TO_DEG_LAT = 1 / 60;
 
 interface TargetImageryCardProps {
@@ -46,12 +47,16 @@ interface TargetImageryCardProps {
   coordFormat?: CoordFormat;
   squadron?: string;
   notes?: string;
+  /** Flight lead controls — chip zoom and base layer. */
+  opts?: KneeboardOptions;
 }
 
 export function TargetImageryCard({
   dmpi, index, total, overview, coordFormat = 'mgrs', squadron, notes,
+  opts = DEFAULT_OPTIONS,
 }: TargetImageryCardProps) {
   const { lat, lon } = dmpi;
+  const CHIP_HALF_NM = opts.weapons.targetChipNm || CHIP_HALF_NM_DEFAULT;
 
   // Square-ish chip: longitude degrees shrink with latitude, so scale them by
   // cos(lat) or the picture stretches badly at Kola latitudes.
@@ -92,7 +97,7 @@ export function TargetImageryCard({
           maxLat={maxLat}
           minLon={minLon}
           maxLon={maxLon}
-          layer="satellite"
+          layer={opts.nav.mapLayer === "dark" ? "dark" : "satellite"}
         >
           <svg width={IMG_W} height={IMG_H} style={{ display: 'block' }}>
             {/* 500 m scale ring */}

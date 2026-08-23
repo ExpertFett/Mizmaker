@@ -29,11 +29,15 @@ export function airfieldsForFlight(
   airbases: Airbase[],
   coalition: string,
   limit = 4,
+  enemyFields: 'hide' | 'mark' | 'include' = 'hide',
 ): Airbase[] {
   const usable = airbases.filter(
     (a) => a.lat != null && a.lon != null
       && (a.runways?.length ?? 0) > 0
-      && (a.coalition === 'neutral' || a.coalition === coalition));
+      // 'include' draws enemy fields too — useful when you might have to take
+      // one. The card marks them; it does not pretend they are options.
+      && (enemyFields === 'include'
+        || a.coalition === 'neutral' || a.coalition === coalition));
 
   // Collapse the duplicate records the theatre data carries for one field.
   const byPos = new Map<string, Airbase>();

@@ -16,6 +16,7 @@ import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, t
 import type { Airbase, MissionGroup, MissionOverviewData } from '../types/mission';
 import { formatCoord, type CoordFormat } from './coords';
 import { isPlayerGroup } from '../utils/groups';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface AirbaseRefCardProps {
   airbases: Airbase[];
@@ -30,6 +31,8 @@ interface AirbaseRefCardProps {
   notes?: string;
   /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
   coordFormat?: CoordFormat;
+  /** Flight lead controls — divert radius and list depth. */
+  opts?: KneeboardOptions;
 }
 
 /** Great-circle distance in nm. */
@@ -42,14 +45,14 @@ function distNm(lat1: number, lon1: number, lat2: number, lon2: number): number 
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coalition = 'blue', coordFormat = 'mgrs' }: AirbaseRefCardProps) {
+export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coalition = 'blue', coordFormat = 'mgrs', opts = DEFAULT_OPTIONS }: AirbaseRefCardProps) {
   // Filter to route-relevant airfields when groups are available.
   // Otherwise fall back to the full list (the card was used this way
   // before the filter existed; keep that path for back-compat).
-  const ROUTE_PROXIMITY_NM = 25;
+  const ROUTE_PROXIMITY_NM = opts.diverts.searchRadiusNm;
   // Rows to fill the card body with before the notes box takes over. Sized
   // to the space between the header and the quarter-card notes cap.
-  const MIN_ROWS = 14;
+  const MIN_ROWS = Math.max(4, opts.diverts.count + 6);
 
   type AbWithRole = Airbase & { _role?: 'HOME' | 'RTB' | 'DIVERT' | 'ENEMY' };
 

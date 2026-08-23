@@ -22,6 +22,8 @@ import type { RadioPresetRadio } from '../types/mission';
  *  survive a float round-trip. */
 const MATCH_TOLERANCE_MHZ = 0.001;
 
+/** Default radio labels — the Hornet's COMM1/COMM2. Other airframes name
+ *  their radios differently, so the caller can pass its own pair. */
 const RADIO_SUFFIX: Record<number, string> = { 1: 'L', 2: 'R' };
 
 /**
@@ -32,6 +34,7 @@ const RADIO_SUFFIX: Record<number, string> = { 1: 'L', 2: 'R' };
 export function presetLabel(
   freqMhz: number | null | undefined,
   presets: RadioPresetRadio[] | undefined,
+  labels?: readonly [string, string],
 ): string {
   if (freqMhz == null || !Number.isFinite(freqMhz) || !presets?.length) return '';
 
@@ -47,7 +50,9 @@ export function presetLabel(
   const channels = new Set(hits.map((h) => h.ch));
   if (hits.length > 1 && channels.size === 1) return `(${hits[0].ch})`;
 
-  return `(${hits.map((h) => `${h.ch}${RADIO_SUFFIX[h.radio] ?? h.radio}`).join('/')})`;
+  const suffix = (radio: number) =>
+    (labels ? labels[radio - 1] : RADIO_SUFFIX[radio]) ?? String(radio);
+  return `(${hits.map((h) => `${h.ch}${suffix(h.radio)}`).join('/')})`;
 }
 
 /** `freq` + its preset annotation, space-separated, with neither half
@@ -56,8 +61,9 @@ export function freqWithPreset(
   text: string,
   freqMhz: number | null | undefined,
   presets: RadioPresetRadio[] | undefined,
+  labels?: readonly [string, string],
 ): string {
-  const label = presetLabel(freqMhz, presets);
+  const label = presetLabel(freqMhz, presets, labels);
   return label ? `${text} ${label}` : text;
 }
 

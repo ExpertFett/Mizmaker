@@ -10,6 +10,7 @@ import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, t
 import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { getAircraftPerf, computeFuelLegs, computeJokerBingo, BINGO_FLOOR_LBS } from './fuelModel';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface FuelLadderCardProps {
   group: MissionGroup;
@@ -17,12 +18,14 @@ interface FuelLadderCardProps {
   overview?: MissionOverviewData;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Flight lead controls — bingo floor, joker basis. */
+  opts?: KneeboardOptions;
   /** Per-flight manual overrides (absolute LBS). Any set field wins over
    *  the loadout-derived / percentage defaults. (v1.19.108) */
   fuelOverride?: { start?: number; joker?: number; bingo?: number };
 }
 
-export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverride }: FuelLadderCardProps) {
+export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverride, opts = DEFAULT_OPTIONS }: FuelLadderCardProps) {
   const airframe = getAircraftType(group);
   const unitType = group.units[0]?.type || '';
   const wps = group.waypoints;
@@ -62,7 +65,7 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
   // Floored bingo (see fuelModel.computeJokerBingo) — shared with the Flight
   // Card and the Kneeboard tab so all three agree.
   const { joker: jokerFuel, bingo: bingoFuel, bingoFloored } =
-    computeJokerBingo(startFuel, fuelOverride);
+    computeJokerBingo(startFuel, fuelOverride, opts.fuel);
 
   function fmtEte(s: number): string {
     if (s <= 0) return '—';

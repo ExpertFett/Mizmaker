@@ -34,7 +34,10 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   computePopupAttack, type PopupAttackInput, type AttackPoint,
 } from '../../utils/popupAttack';
-import { validatePopupAttack, type PopupFinding } from '../../utils/popupValidation';
+import {
+  validatePopupAttack, DEFAULT_POPUP_LIMITS,
+  type PopupFinding, type PopupLimits,
+} from '../../utils/popupValidation';
 
 const FT_PER_NM = 6076.115;
 
@@ -69,6 +72,9 @@ const CURSOR: Record<'x' | 'y' | 'xy', string> = {
 interface Props {
   profile: PopupAttackInput;
   onPatch: (patch: Partial<PopupAttackInput>) => void;
+  /** Squadron protocol limits. The card documents itself as a check your SOP
+   *  overrides; this is what makes that true. */
+  limits?: PopupLimits;
 }
 
 /** Degrees of a leg rising `vertFt` over `horizNm`, clamped to something a
@@ -79,12 +85,12 @@ function legAngleDeg(vertFt: number, horizNm: number, min: number, max: number):
   return Math.min(max, Math.max(min, Math.round(deg)));
 }
 
-export function PopupProfileCanvas({ profile, onPatch }: Props) {
+export function PopupProfileCanvas({ profile, onPatch, limits = DEFAULT_POPUP_LIMITS }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<HandleId | null>(null);
 
   const computed = computePopupAttack(profile);
-  const findings = validatePopupAttack(profile);
+  const findings = validatePopupAttack(profile, limits);
   const pts = computed.points;
 
   // --- scales ----------------------------------------------------------

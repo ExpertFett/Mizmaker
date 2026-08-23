@@ -24,6 +24,7 @@ import {
 } from './cardStyles';
 import type { Airbase, MissionOverviewData } from '../types/mission';
 import { formatCoord, type CoordFormat } from './coords';
+import type { KneeboardOptions } from './options';
 
 interface Props {
   /** Every field to draw. One card covers up to FIELDS_PER_CARD of them. */
@@ -37,6 +38,8 @@ interface Props {
   notes?: string;
   /** 0-based page when there are more fields than fit one card. */
   page?: number;
+  /** Flight lead controls — enemy-field handling. */
+  opts?: KneeboardOptions;
 }
 
 /** Fields per card. Four fits a 2x2 grid at a size where the runway

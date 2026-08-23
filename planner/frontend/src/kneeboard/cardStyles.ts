@@ -39,6 +39,7 @@ export const KB_VAR_NAMES = [
   '--kb-row-alt', '--kb-th-bg',
   '--kb-accent', '--kb-warn',
   '--kb-font',
+  '--kb-notes-max-h',
 ] as const;
 export type KbVarName = (typeof KB_VAR_NAMES)[number];
 export type KbVarMap = Partial<Record<KbVarName, string>>;
@@ -77,7 +78,11 @@ export function resolveKbVars(
 ): KbVarMap {
   if (theme === 'day') return { ...KB_DAY_VARS, ...(customVars ?? {}) };
   if (theme === 'custom') return { ...(customVars ?? {}) };
-  return {};
+  // Night returns no colour vars — the var() fallbacks in the constants above
+  // already are the night palette. Custom vars still merge: they used to be
+  // dropped here, which silently ignored any non-colour variable (the notes
+  // box height, for one) whenever the theme was the default.
+  return { ...(customVars ?? {}) };
 }
 
 /** Inline style applying a theme's CSS variables — for a wrapper around
@@ -188,6 +193,11 @@ export const footerStyle: React.CSSProperties = {
  *  instead. */
 export const NOTES_MAX_H = Math.round(H / 4);
 
+/** Notes box height for a chosen size. Cards read the CSS variable so a
+ *  single value set on the card root re-sizes every notes box on it, rather
+ *  than every card needing the option threaded in. */
+export const NOTES_H_VAR = '--kb-notes-max-h';
+
 export const notesBox: React.CSSProperties = {
   backgroundColor: BG_NOTES,
   border: `1px solid ${BORDER_MED}`,
@@ -195,7 +205,7 @@ export const notesBox: React.CSSProperties = {
   padding: '6px 8px',
   flex: 1,
   minHeight: 0,
-  maxHeight: NOTES_MAX_H,
+  maxHeight: `var(${NOTES_H_VAR}, ${NOTES_MAX_H}px)`,
   // Without border-box the 6px padding + 1px border push the rendered box to
   // 227px — over the quarter-card budget the cap exists to enforce.
   boxSizing: 'border-box',

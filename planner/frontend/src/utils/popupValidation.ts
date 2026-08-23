@@ -25,25 +25,43 @@ const FT_PER_NM = 6076.115;
 const KTS_TO_FPS = 1.68781;
 const G_FT_S2 = 32.174;
 
-/** Pull-out load factor assumed for the recovery computation. 4g is a
- *  routine, briefable pull — not a max-performance recovery. */
-const RECOVERY_G = 4;
+/**
+ * The limits a profile is judged against.
+ *
+ * These were fixed constants, documented as "a planning sanity check that a
+ * squadron SOP overrides" — with no way to override them. They are now
+ * supplied by the caller so the SOP can actually win. DEFAULT_POPUP_LIMITS
+ * holds the original numbers.
+ */
+export interface PopupLimits {
+  /** Pull-out load factor. 4g is a routine, briefable pull — not a
+   *  max-performance recovery. */
+  recoveryG: number;
+  /** Margin required between the bottom of the pull-out and the ground. */
+  terrainMarginFt: number;
+  /** Lowest altitude worth flying an ingress at. Below this the profile is
+   *  likelier to hit terrain than to defeat a radar. */
+  ingressHardDeckFtAgl: number;
+  /** Minimum release altitude for frag clearance with unguided bombs. */
+  minReleaseAglFt: number;
+  /** Bands a popup is normally flown inside. Outside is not automatically
+   *  wrong — it earns a caution, not an error. */
+  popupAngleDeg: { min: number; max: number };
+  diveAngleDeg: { min: number; max: number };
+}
 
-/** Margin required between the bottom of the pull-out and the ground. */
-const TERRAIN_MARGIN_FT = 500;
+export const DEFAULT_POPUP_LIMITS: PopupLimits = {
+  recoveryG: 4,
+  terrainMarginFt: 500,
+  ingressHardDeckFtAgl: 200,
+  minReleaseAglFt: 1500,
+  popupAngleDeg: { min: 15, max: 45 },
+  diveAngleDeg: { min: 10, max: 60 },
+};
 
-/** Lowest altitude worth flying an ingress at. Below this the profile is
- *  likelier to hit terrain than to defeat a radar. */
-const INGRESS_HARD_DECK_FT_AGL = 200;
-
-/** Bands a popup is normally flown inside. Outside is not automatically
- *  wrong — it earns a caution, not an error. */
-const POPUP_ANGLE_DEG = { min: 15, max: 45 };
-const DIVE_ANGLE_DEG = { min: 10, max: 60 };
+/** Climb needed above ingress before the nose can come down and acquire.
+ *  Geometry rather than doctrine, so it stays fixed. */
 const APEX_ABOVE_INGRESS_FT = { min: 1500 };
-
-/** Minimum release altitude for frag clearance with unguided bombs. */
-const MIN_RELEASE_AGL_FT = 1500;
 
 /** Slant range brackets, deliberately loose — a planning guard, not an
  *  employment envelope. */
@@ -64,9 +82,9 @@ export interface PopupFinding {
  * Standard pull-out geometry: the jet flies an arc of radius V^2/(g(n-1))
  * and loses R(1 - cos theta) of altitude completing it.
  */
-export function pulloutLossFt(diveDeg: number, speedKts: number): number {
+export function pulloutLossFt(diveDeg: number, speedKts: number, recoveryG = DEFAULT_POPUP_LIMITS.recoveryG): number {
   const v = Math.max(1, speedKts) * KTS_TO_FPS;
-  const radiusFt = (v * v) / (G_FT_S2 * (RECOVERY_G - 1));
+  const radiusFt = (v * v) / (G_FT_S2 * (Math.max(1.05, recoveryG) - 1));
   const theta = (Math.max(0, diveDeg) * Math.PI) / 180;
   return radiusFt * (1 - Math.cos(theta));
 }
@@ -82,7 +100,10 @@ export function slantRangeNm(input: PopupAttackInput): number {
   return Math.hypot(horizNm, vertNm);
 }
 
-export function validatePopupAttack(input: PopupAttackInput): PopupFinding[] {
+export function validatePopupAttack(
+  input: PopupAttackInput,
+  limits: PopupLimits = DEFAULT_POPUP_LIMITS,
+): PopupFinding[] {
   const out: PopupFinding[] = [];
   const add = (level: FindingLevel, field: PopupFinding['field'], message: string) =>
     out.push({ level, field, message });
@@ -115,25 +136,25 @@ export function validatePopupAttack(input: PopupAttackInput): PopupFinding[] {
 
   // --- recovery --------------------------------------------------------
   if (dives) {
-    const loss = pulloutLossFt(input.diveAngleDeg, input.releaseSpeedKts);
+    const loss = pulloutLossFt(input.diveAngleDeg, input.releaseSpeedKts, limits.recoveryG);
     const spare = input.releaseAltitudeFtAgl - loss;
-    if (spare < TERRAIN_MARGIN_FT) {
+    if (spare < limits.terrainMarginFt) {
       add('error', 'releaseAltitudeFtAgl',
         `A ${Math.round(input.diveAngleDeg)}° dive at ${Math.round(input.releaseSpeedKts)} kt gives up `
-        + `${Math.round(loss).toLocaleString()} ft in a ${RECOVERY_G}g pull-out. Releasing at `
+        + `${Math.round(loss).toLocaleString()} ft in a ${limits.recoveryG}g pull-out. Releasing at `
         + `${Math.round(input.releaseAltitudeFtAgl).toLocaleString()} ft AGL leaves `
-        + `${Math.round(spare).toLocaleString()} ft — under the ${TERRAIN_MARGIN_FT} ft floor.`);
-    } else if (spare < TERRAIN_MARGIN_FT * 2) {
+        + `${Math.round(spare).toLocaleString()} ft — under the ${limits.terrainMarginFt} ft floor.`);
+    } else if (spare < limits.terrainMarginFt * 2) {
       add('caution', 'releaseAltitudeFtAgl',
         `Pull-out bottoms out ${Math.round(spare).toLocaleString()} ft above the target — thin.`);
     }
   }
 
   // --- weapon release --------------------------------------------------
-  if (input.attackType !== 'laydown' && input.releaseAltitudeFtAgl < MIN_RELEASE_AGL_FT) {
+  if (input.attackType !== 'laydown' && input.releaseAltitudeFtAgl < limits.minReleaseAglFt) {
     add('caution', 'releaseAltitudeFtAgl',
       `${Math.round(input.releaseAltitudeFtAgl).toLocaleString()} ft AGL is below the `
-      + `${MIN_RELEASE_AGL_FT.toLocaleString()} ft frag-clearance rule of thumb for unguided bombs.`);
+      + `${limits.minReleaseAglFt.toLocaleString()} ft frag-clearance rule of thumb for unguided bombs.`);
   }
 
   const slant = slantRangeNm(input);
@@ -147,23 +168,23 @@ export function validatePopupAttack(input: PopupAttackInput): PopupFinding[] {
 
   // --- angles ----------------------------------------------------------
   if (isPopup
-      && (input.popupAngleDeg < POPUP_ANGLE_DEG.min || input.popupAngleDeg > POPUP_ANGLE_DEG.max)) {
+      && (input.popupAngleDeg < limits.popupAngleDeg.min || input.popupAngleDeg > limits.popupAngleDeg.max)) {
     add('caution', 'popupAngleDeg',
       `${Math.round(input.popupAngleDeg)}° climb is outside the usual `
-      + `${POPUP_ANGLE_DEG.min}–${POPUP_ANGLE_DEG.max}° popup bracket.`);
+      + `${limits.popupAngleDeg.min}–${limits.popupAngleDeg.max}° popup bracket.`);
   }
   if (dives
-      && (input.diveAngleDeg < DIVE_ANGLE_DEG.min || input.diveAngleDeg > DIVE_ANGLE_DEG.max)) {
+      && (input.diveAngleDeg < limits.diveAngleDeg.min || input.diveAngleDeg > limits.diveAngleDeg.max)) {
     add('caution', 'diveAngleDeg',
       `${Math.round(input.diveAngleDeg)}° dive is outside the usual `
-      + `${DIVE_ANGLE_DEG.min}–${DIVE_ANGLE_DEG.max}° bracket.`);
+      + `${limits.diveAngleDeg.min}–${limits.diveAngleDeg.max}° bracket.`);
   }
 
   // --- run-in ----------------------------------------------------------
-  if (input.ingressAltitudeFtAgl < INGRESS_HARD_DECK_FT_AGL) {
+  if (input.ingressAltitudeFtAgl < limits.ingressHardDeckFtAgl) {
     add('error', 'ingressAltitudeFtAgl',
       `Ingress at ${Math.round(input.ingressAltitudeFtAgl)} ft AGL is below the `
-      + `${INGRESS_HARD_DECK_FT_AGL} ft hard deck.`);
+      + `${limits.ingressHardDeckFtAgl} ft hard deck.`);
   }
   if (input.vipDistanceNm <= 0) {
     add('error', 'vipDistanceNm',

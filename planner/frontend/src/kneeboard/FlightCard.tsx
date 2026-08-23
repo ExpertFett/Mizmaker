@@ -8,12 +8,15 @@ import type { MissionGroup, ClientUnit, DonorInfo, MissionOverviewData } from '.
 import { getAircraftType } from '../utils/groups';
 import { assignFlightLaserCodes, DEFAULT_LASER_BASE } from '../sop/flightLaserCodes';
 import { getAircraftPerf, computeJokerBingo } from './fuelModel';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface FlightCardProps {
   group: MissionGroup;
   clientUnits: ClientUnit[];
   /** SOP laser ladder start, for the per-aircrew codes. */
   laserCodeBase?: number;
+  /** Flight lead controls — fuel rules. */
+  opts?: KneeboardOptions;
   overview?: MissionOverviewData;
   /** When set, highlight this pilot's row in the crew roster. */
   highlightUnitId?: number;
@@ -34,7 +37,7 @@ function withStn(m: DonorInfo, units: ClientUnit[]): string {
   return stn ? `${m.name} (${stn})` : m.name;
 }
 
-export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride, laserCodeBase }: FlightCardProps) {
+export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride, laserCodeBase, opts = DEFAULT_OPTIONS }: FlightCardProps) {
   const airframe = getAircraftType(group);
   const flightUnits = clientUnits.filter((cu) => cu.groupName === group.groupName);
 
@@ -252,7 +255,7 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
               const emptyWt = perf.emptyLbs;
               const grossWt = emptyWt + fuel + storesEst;
               // Same floored numbers the Fuel Ladder shows.
-              const { joker, bingo } = computeJokerBingo(fuel, fuelOverride);
+              const { joker, bingo } = computeJokerBingo(fuel, fuelOverride, opts.fuel);
               const items = [
                 { label: 'GROSS WT', value: `${Math.round(grossWt).toLocaleString()} lbs`, color: TEXT },
                 { label: 'T/O FUEL', value: `${Math.round(fuel).toLocaleString()} lbs`, color: TEXT },

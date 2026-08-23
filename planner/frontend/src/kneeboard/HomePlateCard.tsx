@@ -14,6 +14,7 @@ import {
 import type { MissionGroup, Airbase, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { formatCoord, type CoordFormat } from './coords';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface HomePlateCardProps {
   group: MissionGroup;
@@ -24,6 +25,8 @@ interface HomePlateCardProps {
   overview?: MissionOverviewData;
   /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
   coordFormat?: CoordFormat;
+  /** Flight lead controls — how many diverts. */
+  opts?: KneeboardOptions;
 }
 
 /** Haversine distance in nm */
@@ -125,7 +128,7 @@ const USE_MARK: Record<FieldUse, { glyph: string; color: string }> = {
   unknown: { glyph: '?', color: DIM },
 };
 
-export function HomePlateCard({ group, airbases, allGroups, overview, coordFormat = 'mgrs' }: HomePlateCardProps) {
+export function HomePlateCard({ group, airbases, allGroups, overview, coordFormat = 'mgrs', opts = DEFAULT_OPTIONS }: HomePlateCardProps) {
   const airframe = getAircraftType(group);
 
   // Home plate = first waypoint (parking/departure)
@@ -173,7 +176,9 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
       const rank = (x: Airbase) => (canService(x, owner, side) === 'no' ? 1 : 0);
       return (rank(a) - rank(b)) || (a.dist - b.dist);
     })
-    .slice(0, 8); // top 8 nearest
+    // +1 because the closest field is usually home plate, which comes out
+    // of the list into its own section above.
+    .slice(0, opts.diverts.count + 1);
 
   // Mark the closest as "HOME PLATE" (within 5nm of departure)
   const home = ranked.length > 0 && ranked[0].dist < 5 ? ranked[0] : null;

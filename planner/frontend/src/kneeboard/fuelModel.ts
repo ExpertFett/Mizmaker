@@ -321,13 +321,26 @@ export interface JokerBingo {
  * off the same percentages, so any change to the policy had to be made three
  * times or the cards would disagree about the same flight.
  */
+export interface FuelRuleOptions {
+  bingoFloorLbs?: number;
+  jokerPct?: number;
+  bingoPct?: number;
+  jokerMarginLbs?: number;
+}
+
 export function computeJokerBingo(
   startFuelLbs: number,
   override?: { joker?: number; bingo?: number },
+  opts: FuelRuleOptions = {},
 ): JokerBingo {
-  const rawBingo = override?.bingo ?? Math.round(startFuelLbs * 0.20);
-  const bingo = Math.max(BINGO_FLOOR_LBS, rawBingo);
-  const rawJoker = override?.joker ?? Math.round(startFuelLbs * 0.35);
-  const joker = Math.max(bingo + JOKER_MARGIN_LBS, rawJoker);
+  // Defaults are the values these were hardcoded to before the flight-lead
+  // controls existed, so an untouched mission computes identically.
+  const floor = opts.bingoFloorLbs ?? BINGO_FLOOR_LBS;
+  const margin = opts.jokerMarginLbs ?? JOKER_MARGIN_LBS;
+
+  const rawBingo = override?.bingo ?? Math.round(startFuelLbs * (opts.bingoPct ?? 0.20));
+  const bingo = Math.max(floor, rawBingo);
+  const rawJoker = override?.joker ?? Math.round(startFuelLbs * (opts.jokerPct ?? 0.35));
+  const joker = Math.max(bingo + margin, rawJoker);
   return { joker, bingo, bingoFloored: bingo > rawBingo };
 }

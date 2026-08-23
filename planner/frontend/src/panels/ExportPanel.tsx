@@ -42,6 +42,7 @@ import { useDmpiStore } from '../store/dmpiStore';
 import { useVisibilityStore } from '../store/visibilityStore';
 import type { Weather } from '../utils/atmosphere';
 import type { AppMode } from '../plannerMode';
+import { resolveOptions, NOTES_FRACTION } from '../kneeboard/options';
 
 /** Mirrors the backend's EditResult shape returned in the X-Edit-Results header. */
 interface EditResult {
@@ -142,9 +143,16 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
       const playerGroups = groups.filter(isPlayerGroup);
       const wx = overview?.weather as Weather | undefined;
       const cards = kneeboardSettings.cards;
+      // Same flight lead controls the Kneeboard tab renders with, so the
+      // injected .miz matches the preview. (v1.19.126)
+      const opts = resolveOptions(kneeboardSettings.options);
+      const cardsPerFlight = kneeboardSettings.cardsPerFlight ?? {};
       const cardNotes = kneeboardSettings.cardNotes ?? {};
       const theme = kneeboardSettings.theme ?? 'night';
-      const customThemeVars = kneeboardSettings.customThemeVars;
+      const customThemeVars = {
+        ...(kneeboardSettings.customThemeVars ?? {}),
+        '--kb-notes-max-h': `${Math.round(850 * NOTES_FRACTION[opts.layout.notesSize])}px`,
+      };
       const coalition = playerGroups[0]?.coalition || 'blue';
 
       const addCard = async (aircraftType: string, filename: string, el: React.ReactElement) => {
@@ -154,6 +162,8 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
 
       // Per-flight cards
       for (const g of playerGroups) {
+        // Per-flight card overrides on top of the global set. (v1.19.126)
+        const cards = { ...kneeboardSettings.cards, ...(cardsPerFlight[g.groupName] ?? {}) };
         const aircraftType = g.units[0]?.type || 'unknown';
         const safeName = g.groupName.replace(/\s+/g, '_');
         try {
@@ -162,26 +172,26 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
               createElement(RouteCard, { group: g, weather: wx, coordFormat: kneeboardSettings.coordFormat, speedRef: kneeboardSettings.speedRef as any, machThreshold: kneeboardSettings.machThreshold, notes: cardNotes.lineup }));
           if (cards.flight)
             await addCard(aircraftType, `${safeName}_Flight.png`,
-              createElement(FlightCard, { group: g, clientUnits, notes: cardNotes.flight,
+              createElement(FlightCard, { opts, group: g, clientUnits, notes: cardNotes.flight,
                 laserCodeBase: activeSop?.laserCodeBase }));
           if (cards.stationLoadout)
             await addCard(aircraftType, `${safeName}_Stations.png`,
-              createElement(StationLoadoutCard, { group: g, clientUnits,
+              createElement(StationLoadoutCard, { opts, group: g, clientUnits,
                 notes: cardNotes.stationLoadout, laserCodeBase: activeSop?.laserCodeBase }));
           if (cards.routeProfile) {
             const samples = await fetchRouteTerrain(sampleRoute(g.waypoints));
             await addCard(aircraftType, `${safeName}_Profile.png`,
-              createElement(RouteProfileCard, { group: g, samples,
+              createElement(RouteProfileCard, { opts, group: g, samples,
                 notes: cardNotes.routeProfile }));
           }
           if (cards.airfieldDiagram) {
-            const fields = airfieldsForFlight(g, airbases, coalition);
+            const fields = airfieldsForFlight(g, airbases, coalition, opts.diverts.count, opts.diverts.enemyFields);
             const elevs = await fetchFieldElevations(fields);
             const fieldPages = airfieldCardCount(fields.length);
             for (let pg = 0; pg < fieldPages; pg++)
               await addCard(aircraftType,
                 fieldPages > 1 ? `${safeName}_Fields_${pg + 1}.png` : `${safeName}_Fields.png`,
-                createElement(AirfieldDiagramCard, {
+                createElement(AirfieldDiagramCard, { opts,
                   airbases: fields, elevationFt: elevs, coalition, page: pg,
                   coordFormat: kneeboardSettings.coordFormat,
                   notes: cardNotes.airfieldDiagram,
@@ -195,7 +205,7 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
               createElement(RouteDetailCard, { group: g, threats, notes: cardNotes.routeDetail, coordFormat: kneeboardSettings.coordFormat }));
           if (cards.stripMap)
             await addCard(aircraftType, `${safeName}_StripMap.png`,
-              createElement(StripMapCard, { group: g, overview: overview ?? undefined, notes: cardNotes.stripMap }));
+              createElement(StripMapCard, { opts, group: g, overview: overview ?? undefined, notes: cardNotes.stripMap }));
           // v1.19.77 — radio preset card from the SOP comm plan. Per
           // AIRFRAME, not per flight: every flight of the type gets the
           // same card (fixed buttons = wing contract), and the shared
@@ -207,7 +217,7 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           }
           if (cards.fuelLadder)
             await addCard(aircraftType, `${safeName}_Fuel.png`,
-              createElement(FuelLadderCard, { group: g, clientUnits, notes: cardNotes.fuelLadder }));
+              createElement(FuelLadderCard, { opts, group: g, clientUnits, notes: cardNotes.fuelLadder }));
 
           // Auto-inject weapon-employment cards per this flight's loadout.
           // Scans the lead unit's pylons (matched via ClientUnit by unitId,
@@ -236,11 +246,11 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           const pageCount = supportAssetsPageCount({ groups, coalition });
           for (let p = 0; p < pageCount; p++) {
             const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
-            await addCard(sharedType, fname, createElement(SupportAssetsCard, { presets: presetsForUnits(clientUnits), groups, coalition, page: p, notes: cardNotes.supportAssets }));
+            await addCard(sharedType, fname, createElement(SupportAssetsCard, { opts, presets: presetsForUnits(clientUnits), groups, coalition, page: p, notes: cardNotes.supportAssets }));
           }
         }
         if (cards.radioLadder)
-          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, {
+          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, { opts,
             groups, coalition,
             // Shared card: no flight is "selected" in a bulk export, so
             // anchor the ladder on the first player flight.
@@ -249,7 +259,7 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
             order: kneeboardSettings.radioLadderOrder,
             notes: cardNotes.radioLadder }));
         if (cards.airbaseRef)
-          await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, {
+          await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, { opts,
             airbases, theater: theater || '', groups, coalition,
             notes: cardNotes.airbaseRef, coordFormat: kneeboardSettings.coordFormat,
             // groups + coalition trigger the route-relevance filter so we
@@ -258,10 +268,10 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         if (cards.bullseyeRef && overview)
           await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat: kneeboardSettings.coordFormat }));
         if (cards.threatCard) {
-          const pageCount = threatCardPageCount({ threats, playerCoalition: coalition });
+          const pageCount = threatCardPageCount({ threats, playerCoalition: coalition, opts });
           for (let p = 0; p < pageCount; p++) {
             const fname = pageCount === 1 ? 'Threat_Card.png' : `Threat_Card_${p + 1}.png`;
-            await addCard(sharedType, fname, createElement(ThreatCard, {
+            await addCard(sharedType, fname, createElement(ThreatCard, { opts,
               threats, playerCoalition: coalition, page: p,
               fidelity: kneeboardSettings.threatFidelity ?? 'full',
               mapVisible: kneeboardSettings.threatMapVisible !== false,
@@ -270,7 +280,7 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           }
         }
         if (cards.weatherBrief && overview)
-          await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { overview, notes: cardNotes.weatherBrief }));
+          await addCard(sharedType, 'Weather_Brief.png', createElement(WeatherBriefCard, { opts, overview, notes: cardNotes.weatherBrief }));
         // SOP Comms — only injected when an SOP is active. The carousel
         // already shows a "select SOP" hint if the toggle is on but no
         // SOP is loaded; here we just silently skip rather than emit an

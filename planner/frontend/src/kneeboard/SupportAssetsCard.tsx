@@ -7,6 +7,7 @@ import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, t
 import type { MissionGroup, MissionOverviewData, RadioPresetRadio } from '../types/mission';
 import { presetLabel } from './radioPresets';
 import { metersToFeet, msToKnots } from '../utils/conversions';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
 
 interface SupportAssetsCardProps {
   groups: MissionGroup[];
@@ -21,6 +22,8 @@ interface SupportAssetsCardProps {
   /** Jet's programmed radio presets, used to tag each frequency with the
    *  channel it sits on. Omitted → frequencies print bare. */
   presets?: RadioPresetRadio[];
+  /** Flight lead controls — radio labels. */
+  opts?: KneeboardOptions;
 }
 
 /**
@@ -103,7 +106,7 @@ function formatSpeed(wp: { speed_ms: number }): string {
   return String(Math.round(msToKnots(wp.speed_ms)));
 }
 
-export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes, presets }: SupportAssetsCardProps) {
+export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes, presets, opts = DEFAULT_OPTIONS }: SupportAssetsCardProps) {
   const coalitionGroups = groups.filter((g) => g.coalition === coalition);
   const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
   const awacsGroups = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
@@ -128,7 +131,7 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
       ? 1
       : 1 + Math.ceil((otherSupport.length - OTHER_PAGE_SIZE) / OTHER_PAGE_SIZE));
 
-  const preset = (f: number) => presetLabel(f, presets);
+  const preset = (f: number) => presetLabel(f, presets, opts.comms.radioLabels);
 
   // tableLayout:'fixed' — adding the TACAN column let long callsigns push the
   // table 34px past the card edge under auto layout.

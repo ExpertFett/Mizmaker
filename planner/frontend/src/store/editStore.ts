@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { WaypointEdit, UnitEdit } from '../types/mission';
 import type { PopupAttackInput } from '../utils/popupAttack';
+import { DEFAULT_OPTIONS, type KneeboardOptions } from '../kneeboard/options';
 
 export interface KneeboardCards {
   // Per-flight cards
@@ -122,6 +123,16 @@ export interface KneeboardSettings {
    *  absent means the derived phase order stands. Ids that no longer exist
    *  are ignored at render, so a stale order never drops a rung. (v1.19.119) */
   radioLadderOrder: string[];
+  /** Flight lead controls — the doctrine and presentation numbers the cards
+   *  used to hardcode. Stored partial so a settings blob saved before an
+   *  option existed still loads; resolveOptions() fills the gaps. See
+   *  kneeboard/options.ts. (v1.19.126) */
+  options?: Partial<KneeboardOptions>;
+  /** Per-flight card overrides, keyed by group name. A key present here
+   *  replaces the global `cards` set for that flight only — a tanker does not
+   *  need a popup attack card and an Apache does not need a carrier
+   *  recovery. Absent = the flight uses the global set. (v1.19.126) */
+  cardsPerFlight: Record<string, Partial<KneeboardCards>>;
   /** Per-flight Flight Card "Flight Data" overrides, keyed by group name
    *  (v1.19.109). Fill TACAN / ICLS / IFF M1 / IFF M3 on the card. IFF codes
    *  especially — DCS doesn't store them in the .miz, so this is the only way
@@ -262,6 +273,8 @@ export const useEditStore = create<EditState>((set) => ({
     cardNotes: {},
     fuelOverrides: {},
     radioLadderOrder: [],
+    options: DEFAULT_OPTIONS,
+    cardsPerFlight: {},
     flightDataOverrides: {},
     weaponIds: [],
     popupAttacks: loadPopupAttacks(),

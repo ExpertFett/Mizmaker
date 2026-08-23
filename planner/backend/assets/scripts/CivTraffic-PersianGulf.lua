@@ -691,7 +691,10 @@ local function gaAlive(region)
 end
 
 local function spawnGA(region)
-  if aliveCount() >= (CT.cfg.maxActive or 40) then return end
+  -- GA gets headroom equal to its own cap ON TOP of the global cap: airliners
+  -- saturating maxActive must never starve the low-level GA layer (these are
+  -- the aircraft players are sent up to visually identify).
+  if aliveCount() >= (CT.cfg.maxActive or 40) + (region.maxActive or 6) then return end
   if gaAlive(region) >= (region.maxActive or 6) then return end
   local b = region.box
   local function rp()
@@ -732,11 +735,51 @@ local function gaLoop(region)
 end
 
 -- -------------------------------------------------------- heartbeat log --
--- No F10 menu by design: a fire-and-forget template (like the baked air
--- missions) - players cannot touch the traffic. Health goes to dcs.log.
 local function heartbeat()
   CT.log(string.format("active=%d  spawnedTotal=%d", aliveCount(), CT.counter))
   return timer.getTime() + 120
+end
+
+-- ---------------------------------------------------------- F10 control --
+-- "Civ Traffic" menu (cfg.f10menu ~= false): host can pause / clear /
+-- resume / re-density the ambient air traffic mid-mission.
+local function removeAll()
+  for name in pairs(CT.spawned) do
+    local g = Group.getByName(name)
+    if g and g:isExist() then pcall(function() g:destroy() end) end
+    CT.spawned[name] = nil
+  end
+end
+
+local function buildMenu()
+  if CT.cfg.f10menu == false then return end
+  local root = missionCommands.addSubMenu("Civ Traffic")
+  missionCommands.addCommand("Status", root, function()
+    trigger.action.outText(string.format(
+      "Civ Traffic: %d aircraft | %s | density x%.2g",
+      aliveCount(), CT.paused and "PAUSED" or "running", 1 / CT.densityMul), 15)
+  end)
+  missionCommands.addCommand("Turn OFF (stop + clear all)", root, function()
+    CT.paused = true; removeAll()
+    trigger.action.outText("Civ Traffic: OFF - all aircraft removed, spawning stopped", 12)
+  end)
+  missionCommands.addCommand("Turn ON (resume spawning)", root, function()
+    CT.paused = false
+    trigger.action.outText("Civ Traffic: ON - spawning resumed", 10)
+  end)
+  local den = missionCommands.addSubMenu("Density", root)
+  missionCommands.addCommand("Low", den, function()
+    CT.densityMul = math.max(1.4, (CT.cfg.density or 1.0) * 2)
+    trigger.action.outText("Civ Traffic density: LOW", 10)
+  end)
+  missionCommands.addCommand("Normal", den, function()
+    CT.densityMul = CT.cfg.density or 1.0
+    trigger.action.outText("Civ Traffic density: NORMAL", 10)
+  end)
+  missionCommands.addCommand("High", den, function()
+    CT.densityMul = (CT.cfg.density or 1.0) * 0.6
+    trigger.action.outText("Civ Traffic density: HIGH", 10)
+  end)
 end
 
 -- ------------------------------------------------------------------ start --
@@ -769,6 +812,7 @@ local function start()
   end
   timer.scheduleFunction(reaper, nil, t0 + 120)
   timer.scheduleFunction(heartbeat, nil, t0 + 120)
+  buildMenu()
   CT.log(string.format("started: %d lanes, %d hubs, %d GA regions, cap %d",
                        #(CT.cfg.lanes or {}), #(CT.cfg.hubs or {}),
                        #(CT.cfg.ga or {}), CT.cfg.maxActive or 40))
