@@ -62,12 +62,21 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
   });
   const fuel = legs.length ? legs[legs.length - 1].remaining : startFuel;
 
-  const totalBurn = startFuel - fuel;
+  // Sum the legs rather than start-minus-remaining. Remaining is clamped at
+  // zero, so on a route that runs the tanks dry — or a flight with no loadout
+  // fuel recorded at all — the subtraction silently under-reports the burn,
+  // and reports none whatsoever when start fuel is unknown.
+  const totalBurn = legs.reduce((n, l) => n + l.burn, 0);
+
+  // An AI flight carries no client loadout, so there is no start fuel to
+  // ladder down from. Say that, rather than printing a column of zeros that
+  // looks like a computed answer.
+  const noStartFuel = startFuel <= 0;
 
   // Recovery weight against the airframe's landing limit. Carrier flights are
   // checked against the trap number, everyone else against the field number.
   const recoveryCheck = (() => {
-    if (!opts.fuel.checkRecoveryWeight) return null;
+    if (!opts.fuel.checkRecoveryWeight || startFuel <= 0) return null;
     const limits = recoveryLimitsFor(unitType);
     const isBoat = (group.waypoints?.[0]?.link_unit ?? null) != null;
     const seed = isBoat ? limits.trapLbs : (limits.fieldLbs ?? limits.trapLbs);
@@ -248,10 +257,15 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
         fontSize: 19, fontWeight: 600, flexShrink: 0,
       }}>
         <span style={{ color: TEXT }}>TOTAL BURN: {totalBurn.toLocaleString()} lbs</span>
+        {noStartFuel && (
+          <span style={{ color: WARN, fontWeight: 600 }}>
+            {' · NO LOADOUT FUEL — burn shown, states unknown'}
+          </span>
+        )}
         {' · '}
         <span style={{ color: DIM }}>AT RECOVERY </span>
-        <span style={{ color: fuel <= bingoFuel ? '#d95050' : TEXT_BRIGHT, fontWeight: 600 }}>
-          {fuel.toLocaleString()} lbs
+        <span style={{ color: noStartFuel ? DIM : fuel <= bingoFuel ? '#d95050' : TEXT_BRIGHT, fontWeight: 600 }}>
+          {noStartFuel ? '—' : `${fuel.toLocaleString()} lbs`}
         </span>
         {' · '}
         <span style={{ color: DIM }}>MARGIN vs BINGO </span>

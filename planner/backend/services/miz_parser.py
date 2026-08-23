@@ -10,6 +10,7 @@ coalition→country→category→group hierarchy.
 import io
 import json
 import logging
+import math
 import re
 import zipfile
 from typing import Dict, List, Any, Optional
@@ -275,6 +276,61 @@ def _parse_mission_indexed_form(text: str) -> dict:
         if value is not None:
             out[key] = value
     return out
+
+
+def _fill_route_legs(waypoints: list) -> None:
+    """Add per-leg distance and cumulative time to a route, in place.
+
+    Four kneeboard cards read `leg_distance_nm` and `cumulative_eta` — the
+    lineup card's distance and ETE columns, the route detail card, the fuel
+    ladder, and the strip map's doghouses. Nothing ever produced either
+    field. The parser emitted the mission's own `ETA` under a different name
+    and never computed distance at all, so every one of those cards has been
+    rendering dashes and a zero fuel burn.
+
+    Distance is great-circle between consecutive waypoints. Time prefers the
+    mission's own ETAs, which are what a route with locked timing actually
+    flies to, and falls back to distance over planned speed when a mission
+    does not set them — a fuel ladder computed from a made-up schedule is
+    still better than one that reports burning nothing.
+    """
+    prev = None
+    derived_cum = 0.0
+    mission_etas = [w.get("eta_seconds") or 0 for w in waypoints]
+    # Trust the mission's ETAs only if they actually describe a schedule:
+    # present, and never going backwards.
+    usable_eta = (
+        any(e > 0 for e in mission_etas)
+        and all(b >= a for a, b in zip(mission_etas, mission_etas[1:]))
+    )
+
+    for wp in waypoints:
+        lat, lon = wp.get("lat"), wp.get("lon")
+        if prev is not None and lat is not None and lon is not None                 and prev.get("lat") is not None and prev.get("lon") is not None:
+            wp["leg_distance_nm"] = _great_circle_nm(
+                prev["lat"], prev["lon"], lat, lon)
+        else:
+            wp["leg_distance_nm"] = 0.0
+
+        # Planned groundspeed for this leg, knots.
+        kts = (wp.get("speed_ms") or 0) * 1.94384449
+        if kts > 0 and wp["leg_distance_nm"] > 0:
+            derived_cum += (wp["leg_distance_nm"] / kts) * 3600.0
+
+        wp["cumulative_eta"] = (
+            float(wp.get("eta_seconds") or 0) if usable_eta else round(derived_cum, 1)
+        )
+        prev = wp
+
+
+def _great_circle_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in nautical miles."""
+    r = 3440.065
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = p2 - p1
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return round(2 * r * math.asin(min(1.0, math.sqrt(a))), 2)
 
 
 def normalize_freq_mhz(value) -> float:
@@ -960,6 +1016,8 @@ def _extract_group(
             wp["lat"] = lat
             wp["lon"] = lon
         waypoints.append(wp)
+
+    _fill_route_legs(waypoints)
 
     # Extract TACAN beacon data from waypoint tasks (tankers, carriers)
     tacan = _extract_tacan_from_tasks(waypoints)
