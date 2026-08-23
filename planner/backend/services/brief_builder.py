@@ -743,6 +743,23 @@ def _narrate_friendly(groups: List[dict]) -> str:
     return " ".join(lines)
 
 
+def _brief_callsign(group_name: Optional[str]) -> str:
+    """'Texaco-2-1' -> 'Texaco 2'.
+
+    DCS appends a unit index to the group name. That trailing index is noise on
+    a brief, but the flight number is NOT: Texaco 2, 3 and 4 are different
+    tankers on different frequencies, so collapsing them all to "Texaco" makes
+    the comms card ambiguous. Drop only the trailing unit index.
+    """
+    s = str(group_name or "").strip()
+    if not s:
+        return ""
+    parts = [p for p in re.split(r"[-_\s]+", s) if p]
+    if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():
+        parts = parts[:-1]
+    return " ".join(parts)
+
+
 def _short_callsign(group_name: Optional[str]) -> str:
     """'Texaco-2-1' -> 'Texaco'. Brief prose uses the callsign, not the
     DCS group index."""
@@ -976,19 +993,19 @@ def _build_mission_flow(timeline: List[Dict[str, str]], groups: List[dict]) -> s
         first = waves[0].get("time_zulu", "")
         last = waves[-1].get("time_zulu", "")
         span = f" through {last}" if last and last != first else ""
-        lines.append(f"Launch     {len(waves)} carrier waves from {first}{span}.")
+        lines.append(f"Launch — {len(waves)} carrier waves from {first}{span}.")
     elif by_phase.get("takeoff"):
-        lines.append(f"Launch     Takeoff {by_phase['takeoff'].get('time_zulu', '')}.")
+        lines.append(f"Launch — takeoff {by_phase['takeoff'].get('time_zulu', '')}.")
 
     push, tot = by_phase.get("push"), by_phase.get("tot")
     if push and tot and push.get("time_zulu") != tot.get("time_zulu"):
-        lines.append(f"Push       {push.get('time_zulu')}, TOT {tot.get('time_zulu')}.")
+        lines.append(f"Push — {push.get('time_zulu')}, TOT {tot.get('time_zulu')}.")
     elif push and push.get("time_zulu"):
-        lines.append(f"Push       Coordinated push {push.get('time_zulu')}.")
+        lines.append(f"Push — coordinated push {push.get('time_zulu')}.")
 
     action = _FLOW_ACTION.get(_detect_mission_type(groups), "")
     if action:
-        lines.append(f"Action     {action}")
+        lines.append(f"Action — {action}")
 
     support = set()
     for g in groups:
@@ -1000,11 +1017,11 @@ def _build_mission_flow(timeline: List[Dict[str, str]], groups: List[dict]) -> s
         elif task == "awacs":
             support.add("AWACS")
     if support:
-        lines.append("Support    " + " and ".join(sorted(support))
+        lines.append("Support — " + " and ".join(sorted(support))
                      + " on station. Cycle to hold coverage.")
 
     if by_phase.get("rtb"):
-        lines.append("Recovery   RTB home plate or alternate. Divert per brief.")
+        lines.append("Recovery — RTB home plate or alternate. Divert per brief.")
 
     return "\n".join(lines) if len(lines) >= 2 else ""
 
@@ -1475,10 +1492,17 @@ def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List
         if not members:
             continue
 
-        # Count by name to build the composition string
-        name_counts = Counter(m.get("name") or "Unknown" for m in members)
+        # Count by TYPE, not name. Unit names are unique per unit
+        # ("301 ZSU-23-4 Shilka | 3rd Co, 1528th AD Regt"), so counting by name
+        # produced one entry per unit and compositions of 150-320 characters —
+        # a table cell fits about 75, so the threat slides were three pages of
+        # wrapped, repeating text. By type, six Shilkas read "6× ZSU-23-4
+        # Shilka".
+        type_counts = Counter(
+            (m.get("type") or m.get("name") or "Unknown") for m in members
+        )
         composition = " + ".join(
-            f"{cnt}× {name}" for name, cnt in name_counts.most_common()
+            f"{cnt}× {name}" for name, cnt in type_counts.most_common()
         )
 
         # Tier — set of tiers across the cluster. If >1 distinct tier,
@@ -1507,7 +1531,10 @@ def _build_threats(threats: List[dict], bullseye: Optional[dict] = None) -> List
         else:
             location = "—"
 
-        # Primary name + type — used as tiebreakers and for legacy fields
+        # Primary name + type — used as tiebreakers and for legacy fields.
+        # Still counted by full unit name: `name` is the legacy per-unit label,
+        # only `composition` collapses by type.
+        name_counts = Counter(m.get("name") or "Unknown" for m in members)
         primary_name = name_counts.most_common(1)[0][0]
         primary_type = members[0].get("type", "")
         coalition = members[0].get("coalition", "red")
@@ -1728,7 +1755,7 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
         if g.get("coalition") != "blue":
             continue  # only friendly tankers on the brief
         cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
-        label = f"TANKER  {cs}"
+        label = f"TANKER — {_brief_callsign(cs)}"
         if label in seen_labels:
             continue
         f = _format_freq(g.get("frequency"))
@@ -1742,7 +1769,7 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
         if g.get("coalition") != "blue":
             continue
         cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
-        label = f"AWACS   {cs}"
+        label = f"AWACS — {_brief_callsign(cs)}"
         if label in seen_labels:
             continue
         f = _format_freq(g.get("frequency"))
@@ -1771,15 +1798,19 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
         if g.get("icls"):
             info_bits.append(f"ICLS {g['icls'].get('channel','')}")
         if info_bits:
-            out.append({"label": f"CARRIER {cs}", "value": "  ·  ".join(info_bits)})
+            out.append({"label": f"CARRIER — {_brief_callsign(cs)}", "value": "  ·  ".join(info_bits)})
 
     # SOP-required slots — placeholder rows the mission maker fills in.
     # These are universal in any squadron brief; they just don't live in
     # the .miz so we surface them as edit-me prompts.
-    out.append({"label": "GCI", "value": "edit — add GCI freq"})
-    out.append({"label": "AAR Boom",   "value": "edit — primary tanker push"})
-    out.append({"label": "BTW Tower",  "value": "edit — primary recovery field"})
-    out.append({"label": "Approach",   "value": "edit — approach control freq"})
+    # Standard comms slots the mission can't supply. The row stays (a squadron
+    # expects to see these lines, and an SOP or the editor fills them), but the
+    # value is a dash — the table convention — not "edit — add GCI freq", which
+    # printed an instruction to the author onto a slide shown to aircrew.
+    out.append({"label": "GCI",        "value": "—"})
+    out.append({"label": "AAR Boom",   "value": "—"})
+    out.append({"label": "BTW Tower",  "value": "—"})
+    out.append({"label": "Approach",   "value": "—"})
     out.append({"label": "Guard",      "value": "243.000  (UHF)"})
     return out
 

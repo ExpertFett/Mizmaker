@@ -45,6 +45,21 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 TOKEN_RE = re.compile(r"\{\{\s*([a-zA-Z][a-zA-Z0-9_.\[\]]*)\s*\}\}")
 
 
+def _cover_date(iso: str) -> str:
+    """YYYY-MM-DD -> '08 NOV 06'. The cover printed an ISO date while the
+    scenario slide printed '08 NOV 06'; two formats for the same date in one
+    deck. Mirrors brief_builder._format_brief_date."""
+    if not iso:
+        return ""
+    try:
+        y, m, d = str(iso).split("-")
+        months = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+        return "%02d %s %s" % (int(d), months[int(m) - 1], y[-2:])
+    except (ValueError, IndexError, TypeError):
+        return str(iso)
+
+
 def scan_template(template_bytes: bytes) -> List[str]:
     """Return a sorted list of unique token paths found in the template.
 
@@ -1093,7 +1108,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # Theater · Date · Time strip — accent colour, smaller
     sub_top = title_top + Inches(1.5)
     _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
-         f"{brief['theater'].upper()}   ·   {brief['date']}   ·   "
+         f"{brief['theater'].upper()}   ·   {_cover_date(brief['date'])}   ·   "
          f"TAKEOFF {brief['time_zulu']}",
          size=18, bold=True, color=ACCENT, align_center=True)
 
@@ -1505,7 +1520,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             cover_title = str(brief.get("mission_name") or "")
             sub_parts = [
                 str(brief.get("theater") or "").upper(),
-                str(brief.get("date") or ""),
+                _cover_date(str(brief.get("date") or "")),
                 (f"TAKEOFF {brief.get('time_zulu')}" if brief.get("time_zulu") else ""),
             ]
             cover_sub = "   ·   ".join(p for p in sub_parts if p)

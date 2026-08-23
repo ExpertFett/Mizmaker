@@ -38,7 +38,10 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
   const rawFuel = rep?.fuel ?? 0;
   const loadoutLbs = rawFuel <= 1 ? Math.round(rawFuel * perf.maxFuelLbs) : Math.round(rawFuel * 2.20462);
   const startFuelLbs = fuelOverride?.start ?? loadoutLbs;
-  const weaponSummary = rep
+  // Guard on `pylons`, not just on `rep`. A client unit whose payload carries
+  // no pylons array (a mission missing payload.pylons, or loadouts not yet
+  // populated) made this throw and took the WHOLE card down with it.
+  const weaponSummary = rep?.pylons
     ? Object.values(
         rep.pylons.reduce((acc, p) => {
           const key = p.shortName || p.name;
@@ -79,8 +82,10 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
           const items = [
             { label: 'TACAN',  value: tacanStr, color: (flightDataOverride?.tacan || group.tacan) ? TEXT : DIM },
             { label: 'ICLS',   value: iclsStr,  color: (flightDataOverride?.icls || group.icls) ? TEXT : DIM },
-            { label: 'IFF M1', value: flightDataOverride?.iffM1 || '— EDIT —', color: flightDataOverride?.iffM1 ? TEXT : DIM },
-            { label: 'IFF M3', value: flightDataOverride?.iffM3 || '— EDIT —', color: flightDataOverride?.iffM3 ? TEXT : DIM },
+            // A dash, not "— EDIT —": the card is read in the cockpit, where an
+            // instruction to the mission maker is noise. Unset reads as unset.
+            { label: 'IFF M1', value: flightDataOverride?.iffM1 || '—', color: flightDataOverride?.iffM1 ? TEXT : DIM },
+            { label: 'IFF M3', value: flightDataOverride?.iffM3 || '—', color: flightDataOverride?.iffM3 ? TEXT : DIM },
           ];
           return items.map(({ label, value, color }) => (
             <div key={label} style={{
@@ -163,7 +168,7 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
               </tr>
             </thead>
             <tbody>
-              {rep.pylons
+              {(rep.pylons ?? [])
                 .filter((p) => p.name)
                 .map((p, i) => (
                   <tr key={p.number} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
@@ -185,20 +190,20 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
       )}
 
       {/* Datalink */}
-      {rep && rep.hasDatalinks && (
+      {rep && rep.hasDatalinks && (rep.donors || rep.teamMembers) && (
         <>
           <div style={sectionTitle}>DATALINK</div>
           <div style={{ padding: '4px 16px', fontSize: 17 }}>
-            {rep.donors.length > 0 && (
+            {(rep.donors ?? []).length > 0 && (
               <div style={{ marginBottom: 4 }}>
                 <span style={{ color: DIM }}>DONORS: </span>
-                {rep.donors.map((d) => d.name).join(', ')}
+                {(rep.donors ?? []).map((d) => d.name).join(', ')}
               </div>
             )}
-            {rep.teamMembers.length > 0 && (
+            {(rep.teamMembers ?? []).length > 0 && (
               <div>
                 <span style={{ color: DIM }}>TEAM: </span>
-                {rep.teamMembers.map((t) => t.name).join(', ')}
+                {(rep.teamMembers ?? []).map((t) => t.name).join(', ')}
               </div>
             )}
           </div>

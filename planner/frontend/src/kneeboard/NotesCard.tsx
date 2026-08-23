@@ -81,8 +81,11 @@ export function NotesCard({ text, title, squadron, overview }: NotesCardProps) {
             textAlign: 'center',
           }}
         >
-          No notes entered. Type mission notes in the Kneeboard tab to
-          fill this card.
+          {/* Deliberately blank. This used to read "No notes entered. Type
+              mission notes in the Kneeboard tab to fill this card" — an
+              instruction to the mission maker, printed on a card a pilot is
+              looking at in the cockpit. An empty notes card is at least usable
+              as a write-on page; an instruction is not. */}
         </div>
       )}
 

@@ -50,9 +50,15 @@ interface ThreatCardProps {
 }
 
 /** First-page inventory has the map above it, so it fits fewer rows
- *  than continuation pages. Tuned to the H=850 card height. */
-const PAGE1_ROWS = 12;
-const PAGEN_ROWS = 22;
+ *  than continuation pages. Tuned to the H=850 card height.
+ *
+ *  Measured against a real 44-threat mission: at 12/22 the page overflowed the
+ *  card by 110px and 91px respectively, pushing the tier legend, the NOTES box
+ *  and the whole footer off the bottom edge — silently, because cardRoot is
+ *  overflow:hidden. The row budget has to leave room for what sits BELOW the
+ *  table (legend ~59px + notes ~41px + footer ~25px), not just the table. */
+const PAGE1_ROWS = 8;
+const PAGEN_ROWS = 18;
 
 /** Compute how many cards a given threat list needs. */
 export function threatCardPageCount(props: Pick<ThreatCardProps, 'threats' | 'playerCoalition'>): number {

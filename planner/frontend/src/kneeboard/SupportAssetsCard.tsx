@@ -163,7 +163,11 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
             {notes.trim()}
           </div>
         ) : (
-          [...Array(6)].map((_, i) => (
+          /* Three write-on lines, not six. With all three asset tables on the
+             first page there is only room for three: the other three rendered
+             past the bottom edge of the 850px card and were silently clipped,
+             overflowing the card by 63px. */
+          [...Array(3)].map((_, i) => (
             <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 22, marginBottom: 2 }} />
           ))
         )}
