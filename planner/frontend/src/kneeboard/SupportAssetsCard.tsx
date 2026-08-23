@@ -23,6 +23,25 @@ interface SupportAssetsCardProps {
   presets?: RadioPresetRadio[];
 }
 
+/**
+ * AI flights worth a row on a SUPPORT card.
+ *
+ * This section used to list every non-player, non-tanker, non-AWACS aircraft
+ * in the coalition. On Kola M3 that meant three AI F-15C CAP flights and a
+ * civilian Boeing 747 — all sitting on 124.000, a civil VHF frequency — none
+ * of which anyone in the package will ever key a radio to. It also pushed the
+ * card onto a second page.
+ *
+ * Support means something you coordinate with: a FAC(A) putting you onto a
+ * target, a recon bird, a CSAR asset. Another package flying its own CAP on
+ * its own frequency is not support, and neither is airline traffic.
+ */
+const COORDINATED_TASKS = /afac|forward air controller|fac|reconnaissance|csar|search.*rescue/i;
+
+function isCoordinatedAsset(g: MissionGroup): boolean {
+  return COORDINATED_TASKS.test(g.task || '');
+}
+
 /** Maximum 'OTHER AIR ASSETS' rows on one card before pagination kicks
  *  in. Tankers + AWACS always stay on page 1; only the bulk 'other'
  *  list paginates. Tuned so the card body fits within H=850. */
@@ -36,6 +55,7 @@ export function supportAssetsPageCount(props: Pick<SupportAssetsCardProps, 'grou
     const task = (g.task || '').toLowerCase();
     return (g.category === 'plane' || g.category === 'helicopter') &&
       task !== 'refueling' && task !== 'awacs' &&
+      isCoordinatedAsset(g) &&
       !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
   });
   // Page 1 always exists (tankers + awacs + first OTHER_PAGE_SIZE other).
@@ -93,6 +113,7 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
     const task = (g.task || '').toLowerCase();
     return (g.category === 'plane' || g.category === 'helicopter') &&
       task !== 'refueling' && task !== 'awacs' &&
+      isCoordinatedAsset(g) &&
       !g.units.some((u) => u.skill === 'Client' || u.skill === 'Player');
   });
 
@@ -202,7 +223,7 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
       {otherSlice.length > 0 && (
         <>
           <div style={sectionTitle}>
-            {isFirstPage ? 'OTHER AIR ASSETS' : "OTHER AIR ASSETS — CONT'D"}
+            {isFirstPage ? 'FAC / RECON / CSAR' : "FAC / RECON / CSAR — CONT'D"}
           </div>
           {renderAssetTable(otherSlice, 'SUPPORT')}
         </>
