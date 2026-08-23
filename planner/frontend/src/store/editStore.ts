@@ -108,6 +108,11 @@ export interface KneeboardSettings {
    *  the 35%/20%-of-start defaults. Lets the planner pin a real Bingo
    *  instead of being locked to a percentage. */
   fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
+  /** Planner's custom Radio Ladder rung order — a list of row ids from
+   *  radioLadder.ts, set by dragging rows in the Kneeboard tab. Empty or
+   *  absent means the derived phase order stands. Ids that no longer exist
+   *  are ignored at render, so a stale order never drops a rung. (v1.19.119) */
+  radioLadderOrder: string[];
   /** Per-flight Flight Card "Flight Data" overrides, keyed by group name
    *  (v1.19.109). Fill TACAN / ICLS / IFF M1 / IFF M3 on the card. IFF codes
    *  especially — DCS doesn't store them in the .miz, so this is the only way
@@ -247,6 +252,7 @@ export const useEditStore = create<EditState>((set) => ({
     notesTitle: '',
     cardNotes: {},
     fuelOverrides: {},
+    radioLadderOrder: [],
     flightDataOverrides: {},
     weaponIds: [],
     popupAttacks: loadPopupAttacks(),

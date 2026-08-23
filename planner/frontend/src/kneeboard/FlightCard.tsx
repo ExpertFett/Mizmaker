@@ -4,9 +4,9 @@
  */
 
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox, MissionDateLine } from './cardStyles';
-import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
+import type { MissionGroup, ClientUnit, DonorInfo, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
-import { getAircraftPerf } from './fuelModel';
+import { getAircraftPerf, computeJokerBingo } from './fuelModel';
 
 interface FlightCardProps {
   group: MissionGroup;
@@ -22,6 +22,13 @@ interface FlightCardProps {
   /** Per-flight Flight-Data overrides — fill TACAN / ICLS / IFF codes on the
    *  card. (v1.19.109) */
   flightDataOverride?: { tacan?: string; icls?: string; iffM1?: string; iffM3?: string };
+}
+
+/** "SPRINGFIELD11 (03431)" — a datalink member with its L16 track number.
+ *  Falls back to the bare name when the referenced unit carries no STN. */
+function withStn(m: DonorInfo, units: ClientUnit[]): string {
+  const stn = units.find((u) => u.unitId === m.missionUnitId)?.stnL16;
+  return stn ? `${m.name} (${stn})` : m.name;
 }
 
 export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride }: FlightCardProps) {
@@ -189,21 +196,31 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
         </>
       )}
 
-      {/* Datalink */}
+      {/* Datalink — donors and team carry their STN alongside the callsign.
+          A name alone is not usable in the cockpit: the L16 track number is
+          what actually gets dialled, and the mission already carries it on
+          every unit (stnL16), so look it up rather than making the crew
+          cross-reference the crew table. */}
       {rep && rep.hasDatalinks && (rep.donors || rep.teamMembers) && (
         <>
           <div style={sectionTitle}>DATALINK</div>
           <div style={{ padding: '4px 16px', fontSize: 17 }}>
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ color: DIM }}>OWN STN: </span>
+              <span style={{ color: rep.stnL16 ? ACCENT : DIM, fontWeight: 600 }}>
+                {rep.stnL16 || '—'}
+              </span>
+            </div>
             {(rep.donors ?? []).length > 0 && (
               <div style={{ marginBottom: 4 }}>
                 <span style={{ color: DIM }}>DONORS: </span>
-                {(rep.donors ?? []).map((d) => d.name).join(', ')}
+                {(rep.donors ?? []).map((d) => withStn(d, clientUnits)).join(', ')}
               </div>
             )}
             {(rep.teamMembers ?? []).length > 0 && (
               <div>
                 <span style={{ color: DIM }}>TEAM: </span>
-                {(rep.teamMembers ?? []).map((t) => t.name).join(', ')}
+                {(rep.teamMembers ?? []).map((t) => withStn(t, clientUnits)).join(', ')}
               </div>
             )}
           </div>
@@ -222,8 +239,8 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
               // so an F-14/F-16 flight showed a Hornet gross weight). P2.
               const emptyWt = perf.emptyLbs;
               const grossWt = emptyWt + fuel + storesEst;
-              const joker = fuelOverride?.joker ?? Math.round(fuel * 0.35);
-              const bingo = fuelOverride?.bingo ?? Math.round(fuel * 0.20);
+              // Same floored numbers the Fuel Ladder shows.
+              const { joker, bingo } = computeJokerBingo(fuel, fuelOverride);
               const items = [
                 { label: 'GROSS WT', value: `${Math.round(grossWt).toLocaleString()} lbs`, color: TEXT },
                 { label: 'T/O FUEL', value: `${Math.round(fuel).toLocaleString()} lbs`, color: TEXT },

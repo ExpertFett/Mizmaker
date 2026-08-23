@@ -1,120 +1,106 @@
 /**
- * Radio Ladder Card — shared mission-wide kneeboard card.
- * Master frequency reference for all flights and support assets.
+ * Radio Ladder Card — the frequencies a flight dials, in the order it dials
+ * them.
+ *
+ * This card used to print every group in the coalition, deduped by frequency
+ * and bucketed into role tiers — 41 rows on a Kola package. That is a roster,
+ * not a ladder, and it left the pilot to work out which of those 41 they
+ * would ever key. A ladder walks the sortie instead: ground, tower, check-in,
+ * tactical, AWACS, tanker, recovery, guard. See radioLadder.ts for how each
+ * rung is derived.
+ *
+ * Rung order can be overridden by the planner (drag-to-reorder in the
+ * Kneeboard tab); `order` carries that preference.
  */
 
-import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, notesBox, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, MissionDateLine } from './cardStyles';
-import type { MissionGroup, MissionOverviewData } from '../types/mission';
+import {
+  cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th,
+  notesBox, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, MissionDateLine,
+} from './cardStyles';
+import type { Airbase, MissionGroup, MissionOverviewData, RadioPresetRadio } from '../types/mission';
+import { buildRadioLadder, applyLadderOrder } from './radioLadder';
+import { presetLabel } from './radioPresets';
 
 interface RadioLadderCardProps {
   groups: MissionGroup[];
   coalition: string;
   overview?: MissionOverviewData;
+  /** The flight this ladder is for. Without it the card can still list the
+   *  package-wide rungs, but not home plate or the intra-flight net. */
+  group?: MissionGroup;
+  airbases?: Airbase[];
+  sopComms?: { role: string; frequency: number }[];
+  /** Jet's programmed presets, for the CHAN column. */
+  presets?: RadioPresetRadio[];
+  /** Planner's custom rung order (row ids). */
+  order?: string[];
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
 }
 
 function formatFreq(freq: number, mod: number): string {
+  // A carrier carries no group frequency in the .miz — its rung earns its
+  // place on the TACAN alone, so print a dash rather than "0.000 AM".
+  if (!(freq > 0)) return '—';
   return `${freq.toFixed(3)} ${mod === 0 ? 'AM' : 'FM'}`;
 }
 
-function getRoleLabel(g: MissionGroup): string {
-  const task = (g.task || '').toLowerCase();
-  if (task === 'refueling') return 'TANKER';
-  if (task === 'awacs') return 'AWACS';
-  if (task === 'cap') return 'CAP';
-  if (task === 'cas') return 'CAS';
-  if (task === 'sead') return 'SEAD';
-  if (task === 'strike' || task === 'pinpoint strike') return 'STRIKE';
-  if (task === 'antiship strike') return 'ANTISHIP';
-  if (task === 'escort') return 'ESCORT';
-  if (task === 'intercept') return 'INTERCEPT';
-  if (task === 'transport') return 'TRANSPORT';
-  if (g.category === 'helicopter') return 'HELO';
-  if (g.category === 'ship') return 'NAVAL';
-  return task.toUpperCase() || g.category.toUpperCase();
-}
-
-export function RadioLadderCard({ groups, coalition, overview, notes }: RadioLadderCardProps) {
-  // Order per Fett's SOP convention: facility comms first (the things
-  // pilots talk to before takeoff and after landing — carriers/airfield
-  // tower), then command-and-control (AWACS), then JTAC/FAC, then
-  // tankers (push freqs you contact mid-mission), then the strike/CAS/
-  // CAP package itself. Reading top-to-bottom mirrors the typical
-  // mission flow: launch → join → cleared off → push → talk to JTAC →
-  // tank → engage → recover. For divert situations the bottom-up
-  // reading still works (you'd rejoin tanker, contact AWACS for state,
-  // then talk to whatever recovery field).
-  const coalitionGroups = groups
-    .filter((g) => g.coalition === coalition && g.frequency > 0)
-    .sort((a, b) => {
-      const roleOrder = (g: MissionGroup) => {
-        const task = (g.task || '').toLowerCase();
-        const cat = (g.category || '').toLowerCase();
-        const utype = ((g.units || [])[0]?.type || '').toUpperCase();
-        // Tier 0: facility comms — carriers, recovery ships
-        if (cat === 'ship') {
-          // Prefer CVN/LHA over arbitrary surface combatants
-          if (/CVN|CV_|LHA|LHD|STENNIS|LINCOLN|ROOSEVELT|VINSON|TRUMAN|EISENHOWER|WASHINGTON|FORRESTAL/.test(utype)) return 0;
-          return 1;
-        }
-        // Tier 2: command and control
-        if (task === 'awacs') return 2;
-        // Tier 3: JTAC / FAC(A) — typically AFAC tasked or helo recon
-        if (task === 'afac' || task === 'reconnaissance') return 3;
-        // Tier 4: tankers (push freqs)
-        if (task === 'refueling') return 4;
-        // Tier 5: strike package — CAP/CAS/SEAD/STRIKE etc
-        return 5;
-      };
-      const oa = roleOrder(a), ob = roleOrder(b);
-      if (oa !== ob) return oa - ob;
-      return a.frequency - b.frequency;
-    });
-
-  // Deduplicate by frequency (some groups share frequencies)
-  const seen = new Set<string>();
-  const uniqueEntries = coalitionGroups.filter((g) => {
-    const key = `${g.frequency.toFixed(3)}-${g.modulation}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+export function RadioLadderCard({
+  groups, coalition, overview, group, airbases = [], sopComms = [],
+  presets, order, notes,
+}: RadioLadderCardProps) {
+  const rows = applyLadderOrder(
+    buildRadioLadder({ group, allGroups: groups, coalition, airbases, sopComms }),
+    order,
+  );
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
       <div style={headerStyle}>
         <div style={titleStyle}>RADIO LADDER</div>
         <div style={subtitleStyle}>
-          {coalition.toUpperCase()} coalition | {uniqueEntries.length} frequencies
+          {group ? group.groupName : coalition.toUpperCase()} | {rows.length} rungs
         </div>
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr>
-            <th style={{ ...th, width: 30 }}>#</th>
-            <th style={{ ...th, textAlign: 'left' }}>CALLSIGN / GROUP</th>
-            <th style={{ ...th, width: 80 }}>ROLE</th>
-            <th style={{ ...th, width: 120 }}>FREQUENCY</th>
+            <th style={{ ...th, width: 28 }}>#</th>
+            <th style={{ ...th, width: 96, textAlign: 'left' }}>PHASE</th>
+            <th style={{ ...th, textAlign: 'left' }}>AGENCY</th>
+            <th style={{ ...th, width: 118 }}>FREQUENCY</th>
+            <th style={{ ...th, width: 58 }}>CHAN</th>
           </tr>
         </thead>
         <tbody>
-          {uniqueEntries.map((g, i) => (
-            <tr key={g.groupId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-              <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{i + 1}</td>
-              <td style={{ ...cell, fontWeight: 500 }}>{g.groupName}</td>
-              <td style={{ ...cell, textAlign: 'center', fontSize: 17, color: DIM }}>{getRoleLabel(g)}</td>
-              <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>
-                {formatFreq(g.frequency, g.modulation)}
-              </td>
-            </tr>
-          ))}
+          {rows.map((r, i) => {
+            const chan = presetLabel(r.freqMhz, presets);
+            return (
+              <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
+                <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{i + 1}</td>
+                <td style={{ ...cell, color: DIM, fontSize: 16 }}>{r.phase}</td>
+                <td style={{ ...cell, fontWeight: 500, overflow: 'hidden',
+                             textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.agency}
+                  {r.note && <span style={{ color: DIM, marginLeft: 5 }}>{r.note}</span>}
+                </td>
+                <td style={{ ...cell, textAlign: 'center',
+                             color: r.freqMhz > 0 ? ACCENT : DIM, fontWeight: 600 }}>
+                  {formatFreq(r.freqMhz, r.modulation)}
+                </td>
+                {/* The channel the jet already has this on — see radioPresets.ts. */}
+                <td style={{ ...cell, textAlign: 'center', color: chan ? TEXT : DIM }}>
+                  {chan ? chan.replace(/[()]/g, '') : '—'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
-      {uniqueEntries.length === 0 && (
+      {rows.length === 0 && (
         <div style={{ padding: '20px 16px', fontSize: 17, color: DIM, textAlign: 'center' }}>
           No radio frequencies found.
         </div>

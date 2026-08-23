@@ -122,15 +122,21 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
   for (const g of playerGroups) {
     const wp0 = g.waypoints.find((wp) => wp.waypoint_number === 0);
     if (wp0?.lat == null || wp0?.lon == null) continue;
-    const key = `${wp0.lat.toFixed(2)},${wp0.lon.toFixed(2)}`;
-    if (seenHome.has(key)) continue;
-    seenHome.add(key);
     // Try to match to a named airbase; otherwise label by group name
     const nearest = airbases.find((ab) =>
       ab.lat != null && ab.lon != null
+      && (ab.runways?.length ?? 0) > 0
       && Math.abs(ab.lat - wp0.lat!) < 0.05 && Math.abs(ab.lon - wp0.lon!) < 0.05);
+    // Dedupe on the FIELD, not the parking spot. Four flights on one airfield
+    // start from four slightly different coordinates, so a position key let
+    // the same field print as several identical-bearing rows.
+    const key = nearest?.name ?? `${wp0.lat.toFixed(2)},${wp0.lon.toFixed(2)}`;
+    if (seenHome.has(key)) continue;
+    seenHome.add(key);
     refs.push({
-      name: nearest?.name || `${g.groupName} HOME`,
+      // "Bengal-3 HOME" in a row whose TYPE column already reads HOME says
+      // it twice; the group name alone is the useful half.
+      name: nearest?.name || g.groupName,
       type: 'HOME',
       lat: wp0.lat,
       lon: wp0.lon,
@@ -144,6 +150,7 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
     .filter((ab) =>
       ab.lat != null && ab.lon != null
       && (ab.coalition === coalition || ab.coalition === 'neutral')
+      && (ab.runways?.length ?? 0) > 0
       && !homeKeys.has(`${ab.lat!.toFixed(2)},${ab.lon!.toFixed(2)}`))
     .map((ab) => ({
       name: ab.name,
@@ -243,11 +250,11 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
         </div>
       ) : (
         <>
-          {/* Column legend — replaces the cryptic 'FROM BE' header label
-              with a one-line explanation pilots can read at a glance. */}
-          <div style={{ padding: '4px 0 8px', fontSize: 13, color: DIM, fontStyle: 'italic' }}>
-            Bearing/range column is bullseye-relative — read as
-            "BE 045/35" = bearing 045° true, 35 nm from bullseye.
+          {/* Short legend. This used to be a two-line sentence explaining
+              what a bullseye call is — a pilot reading this card in the
+              cockpit already knows; the header just needs disambiguating. */}
+          <div style={{ padding: '2px 0 6px', fontSize: 13, color: DIM }}>
+            BE brg/rng = true bearing and nm from bullseye.
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>

@@ -15,14 +15,50 @@
  */
 
 import { metersToFeet, msToKnots } from '../utils/conversions';
-import type { Waypoint, MissionGroup, MissionOverviewData } from '../types/mission';
+import type {
+  Waypoint, MissionGroup, MissionOverviewData, ThreatRing, Airbase, ClientUnit,
+} from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { MissionDateLine } from './cardStyles';
+import { TileMap, createProjection } from './TileMap';
+import { getAircraftPerf, computeFuelLegs } from './fuelModel';
+
+/** Waypoints carried per page. A long route squeezed onto one 600x850 card is
+ *  unreadable, so it continues across cards with a match line — the same way a
+ *  paper chart is cut. Pages overlap by one waypoint so the joining leg shows
+ *  on both. */
+const WPS_PER_PAGE = 7;
+
+/** Nautical miles between two lat/lon points. */
+function nmBetween(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const R = 3440.065;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLon = ((bLon - aLon) * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** How many cards this flight's route needs. */
+export function stripMapPageCount(group: MissionGroup): number {
+  const n = (group.waypoints || []).filter((w) => w.lat != null && w.lon != null).length;
+  if (n <= WPS_PER_PAGE) return 1;
+  return Math.ceil((n - 1) / (WPS_PER_PAGE - 1));
+}
 
 interface StripMapCardProps {
   group: MissionGroup;
   overview?: MissionOverviewData;
   notes?: string;
+  /** 0-based page. Long routes continue across cards. */
+  page?: number;
+  /** Surface threats — rings are drawn where they reach the route corridor. */
+  threats?: ThreatRing[];
+  /** Theater airfields, for diverts along the route. */
+  airbases?: Airbase[];
+  /** Used with fuelOverride to annotate fuel remaining in each doghouse. */
+  clientUnits?: ClientUnit[];
+  fuelOverride?: { start?: number; joker?: number; bingo?: number };
 }
 
 const W = 600;
@@ -48,59 +84,6 @@ interface Projected {
   x: number;
   y: number;
   wp: Waypoint;
-}
-
-/**
- * Equirectangular projection from lat/lon to SVG pixel coordinates.
- *
- * `centerLat` is used to scale longitude (1° lon shrinks toward the
- * poles); we project relative to the route's centre so distortion is
- * minimised across the visible area. Output is then linearly scaled
- * to fit MAP_W × MAP_H with a margin.
- */
-function projectWaypoints(wps: Waypoint[]): Projected[] {
-  const valid = wps.filter((wp) => wp.lat != null && wp.lon != null);
-  if (valid.length === 0) return [];
-
-  // Bounds in lat/lon space — degrees
-  let minLat = +Infinity;
-  let maxLat = -Infinity;
-  let minLon = +Infinity;
-  let maxLon = -Infinity;
-  for (const wp of valid) {
-    if (wp.lat! < minLat) minLat = wp.lat!;
-    if (wp.lat! > maxLat) maxLat = wp.lat!;
-    if (wp.lon! < minLon) minLon = wp.lon!;
-    if (wp.lon! > maxLon) maxLon = wp.lon!;
-  }
-  const centerLat = (minLat + maxLat) / 2;
-  const lonScale = Math.cos((centerLat * Math.PI) / 180);
-
-  // Span in "projected" units (lon scaled by cos)
-  const latSpan = Math.max(maxLat - minLat, 1e-6);
-  const lonSpan = Math.max((maxLon - minLon) * lonScale, 1e-6);
-
-  // Add margin around the bounds, then pick the limiting axis so the
-  // route fits proportionally — preserves shape, doesn't squish.
-  const mLat = latSpan * MAP_PADDING_PCT;
-  const mLon = lonSpan * MAP_PADDING_PCT;
-  const drawLatSpan = latSpan + 2 * mLat;
-  const drawLonSpan = lonSpan + 2 * mLon;
-  const scale = Math.min(MAP_W / drawLonSpan, MAP_H / drawLatSpan);
-
-  // Centre the route inside the map area (extra space on whichever
-  // axis the route doesn't fill).
-  const offsetX = (MAP_W - drawLonSpan * scale) / 2;
-  const offsetY = (MAP_H - drawLatSpan * scale) / 2;
-
-  return valid.map((wp) => {
-    const projLon = (wp.lon! - minLon) * lonScale + mLon;
-    const projLat = wp.lat! - minLat + mLat;
-    // SVG y grows downward; flip lat so north is up.
-    const x = offsetX + projLon * scale;
-    const y = offsetY + (drawLatSpan - projLat) * scale;
-    return { x, y, wp };
-  });
 }
 
 function abbreviate(name: string): string {
@@ -153,10 +136,102 @@ function doghouseOffset(legIdx: number): { dx: number; dy: number; anchor: 'star
   return { dx: 0, dy: aboveBelow * 38, anchor: 'middle' };
 }
 
-export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
+export function StripMapCard({
+  group, overview, notes, page = 0,
+  threats = [], airbases = [], clientUnits = [], fuelOverride,
+}: StripMapCardProps) {
   const wps = group.waypoints;
   const airframe = getAircraftType(group);
-  const projected = projectWaypoints(wps);
+
+  const allWps = (wps || []).filter((w) => w.lat != null && w.lon != null);
+  const totalPages = stripMapPageCount(group);
+  // Pages overlap by one waypoint so the joining leg appears on both cards.
+  const startIdx = page * (WPS_PER_PAGE - 1);
+  const pageWps = allWps.slice(startIdx, startIdx + WPS_PER_PAGE);
+
+  // Fuel is walked over the WHOLE route, not the page, or page 2 would start
+  // back at full tanks.
+  const unitType = group.units?.[0]?.type || '';
+  const perf = getAircraftPerf(unitType);
+  const rep = clientUnits.find((cu) => cu.groupName === group.groupName);
+  const rawFuel = rep?.fuel ?? 0;
+  const startFuelLbs = fuelOverride?.start
+    ?? (rawFuel <= 1 ? Math.round(rawFuel * perf.maxFuelLbs) : Math.round(rawFuel * 2.20462));
+  const fuelByWp = new Map(
+    computeFuelLegs(allWps, { startFuelLbs, emptyLbs: perf.emptyLbs, unitType })
+      .map((l) => [l.wp, l]),
+  );
+
+  // Frame this page's waypoints, padded, then project through the same tile
+  // maths the other map cards use so imagery lines up underneath.
+  let minLat = +Infinity, maxLat = -Infinity, minLon = +Infinity, maxLon = -Infinity;
+  for (const w of pageWps) {
+    minLat = Math.min(minLat, w.lat!); maxLat = Math.max(maxLat, w.lat!);
+    minLon = Math.min(minLon, w.lon!); maxLon = Math.max(maxLon, w.lon!);
+  }
+  const MIN_SPAN = 0.08;
+  if (maxLat - minLat < MIN_SPAN) {
+    const c = (minLat + maxLat) / 2; minLat = c - MIN_SPAN / 2; maxLat = c + MIN_SPAN / 2;
+  }
+  if (maxLon - minLon < MIN_SPAN) {
+    const c = (minLon + maxLon) / 2; minLon = c - MIN_SPAN / 2; maxLon = c + MIN_SPAN / 2;
+  }
+  const padLat = (maxLat - minLat) * MAP_PADDING_PCT;
+  const padLon = (maxLon - minLon) * MAP_PADDING_PCT;
+  minLat -= padLat; maxLat += padLat; minLon -= padLon; maxLon += padLon;
+
+  const proj = createProjection(minLat, maxLat, minLon, maxLon, MAP_W, MAP_H);
+  const projected: Projected[] = pageWps.map((wp) => {
+    const [x, y] = proj.project(wp.lat!, wp.lon!);
+    return { x, y, wp };
+  });
+
+  // Threat rings that actually reach this frame — a ring 200 NM away is noise.
+  // Enemy only. A friendly Hawk battery is not a threat ring — this card drew
+  // our own SAMs in red until it was rendered and looked at.
+  //
+  // Then cluster: a SAM site is many units, and one ring per UNIT put 43
+  // overlapping circles and labels on a single sheet. Group by type and
+  // position (~0.02 deg, roughly a mile) and keep the longest-reaching member,
+  // which is the ring that actually shapes the route.
+  const siteMap = new Map<string, ThreatRing>();
+  for (const t of threats) {
+    if (t.lat == null || t.lon == null || t.coalition === 'blue') continue;
+    const key = `${(t.type || '').split(' ')[0]}|${t.lat.toFixed(2)}|${t.lon.toFixed(2)}`;
+    const cur = siteMap.get(key);
+    if (!cur || (t.range ?? 0) > (cur.range ?? 0)) siteMap.set(key, t);
+  }
+  const frameThreats = [...siteMap.values()]
+    .map((t) => {
+      const [x, y] = proj.project(t.lat!, t.lon!);
+      const r = proj.metersToPixels((t.range ?? 0));
+      return { t, x, y, r };
+    })
+    .filter((o) => o.r > 2
+      && o.x + o.r > 0 && o.x - o.r < MAP_W
+      && o.y + o.r > 0 && o.y - o.r < MAP_H)
+    // Biggest threats first, then capped — past a dozen rings the sheet is
+    // unreadable and the small stuff is not what kills you at altitude.
+    .sort((a, b) => b.r - a.r)
+    .slice(0, 12);
+
+  // Diverts — nearest fields to the route on this page, so an emergency has an
+  // answer without leaving the card.
+  const diverts = airbases
+    // A field with no runway is a helipad or FARP — not a divert for a jet.
+    .filter((a) => a.lat != null && a.lon != null && (a.runways?.length ?? 0) > 0)
+    .map((a) => ({
+      a,
+      nm: Math.min(...pageWps.map((w) => nmBetween(w.lat!, w.lon!, a.lat!, a.lon!))),
+    }))
+    .filter((o) => o.nm < 60)
+    .sort((x, y) => x.nm - y.nm)
+    .slice(0, 4)
+    .map((o) => {
+      const [x, y] = proj.project(o.a.lat!, o.a.lon!);
+      return { ...o, x, y };
+    })
+    .filter((o) => o.x > 0 && o.x < MAP_W && o.y > 0 && o.y < MAP_H);
 
   const totalDist = wps.reduce((sum, wp) => sum + (wp.leg_distance_nm || 0), 0);
   const totalEte = wps.length > 0 ? (wps[wps.length - 1].cumulative_eta || 0) : 0;
@@ -190,7 +265,8 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
           STRIP MAP — {group.groupName.toUpperCase()}
         </div>
         <div style={{ fontSize: 17, color: TEXT_MUTED, marginTop: 4 }}>
-          {airframe} · {projected.length} WP · {totalDist.toFixed(1)} nm · ETE {fmtTime(totalEte)}
+          {airframe} · {allWps.length} WP · {totalDist.toFixed(1)} nm · ETE {fmtTime(totalEte)}
+          {totalPages > 1 && ` · SHEET ${page + 1}/${totalPages}`}
         </div>
         {overview && <MissionDateLine date={overview.date} startTime={overview.start_time} theater={overview.theater} showTheater />}
       </div>
@@ -216,15 +292,49 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
             Not enough waypoints with coordinates to render a strip map.
           </div>
         ) : (
+          <TileMap width={MAP_W} height={MAP_H}
+                   minLat={minLat} maxLat={maxLat} minLon={minLon} maxLon={maxLon}
+                   layer="satellite">
           <svg width={MAP_W} height={MAP_H} viewBox={`0 0 ${MAP_W} ${MAP_H}`}
                xmlns="http://www.w3.org/2000/svg">
-            {/* Background grid — pure decoration to give a chart feel */}
-            <defs>
-              <pattern id="stripGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a2540" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect width={MAP_W} height={MAP_H} fill="url(#stripGrid)" />
+            {/* Threat rings that reach this sheet. Drawn first so the route
+                and doghouses stay legible on top of them. */}
+            {frameThreats.map((o, i) => (
+              <g key={`thr-${i}`}>
+                <circle cx={o.x} cy={o.y} r={o.r} fill="rgba(217,80,80,0.10)"
+                        stroke="rgba(217,80,80,0.85)" strokeWidth={1.2} strokeDasharray="5 4" />
+                <text x={o.x} y={o.y - 4} fontSize={11} fill="#ff8a8a" textAnchor="middle"
+                      stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={700}>
+                  {/* Short designator, not the raw unit name: "S-300PS", not
+                      "301 S-300PS 40B6M tr | 3rd Co, 202nd AD Bde". */}
+                  {(o.t.type || o.t.name || '').split(' ')[0]}
+                </text>
+              </g>
+            ))}
+
+            {/* Diverts within 60 NM of this sheet's track. */}
+            {diverts.map((o, i) => (
+              <g key={`div-${i}`}>
+                <circle cx={o.x} cy={o.y} r={4} fill="none" stroke="#7fd97f" strokeWidth={1.6} />
+                <line x1={o.x - 6} y1={o.y} x2={o.x + 6} y2={o.y} stroke="#7fd97f" strokeWidth={1.2} />
+                <text x={o.x + 8} y={o.y + 4} fontSize={11} fill="#7fd97f"
+                      stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={600}>
+                  {o.a.name} {Math.round(o.nm)}
+                </text>
+              </g>
+            ))}
+
+            {/* North arrow. This card is deliberately north-up: a real strip
+                map is route-up, but that is a low-level corridor product, and
+                a strike-fighter kneeboard carries a north-up route chart
+                instead. Saying so on the card removes the ambiguity — the
+                reader should never have to guess the orientation. */}
+            <g transform={`translate(${MAP_W - 30}, 26)`}>
+              <line x1={0} y1={20} x2={0} y2={-8} stroke={TEXT_MUTED} strokeWidth={1.6} />
+              <polygon points="0,-14 -4.5,-2 4.5,-2" fill={TEXT_BRIGHT} />
+              <text x={0} y={34} fontSize={12} fontFamily={FONT} fill={TEXT_MUTED}
+                    textAnchor="middle" fontWeight={700}>N</text>
+            </g>
 
             {/* Route polyline */}
             <polyline
@@ -246,7 +356,7 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
               const boxX = mx + off.dx - 50;
               const boxY = my + off.dy - 30;
               const boxW = 100;
-              const boxH = 60;
+              const boxH = 88;
               // Leg-time computed from cumulative_eta if present.
               const legEta =
                 wp.cumulative_eta != null && from.wp.cumulative_eta != null
@@ -298,6 +408,28 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
                         fontFamily="'B612 Mono', 'Consolas', monospace"
                         fontSize={12} fontWeight="bold" fill={TEXT_BRIGHT}
                         textAnchor="end">{fmtAlt(wp.altitude_m, wp.altitude_type)}</text>
+
+                  {/* ETE is the leg; ELAP is time since takeoff. The second is
+                      what you actually cross-check against a time hack. */}
+                  <text x={boxX + 6} y={boxY + 70}
+                        fontFamily="'B612 Mono', 'Consolas', monospace"
+                        fontSize={11} fill={TEXT_MUTED}>ELAP</text>
+                  <text x={boxX + boxW - 6} y={boxY + 70}
+                        fontFamily="'B612 Mono', 'Consolas', monospace"
+                        fontSize={12} fontWeight="bold" fill={TEXT_BRIGHT}
+                        textAnchor="end">{fmtTime(wp.cumulative_eta || 0)}</text>
+
+                  {/* Fuel remaining at this point — same model the Fuel Ladder
+                      card uses, so the two cards agree. */}
+                  <text x={boxX + 6} y={boxY + 84}
+                        fontFamily="'B612 Mono', 'Consolas', monospace"
+                        fontSize={11} fill={TEXT_MUTED}>FUEL</text>
+                  <text x={boxX + boxW - 6} y={boxY + 84}
+                        fontFamily="'B612 Mono', 'Consolas', monospace"
+                        fontSize={12} fontWeight="bold" fill={ACCENT}
+                        textAnchor="end">
+                    {fuelByWp.get(wp.waypoint_number)?.remaining?.toLocaleString() ?? '-'}
+                  </text>
                 </g>
               );
             })}
@@ -327,7 +459,22 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
                 </g>
               );
             })}
+            {/* Match lines — this sheet is a cut from a longer route, so say
+                where it joins the next one. */}
+            {page > 0 && (
+              <text x={8} y={16} fontSize={12} fill={ACCENT} fontWeight={700}
+                    stroke="#000" strokeWidth={2.5} paintOrder="stroke">
+                ◀ MATCH SHEET {page}
+              </text>
+            )}
+            {page < totalPages - 1 && (
+              <text x={MAP_W - 8} y={MAP_H - 8} fontSize={12} fill={ACCENT} fontWeight={700}
+                    textAnchor="end" stroke="#000" strokeWidth={2.5} paintOrder="stroke">
+                MATCH SHEET {page + 2} ▶
+              </text>
+            )}
           </svg>
+          </TileMap>
         )}
       </div>
 
@@ -341,7 +488,9 @@ export function StripMapCard({ group, overview, notes }: StripMapCardProps) {
         Doghouse: <span style={{ color: TEXT_BRIGHT }}>MC</span> magnetic course ·{' '}
         <span style={{ color: TEXT_BRIGHT }}>DIST</span> leg distance (nm) ·{' '}
         <span style={{ color: TEXT_BRIGHT }}>TIME</span> leg time at planned speed ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>ALT</span> at next WP
+        <span style={{ color: TEXT_BRIGHT }}>ALT</span> at next WP ·{' '}
+        <span style={{ color: TEXT_BRIGHT }}>ELAP</span> since takeoff ·{' '}
+        <span style={{ color: TEXT_BRIGHT }}>FUEL</span> lbs remaining
       </div>
       <div style={{
         backgroundColor: BG_NOTES,

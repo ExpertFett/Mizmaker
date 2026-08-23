@@ -180,6 +180,14 @@ export const footerStyle: React.CSSProperties = {
   marginTop: 'auto',
 };
 
+/** Notes never take more than the bottom quarter of a card.
+ *
+ *  notesBox is `flex: 1`, so before this cap it absorbed every pixel the
+ *  content above didn't use — which is why a sparse card looked like a header
+ *  bolted to a giant grey box. Capping it means content above gets the room
+ *  instead. */
+export const NOTES_MAX_H = Math.round(H / 4);
+
 export const notesBox: React.CSSProperties = {
   backgroundColor: BG_NOTES,
   border: `1px solid ${BORDER_MED}`,
@@ -187,6 +195,11 @@ export const notesBox: React.CSSProperties = {
   padding: '6px 8px',
   flex: 1,
   minHeight: 0,
+  maxHeight: NOTES_MAX_H,
+  // Without border-box the 6px padding + 1px border push the rendered box to
+  // 227px — over the quarter-card budget the cap exists to enforce.
+  boxSizing: 'border-box',
+  overflow: 'hidden',
   fontSize: 17,
   color: TEXT,
 };

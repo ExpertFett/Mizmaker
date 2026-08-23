@@ -18,6 +18,10 @@ export interface Waypoint {
   eta_locked: boolean;
   speed_locked: boolean;
   airdrome_id?: number;
+  /** Unit id of the ship this waypoint is tied to — set on a deck-launched
+   *  flight's start waypoint, naming its actual mother. Missions with more
+   *  than one carrier need this to tell which deck a flight belongs to. */
+  link_unit?: number;
   task?: unknown;             // preserved original task data
   // Computed client-side
   leg_distance_nm?: number;
@@ -90,6 +94,13 @@ export interface Airbase {
     vhf_low_mhz?: number;
     vhf_high_mhz?: number;
     uhf_mhz?: number;
+  };
+  /** Fuel / munitions / airframe availability, from the .miz warehouses
+   *  file. Absent when the mission ships no warehouses entry. (v1.19.119) */
+  supplies?: {
+    fuel: boolean;
+    munitions: boolean;
+    aircraft: boolean;
   };
   /** Runway list per pydcs. `ends` is the two-end naming (e.g. ["22",
    *  "04"]) and `headings` is the matching magnetic headings in degrees.

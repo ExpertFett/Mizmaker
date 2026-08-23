@@ -847,6 +847,21 @@ def extract_options_from_miz(miz_bytes: bytes) -> str | None:
             return None
 
 
+def extract_warehouses_from_miz(miz_bytes: bytes) -> str | None:
+    """Read the warehouses Lua from a .miz. Returns None if absent.
+
+    This is where DCS records which coalition actually holds each airfield,
+    along with its fuel/munitions stocks. The `mission` file does not carry
+    it — every airbase there reads "neutral" — so anything that needs real
+    airfield ownership has to come through here.
+    """
+    with zipfile.ZipFile(io.BytesIO(miz_bytes), "r") as zf:
+        try:
+            return zf.read("warehouses").decode("utf-8", "replace")
+        except KeyError:
+            return None
+
+
 def extract_mission_text_from_miz(miz_bytes: bytes) -> str | None:
     """Read the raw mission Lua from a .miz. Returns None if absent."""
     with zipfile.ZipFile(io.BytesIO(miz_bytes), "r") as zf:

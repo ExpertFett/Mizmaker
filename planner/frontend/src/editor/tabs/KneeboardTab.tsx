@@ -14,18 +14,21 @@ import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { FlightCard } from '../../kneeboard/FlightCard';
 import { CommsCard } from '../../kneeboard/CommsCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
-import { StripMapCard } from '../../kneeboard/StripMapCard';
+import { StripMapCard, stripMapPageCount } from '../../kneeboard/StripMapCard';
 import { RadioPresetCard } from '../../kneeboard/RadioPresetCard';
 import { FuelLadderCard } from '../../kneeboard/FuelLadderCard';
-import { getAircraftPerf } from '../../kneeboard/fuelModel';
+import { getAircraftPerf, computeJokerBingo } from '../../kneeboard/fuelModel';
 import { SupportAssetsCard, supportAssetsPageCount } from '../../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../../kneeboard/RadioLadderCard';
+import { buildRadioLadder, applyLadderOrder } from '../../kneeboard/radioLadder';
+import { presetsForUnits } from '../../kneeboard/radioPresets';
+import { RadioLadderOrderEditor } from './RadioLadderOrderEditor';
 import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
 import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
 import { HomePlateCard } from '../../kneeboard/HomePlateCard';
-import { SopCommsCard } from '../../kneeboard/SopCommsCard';
+import { SopCommsCard, sopCommsPageCount } from '../../kneeboard/SopCommsCard';
 import { TransponderCard } from '../../kneeboard/TransponderCard';
 import { DmpiCard } from '../../kneeboard/DmpiCard';
 import { TargetImageryCard } from '../../kneeboard/TargetImageryCard';
@@ -101,6 +104,7 @@ export function KneeboardTab() {
   const clientUnits = useMissionStore((s) => s.clientUnits);
   const threats = useMissionStore((s) => s.threats);
   const airbases = useMissionStore((s) => s.airbases);
+  const drawings = useMissionStore((s) => s.drawings);
   const theater = useMissionStore((s) => s.theater) || overview?.theater || '';
   const wx = overview?.weather as Weather | undefined;
 
@@ -141,6 +145,8 @@ export function KneeboardTab() {
   const cardNotes = kneeboardSettings.cardNotes ?? {};
   // Per-flight Fuel Ladder overrides, keyed by group name (v1.19.108).
   const fuelOverrides = kneeboardSettings.fuelOverrides ?? {};
+  // Planner's custom Radio Ladder rung order (v1.19.119).
+  const radioLadderOrder = kneeboardSettings.radioLadderOrder ?? [];
   // Per-flight Flight Card "Flight Data" overrides (TACAN/ICLS/IFF), keyed by
   // group name (v1.19.109).
   const flightDataOverrides = kneeboardSettings.flightDataOverrides ?? {};
@@ -199,16 +205,26 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.comms) {
-      const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms });
+      const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms, airbases, sopComms: activeSop?.comms });
       results.push({ name: `${safeName}_Comms.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.routeDetail) {
-      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat });
+      const el = createElement(RouteDetailCard, { group: g, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat, drawings });
       results.push({ name: `${safeName}_RouteDetail.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.stripMap) {
-      const el = createElement(StripMapCard, { group: g, overview: overview || undefined, notes: cardNotes.stripMap });
-      results.push({ name: `${safeName}_StripMap.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+      const sheets = stripMapPageCount(g);
+      for (let sp = 0; sp < sheets; sp++) {
+        const el = createElement(StripMapCard, {
+          group: g, overview: overview || undefined, notes: cardNotes.stripMap,
+          page: sp, threats, airbases, clientUnits,
+          fuelOverride: fuelOverrides[g.groupName],
+        });
+        results.push({
+          name: sheets > 1 ? `${g.groupName}_StripMap_${sp + 1}.png` : `${g.groupName}_StripMap.png`,
+          blob: await renderCardToBlob(el, theme, customThemeVars),
+        });
+      }
     }
     {
       // v1.19.77 — radio preset card from the SOP comm plan (per
@@ -224,7 +240,7 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Fuel.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.homePlate) {
-      const el = createElement(HomePlateCard, { group: g, airbases, overview: overview || undefined, coordFormat });
+      const el = createElement(HomePlateCard, { group: g, airbases, allGroups: groups, overview: overview || undefined, coordFormat });
       results.push({ name: `${safeName}_HomePlate.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.weaponsAuto) {
@@ -250,12 +266,12 @@ export function KneeboardTab() {
       const pageCount = supportAssetsPageCount({ groups, coalition });
       for (let p = 0; p < pageCount; p++) {
         const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
-        const el = createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets });
+        const el = createElement(SupportAssetsCard, { presets: presetsForUnits(clientUnits), groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets });
         results.push({ name: fname, blob: await renderCardToBlob(el, theme, customThemeVars) });
       }
     }
     if (cards.radioLadder) {
-      const el = createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined, notes: cardNotes.radioLadder });
+      const el = createElement(RadioLadderCard, { groups, coalition, group: selectedGroup, airbases, sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits), order: radioLadderOrder, overview: overview || undefined, notes: cardNotes.radioLadder });
       results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.airbaseRef) {
@@ -290,8 +306,15 @@ export function KneeboardTab() {
     // want to silently fail or emit a blank card. The carousel shows a
     // hint in that case so it's discoverable.
     if (cards.sopComms && activeSop) {
-      const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined });
-      results.push({ name: 'SOP_Comms.png', blob: await renderCardToBlob(el, theme, customThemeVars) });
+      // One card per source comm sheet when the SOP carries them.
+      const pages = sopCommsPageCount(activeSop);
+      for (let p = 0; p < pages; p++) {
+        const el = createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined, page: p });
+        results.push({
+          name: pages > 1 ? `SOP_Comms_${p + 1}.png` : 'SOP_Comms.png',
+          blob: await renderCardToBlob(el, theme, customThemeVars),
+        });
+      }
     }
     // Transponder card — only when the active SOP carries a transponder plan.
     if (cards.transponder && activeSop?.transponder?.assignments?.length) {
@@ -730,6 +753,33 @@ export function KneeboardTab() {
         })()}
       </div>
 
+      {/* Radio Ladder rung order — drag to override the derived phase order
+          before the card renders. (v1.19.119) */}
+      {cards.radioLadder && (() => {
+        const rows = applyLadderOrder(
+          buildRadioLadder({
+            group: selectedGroup, allGroups: groups, coalition,
+            airbases, sopComms: activeSop?.comms ?? [],
+          }),
+          radioLadderOrder,
+        );
+        return (
+          <div style={{
+            border: '1px solid #333333', borderRadius: 4,
+            padding: '8px 10px', marginTop: 10,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#cccccc', marginBottom: 6 }}>
+              Radio Ladder order
+            </div>
+            <RadioLadderOrderEditor
+              rows={rows}
+              order={radioLadderOrder}
+              onChange={(next) => setKneeboardSettings({ radioLadderOrder: next })}
+            />
+          </div>
+        );
+      })()}
+
       {/* Fuel Ladder overrides — per selected flight. Pin a real Start /
           Joker / Bingo (absolute lbs) instead of the loadout-fuel + 35%/20%
           defaults. Only shows when the Fuel Ladder card is enabled and a
@@ -745,8 +795,9 @@ export function KneeboardTab() {
           ? Math.round(rawFuel * perf.maxFuelLbs)
           : Math.round(rawFuel * 2.20462);
         const effStart = ovr.start ?? autoStart;
-        const autoJoker = Math.round(effStart * 0.35);
-        const autoBingo = Math.round(effStart * 0.2);
+        // Floored bingo, shared with the cards (fuelModel.computeJokerBingo) so
+        // the editor's placeholder matches what actually prints.
+        const { joker: autoJoker, bingo: autoBingo } = computeJokerBingo(effStart);
         const hasOvr = ovr.start != null || ovr.joker != null || ovr.bingo != null;
         const parse = (s: string) => {
           const v = parseInt(s.replace(/[^0-9]/g, ''), 10);
@@ -1083,6 +1134,7 @@ export function KneeboardTab() {
         clientUnits={clientUnits}
         threats={threats}
         airbases={airbases}
+        drawings={drawings}
         theater={theater}
         overview={overview}
         coalition={coalition}
@@ -1098,6 +1150,7 @@ export function KneeboardTab() {
         notesTitle={notesTitle}
         cardNotes={cardNotes}
         fuelOverrides={fuelOverrides}
+          radioLadderOrder={radioLadderOrder}
         flightDataOverrides={flightDataOverrides}
         weaponIds={weaponIds}
         popupAttacks={popupAttacks}
@@ -1122,6 +1175,7 @@ interface CarouselProps {
   clientUnits: ReturnType<typeof useMissionStore.getState>['clientUnits'];
   threats: ReturnType<typeof useMissionStore.getState>['threats'];
   airbases: ReturnType<typeof useMissionStore.getState>['airbases'];
+  drawings: ReturnType<typeof useMissionStore.getState>['drawings'];
   theater: string;
   overview: ReturnType<typeof useMissionStore.getState>['overview'];
   coalition: string;
@@ -1137,6 +1191,7 @@ interface CarouselProps {
   notesTitle: string;
   cardNotes: Record<string, string>;
   fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
+  radioLadderOrder: string[];
   flightDataOverrides: Record<string, { tacan?: string; icls?: string; iffM1?: string; iffM3?: string }>;
   weaponIds: string[];
   popupAttacks: PopupAttackInput[];
@@ -1154,7 +1209,7 @@ interface CardEntry {
 }
 
 function CardCarousel({
-  selectedGroup, cards, groups, clientUnits, threats,
+  selectedGroup, cards, groups, clientUnits, threats, drawings,
   airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold,
   threatFidelity,
   threatMapVisible,
@@ -1163,7 +1218,7 @@ function CardCarousel({
   notesText,
   notesTitle,
   cardNotes,
-  fuelOverrides,
+  fuelOverrides, radioLadderOrder,
   flightDataOverrides,
   weaponIds,
   popupAttacks,
@@ -1206,19 +1261,22 @@ function CardCarousel({
       if (cards.comms) {
         list.push({
           key: 'comms', label: 'Comms Card',
-          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms }),
+          element: createElement(CommsCard, { group: selectedGroup, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms, airbases, sopComms: activeSop?.comms }),
         });
       }
       if (cards.routeDetail) {
         list.push({
           key: 'routeDetail', label: 'Route Detail',
-          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat }),
+          element: createElement(RouteDetailCard, { group: selectedGroup, threats, overview: overview || undefined, notes: cardNotes.routeDetail, coordFormat, drawings }),
         });
       }
       if (cards.stripMap) {
         list.push({
           key: 'stripMap', label: 'Strip Map',
-          element: createElement(StripMapCard, { group: selectedGroup, overview: overview || undefined, notes: cardNotes.stripMap }),
+          element: createElement(StripMapCard, {
+            group: selectedGroup, overview: overview || undefined, notes: cardNotes.stripMap,
+            threats, airbases, clientUnits, fuelOverride: fuelOverrides[selectedGroup.groupName],
+          }),
         });
       }
       {
@@ -1239,7 +1297,7 @@ function CardCarousel({
       if (cards.homePlate) {
         list.push({
           key: 'homePlate', label: 'Home Plate / Divert',
-          element: createElement(HomePlateCard, { group: selectedGroup, airbases, overview: overview || undefined, coordFormat }),
+          element: createElement(HomePlateCard, { group: selectedGroup, airbases, allGroups: groups, overview: overview || undefined, coordFormat }),
         });
       }
       if (cards.weaponsAuto) {
@@ -1264,14 +1322,14 @@ function CardCarousel({
         const suffix = pageCount === 1 ? '' : ` (${p + 1}/${pageCount})`;
         list.push({
           key: `supportAssets-${p}`, label: `Support Assets${suffix}`,
-          element: createElement(SupportAssetsCard, { groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets }),
+          element: createElement(SupportAssetsCard, { presets: presetsForUnits(clientUnits), groups, coalition, overview: overview || undefined, page: p, notes: cardNotes.supportAssets }),
         });
       }
     }
     if (cards.radioLadder) {
       list.push({
         key: 'radioLadder', label: 'Radio Ladder',
-        element: createElement(RadioLadderCard, { groups, coalition, overview: overview || undefined, notes: cardNotes.radioLadder }),
+        element: createElement(RadioLadderCard, { groups, coalition, group: selectedGroup, airbases, sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits), order: radioLadderOrder, overview: overview || undefined, notes: cardNotes.radioLadder }),
       });
     }
     if (cards.airbaseRef) {
@@ -1306,10 +1364,14 @@ function CardCarousel({
       });
     }
     if (cards.sopComms && activeSop) {
-      list.push({
-        key: 'sopComms', label: 'SOP Comms',
-        element: createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }),
-      });
+      const sopPages = sopCommsPageCount(activeSop);
+      for (let p = 0; p < sopPages; p++) {
+        const suffix = sopPages === 1 ? '' : ` (${p + 1}/${sopPages})`;
+        list.push({
+          key: `sopComms-${p}`, label: `SOP Comms${suffix}`,
+          element: createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined, page: p }),
+        });
+      }
     }
     if (cards.transponder && activeSop?.transponder?.assignments?.length) {
       list.push({

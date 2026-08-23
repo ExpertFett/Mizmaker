@@ -42,17 +42,29 @@ function distNm(lat1: number, lon1: number, lat2: number, lon2: number): number 
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coordFormat = 'mgrs' }: AirbaseRefCardProps) {
-  // `coalition` prop is currently unused — the route filter keys off
-  // player-flight waypoints regardless of side. Kept on the props
-  // interface so callers don't break and so we can re-enable a side
-  // filter later without an API change.
+export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coalition = 'blue', coordFormat = 'mgrs' }: AirbaseRefCardProps) {
   // Filter to route-relevant airfields when groups are available.
   // Otherwise fall back to the full list (the card was used this way
   // before the filter existed; keep that path for back-compat).
   const ROUTE_PROXIMITY_NM = 25;
+  // Rows to fill the card body with before the notes box takes over. Sized
+  // to the space between the header and the quarter-card notes cap.
+  const MIN_ROWS = 14;
 
-  type AbWithRole = Airbase & { _role?: 'HOME' | 'RTB' | 'NEAR' };
+  type AbWithRole = Airbase & { _role?: 'HOME' | 'RTB' | 'DIVERT' | 'ENEMY' };
+
+  /** Ownership comes from the .miz warehouses overlay. A red-held field is a
+   *  reference, never a divert — the card used to offer Severomorsk and
+   *  Olenya to a NATO package as though they were options. */
+  const isEnemy = (ab: Airbase) =>
+    ab.coalition !== 'neutral' && ab.coalition !== coalition;
+
+  // Theater data carries a bare ICAO-keyed stub beside many real records
+  // ("Kirkenes" and "Kirkenes (ENKR)"). The stub has no runway and no ATC, so
+  // it printed as a second row of dashes for a field already listed. It is
+  // also not a usable reference: without a runway a jet cannot go there.
+  const usable = airbases.filter((ab) => (ab.runways?.length ?? 0) > 0);
+  const pool = usable.length > 0 ? usable : airbases;
 
   let filtered: AbWithRole[];
   if (groups && groups.length > 0) {
@@ -64,7 +76,7 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
     const matchAirbase = (lat: number, lon: number, threshold: number): Airbase | null => {
       let best: Airbase | null = null;
       let bestD = Infinity;
-      for (const ab of airbases) {
+      for (const ab of pool) {
         if (ab.lat == null || ab.lon == null) continue;
         const d = distNm(lat, lon, ab.lat, ab.lon);
         if (d < threshold && d < bestD) { best = ab; bestD = d; }
@@ -89,7 +101,7 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
       // airfield qualifies it as a divert candidate.
       for (const wp of wps) {
         if (wp.lat == null || wp.lon == null) continue;
-        for (const ab of airbases) {
+        for (const ab of pool) {
           if (ab.lat == null || ab.lon == null) continue;
           if (distNm(wp.lat, wp.lon, ab.lat, ab.lon) < ROUTE_PROXIMITY_NM) {
             nearKeys.add(ab.name);
@@ -98,21 +110,44 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
       }
     }
 
-    filtered = airbases
+    filtered = pool
       .filter((ab) => homeKeys.has(ab.name) || rtbKeys.has(ab.name) || nearKeys.has(ab.name))
       .map((ab) => ({
         ...ab,
         _role: homeKeys.has(ab.name) ? 'HOME'
              : rtbKeys.has(ab.name)  ? 'RTB'
-             : 'NEAR',
+             : isEnemy(ab)           ? 'ENEMY'
+             : 'DIVERT',
       } as AbWithRole));
+
+    // A tight route only touches a handful of fields — Kola M4 matched four,
+    // leaving five sixths of the card as an empty notes box. Top the list up
+    // with the nearest other fields, marked DIVERT so it stays honest about
+    // which ones the route actually passes.
+    if (filtered.length < MIN_ROWS) {
+      const listed = new Set(filtered.map((ab) => ab.name));
+      const anchor = playerFlights[0]?.waypoints?.[0];
+      const extras = pool
+        .filter((ab) => !listed.has(ab.name) && ab.lat != null && ab.lon != null)
+        .map((ab) => ({
+          ab,
+          d: anchor?.lat != null && anchor.lon != null
+            ? distNm(anchor.lat, anchor.lon, ab.lat!, ab.lon!) : 0,
+        }))
+        // Usable fields before enemy ones, then by distance — a divert list
+        // that leads with hostile airfields buries the useful rows.
+        .sort((x, y) => (Number(isEnemy(x.ab)) - Number(isEnemy(y.ab))) || (x.d - y.d))
+        .slice(0, MIN_ROWS - filtered.length)
+        .map(({ ab }) => ({ ...ab, _role: isEnemy(ab) ? 'ENEMY' : 'DIVERT' } as AbWithRole));
+      filtered = [...filtered, ...extras];
+    }
   } else {
-    filtered = airbases;
+    filtered = pool;
   }
 
   const sorted = [...filtered].sort((a, b) => {
     // Roles first: HOME → RTB → NEAR; alphabetical within each
-    const rank = (r?: string) => r === 'HOME' ? 0 : r === 'RTB' ? 1 : 2;
+    const rank = (r?: string) => r === 'HOME' ? 0 : r === 'RTB' ? 1 : r === 'DIVERT' ? 2 : 3;
     const ra = rank(a._role), rb = rank(b._role);
     if (ra !== rb) return ra - rb;
     return a.name.localeCompare(b.name);
@@ -130,6 +165,7 @@ export function AirbaseRefCard({ airbases, theater, overview, groups, notes, coo
   // Role badge color — HOME = accent, RTB = blue, NEAR = dim
   const roleColor = (role?: string) => role === 'HOME' ? ACCENT
                   : role === 'RTB'  ? '#4a8fd4'
+                  : role === 'ENEMY' ? '#e06666'
                   : DIM;
 
   // Pick the single best ATC channel to surface in the table row —

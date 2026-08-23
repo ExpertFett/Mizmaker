@@ -210,3 +210,124 @@ export function estimateFuelFlow(
 export function getAircraftPerf(aircraftType: string): AircraftPerf {
   return AIRCRAFT_DB[aircraftType] || DEFAULT_PERF;
 }
+
+// ── Per-waypoint fuel ladder ─────────────────────────────────────────────
+
+/** One waypoint's worth of the fuel ladder. */
+export interface FuelLeg {
+  wp: number;
+  name: string;
+  altFt: number;
+  spdKts: number;
+  dist: number;
+  /** Leg elapsed time, seconds. */
+  ete: number;
+  /** Fuel burned on this leg, lbs. */
+  burn: number;
+  /** Fuel remaining at this waypoint, lbs. */
+  remaining: number;
+  /** Fuel flow used for the leg, lbs/hr. */
+  flowRate: number;
+}
+
+/**
+ * Walk a route and estimate fuel remaining at each waypoint.
+ *
+ * Lifted out of FuelLadderCard so the Strip Map can annotate the same numbers.
+ * Two cards computing this independently is how they end up disagreeing about
+ * the same flight — the kind of split that already bit us once when the brief
+ * and the kneeboard formatted frequencies differently.
+ */
+export function computeFuelLegs(
+  wps: {
+    waypoint_number: number;
+    waypoint_name?: string;
+    altitude_m: number;
+    speed_ms: number;
+    cumulative_eta?: number;
+    leg_distance_nm?: number;
+  }[],
+  opts: {
+    startFuelLbs: number;
+    emptyLbs: number;
+    unitType: string;
+    /** Stores estimate folded into gross weight. */
+    storesLbs?: number;
+  },
+): FuelLeg[] {
+  const stores = opts.storesLbs ?? 2000;
+  const legs: FuelLeg[] = [];
+  let fuel = opts.startFuelLbs;
+
+  for (let i = 0; i < wps.length; i++) {
+    const wp = wps[i];
+    const prevEta = i > 0 ? (wps[i - 1].cumulative_eta || 0) : 0;
+    const legEta = (wp.cumulative_eta || 0) - prevEta;
+    const legHours = legEta / 3600;
+
+    const altFt = Math.round(wp.altitude_m * 3.28084);
+    const spdKts = Math.round((wp.speed_ms || 0) * 1.94384);
+    const gwLbs = opts.emptyLbs + fuel + stores;
+
+    const flowRate = i === 0
+      ? 0
+      : estimateFuelFlow(altFt, wp.speed_ms || 100, gwLbs, opts.unitType);
+    const burn = i === 0 ? 0 : Math.round(flowRate * legHours);
+
+    fuel = Math.max(0, fuel - burn);
+    legs.push({
+      wp: wp.waypoint_number,
+      name: (wp.waypoint_name || '').substring(0, 7),
+      altFt,
+      spdKts,
+      dist: wp.leg_distance_nm || 0,
+      ete: legEta,
+      burn,
+      remaining: fuel,
+      flowRate: Math.round(flowRate),
+    });
+  }
+  return legs;
+}
+
+// ── Joker / Bingo ────────────────────────────────────────────────────────
+
+/**
+ * Hard floor on bingo fuel, lbs.
+ *
+ * A percentage-of-start bingo puts a Hornet at ~2,100 lbs, which is both a
+ * poor driver for tanker planning and the wrong weight to bring aboard. The
+ * floor forces the decision earlier — go get gas — and keeps recoveries near a
+ * sensible trap weight.
+ */
+export const BINGO_FLOOR_LBS = 4000;
+
+/** Minimum gap between joker and bingo, lbs. Joker has to mean something —
+ *  sitting it 200 lbs above bingo gives the flight no time to act on it. */
+export const JOKER_MARGIN_LBS = 1000;
+
+export interface JokerBingo {
+  joker: number;
+  bingo: number;
+  /** True when the floor raised bingo above the computed/entered value. */
+  bingoFloored: boolean;
+}
+
+/**
+ * Joker and bingo for a flight, with the floor applied.
+ *
+ * Shared by the Fuel Ladder, the Flight Card's TOLD block and the Kneeboard
+ * tab's auto values — three places previously computed these independently
+ * off the same percentages, so any change to the policy had to be made three
+ * times or the cards would disagree about the same flight.
+ */
+export function computeJokerBingo(
+  startFuelLbs: number,
+  override?: { joker?: number; bingo?: number },
+): JokerBingo {
+  const rawBingo = override?.bingo ?? Math.round(startFuelLbs * 0.20);
+  const bingo = Math.max(BINGO_FLOOR_LBS, rawBingo);
+  const rawJoker = override?.joker ?? Math.round(startFuelLbs * 0.35);
+  const joker = Math.max(bingo + JOKER_MARGIN_LBS, rawJoker);
+  return { joker, bingo, bingoFloored: bingo > rawBingo };
+}

@@ -23,12 +23,42 @@ import {
   cell, th, BORDER, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle,
   MissionDateLine,
 } from './cardStyles';
-import type { SOP } from '../sop/types';
+import type { SOP, SopAttachment } from '../sop/types';
 import type { MissionOverviewData } from '../types/mission';
 
 interface SopCommsCardProps {
   sop: SOP;
   overview?: MissionOverviewData;
+  /** 0-based page. One page per source reference sheet when the SOP has
+   *  them; the synthesised fallback is always a single page. */
+  page?: number;
+}
+
+/** Attachments that ARE the squadron's comm reference.
+ *
+ *  The synthesised table below caps every section at a handful of rows, so a
+ *  real squadron comm plan — hundreds of lines — came out heavily truncated.
+ *  When the SOP was built from actual kneeboard sheets (an OZP import, or
+ *  images uploaded for the AI to read), those sheets already say it better
+ *  and completely. Prefer them and skip the re-synthesis entirely.
+ *
+ *  Matches on the human-facing labels rather than the file name alone: OZP
+ *  pages often come through as "page3.png" with the meaning in `category`. */
+const COMMS_HINT = /comm|freq|radio|preset|channel/i;
+
+export function sopCommsSheets(sop: SOP): SopAttachment[] {
+  const all = sop.attachments?.length
+    ? sop.attachments
+    : (sop.attachment ? [sop.attachment] : []);
+  return all.filter(
+    (a) => a.mimeType?.startsWith('image/') &&
+      (COMMS_HINT.test(a.category || '') || COMMS_HINT.test(a.name || '')),
+  );
+}
+
+/** How many cards this SOP emits. ExportPanel needs it to name files. */
+export function sopCommsPageCount(sop: SOP): number {
+  return Math.max(1, sopCommsSheets(sop).length);
 }
 
 const FLIGHT_ROW_CAP = 8;
@@ -50,7 +80,40 @@ function fmtTacan(ch: number | undefined, band: 'X' | 'Y' | undefined, callsign?
   return `${ch}${band ?? 'X'}${callsign ? ' ' + callsign : ''}`;
 }
 
-export function SopCommsCard({ sop, overview }: SopCommsCardProps) {
+export function SopCommsCard({ sop, overview, page = 0 }: SopCommsCardProps) {
+  // If the squadron gave us its own comm sheets, print those. Anything this
+  // card could synthesise is a lossy summary of them.
+  const sheets = sopCommsSheets(sop);
+  if (sheets.length > 0) {
+    const sheet = sheets[Math.min(page, sheets.length - 1)];
+    return (
+      <div style={{ ...cardRoot, padding: 0, position: 'relative' }}>
+        <img
+          src={`data:${sheet.mimeType};base64,${sheet.dataBase64}`}
+          alt={sheet.category || sheet.name}
+          style={{
+            width: '100%',
+            height: '100%',
+            // Never crop a reference sheet — a clipped frequency is worse
+            // than a small one.
+            objectFit: 'contain',
+            objectPosition: 'center',
+            display: 'block',
+            background: '#fff',
+          }}
+        />
+        {sheets.length > 1 && (
+          <div style={{
+            position: 'absolute', bottom: 4, right: 6, fontSize: 12,
+            color: DIM, background: 'rgba(0,0,0,0.55)', padding: '1px 5px',
+          }}>
+            {page + 1}/{sheets.length}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Sort flights by SOP priority so the most-used callsigns sit on top
   // of the printed card. Filter out empty rows (an SOP can carry blank
   // placeholders from the editor).

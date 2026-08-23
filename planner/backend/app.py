@@ -58,7 +58,8 @@ from services.miz_parser import (
 from services.miz_editor import (
     replace_group_waypoints, repack_miz,
     extract_dictionary_from_miz, apply_briefing_edits_to_dictionary,
-    extract_options_from_miz, apply_forced_options_to_options_file,
+    extract_options_from_miz, extract_warehouses_from_miz,
+    apply_forced_options_to_options_file,
     set_waypoint_orbit, clear_waypoint_orbit,
 )
 from services.unit_editor import apply_unit_edits
@@ -246,6 +247,20 @@ SESSION_TTL = _store.ttl_seconds      # imported elsewhere?  preserve as a publi
 MAX_SESSIONS = _store.max_sessions
 _create_session = _store.create
 _get_session = _store.get
+
+
+def _warehouses_for(session) -> str | None:
+    """This session's `warehouses` Lua, or None.
+
+    Carries real per-airfield ownership + supply state, which the mission file
+    itself does not — see extract_warehouses_from_miz. Never raises: a divert
+    list without ownership still renders, a 500 does not.
+    """
+    try:
+        return extract_warehouses_from_miz(session["miz_bytes"])
+    except Exception:  # noqa: BLE001
+        return None
+
 _cleanup_sessions = _store.cleanup
 
 
@@ -399,7 +414,9 @@ def session_signup_sheet(sid):
 
     try:
         mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
-        mission_data = extract_full_mission_data(mission_dict, session.get("theater", "Unknown"))
+        mission_data = extract_full_mission_data(
+            mission_dict, session.get("theater", "Unknown"),
+            warehouses_text=_warehouses_for(session))
     except Exception as e:
         return jsonify({"error": f"Failed to parse mission: {e}"}), 500
 
@@ -546,7 +563,9 @@ def session_aar(sid):
 
     try:
         mission_dict = parse_mission_text(session.get("mission_text", session["original_mission_text"]))
-        mission_data = extract_full_mission_data(mission_dict, session.get("theater", "Unknown"))
+        mission_data = extract_full_mission_data(
+            mission_dict, session.get("theater", "Unknown"),
+            warehouses_text=_warehouses_for(session))
     except Exception as e:
         return jsonify({"error": f"Failed to parse mission: {e}"}), 500
 
@@ -698,7 +717,9 @@ def upload():
             options_text_for_parse = extract_options_from_miz(miz_bytes)
         except Exception:
             options_text_for_parse = None
-        data = extract_full_mission_data(mission_dict, theater, options_text_for_parse)
+        data = extract_full_mission_data(
+            mission_dict, theater, options_text_for_parse,
+            warehouses_text=extract_warehouses_from_miz(miz_bytes))
 
         # Resolve DictKey references in briefing fields. DCS missions
         # store sortie/description/blue/red task as references like
@@ -1101,7 +1122,8 @@ def session_join(sid):
     theater = session["theater"]
     try:
         mission_dict = parse_mission_text(session["original_mission_text"])
-        data = extract_full_mission_data(mission_dict, theater)
+        data = extract_full_mission_data(
+            mission_dict, theater, warehouses_text=_warehouses_for(session))
 
         # Apply current server waypoint state to groups
         for group in data["groups"]:
@@ -1482,7 +1504,9 @@ def export_json():
 
     try:
         mission_dict = parse_mission_text(session["original_mission_text"])
-        data = extract_full_mission_data(mission_dict, session["theater"])
+        data = extract_full_mission_data(
+            mission_dict, session["theater"],
+            warehouses_text=_warehouses_for(session))
 
         # Apply server-authoritative waypoint state
         for group in data["groups"]:
@@ -1559,7 +1583,9 @@ def export_community():
 
     try:
         mission_dict = parse_mission_text(session["original_mission_text"])
-        data = extract_full_mission_data(mission_dict, session["theater"])
+        data = extract_full_mission_data(
+            mission_dict, session["theater"],
+            warehouses_text=_warehouses_for(session))
 
         # Same server-authoritative waypoint state the JSON export applies,
         # so both exports describe the same routes.
@@ -1850,7 +1876,8 @@ def debug_mission(sid):
         mission_dict = parse_mission_text(mission_text)
         theater = session.get("theater", "Unknown")
 
-        data = extract_full_mission_data(mission_dict, theater)
+        data = extract_full_mission_data(
+            mission_dict, theater, warehouses_text=_warehouses_for(session))
         client_units = find_client_units(mission_dict)
         overview = data.get("overview", {})
 
@@ -2236,7 +2263,9 @@ def brief_build_wing():
         from services.miz_editor import extract_dictionary_from_miz
         from services.brief_builder import build_wing_brief
         mission_dict = parse_mission_text(session["original_mission_text"])
-        mission_data = extract_full_mission_data(mission_dict, session["theater"])
+        mission_data = extract_full_mission_data(
+            mission_dict, session["theater"],
+            warehouses_text=_warehouses_for(session))
         # Pull the dictionary so DictKey_* refs resolve to user-visible text.
         dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
         brief = build_wing_brief(
@@ -2384,7 +2413,9 @@ def brief_build_package():
         from services.miz_editor import extract_dictionary_from_miz
         from services.brief_builder import build_wing_brief, build_flight_briefs
         mission_dict = parse_mission_text(session["original_mission_text"])
-        mission_data = extract_full_mission_data(mission_dict, session["theater"])
+        mission_data = extract_full_mission_data(
+            mission_dict, session["theater"],
+            warehouses_text=_warehouses_for(session))
         dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
         kwargs = dict(
             mission_data=mission_data, theater=session["theater"],

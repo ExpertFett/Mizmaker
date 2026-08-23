@@ -57,6 +57,9 @@ export function NotesCard({ text, title, squadron, overview }: NotesCardProps) {
         <div
           style={{
             ...notesBox,
+            // This card exists to BE the notes page, so it opts out of the
+            // quarter-card cap the other cards share.
+            maxHeight: 'none',
             // Preserve the planner's own line breaks + wrap long lines.
             // Slightly larger than the default notesBox font so the
             // text reads at cockpit distance.
@@ -73,6 +76,9 @@ export function NotesCard({ text, title, squadron, overview }: NotesCardProps) {
         <div
           style={{
             ...notesBox,
+            // This card exists to BE the notes page, so it opts out of the
+            // quarter-card cap the other cards share.
+            maxHeight: 'none',
             color: DIM,
             fontStyle: 'italic',
             display: 'flex',

@@ -4,7 +4,8 @@
  */
 
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER_MED, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, MissionDateLine } from './cardStyles';
-import type { MissionGroup, MissionOverviewData } from '../types/mission';
+import type { MissionGroup, MissionOverviewData, RadioPresetRadio } from '../types/mission';
+import { presetLabel } from './radioPresets';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 
 interface SupportAssetsCardProps {
@@ -17,12 +18,15 @@ interface SupportAssetsCardProps {
   page?: number;
   /** Planner-typed notes rendered inside the NOTES box. (v0.9.70) */
   notes?: string;
+  /** Jet's programmed radio presets, used to tag each frequency with the
+   *  channel it sits on. Omitted → frequencies print bare. */
+  presets?: RadioPresetRadio[];
 }
 
 /** Maximum 'OTHER AIR ASSETS' rows on one card before pagination kicks
  *  in. Tankers + AWACS always stay on page 1; only the bulk 'other'
  *  list paginates. Tuned so the card body fits within H=850. */
-const OTHER_PAGE_SIZE = 8;
+const OTHER_PAGE_SIZE = 7;
 
 /** Compute how many cards a given props set would emit. ExportPanel
  *  calls this to know how many filenames to write. */
@@ -54,7 +58,7 @@ function formatSpeed(wp: { speed_ms: number }): string {
   return `${Math.round(msToKnots(wp.speed_ms))} kts`;
 }
 
-export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes }: SupportAssetsCardProps) {
+export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes, presets }: SupportAssetsCardProps) {
   const coalitionGroups = groups.filter((g) => g.coalition === coalition);
   const tankers = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'refueling');
   const awacsGroups = coalitionGroups.filter((g) => (g.task || '').toLowerCase() === 'awacs');
@@ -78,15 +82,20 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
       ? 1
       : 1 + Math.ceil((otherSupport.length - OTHER_PAGE_SIZE) / OTHER_PAGE_SIZE));
 
+  const preset = (f: number) => presetLabel(f, presets);
+
+  // tableLayout:'fixed' — adding the TACAN column let long callsigns push the
+  // table 34px past the card edge under auto layout.
   const renderAssetTable = (assets: MissionGroup[], _role: string) => (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
       <thead>
         <tr>
           <th style={{ ...th, textAlign: 'left' }}>CALLSIGN</th>
-          <th style={{ ...th, width: 80 }}>TYPE</th>
-          <th style={{ ...th, width: 110 }}>FREQ</th>
-          <th style={{ ...th, width: 70 }}>ALT</th>
-          <th style={{ ...th, width: 60 }}>SPD</th>
+          <th style={{ ...th, width: 72 }}>TYPE</th>
+          <th style={{ ...th, width: 118 }}>FREQ</th>
+          <th style={{ ...th, width: 78 }}>TACAN</th>
+          <th style={{ ...th, width: 62 }}>ALT</th>
+          <th style={{ ...th, width: 54 }}>SPD</th>
         </tr>
       </thead>
       <tbody>
@@ -96,9 +105,21 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
           const shortType = acType.replace(/[_-]/g, ' ').split(' ').slice(0, 2).join(' ');
           return (
             <tr key={g.groupId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-              <td style={{ ...cell, fontWeight: 600 }}>{g.groupName}</td>
+              <td style={{ ...cell, fontWeight: 600, overflow: 'hidden',
+                           textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.groupName}</td>
               <td style={{ ...cell, color: DIM, textAlign: 'center' }}>{shortType}</td>
-              <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>{formatFreq(g.frequency, g.modulation)}</td>
+              <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>
+                {formatFreq(g.frequency, g.modulation)}
+                {preset(g.frequency) && (
+                  <span style={{ color: TEXT, marginLeft: 4 }}>{preset(g.frequency)}</span>
+                )}
+              </td>
+              {/* Tankers carry a TACAN; a card that lists a basket without its
+                  channel makes the pilot go hunting for the join-up. Already
+                  parsed off the group's ActivateBeacon task. */}
+              <td style={{ ...cell, textAlign: 'center', color: g.tacan ? ACCENT : DIM }}>
+                {g.tacan ? `${g.tacan.channel}${g.tacan.band}` : '—'}
+              </td>
               <td style={{ ...cell, textAlign: 'right' }}>{orbitWp ? formatAlt(orbitWp) : '—'}</td>
               <td style={{ ...cell, textAlign: 'right' }}>{orbitWp ? formatSpeed(orbitWp) : '—'}</td>
             </tr>
@@ -125,6 +146,13 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
         <>
           <div style={sectionTitle}>TANKERS</div>
           {renderAssetTable(tankers, 'TANKER')}
+          {tankers.some((t) => t.tacan?.callsign) && (
+            <div style={{ fontSize: 13, color: DIM, padding: '2px 0 0' }}>
+              TACAN ident: {tankers.filter((t) => t.tacan?.callsign)
+                .map((t) => `${t.groupName} ${t.tacan!.channel}${t.tacan!.band}/${t.tacan!.callsign}`)
+                .join(' · ')}
+            </div>
+          )}
         </>
       )}
 

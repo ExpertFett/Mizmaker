@@ -9,8 +9,7 @@
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, footerStyle, notesBox, BORDER, TEXT, TEXT_BRIGHT, DIM, ACCENT, ROW_ALT, WARN, MissionDateLine } from './cardStyles';
 import type { MissionGroup, ClientUnit, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
-import { metersToFeet, msToKnots } from '../utils/conversions';
-import { estimateFuelFlow, getAircraftPerf } from './fuelModel';
+import { getAircraftPerf, computeFuelLegs, computeJokerBingo, BINGO_FLOOR_LBS } from './fuelModel';
 
 interface FuelLadderCardProps {
   group: MissionGroup;
@@ -49,47 +48,21 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
   // Gross weight = empty + fuel + stores (estimate stores at 2000 lbs)
   const storesEstLbs = 2000;
 
-  // Compute fuel at each waypoint using physics model
-  const legs: {
-    wp: number; name: string; altFt: number; spdKts: number;
-    dist: number; ete: number; burn: number; remaining: number;
-    flowRate: number;
-  }[] = [];
-
-  let fuel = startFuel;
-  for (let i = 0; i < wps.length; i++) {
-    const wp = wps[i];
-    const prevEta = i > 0 ? (wps[i - 1].cumulative_eta || 0) : 0;
-    const legEta = (wp.cumulative_eta || 0) - prevEta;
-    const legHours = legEta / 3600;
-
-    const altFt = Math.round(metersToFeet(wp.altitude_m));
-    const spdKts = Math.round(msToKnots(wp.speed_ms || 0));
-
-    // Gross weight estimate: empty + fuel + stores
-    const gwLbs = emptyLbs + fuel + storesEstLbs;
-
-    // Estimate fuel flow at this leg's conditions
-    const flowRate = i === 0 ? 0 : estimateFuelFlow(altFt, wp.speed_ms || 100, gwLbs, unitType);
-    const burn = i === 0 ? 0 : Math.round(flowRate * legHours);
-
-    fuel = Math.max(0, fuel - burn);
-    legs.push({
-      wp: wp.waypoint_number,
-      name: (wp.waypoint_name || '').substring(0, 7),
-      altFt,
-      spdKts,
-      dist: wp.leg_distance_nm || 0,
-      ete: legEta,
-      burn,
-      remaining: fuel,
-      flowRate: Math.round(flowRate),
-    });
-  }
+  // Compute fuel at each waypoint. Shared with the Strip Map card so both
+  // annotate identical numbers (see fuelModel.computeFuelLegs).
+  const legs = computeFuelLegs(wps, {
+    startFuelLbs: startFuel,
+    emptyLbs,
+    unitType,
+    storesLbs: storesEstLbs,
+  });
+  const fuel = legs.length ? legs[legs.length - 1].remaining : startFuel;
 
   const totalBurn = startFuel - fuel;
-  const jokerFuel = fuelOverride?.joker ?? Math.round(startFuel * 0.35);
-  const bingoFuel = fuelOverride?.bingo ?? Math.round(startFuel * 0.2);
+  // Floored bingo (see fuelModel.computeJokerBingo) — shared with the Flight
+  // Card and the Kneeboard tab so all three agree.
+  const { joker: jokerFuel, bingo: bingoFuel, bingoFloored } =
+    computeJokerBingo(startFuel, fuelOverride);
 
   function fmtEte(s: number): string {
     if (s <= 0) return '—';
@@ -125,6 +98,9 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
         <div style={{ fontSize: 17 }}>
           <span style={{ color: '#d95050' }}>BINGO </span>
           <span style={{ color: '#d95050', fontWeight: 600 }}>{bingoFuel.toLocaleString()}</span>
+          {bingoFloored && (
+            <span style={{ color: DIM, fontSize: 13 }}> (floor {BINGO_FLOOR_LBS.toLocaleString()})</span>
+          )}
         </div>
         <div style={{ fontSize: 17 }}>
           <span style={{ color: DIM }}>BURN </span>
@@ -247,6 +223,16 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
         fontSize: 19, fontWeight: 600, flexShrink: 0,
       }}>
         <span style={{ color: TEXT }}>TOTAL BURN: {totalBurn.toLocaleString()} lbs</span>
+        {' · '}
+        <span style={{ color: DIM }}>AT RECOVERY </span>
+        <span style={{ color: fuel <= bingoFuel ? '#d95050' : TEXT_BRIGHT, fontWeight: 600 }}>
+          {fuel.toLocaleString()} lbs
+        </span>
+        {' · '}
+        <span style={{ color: DIM }}>MARGIN vs BINGO </span>
+        <span style={{ color: fuel - bingoFuel < 0 ? '#d95050' : '#7fd97f', fontWeight: 600 }}>
+          {(fuel - bingoFuel >= 0 ? '+' : '') + (fuel - bingoFuel).toLocaleString()} lbs
+        </span>
         <span style={{
           color: fuel <= bingoFuel ? '#d95050' : fuel <= jokerFuel ? WARN : TEXT,
         }}>LANDING FUEL: {fuel.toLocaleString()} lbs</span>

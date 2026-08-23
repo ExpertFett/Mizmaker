@@ -9,11 +9,14 @@ coalition→country→category→group hierarchy.
 
 import io
 import json
+import logging
 import re
 import zipfile
 from typing import Dict, List, Any, Optional
 
 from slpp import SLPP
+
+logger = logging.getLogger(__name__)
 
 from services.projection import dcs_to_latlon, THEATERS
 
@@ -120,8 +123,14 @@ def _load_theater_airbases(theater: str) -> list:
     GermanyCW, SouthEastAsia, TopEndAustralia) return [] and we log
     once so it's visible in server logs.
     """
+    # Hand back a fresh copy, never the cached objects themselves. Callers
+    # stamp per-mission state onto these records (airfield ownership from the
+    # warehouses file, for one), and writing into the cache would leak one
+    # mission's front line into every later parse in the same process —
+    # including other users' sessions on the shared server. Shallow is enough:
+    # only top-level keys are ever assigned.
     if theater in _AIRBASE_CACHE:
-        return _AIRBASE_CACHE[theater]
+        return [dict(ab) for ab in _AIRBASE_CACHE[theater]]
 
     pydcs_bases = _load_pydcs_airports(theater)
     json_raw = _THEATER_AIRBASES.get(theater, [])
@@ -160,7 +169,7 @@ def _load_theater_airbases(theater: str) -> list:
             "pydcs, airbases.json, and airbases_lotatc.json all returned empty.",
             theater,
         )
-    return merged
+    return [dict(ab) for ab in merged]
 
 
 CATEGORIES = ["plane", "helicopter", "vehicle", "ship", "static"]
@@ -268,9 +277,61 @@ def _parse_mission_indexed_form(text: str) -> dict:
     return out
 
 
-def extract_full_mission_data(mission_dict: dict, theater: str, options_text: str | None = None) -> dict:
+def _merge_warehouse_airfields(airbases: list, warehouses_text: str | None) -> None:
+    """Stamp real ownership and supply state onto the theater airbase list.
+
+    Airbases come from static per-theater data, which has no notion of who
+    holds a field in THIS mission — every record reads "neutral". The .miz's
+    `warehouses` file does: an `airports` table keyed by the same numeric id
+    pydcs uses, carrying `coalition` ("BLUE"/"RED"/"NEUTRAL") plus the
+    unlimited-fuel/munitions/aircraft flags that decide whether a jet can
+    actually turn around there.
+
+    Mutates `airbases` in place. Silently no-ops on a missing or unparseable
+    warehouses file — a divert list without ownership is worse than one with
+    it, but far better than a 500.
+    """
+    if not warehouses_text:
+        return
+    try:
+        body = warehouses_text[warehouses_text.index("=") + 1:]
+        warehouses = SLPP().decode(body)
+    except Exception as e:  # noqa: BLE001 - never let this break a parse
+        logger.warning("warehouses parse failed, airfield ownership unavailable: %s", e)
+        return
+    if not isinstance(warehouses, dict):
+        return
+    airports = warehouses.get("airports")
+    if not isinstance(airports, dict):
+        return
+
+    for ab in airbases:
+        entry = airports.get(ab.get("id"))
+        if not isinstance(entry, dict):
+            continue
+        side = str(entry.get("coalition", "")).strip().lower()
+        if side in ("blue", "red", "neutral"):
+            ab["coalition"] = side
+        ab["supplies"] = {
+            "fuel": bool(entry.get("unlimitedFuel")),
+            "munitions": bool(entry.get("unlimitedMunitions")),
+            "aircraft": bool(entry.get("unlimitedAircrafts")),
+        }
+
+
+def extract_full_mission_data(
+    mission_dict: dict,
+    theater: str,
+    options_text: str | None = None,
+    warehouses_text: str | None = None,
+) -> dict:
     """
     Extract complete mission data for the frontend.
+
+    `warehouses_text` is the raw Lua from the .miz's `warehouses` file. When
+    supplied, each airbase gets its real `coalition` and a `supplies` block;
+    without it every airbase stays "neutral", which is what the mission file
+    itself reports.
 
     `options_text` is the raw Lua text from the .miz's `options` file (if
     available). When supplied, missionOptions falls back to the
@@ -290,8 +351,10 @@ def extract_full_mission_data(mission_dict: dict, theater: str, options_text: st
     threats = []
     airbases = []
 
-    # Load static airbase data for this theater
+    # Load static airbase data for this theater, then overlay this mission's
+    # actual airfield ownership + supply state from the .miz warehouses file.
     airbases = _load_theater_airbases(theater)
+    _merge_warehouse_airfields(airbases, warehouses_text)
 
     coalition_data = mission_dict.get("coalition", {})
     for side in COALITIONS:

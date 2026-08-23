@@ -12,6 +12,7 @@ import type { MissionOverviewData } from '../types/mission';
 import { metersToFeet, msToKnots } from '../utils/conversions';
 import { generateMetar } from '../utils/metar';
 import { resolveClouds } from '../utils/cloudPresets';
+import { contrailSummary } from './contrails';
 
 interface WeatherBriefCardProps {
   overview: MissionOverviewData;
@@ -157,6 +158,13 @@ export function WeatherBriefCard({ overview, notes }: WeatherBriefCardProps) {
       <div style={rowStyle}>
         <span style={lbl}>Surface Temp</span>
         <span style={val}>{Math.round(wx.temperature_c)}°C / {tempF}°F</span>
+      </div>
+      {/* A visible trail gives the flight away, so where it starts is
+          tactical information, not trivia. Estimated from surface temp —
+          see contrails.ts for the method and its limits. */}
+      <div style={rowStyle}>
+        <span style={lbl}>Contrails</span>
+        <span style={val}>{contrailSummary(wx.temperature_c)}</span>
       </div>
 
       {/* Wind layers */}

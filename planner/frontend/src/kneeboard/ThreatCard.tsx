@@ -8,6 +8,7 @@ import { formatCoord, type CoordFormat } from './coords';
 import type { ThreatRing, MissionOverviewData } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';
+import { clusterThreatSites } from './threatSites';
 
 /** How much of the threat picture to reveal on the kneeboard. Used as
  *  a "difficulty" slider — full intelligence for a teaching mission,
@@ -61,10 +62,26 @@ const PAGE1_ROWS = 8;
 const PAGEN_ROWS = 18;
 
 /** Compute how many cards a given threat list needs. */
+/** Enemy threats collapsed to one entry per emplacement, longest-ranged
+ *  first. Both the page count and the render go through here so they can
+ *  never disagree about how many rows exist. */
+function threatRows(threats: ThreatRing[], playerCoalition: string) {
+  const enemy = threats.filter(
+    (t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
+  const enriched = enemy.map((t) => ({ ...t, info: lookupSam(t.type) }));
+  // Family = NATO designation, so an S-300's search and track radars group
+  // as one SA-10 site instead of reading as three separate threats.
+  return clusterThreatSites(
+    enriched,
+    (t) => t.info?.nato || t.type,
+    (t) => (t.info?.rangeKm ?? metersToNm(t.range)),
+  ).map((site) => ({ ...site.lead, siteCount: site.count }));
+}
+
 export function threatCardPageCount(props: Pick<ThreatCardProps, 'threats' | 'playerCoalition'>): number {
-  const enemy = props.threats.filter((t) => t.coalition !== props.playerCoalition && t.lat != null && t.lon != null);
-  if (enemy.length <= PAGE1_ROWS) return 1;
-  return 1 + Math.ceil((enemy.length - PAGE1_ROWS) / PAGEN_ROWS);
+  const rows = threatRows(props.threats, props.playerCoalition);
+  if (rows.length <= PAGE1_ROWS) return 1;
+  return 1 + Math.ceil((rows.length - PAGE1_ROWS) / PAGEN_ROWS);
 }
 
 /* ---- SAM lookup (mirrors ThreatLibraryTab) ---- */
@@ -121,13 +138,10 @@ export function ThreatCard({
   threats, playerCoalition, overview, page = 0, fidelity = 'full',
   mapVisible = true, notes, coordFormat = 'mgrs',
 }: ThreatCardProps) {
-  const enemy = threats.filter((t) => t.coalition !== playerCoalition && t.lat != null && t.lon != null);
-
-  // Enrich with SAM info and sort by range descending
-  const enriched = enemy.map((t) => {
-    const info = lookupSam(t.type);
-    return { ...t, info };
-  }).sort((a, b) => (b.info?.rangeKm ?? metersToNm(b.range)) - (a.info?.rangeKm ?? metersToNm(a.range)));
+  // One row per emplacement, not per vehicle. 44 raw units on Kola M4 were
+  // 7 systems; paginating the raw list produced 2nd and 3rd cards that
+  // repeated the first.
+  const enriched = threatRows(threats, playerCoalition);
 
   // Page slicing: page 0 holds map + first PAGE1_ROWS rows; pages 1+
   // carry additional PAGEN_ROWS rows each (no map repeated).
@@ -304,6 +318,9 @@ export function ThreatCard({
                     </td>
                     <td style={{ ...cell, color }}>
                       {designation}
+                      {t.siteCount > 1 && (
+                        <span style={{ color: DIM, marginLeft: 5 }}>×{t.siteCount}</span>
+                      )}
                     </td>
                     {fidelity === 'full' && (
                       <td style={{ ...cell, textAlign: 'center', color: DIM }}>

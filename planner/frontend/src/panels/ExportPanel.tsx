@@ -24,7 +24,8 @@ import { PopupAttackCard } from '../kneeboard/PopupAttackCard';
 import { BullseyeRefCard } from '../kneeboard/BullseyeRefCard';
 import { WeatherBriefCard } from '../kneeboard/WeatherBriefCard';
 import { ThreatCard, threatCardPageCount } from '../kneeboard/ThreatCard';
-import { SopCommsCard } from '../kneeboard/SopCommsCard';
+import { SopCommsCard, sopCommsPageCount } from '../kneeboard/SopCommsCard';
+import { presetsForUnits } from '../kneeboard/radioPresets';
 import { TransponderCard } from '../kneeboard/TransponderCard';
 import { DmpiCard } from '../kneeboard/DmpiCard';
 import { NotesCard } from '../kneeboard/NotesCard';
@@ -205,11 +206,18 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           const pageCount = supportAssetsPageCount({ groups, coalition });
           for (let p = 0; p < pageCount; p++) {
             const fname = pageCount === 1 ? 'Support_Assets.png' : `Support_Assets_${p + 1}.png`;
-            await addCard(sharedType, fname, createElement(SupportAssetsCard, { groups, coalition, page: p, notes: cardNotes.supportAssets }));
+            await addCard(sharedType, fname, createElement(SupportAssetsCard, { presets: presetsForUnits(clientUnits), groups, coalition, page: p, notes: cardNotes.supportAssets }));
           }
         }
         if (cards.radioLadder)
-          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, { groups, coalition, notes: cardNotes.radioLadder }));
+          await addCard(sharedType, 'Radio_Ladder.png', createElement(RadioLadderCard, {
+            groups, coalition,
+            // Shared card: no flight is "selected" in a bulk export, so
+            // anchor the ladder on the first player flight.
+            group: playerGroups[0], airbases,
+            sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits),
+            order: kneeboardSettings.radioLadderOrder,
+            notes: cardNotes.radioLadder }));
         if (cards.airbaseRef)
           await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, {
             airbases, theater: theater || '', groups, coalition,
@@ -237,9 +245,13 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         // already shows a "select SOP" hint if the toggle is on but no
         // SOP is loaded; here we just silently skip rather than emit an
         // empty card.
-        if (cards.sopComms && activeSop)
-          await addCard(sharedType, 'SOP_Comms.png',
-            createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined }));
+        if (cards.sopComms && activeSop) {
+          const sopPages = sopCommsPageCount(activeSop);
+          for (let p = 0; p < sopPages; p++)
+            await addCard(sharedType,
+              sopPages > 1 ? `SOP_Comms_${p + 1}.png` : 'SOP_Comms.png',
+              createElement(SopCommsCard, { sop: activeSop, overview: overview || undefined, page: p }));
+        }
         // Transponder / IFF — same gate as the carousel + standalone-zip
         // paths (KneeboardTab). Without this block the card showed in the
         // preview but never landed in the injected .miz. (v1.19.83)

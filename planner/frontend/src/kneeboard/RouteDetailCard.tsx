@@ -8,7 +8,7 @@
  */
 
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, BG, TEXT, DIM, ACCENT, ROW_ALT, footerStyle, notesBox, FONT, W as CARD_W, MissionDateLine } from './cardStyles';
-import type { MissionGroup, ThreatRing, MissionOverviewData, Waypoint } from '../types/mission';
+import type { MissionGroup, ThreatRing, MissionOverviewData, Waypoint, MissionDrawing } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { metersToFeet } from '../utils/conversions';
 import { TileMap, createProjection } from './TileMap';
@@ -22,9 +22,12 @@ interface RouteDetailCardProps {
   notes?: string;
   /** Coordinate display format from the Kneeboard tab. (v0.9.76) */
   coordFormat?: CoordFormat;
+  /** Mission drawings from the .miz — borders, labels, zones the mission maker
+   *  drew in the ME. Rendered under the route so the route stays readable. */
+  drawings?: MissionDrawing[];
 }
 
-export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs' }: RouteDetailCardProps) {
+export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs', drawings = [] }: RouteDetailCardProps) {
   const airframe = getAircraftType(group);
   const wps = group.waypoints;
 
@@ -42,7 +45,7 @@ export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs' }
           DEP/ARR/WP markers and leg-distance labels. No threats: the
           Threat Card owns the threat picture; this card is pure route.
           (v0.9.73) Only renders when the route has ≥2 plottable waypoints. */}
-      <RouteMap group={group} />
+      <RouteMap group={group} drawings={drawings} />
 
       {/* Route waypoint table — pure route detail, no threat columns. */}
       <div style={sectionTitle}>ROUTE WAYPOINTS</div>
@@ -106,10 +109,15 @@ export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs' }
 // Taller map (v0.9.72) now that the threat tables are gone — the card
 // is mostly map + the route waypoint table.
 const ROUTE_MAP_W = CARD_W - 24;
-const ROUTE_MAP_H = 360;
+// Sized to fill the card: with notes capped at a quarter card, 360 left a
+// ~50px dead strip above the footer. The map takes it.
+const ROUTE_MAP_H = 408;
 const NICE_SCALE_NM = [5, 10, 20, 25, 50, 100, 150, 200, 300];
 
-function RouteMap({ group }: { group: MissionGroup }) {
+/** Off-frame slack before a drawing is dropped, in px. */
+const PAD_PX = 40;
+
+function RouteMap({ group, drawings = [] }: { group: MissionGroup; drawings?: MissionDrawing[] }) {
   // Plottable waypoints — need at least two to draw a line.
   const pts = group.waypoints.filter(
     (w): w is Waypoint & { lat: number; lon: number } => w.lat != null && w.lon != null,
@@ -162,6 +170,58 @@ function RouteMap({ group }: { group: MissionGroup }) {
           maxLon={maxLon}
         >
           <svg width={ROUTE_MAP_W} height={ROUTE_MAP_H} style={{ display: 'block' }}>
+            {/* Mission drawings — whatever the mission maker drew in the ME:
+                borders, boundaries, labelled areas. Drawn FIRST so the route
+                and threat rings sit on top of them. Note DCS stores drawing
+                coords as [lon, lat], the opposite order to everything else on
+                this card. */}
+            {drawings.map((d, di) => {
+              const stroke = d.color || 'rgba(255,255,255,0.8)';
+              const w = Math.max(1, (d.thickness || 2) / 2);
+              // Skip anything wholly outside the frame. A national border is
+              // theater-wide while this map is zoomed to one flight's route, so
+              // most drawings contribute nothing but hundreds of off-screen
+              // points for html2canvas to chew through on every card.
+              const visible = (xy: [number, number][]) =>
+                xy.some(([x, y]) => x > -PAD_PX && x < ROUTE_MAP_W + PAD_PX
+                                 && y > -PAD_PX && y < ROUTE_MAP_H + PAD_PX);
+              if ((d.type === 'Line' || d.type === 'Polygon') && d.coords && d.coords.length >= 2) {
+                const xy = d.coords.map(([lon, lat]) => proj.project(lat, lon));
+                if (!visible(xy)) return null;
+                const pts = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+                return d.type === 'Polygon' || d.closed ? (
+                  <polygon key={`dw-${di}`} points={pts} fill={d.fillColor || 'none'}
+                           stroke={stroke} strokeWidth={w} strokeOpacity={0.85} />
+                ) : (
+                  <polyline key={`dw-${di}`} points={pts} fill="none"
+                            stroke={stroke} strokeWidth={w} strokeOpacity={0.85}
+                            strokeLinejoin="round" />
+                );
+              }
+              if (d.type === 'Polygon' && d.polygonMode === 'circle'
+                  && d.lat != null && d.lon != null && d.radius) {
+                const [cx, cy] = proj.project(d.lat, d.lon);
+                if (!visible([[cx, cy]])) return null;
+                return (
+                  <circle key={`dw-${di}`} cx={cx} cy={cy} r={proj.metersToPixels(d.radius)}
+                          fill={d.fillColor || 'none'} stroke={stroke}
+                          strokeWidth={w} strokeOpacity={0.85} />
+                );
+              }
+              if (d.type === 'TextBox' && d.lat != null && d.lon != null && d.text) {
+                const [tx, ty] = proj.project(d.lat, d.lon);
+                if (!visible([[tx, ty]])) return null;
+                return (
+                  <text key={`dw-${di}`} x={tx} y={ty} fontSize={12} fill={stroke}
+                        stroke="#000" strokeWidth={2.5} paintOrder="stroke"
+                        fontWeight={600}>
+                    {d.text}
+                  </text>
+                );
+              }
+              return null;
+            })}
+
             {/* Route line */}
             <polyline points={polyline} fill="none"
               stroke="#4ad0e0" strokeWidth={2.5} strokeOpacity={0.95}
