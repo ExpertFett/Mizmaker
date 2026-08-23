@@ -260,9 +260,12 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
             <thead>
               <tr>
                 <th style={{ ...th, textAlign: 'left' }}>LOCATION</th>
-                <th style={{ ...th, width: 100 }}>TYPE</th>
-                <th style={{ ...th, width: 130 }}>BRG / RNG (BE)</th>
-                <th style={{ ...th, width: 150 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
+                {/* TYPE holds short tags (HOME/DIVERT/THREAT); the width it
+                    had was sized for the header, not the content. The room
+                    goes to LOCATION, where the names actually are. */}
+                <th style={{ ...th, width: 76 }}>TYPE</th>
+                <th style={{ ...th, width: 118 }}>BE BRG/RNG</th>
+                <th style={{ ...th, width: 124 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
               </tr>
             </thead>
           <tbody>
@@ -289,7 +292,10 @@ export function BullseyeRefCard({ overview, airbases, groups, threats, coalition
                 <td style={{ ...cell, textAlign: 'center', color: DIM,
                               fontFamily: "'B612 Mono', monospace",
                               fontSize: coordFormat === 'mgrs' ? 19 : 14 }}>
-                  {formatCoord(pt.lat, pt.lon, coordFormat, 4)}
+                  {/* 3, not 4: every other card prints 6-figure MGRS, and a
+                      10-figure grid on a reference row is precision this card
+                      does not have and nobody reads off a kneeboard. */}
+                  {formatCoord(pt.lat, pt.lon, coordFormat, 3)}
                 </td>
               </tr>
             ))}

@@ -212,6 +212,42 @@ function sortByPhase(rows: LadderRow[]): LadderRow[] {
   return [...rows].sort((a, b) => PHASES.indexOf(a.phase) - PHASES.indexOf(b.phase));
 }
 
+/** Suffix marking a duplicated rung, so a copy keeps a distinct id. */
+const COPY_MARK = '~copy';
+
+/**
+ * Duplicate a rung.
+ *
+ * A recovery net gets briefed twice — Marshal at the top of the ladder for
+ * the departure stack and again at the bottom for recovery — and the derived
+ * ladder only ever emits a frequency once. Copying a rung lets the planner
+ * put the same agency where it is actually used, rather than reading a card
+ * that mentions it in only one of the two places it matters.
+ *
+ * The copy carries a distinct id so the saved order can place the two
+ * independently; everything else about it is identical.
+ */
+export function duplicateRow(rows: LadderRow[], id: string): LadderRow[] {
+  const i = rows.findIndex((r) => r.id === id);
+  if (i < 0) return rows;
+  // Number the copies so a third duplicate does not collide with the second.
+  let n = 2;
+  while (rows.some((r) => r.id === `${id}${COPY_MARK}${n}`)) n++;
+  const copy: LadderRow = { ...rows[i], id: `${id}${COPY_MARK}${n}` };
+  return [...rows.slice(0, i + 1), copy, ...rows.slice(i + 1)];
+}
+
+/** True when this row is a duplicate of another. */
+export function isCopy(id: string): boolean {
+  return id.includes(COPY_MARK);
+}
+
+/** The id a copy was made from. */
+export function originalId(id: string): string {
+  const i = id.indexOf(COPY_MARK);
+  return i < 0 ? id : id.slice(0, i);
+}
+
 /**
  * Apply a planner's custom rung order.
  *
@@ -226,7 +262,14 @@ export function applyLadderOrder(rows: LadderRow[], order?: string[]): LadderRow
   const out: LadderRow[] = [];
   for (const id of order) {
     const row = byId.get(id);
-    if (row) { out.push(row); byId.delete(id); }
+    if (row) { out.push(row); byId.delete(id); continue; }
+    // A duplicated rung has no counterpart in the derived ladder — it only
+    // exists in the saved order. Rebuild it from the row it was copied from,
+    // so copies survive a reload the same way a reorder does.
+    if (isCopy(id)) {
+      const src = rows.find((r) => r.id === originalId(id));
+      if (src) out.push({ ...src, id });
+    }
   }
   return [...out, ...byId.values()];
 }

@@ -9,12 +9,17 @@
  * live against one source of truth.
  *
  * What each handle means:
- *   AP      horizontal → run-in distance from the action point to the target
+ *   IP / AP vertical   → ingress altitude (both sit on the run-in)
  *   PDP     vertical   → apex altitude
  *           horizontal → climb angle (back-solved from the AP→apex leg)
  *   RP      vertical   → release altitude
  *           horizontal → dive angle (back-solved from the apex→release leg)
- *   IP      vertical   → ingress altitude
+ *   TGT     horizontal → run-in distance from the action point to the target
+ *
+ * Each handle is constrained to the axis its point can actually move along.
+ * IP and AP are pinned horizontally by the chart, so letting them take a
+ * horizontal drag meant the value changed while the dot sat still — which
+ * reads as a handle that does not work.
  *
  * Angles are back-solved rather than dragged directly because the leg on
  * screen IS the angle — moving the release point further out and expecting
@@ -25,7 +30,7 @@
  * of text somewhere else.
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   computePopupAttack, type PopupAttackInput, type AttackPoint,
 } from '../../utils/popupAttack';
@@ -38,7 +43,28 @@ const H = 260;
 const PAD = { left: 52, right: 16, top: 14, bottom: 30 };
 
 /** Handles the planner can grab, keyed by the profile point they sit on. */
-type HandleId = 'IP' | 'AP' | 'PDP' | 'RP';
+type HandleId = 'IP' | 'AP' | 'PDP' | 'RP' | 'TGT';
+
+/**
+ * Which way each handle can actually move.
+ *
+ * The chart pins IP at 0 NM and AP at a fixed run-in offset, so those two
+ * cannot follow a horizontal drag no matter what the drag sets — pulling them
+ * sideways changed a number while the dot stayed put, which reads as a broken
+ * handle. Constrain each to the axis its point can genuinely move along, and
+ * let the cursor say so.
+ */
+const AXIS: Record<HandleId, 'x' | 'y' | 'xy'> = {
+  IP: 'y',     // ingress altitude; the marker is a fixed run-in reference
+  AP: 'y',     // shares the ingress altitude, pinned in range
+  PDP: 'xy',   // apex altitude + climb angle
+  RP: 'xy',    // release altitude + dive angle
+  TGT: 'x',    // run-in distance — the target is what moves, not the AP
+};
+
+const CURSOR: Record<'x' | 'y' | 'xy', string> = {
+  x: 'ew-resize', y: 'ns-resize', xy: 'move',
+};
 
 interface Props {
   profile: PopupAttackInput;
@@ -88,10 +114,19 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
         break;
 
       case 'AP':
-        // How far out the pull-up happens. The chart's own AP sits at a fixed
-        // 5 NM, so this drives the target distance instead.
-        onPatch({ vipDistanceNm: Math.max(0.5, Math.round(nm * 2) / 2) });
+        // AP sits at the ingress altitude, so vertically it is the same
+        // control as IP. Horizontal is handled by TGT, which is the point
+        // that actually moves when the run-in distance changes.
+        onPatch({ ingressAltitudeFtAgl: Math.max(0, Math.round((ft - tElev) / 50) * 50) });
         break;
+
+      case 'TGT': {
+        // Distance from the action point out to the target.
+        const ap2 = pts.find((p) => p.label === 'AP');
+        const fromAp = nm - (ap2?.distanceNm ?? 0);
+        onPatch({ vipDistanceNm: Math.max(0.5, Math.round(fromAp * 2) / 2) });
+        break;
+      }
 
       case 'PDP': {
         // Apex altitude, and the climb angle implied by where it now sits
@@ -122,15 +157,37 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
     }
   }, [profile, pts, onPatch]);
 
-  const onMove = (e: React.MouseEvent) => {
+  const moveFrom = useCallback((clientX: number, clientY: number) => {
     if (!dragging || !svgRef.current) return;
     const r = svgRef.current.getBoundingClientRect();
     // The SVG scales to its container, so client px must be mapped back
     // through the viewBox before they mean anything in chart units.
-    const x = ((e.clientX - r.left) / r.width) * W;
-    const y = ((e.clientY - r.top) / r.height) * H;
-    applyDrag(dragging, nmOf(x), ftOf(y));
-  };
+    const x = ((clientX - r.left) / r.width) * W;
+    const y = ((clientY - r.top) / r.height) * H;
+    const p = pts.find((q) => q.label === dragging);
+    const axis = AXIS[dragging];
+    // Feed the point's own value back on the axis it cannot move along, so a
+    // slightly-off drag never nudges the other parameter.
+    applyDrag(
+      dragging,
+      axis === 'y' ? (p?.distanceNm ?? nmOf(x)) : nmOf(x),
+      axis === 'x' ? (p?.altitudeFtMsl ?? ftOf(y)) : ftOf(y),
+    );
+  }, [dragging, pts, applyDrag, nmOf, ftOf]);
+
+  // Track on the window while dragging: releasing or sliding outside the
+  // chart used to strand the drag, because the handlers lived on the SVG.
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e: MouseEvent) => { e.preventDefault(); moveFrom(e.clientX, e.clientY); };
+    const up = () => setDragging(null);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [dragging, moveFrom]);
 
   // --- findings, by the handle they belong to ---------------------------
   const fieldToHandle: Partial<Record<PopupFinding['field'], HandleId>> = {
@@ -153,8 +210,8 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
 
   const handles: HandleId[] = profile.attackType === 'type1'
     || profile.attackType === 'type2' || profile.attackType === 'type3'
-    ? ['IP', 'AP', 'PDP', 'RP']
-    : ['IP', 'AP', 'RP'];
+    ? ['IP', 'AP', 'PDP', 'RP', 'TGT']
+    : ['IP', 'AP', 'RP', 'TGT'];
 
   return (
     <div>
@@ -166,9 +223,6 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
           borderRadius: 4, cursor: dragging ? 'grabbing' : 'default',
           touchAction: 'none', userSelect: 'none',
         }}
-        onMouseMove={onMove}
-        onMouseUp={() => setDragging(null)}
-        onMouseLeave={() => setDragging(null)}
       >
         {/* altitude gridlines */}
         {[0, 0.25, 0.5, 0.75, 1].map((f) => {
@@ -202,7 +256,7 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
         <text x={PAD.left} y={H - 10} fill="#555555" fontSize={9} textAnchor="start" />
 
         {/* fixed markers the planner does not drag */}
-        {['TGT', 'REC'].map((label) => {
+        {['REC'].map((label) => {
           const p = at(label);
           if (!p) return null;
           return (
@@ -223,12 +277,25 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
           return (
             <g key={id}
                onMouseDown={(e) => { e.preventDefault(); setDragging(id); }}
-               style={{ cursor: 'grab' }}>
+               style={{ cursor: CURSOR[AXIS[id]] }}>
               {/* Generous invisible target — a 5px dot is hard to grab. */}
               <circle cx={xOf(p.distanceNm)} cy={yOf(p.altitudeFtMsl)} r={14} fill="transparent" />
               <circle cx={xOf(p.distanceNm)} cy={yOf(p.altitudeFtMsl)} r={6}
                       fill={dragging === id ? color : '#141414'}
                       stroke={color} strokeWidth={2} />
+              {/* Axis hint: a short bar through the handle showing which way
+                  it moves. Without it, a handle that only takes vertical drag
+                  looks identical to one that takes both. */}
+              {AXIS[id] === 'y' && (
+                <line x1={xOf(p.distanceNm)} y1={yOf(p.altitudeFtMsl) - 10}
+                      x2={xOf(p.distanceNm)} y2={yOf(p.altitudeFtMsl) + 10}
+                      stroke={color} strokeWidth={1} opacity={0.5} />
+              )}
+              {AXIS[id] === 'x' && (
+                <line x1={xOf(p.distanceNm) - 10} y1={yOf(p.altitudeFtMsl)}
+                      x2={xOf(p.distanceNm) + 10} y2={yOf(p.altitudeFtMsl)}
+                      stroke={color} strokeWidth={1} opacity={0.5} />
+              )}
               <text x={xOf(p.distanceNm)} y={yOf(p.altitudeFtMsl) - 12}
                     fill={color} fontSize={11} fontWeight={600} textAnchor="middle">{id}</text>
             </g>
@@ -238,7 +305,7 @@ export function PopupProfileCanvas({ profile, onPatch }: Props) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between',
                     fontSize: 10, color: '#777777', padding: '3px 2px 0' }}>
-        <span>Drag IP / AP / PDP / RP. Altitude ft MSL, distance NM along the run.</span>
+        <span>Drag IP / AP / PDP / RP / TGT. Bars show which way a handle moves.</span>
         <span>
           {Math.round(profile.popupAngleDeg)}° climb · {Math.round(profile.diveAngleDeg)}° dive
         </span>

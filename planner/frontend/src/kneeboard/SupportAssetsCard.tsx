@@ -44,18 +44,43 @@ export function supportAssetsPageCount(props: Pick<SupportAssetsCardProps, 'grou
   return 1 + Math.ceil((others.length - OTHER_PAGE_SIZE) / OTHER_PAGE_SIZE);
 }
 
+/** AM is the default for every DCS air radio, so only FM is worth the space
+ *  the label costs. */
 function formatFreq(freq: number, mod: number): string {
-  return `${freq.toFixed(3)} ${mod === 0 ? 'AM' : 'FM'}`;
+  if (!(freq > 0)) return '—';
+  return mod === 0 ? freq.toFixed(3) : `${freq.toFixed(3)} FM`;
+}
+
+/** DCS type ids are long enough to overflow the column ("KC135MPRS" wanted
+ *  125px in 84). Map the common support airframes to what a briefer says. */
+// Short enough to fit the column beside the frequency, channel and TACAN.
+// "KC-135M" keeps the MPRS distinction — the M is the drogue variant, which
+// is the half a Hornet driver actually needs.
+const TYPE_SHORT: [RegExp, string][] = [
+  [/^KC[-_]?135.*MPRS/i, 'KC-135M'],
+  [/^KC[-_]?135/i, 'KC-135'],
+  [/^KC[-_]?130/i, 'KC-130'],
+  [/^S[-_]?3B?/i, 'S-3B'],
+  [/^E[-_]?2/i, 'E-2C'],
+  [/^E[-_]?3/i, 'E-3A'],
+  [/^A[-_]?50/i, 'A-50'],
+  [/^IL[-_]?78/i, 'IL-78'],
+  [/^C[-_]?130/i, 'C-130'],
+];
+
+function shortTypeOf(acType: string): string {
+  for (const [re, label] of TYPE_SHORT) if (re.test(acType)) return label;
+  return acType.replace(/[_-]/g, ' ').split(' ').slice(0, 2).join(' ');
 }
 
 function formatAlt(wp: { altitude_m: number }): string {
   const ft = Math.round(metersToFeet(wp.altitude_m));
   if (ft <= 0) return 'SFC';
-  return `${ft.toLocaleString()} ft`;
+  return ft.toLocaleString();
 }
 
 function formatSpeed(wp: { speed_ms: number }): string {
-  return `${Math.round(msToKnots(wp.speed_ms))} kts`;
+  return String(Math.round(msToKnots(wp.speed_ms)));
 }
 
 export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes, presets }: SupportAssetsCardProps) {
@@ -91,28 +116,37 @@ export function SupportAssetsCard({ groups, coalition, overview, page = 0, notes
       <thead>
         <tr>
           <th style={{ ...th, textAlign: 'left' }}>CALLSIGN</th>
-          <th style={{ ...th, width: 72 }}>TYPE</th>
-          <th style={{ ...th, width: 118 }}>FREQ</th>
-          <th style={{ ...th, width: 78 }}>TACAN</th>
-          <th style={{ ...th, width: 62 }}>ALT</th>
-          <th style={{ ...th, width: 54 }}>SPD</th>
+          <th style={{ ...th, width: 78 }}>TYPE</th>
+          <th style={{ ...th, width: 84 }}>FREQ</th>
+          {/* Preset gets its own column. Appended to the frequency it needed
+              162px in a 130px cell, so the channel — the number the pilot
+              actually dials — was the part that got clipped off. */}
+          <th style={{ ...th, width: 42 }}>CH</th>
+          <th style={{ ...th, width: 58 }}>TCN</th>
+          {/* Units live in the header so the cells hold digits only:
+              "26,000 ft" needed 86px in a 74px cell. */}
+          <th style={{ ...th, width: 62 }}>ALT ft</th>
+          <th style={{ ...th, width: 54 }}>KTS</th>
         </tr>
       </thead>
       <tbody>
         {assets.map((g, i) => {
           const orbitWp = g.waypoints.find((wp) => wp.waypoint_number > 0) || g.waypoints[0];
           const acType = g.units[0]?.type || '—';
-          const shortType = acType.replace(/[_-]/g, ' ').split(' ').slice(0, 2).join(' ');
+          const shortType = shortTypeOf(acType);
           return (
             <tr key={g.groupId} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, fontWeight: 600, overflow: 'hidden',
                            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.groupName}</td>
-              <td style={{ ...cell, color: DIM, textAlign: 'center' }}>{shortType}</td>
+              <td style={{ ...cell, color: DIM, textAlign: 'center', fontSize: 14,
+                           overflow: 'hidden', textOverflow: 'ellipsis',
+                           whiteSpace: 'nowrap' }}>{shortType}</td>
               <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>
                 {formatFreq(g.frequency, g.modulation)}
-                {preset(g.frequency) && (
-                  <span style={{ color: TEXT, marginLeft: 4 }}>{preset(g.frequency)}</span>
-                )}
+              </td>
+              <td style={{ ...cell, textAlign: 'center',
+                           color: preset(g.frequency) ? TEXT : DIM }}>
+                {preset(g.frequency).replace(/[()]/g, '') || '—'}
               </td>
               {/* Tankers carry a TACAN; a card that lists a basket without its
                   channel makes the pilot go hunting for the join-up. Already

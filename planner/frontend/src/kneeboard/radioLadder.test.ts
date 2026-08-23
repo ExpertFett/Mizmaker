@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRadioLadder, applyLadderOrder, type LadderRow } from './radioLadder';
+import { buildRadioLadder, applyLadderOrder, duplicateRow, isCopy, originalId, type LadderRow } from './radioLadder';
 
 const wp = (lat: number, lon: number) => ({
   waypoint_number: 0, waypoint_name: '', waypoint_type: '', waypoint_action: '',
@@ -170,5 +170,56 @@ describe('applyLadderOrder', () => {
 
   it('passes through when there is no saved order', () => {
     expect(applyLadderOrder(rows)).toBe(rows);
+  });
+});
+
+describe('duplicateRow', () => {
+  const rows = [
+    { id: 'a', phase: 'GROUND', agency: 'A', freqMhz: 1, modulation: 0 },
+    { id: 'mar', phase: 'MARSHAL', agency: 'Marshal', freqMhz: 264, modulation: 0 },
+    { id: 'c', phase: 'GUARD', agency: 'C', freqMhz: 243, modulation: 0 },
+  ] as LadderRow[];
+
+  it('inserts the copy right after its source', () => {
+    const out = duplicateRow(rows, 'mar');
+    expect(out.map((r) => r.id)).toEqual(['a', 'mar', 'mar~copy2', 'c']);
+  });
+
+  it('copies everything but the id', () => {
+    const copy = duplicateRow(rows, 'mar')[2];
+    expect(copy).toMatchObject({ phase: 'MARSHAL', agency: 'Marshal', freqMhz: 264 });
+    expect(copy.id).not.toBe('mar');
+  });
+
+  it('numbers a second copy so ids never collide', () => {
+    const once = duplicateRow(rows, 'mar');
+    const twice = duplicateRow(once, 'mar');
+    expect(new Set(twice.map((r) => r.id)).size).toBe(twice.length);
+  });
+
+  it('is a no-op for an unknown id', () => {
+    expect(duplicateRow(rows, 'nope')).toBe(rows);
+  });
+
+  it('recognises copies and traces them back', () => {
+    const copy = duplicateRow(rows, 'mar')[2];
+    expect(isCopy(copy.id)).toBe(true);
+    expect(isCopy('mar')).toBe(false);
+    expect(originalId(copy.id)).toBe('mar');
+    expect(originalId('mar')).toBe('mar');
+  });
+
+  it('survives a reload — applyLadderOrder rebuilds copies from the order', () => {
+    // The copy exists only in the saved order; the derived ladder never
+    // emits a frequency twice.
+    const order = ['mar~copy2', 'a', 'mar', 'c'];
+    const out = applyLadderOrder(rows, order);
+    expect(out.map((r) => r.id)).toEqual(order);
+    expect(out[0]).toMatchObject({ agency: 'Marshal', freqMhz: 264 });
+  });
+
+  it('drops a copy whose source is gone rather than inventing a rung', () => {
+    const out = applyLadderOrder(rows, ['gone~copy2', 'a']);
+    expect(out.map((r) => r.id)).toEqual(['a', 'mar', 'c']);
   });
 });

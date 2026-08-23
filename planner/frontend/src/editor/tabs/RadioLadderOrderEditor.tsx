@@ -13,7 +13,7 @@
  */
 
 import { useState } from 'react';
-import type { LadderRow } from '../../kneeboard/radioLadder';
+import { duplicateRow, isCopy, type LadderRow } from '../../kneeboard/radioLadder';
 
 interface Props {
   rows: LadderRow[];
@@ -43,10 +43,16 @@ export function RadioLadderOrderEditor({ rows, order, onChange }: Props) {
     onChange(ids);
   };
 
+  // Copy a rung so the same net can sit in two places — Marshal at the top
+  // for the departure stack and again at the bottom for recovery.
+  const copy = (id: string) => onChange(duplicateRow(rows, id).map((r) => r.id));
+
+  const remove = (id: string) => onChange(rows.filter((r) => r.id !== id).map((r) => r.id));
+
   return (
     <div>
       <div style={{ fontSize: 11, color: '#888888', marginBottom: 5 }}>
-        Drag to set the order rungs print in.
+        Drag to reorder. Copy puts the same net at two points in the flow.
         {order.length > 0 && (
           <button
             type="button"
@@ -72,7 +78,7 @@ export function RadioLadderOrderEditor({ rows, order, onChange }: Props) {
             onDrop={(e) => { e.preventDefault(); if (dragId) move(dragId, r.id); }}
             style={{
               display: 'grid',
-              gridTemplateColumns: '18px 74px 1fr auto',
+              gridTemplateColumns: '18px 70px 1fr auto auto',
               alignItems: 'center',
               gap: 6,
               padding: '3px 6px',
@@ -91,7 +97,39 @@ export function RadioLadderOrderEditor({ rows, order, onChange }: Props) {
               {r.agency}
             </span>
             <span style={{ color: '#7aa7ff', fontFamily: 'monospace' }}>
-              {r.freqMhz.toFixed(3)}
+              {r.freqMhz > 0 ? r.freqMhz.toFixed(3) : '—'}
+            </span>
+            {/* Copy duplicates the rung; a duplicate can be removed again.
+                Derived rungs are not removable — they come back on rebuild. */}
+            <span style={{ display: 'flex', gap: 3 }}>
+              <button
+                type="button"
+                title="Copy this rung — put the same net at another point in the flow"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => copy(r.id)}
+                style={{
+                  fontSize: 10, cursor: 'pointer', padding: '0 5px',
+                  background: 'transparent', color: '#7aa7ff',
+                  border: '1px solid #3a3a3a', borderRadius: 2,
+                }}
+              >
+                copy
+              </button>
+              {isCopy(r.id) && (
+                <button
+                  type="button"
+                  title="Remove this copy"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => remove(r.id)}
+                  style={{
+                    fontSize: 10, cursor: 'pointer', padding: '0 5px',
+                    background: 'transparent', color: '#e06666',
+                    border: '1px solid #3a3a3a', borderRadius: 2,
+                  }}
+                >
+                  ×
+                </button>
+              )}
             </span>
           </div>
         ))}

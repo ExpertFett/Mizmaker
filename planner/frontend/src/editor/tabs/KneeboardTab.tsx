@@ -15,7 +15,7 @@ import { FlightCard } from '../../kneeboard/FlightCard';
 import { StationLoadoutCard } from '../../kneeboard/StationLoadoutCard';
 import { RouteProfileCard } from '../../kneeboard/RouteProfileCard';
 import { sampleRoute, fetchRouteTerrain, type RouteSample } from '../../utils/routeProfile';
-import { AirfieldDiagramCard } from '../../kneeboard/AirfieldDiagramCard';
+import { AirfieldDiagramCard, airfieldCardCount } from '../../kneeboard/AirfieldDiagramCard';
 import { airfieldsForFlight } from '../../utils/airfieldSelect';
 import { fetchFieldElevations } from '../../utils/fieldElevation';
 import { CommsCard } from '../../kneeboard/CommsCard';
@@ -237,13 +237,16 @@ export function KneeboardTab() {
       const fields = airfieldsForFlight(g, airbases, coalition);
       // One elevation request for all the fields rather than one each.
       const elevs = await fetchFieldElevations(fields);
-      for (const [i, ab] of fields.entries()) {
+      const pages = airfieldCardCount(fields.length);
+      for (let pg = 0; pg < pages; pg++) {
         const el = createElement(AirfieldDiagramCard, {
-          airbase: ab, elevationFt: elevs[i], coalition,
+          airbases: fields, elevationFt: elevs, coalition, page: pg,
           overview: overview || undefined, coordFormat, notes: cardNotes.airfieldDiagram,
         });
-        const fieldName = ab.name.replace(/[^A-Za-z0-9]+/g, '_');
-        results.push({ name: `${safeName}_Field_${fieldName}.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+        results.push({
+          name: pages > 1 ? `${safeName}_Fields_${pg + 1}.png` : `${safeName}_Fields.png`,
+          blob: await renderCardToBlob(el, theme, customThemeVars),
+        });
       }
     }
     if (cards.comms) {
@@ -1332,11 +1335,13 @@ function CardCarousel({
         });
       }
       if (cards.airfieldDiagram) {
-        for (const [i, ab] of diagramFields.entries()) {
+        const pages = airfieldCardCount(diagramFields.length);
+        for (let pg = 0; pg < pages; pg++) {
           list.push({
-            key: `airfieldDiagram-${ab.name}`, label: `Field — ${ab.name}`,
+            key: `airfieldDiagram-${pg}`,
+            label: pages > 1 ? `Airfield Diagrams (${pg + 1}/${pages})` : 'Airfield Diagrams',
             element: createElement(AirfieldDiagramCard, {
-              airbase: ab, elevationFt: fieldElevations[i], coalition,
+              airbases: diagramFields, elevationFt: fieldElevations, coalition, page: pg,
               overview: overview || undefined, coordFormat, notes: cardNotes.airfieldDiagram,
             }),
           });

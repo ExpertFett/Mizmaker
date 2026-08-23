@@ -13,7 +13,7 @@ import { FlightCard } from '../kneeboard/FlightCard';
 import { StationLoadoutCard } from '../kneeboard/StationLoadoutCard';
 import { RouteProfileCard } from '../kneeboard/RouteProfileCard';
 import { sampleRoute, fetchRouteTerrain } from '../utils/routeProfile';
-import { AirfieldDiagramCard } from '../kneeboard/AirfieldDiagramCard';
+import { AirfieldDiagramCard, airfieldCardCount } from '../kneeboard/AirfieldDiagramCard';
 import { airfieldsForFlight } from '../utils/airfieldSelect';
 import { fetchFieldElevations } from '../utils/fieldElevation';
 import { CommsCard } from '../kneeboard/CommsCard';
@@ -177,11 +177,12 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
           if (cards.airfieldDiagram) {
             const fields = airfieldsForFlight(g, airbases, coalition);
             const elevs = await fetchFieldElevations(fields);
-            for (const [i, ab] of fields.entries())
+            const fieldPages = airfieldCardCount(fields.length);
+            for (let pg = 0; pg < fieldPages; pg++)
               await addCard(aircraftType,
-                `${safeName}_Field_${ab.name.replace(/[^A-Za-z0-9]+/g, '_')}.png`,
+                fieldPages > 1 ? `${safeName}_Fields_${pg + 1}.png` : `${safeName}_Fields.png`,
                 createElement(AirfieldDiagramCard, {
-                  airbase: ab, elevationFt: elevs[i], coalition,
+                  airbases: fields, elevationFt: elevs, coalition, page: pg,
                   coordFormat: kneeboardSettings.coordFormat,
                   notes: cardNotes.airfieldDiagram,
                 }));

@@ -21,7 +21,7 @@ import {
 } from './cardStyles';
 import type { MissionGroup, MissionOverviewData, ClientUnit } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
-import { planformFor, planformPath } from './aircraftPlanform';
+import { planformFor, planformPath, subShapePath } from './aircraftPlanform';
 import { assignFlightLaserCodes, DEFAULT_LASER_BASE } from '../sop/flightLaserCodes';
 
 interface Props {
@@ -33,7 +33,7 @@ interface Props {
   notes?: string;
 }
 
-const DIAGRAM_H = 300;
+const DIAGRAM_H = 272;
 
 /** Trim a store name to something that fits a station box. */
 function storeLabel(p: { shortName?: string; name?: string }): string {
@@ -67,20 +67,21 @@ export function StationLoadoutCard({
   });
 
   const VB = 100;                       // planform coordinate space
-  const jetH = 150;                     // px the outline occupies
-  const boxTop = jetH + 22;
-  const boxH = 52;
-  const gap = 4;
+  // The jet is drawn nearly card-width so each station sits close to being
+  // directly above its own box — narrow, the leader lines fanned out across
+  // half the card and the diagram read as a spider rather than a loadout.
   const cardInner = 552;
+  const jetW = 470;
+  const jetH = 196;
+  const boxTop = jetH + 16;
+  const boxH = 54;
+  const gap = 3;
   const boxW = loaded.length > 0
     ? Math.min(96, (cardInner - gap * (loaded.length - 1)) / loaded.length)
     : 0;
   const rowW = loaded.length * boxW + gap * (loaded.length - 1);
   const rowLeft = (cardInner - rowW) / 2;
 
-  // Jet is drawn centred at the same scale as the box row so a station's
-  // marker sits above its own box.
-  const jetW = jetH * 0.95;
   const jetLeft = (cardInner - jetW) / 2;
   const jx = (x: number) => jetLeft + (x / VB) * jetW;
   const jy = (y: number) => (y / VB) * jetH;
@@ -105,14 +106,26 @@ export function StationLoadoutCard({
       ) : (
         <svg width={cardInner} height={DIAGRAM_H} style={{ display: 'block', margin: '4px auto 0' }}>
           {/* jet */}
-          <g transform={`translate(${jetLeft},0) scale(${jetW / VB},${jetH / VB})`}>
-            <path d={planformPath(plan)} fill="#232323" stroke={BORDER_MED} strokeWidth={1.6} />
+          <g transform={`translate(${jetLeft},0) scale(${jetW / VB},${jetH / VB})`}
+             strokeLinejoin="round">
+            <path d={planformPath(plan)} fill="#242424" stroke="#6e6e6e"
+                  strokeWidth={0.7} vectorEffect="non-scaling-stroke" />
+            {/* Fins and nacelles sit on top of the body, filled slightly
+                lighter so the shape reads at kneeboard size. */}
+            {(plan.details ?? []).map((d, i) => (
+              <g key={`d${i}`}>
+                <path d={subShapePath(d)} fill="#2c2c2c" stroke="#5a5a5a"
+                      strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+                <path d={subShapePath(d, true)} fill="#2c2c2c" stroke="#5a5a5a"
+                      strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+              </g>
+            ))}
             {(plan.fins ?? []).map((fin, i) => (
-              <g key={i}>
-                <polyline points={fin.map(([x, y]) => `${x},${y}`).join(' ')}
-                          fill="none" stroke={BORDER_MED} strokeWidth={1.6} />
-                <polyline points={fin.map(([x, y]) => `${100 - x},${y}`).join(' ')}
-                          fill="none" stroke={BORDER_MED} strokeWidth={1.6} />
+              <g key={`f${i}`}>
+                <path d={subShapePath(fin)} fill="#333333" stroke="#6e6e6e"
+                      strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+                <path d={subShapePath(fin, true)} fill="#333333" stroke="#6e6e6e"
+                      strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
               </g>
             ))}
           </g>
@@ -127,18 +140,21 @@ export function StationLoadoutCard({
             return (
               <g key={p.number}>
                 {/* leader from the pylon down to its box */}
-                <line x1={px} y1={py} x2={cx} y2={boxTop} stroke="#3d3d3d" strokeWidth={1} />
-                <circle cx={px} cy={py} r={3.5} fill={ACCENT} />
+                {/* Down from the pylon, then across — an elbow reads as a
+                    callout, where a long diagonal reads as clutter. */}
+                <polyline points={`${px},${py} ${px},${boxTop - 9} ${cx},${boxTop - 4} ${cx},${boxTop}`}
+                          fill="none" stroke="#4a4a4a" strokeWidth={1} />
+                <circle cx={px} cy={py} r={3} fill={ACCENT} />
 
                 <rect x={bx} y={boxTop} width={boxW} height={boxH}
                       fill="#1b1b1b" stroke={BORDER_MED} strokeWidth={1} rx={2} />
-                <text x={cx} y={boxTop + 14} fill={ACCENT} fontSize={13} fontWeight={700}
+                <text x={cx} y={boxTop + 15} fill={ACCENT} fontSize={13} fontWeight={700}
                       textAnchor="middle">{p.number}</text>
-                <text x={cx} y={boxTop + 29} fill={TEXT} fontSize={11} textAnchor="middle">
+                <text x={cx} y={boxTop + 31} fill={TEXT} fontSize={11} textAnchor="middle">
                   {storeLabel(p)}
                 </text>
                 {code != null && (
-                  <text x={cx} y={boxTop + 43} fill={WARN} fontSize={11} textAnchor="middle">
+                  <text x={cx} y={boxTop + 46} fill={WARN} fontSize={11} textAnchor="middle">
                     L {code}
                   </text>
                 )}

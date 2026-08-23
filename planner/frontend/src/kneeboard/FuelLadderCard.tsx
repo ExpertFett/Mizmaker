@@ -130,14 +130,17 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
       {/* Fuel ladder table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', flexShrink: 0 }}>
         <colgroup>
-          <col style={{ width: 28 }} />
+          {/* Each column was 2-6px under what its own content needs, which
+              clips the last glyph of "10,803" and the header of "WP". The
+              gauge is the only column with slack, so it gives the width up. */}
+          <col style={{ width: 34 }} />
+          <col style={{ width: 58 }} />
           <col style={{ width: 52 }} />
-          <col style={{ width: 48 }} />
-          <col style={{ width: 42 }} />
-          <col style={{ width: 42 }} />
-          <col style={{ width: 50 }} />
-          <col style={{ width: 56 }} />
-          <col style={{ width: 64 }} />
+          <col style={{ width: 46 }} />
+          <col style={{ width: 44 }} />
+          <col style={{ width: 52 }} />
+          <col style={{ width: 58 }} />
+          <col style={{ width: 72 }} />
           <col />
         </colgroup>
         <thead>
