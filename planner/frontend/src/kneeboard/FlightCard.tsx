@@ -6,11 +6,14 @@
 import { cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle, cell, th, BORDER, TEXT, DIM, ACCENT, ROW_ALT, WARN, footerStyle, notesBox, MissionDateLine } from './cardStyles';
 import type { MissionGroup, ClientUnit, DonorInfo, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
+import { assignFlightLaserCodes, DEFAULT_LASER_BASE } from '../sop/flightLaserCodes';
 import { getAircraftPerf, computeJokerBingo } from './fuelModel';
 
 interface FlightCardProps {
   group: MissionGroup;
   clientUnits: ClientUnit[];
+  /** SOP laser ladder start, for the per-aircrew codes. */
+  laserCodeBase?: number;
   overview?: MissionOverviewData;
   /** When set, highlight this pilot's row in the crew roster. */
   highlightUnitId?: number;
@@ -31,9 +34,13 @@ function withStn(m: DonorInfo, units: ClientUnit[]): string {
   return stn ? `${m.name} (${stn})` : m.name;
 }
 
-export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride }: FlightCardProps) {
+export function FlightCard({ group, clientUnits, overview, highlightUnitId, notes, fuelOverride, flightDataOverride, laserCodeBase }: FlightCardProps) {
   const airframe = getAircraftType(group);
   const flightUnits = clientUnits.filter((cu) => cu.groupName === group.groupName);
+
+  // Laser codes for the whole roster. Allocated across every client unit in
+  // the mission so two flights are never briefed the same code.
+  const laserCodes = assignFlightLaserCodes(clientUnits, laserCodeBase ?? DEFAULT_LASER_BASE);
 
   // Aggregate loadout across all pylons for first unit (representative)
   const rep = flightUnits[0];
@@ -131,8 +138,13 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
                 {cu.voiceCallsignLabel} {cu.voiceCallsignNumber}
               </td>
               <td style={{ ...cell, textAlign: 'center', color: DIM }}>{cu.stnL16 || '—'}</td>
-              <td style={{ ...cell, textAlign: 'center', color: cu.laserCode ? WARN : DIM }}>
-                {cu.laserCode || '—'}
+              {/* Every jet gets a code, not just the ones with something
+                  laser-guided aboard — a clean jet may still be asked to
+                  buddy-lase, and needs a briefed, deconflicted code to do it.
+                  Loaded codes show bright, briefing assignments dim. */}
+              <td style={{ ...cell, textAlign: 'center',
+                           color: cu.laserCode != null ? WARN : DIM }}>
+                {laserCodes.get(cu.unitId) ?? '—'}
               </td>
               <td style={{ ...cell, fontSize: 17, color: isHighlighted ? '#ccdae8' : DIM }}>{cu.name}</td>
             </tr>
@@ -166,26 +178,26 @@ export function FlightCard({ group, clientUnits, overview, highlightUnitId, note
 
           {/* Loadout */}
           <div style={sectionTitle}>LOADOUT</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, width: 40 }}>STN</th>
-                <th style={{ ...th, textAlign: 'left' }}>WEAPON</th>
-                <th style={{ ...th, width: 80 }}>CATEGORY</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rep.pylons ?? [])
-                .filter((p) => p.name)
-                .map((p, i) => (
-                  <tr key={p.number} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
-                    <td style={{ ...cell, textAlign: 'center', color: ACCENT }}>{p.number}</td>
-                    <td style={cell}>{p.shortName || p.name}</td>
-                    <td style={{ ...cell, textAlign: 'center', color: DIM }}>{p.category}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          {/* One line per station used to be one ROW per station, which put a
+              fully loaded Hornet 171px past the bottom of the card. The
+              Station Loadout card carries the stores drawn on the airframe;
+              this only needs to say what is where. */}
+          {/* Flex-wrap rather than inline spans: each station is nowrap so a
+              store name never splits across lines, and the row needs a break
+              opportunity BETWEEN them or a nine-station Hornet runs off the
+              right edge. */}
+          <div style={{
+            padding: '4px 16px', fontSize: 16, color: TEXT, lineHeight: 1.45,
+            borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', flexWrap: 'wrap', columnGap: 10, rowGap: 1,
+          }}>
+            {(rep.pylons ?? []).filter((p) => p.name).map((p) => (
+              <span key={p.number} style={{ whiteSpace: 'nowrap' }}>
+                <span style={{ color: ACCENT, fontWeight: 600 }}>{p.number}</span>
+                {' '}{p.shortName || p.name}
+              </span>
+            ))}
+          </div>
 
           {/* Weapon totals */}
           {weaponSummary.length > 0 && (

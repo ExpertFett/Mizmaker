@@ -12,6 +12,12 @@ import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useEditStore, type KneeboardCards } from '../../store/editStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { FlightCard } from '../../kneeboard/FlightCard';
+import { StationLoadoutCard } from '../../kneeboard/StationLoadoutCard';
+import { RouteProfileCard } from '../../kneeboard/RouteProfileCard';
+import { sampleRoute, fetchRouteTerrain, type RouteSample } from '../../utils/routeProfile';
+import { AirfieldDiagramCard } from '../../kneeboard/AirfieldDiagramCard';
+import { airfieldsForFlight } from '../../utils/airfieldSelect';
+import { fetchFieldElevations } from '../../utils/fieldElevation';
 import { CommsCard } from '../../kneeboard/CommsCard';
 import { RouteDetailCard } from '../../kneeboard/RouteDetailCard';
 import { StripMapCard, stripMapPageCount } from '../../kneeboard/StripMapCard';
@@ -49,6 +55,9 @@ import { isPlayerGroup } from '../../utils/groups';
 const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
   { key: 'lineup', label: 'Lineup Card', desc: 'Waypoints, coords, alt, speed, ETE' },
   { key: 'flight', label: 'Flight Card', desc: 'Callsigns, loadout, fuel, datalink' },
+  { key: 'stationLoadout', label: 'Station Loadout', desc: 'Stores drawn on the airframe, one box per pylon, with laser codes' },
+  { key: 'routeProfile', label: 'Route Profile', desc: 'Side view: terrain under the route, planned altitude, per-leg MSA' },
+  { key: 'airfieldDiagram', label: 'Airfield Diagrams', desc: 'Generated plate per usable field: runway headings, ATC, elevation' },
   { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
   { key: 'stripMap', label: 'Strip Map', desc: 'North-up route map with per-leg doghouse (MC / DIST / TIME / ALT)' },
@@ -81,6 +90,9 @@ const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[]
 const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean }[] = [
   { key: 'lineup', label: 'Route Card', perFlight: true },
   { key: 'flight', label: 'Flight Card', perFlight: true },
+  { key: 'stationLoadout', label: 'Station Loadout', perFlight: true },
+  { key: 'routeProfile', label: 'Route Profile', perFlight: true },
+  { key: 'airfieldDiagram', label: 'Airfield Diagrams', perFlight: true },
   { key: 'comms', label: 'Comms Card', perFlight: true },
   { key: 'routeDetail', label: 'Route Detail', perFlight: true },
   { key: 'stripMap', label: 'Strip Map', perFlight: true },
@@ -201,8 +213,38 @@ export function KneeboardTab() {
       results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.flight) {
-      const el = createElement(FlightCard, { group: g, clientUnits, overview: overview || undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[g.groupName], flightDataOverride: flightDataOverrides[g.groupName] });
+      const el = createElement(FlightCard, { group: g, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[g.groupName], flightDataOverride: flightDataOverrides[g.groupName] });
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    if (cards.stationLoadout) {
+      const el = createElement(StationLoadoutCard, {
+        group: g, clientUnits, overview: overview || undefined,
+        laserCodeBase: activeSop?.laserCodeBase, notes: cardNotes.stationLoadout,
+      });
+      results.push({ name: `${safeName}_Stations.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    if (cards.routeProfile) {
+      // Terrain has to be in hand before the card is rasterised — html2canvas
+      // captures whatever is on screen at that instant, so an in-flight fetch
+      // would export an empty profile.
+      const samples = await fetchRouteTerrain(sampleRoute(g.waypoints));
+      const el = createElement(RouteProfileCard, {
+        group: g, samples, overview: overview || undefined, notes: cardNotes.routeProfile,
+      });
+      results.push({ name: `${safeName}_Profile.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+    }
+    if (cards.airfieldDiagram) {
+      const fields = airfieldsForFlight(g, airbases, coalition);
+      // One elevation request for all the fields rather than one each.
+      const elevs = await fetchFieldElevations(fields);
+      for (const [i, ab] of fields.entries()) {
+        const el = createElement(AirfieldDiagramCard, {
+          airbase: ab, elevationFt: elevs[i], coalition,
+          overview: overview || undefined, coordFormat, notes: cardNotes.airfieldDiagram,
+        });
+        const fieldName = ab.name.replace(/[^A-Za-z0-9]+/g, '_');
+        results.push({ name: `${safeName}_Field_${fieldName}.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+      }
     }
     if (cards.comms) {
       const el = createElement(CommsCard, { group: g, allGroups: groups, overview: overview || undefined, notes: cardNotes.comms, airbases, sopComms: activeSop?.comms });
@@ -1228,6 +1270,37 @@ function CardCarousel({
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedPilotId, setSelectedPilotId] = useState<number | null>(null);
 
+  // Terrain for the Route Profile preview. Fetched rather than computed, so
+  // it arrives after the first paint — the card renders its planned-altitude
+  // line immediately and the ground fills in when the samples land.
+  const [profileSamples, setProfileSamples] = useState<RouteSample[]>([]);
+  useEffect(() => {
+    if (!cards.routeProfile || !selectedGroup) { setProfileSamples([]); return; }
+    const base = sampleRoute(selectedGroup.waypoints);
+    setProfileSamples(base);
+    let live = true;
+    fetchRouteTerrain(base).then((withTerrain) => {
+      // Guard the late resolve: switching flights mid-fetch must not paint
+      // the previous route's terrain onto the new one.
+      if (live) setProfileSamples(withTerrain);
+    });
+    return () => { live = false; };
+  }, [cards.routeProfile, selectedGroup]);
+
+  // Airfields for the diagram set, and their elevations. Same late-resolve
+  // guard as the profile: switching flights mid-fetch must not paint the
+  // previous flight's numbers onto the new one.
+  const diagramFields = useMemo(
+    () => (cards.airfieldDiagram ? airfieldsForFlight(selectedGroup, airbases, coalition) : []),
+    [cards.airfieldDiagram, selectedGroup, airbases, coalition]);
+  const [fieldElevations, setFieldElevations] = useState<(number | null)[]>([]);
+  useEffect(() => {
+    if (diagramFields.length === 0) { setFieldElevations([]); return; }
+    let live = true;
+    fetchFieldElevations(diagramFields).then((e) => { if (live) setFieldElevations(e); });
+    return () => { live = false; };
+  }, [diagramFields]);
+
   // Build pilot list for the Tactical C/S selector (units in selected group)
   const pilots = useMemo(() => {
     if (!selectedGroup) return [];
@@ -1255,7 +1328,36 @@ function CardCarousel({
       if (cards.flight) {
         list.push({
           key: 'flight', label: 'Flight Card',
-          element: createElement(FlightCard, { group: selectedGroup, clientUnits, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[selectedGroup.groupName], flightDataOverride: flightDataOverrides[selectedGroup.groupName] }),
+          element: createElement(FlightCard, { group: selectedGroup, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[selectedGroup.groupName], flightDataOverride: flightDataOverrides[selectedGroup.groupName] }),
+        });
+      }
+      if (cards.airfieldDiagram) {
+        for (const [i, ab] of diagramFields.entries()) {
+          list.push({
+            key: `airfieldDiagram-${ab.name}`, label: `Field — ${ab.name}`,
+            element: createElement(AirfieldDiagramCard, {
+              airbase: ab, elevationFt: fieldElevations[i], coalition,
+              overview: overview || undefined, coordFormat, notes: cardNotes.airfieldDiagram,
+            }),
+          });
+        }
+      }
+      if (cards.routeProfile) {
+        list.push({
+          key: 'routeProfile', label: 'Route Profile',
+          element: createElement(RouteProfileCard, {
+            group: selectedGroup, samples: profileSamples,
+            overview: overview || undefined, notes: cardNotes.routeProfile,
+          }),
+        });
+      }
+      if (cards.stationLoadout) {
+        list.push({
+          key: 'stationLoadout', label: 'Station Loadout',
+          element: createElement(StationLoadoutCard, {
+            group: selectedGroup, clientUnits, overview: overview || undefined,
+            laserCodeBase: activeSop?.laserCodeBase, notes: cardNotes.stationLoadout,
+          }),
         });
       }
       if (cards.comms) {

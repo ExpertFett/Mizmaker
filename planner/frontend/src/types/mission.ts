@@ -320,6 +320,10 @@ export interface PylonInfo {
   name: string;
   shortName: string;
   category: string;
+  /** Laser code set on THIS station. A jet can carry a pod on one code and
+   *  an LGB on another, which the unit-level laserCode cannot express.
+   *  Null when the store does not use one. (v1.19.122) */
+  laserCode?: number | null;
 }
 
 export interface GroupRenamerData {

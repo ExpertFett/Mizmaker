@@ -10,6 +10,12 @@ import type { WaypointEdit } from '../types/mission';
 import { isPlayerGroup } from '../utils/groups';
 import { RouteCard } from '../kneeboard/RouteCard';
 import { FlightCard } from '../kneeboard/FlightCard';
+import { StationLoadoutCard } from '../kneeboard/StationLoadoutCard';
+import { RouteProfileCard } from '../kneeboard/RouteProfileCard';
+import { sampleRoute, fetchRouteTerrain } from '../utils/routeProfile';
+import { AirfieldDiagramCard } from '../kneeboard/AirfieldDiagramCard';
+import { airfieldsForFlight } from '../utils/airfieldSelect';
+import { fetchFieldElevations } from '../utils/fieldElevation';
 import { CommsCard } from '../kneeboard/CommsCard';
 import { RouteDetailCard } from '../kneeboard/RouteDetailCard';
 import { StripMapCard } from '../kneeboard/StripMapCard';
@@ -156,7 +162,30 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
               createElement(RouteCard, { group: g, weather: wx, coordFormat: kneeboardSettings.coordFormat, speedRef: kneeboardSettings.speedRef as any, machThreshold: kneeboardSettings.machThreshold, notes: cardNotes.lineup }));
           if (cards.flight)
             await addCard(aircraftType, `${safeName}_Flight.png`,
-              createElement(FlightCard, { group: g, clientUnits, notes: cardNotes.flight }));
+              createElement(FlightCard, { group: g, clientUnits, notes: cardNotes.flight,
+                laserCodeBase: activeSop?.laserCodeBase }));
+          if (cards.stationLoadout)
+            await addCard(aircraftType, `${safeName}_Stations.png`,
+              createElement(StationLoadoutCard, { group: g, clientUnits,
+                notes: cardNotes.stationLoadout, laserCodeBase: activeSop?.laserCodeBase }));
+          if (cards.routeProfile) {
+            const samples = await fetchRouteTerrain(sampleRoute(g.waypoints));
+            await addCard(aircraftType, `${safeName}_Profile.png`,
+              createElement(RouteProfileCard, { group: g, samples,
+                notes: cardNotes.routeProfile }));
+          }
+          if (cards.airfieldDiagram) {
+            const fields = airfieldsForFlight(g, airbases, coalition);
+            const elevs = await fetchFieldElevations(fields);
+            for (const [i, ab] of fields.entries())
+              await addCard(aircraftType,
+                `${safeName}_Field_${ab.name.replace(/[^A-Za-z0-9]+/g, '_')}.png`,
+                createElement(AirfieldDiagramCard, {
+                  airbase: ab, elevationFt: elevs[i], coalition,
+                  coordFormat: kneeboardSettings.coordFormat,
+                  notes: cardNotes.airfieldDiagram,
+                }));
+          }
           if (cards.comms)
             await addCard(aircraftType, `${safeName}_Comms.png`,
               createElement(CommsCard, { group: g, allGroups: groups, notes: cardNotes.comms }));

@@ -125,6 +125,13 @@ _srtm_data = srtm.get_data()
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 # Disable Flask's built-in static serving — our catch-all handles everything.
 # static_url_path="" conflicts with the SPA catch-all (both match /<path:path>).
+logger = logging.getLogger(__name__)
+
+# Upper bound on one batch elevation request. A route profile samples a few
+# hundred points; anything far past that is a mistake or an attempt to use
+# the endpoint as a bulk terrain scraper.
+MAX_ELEVATION_POINTS = 2000
+
 app = Flask(__name__, static_folder=None)
 
 CORS(app)
@@ -1854,12 +1861,43 @@ def projections():
 
 @app.route("/api/elevation/<float:lat>/<float:lon>", methods=["GET"])
 def elevation(lat, lon):
+    """Elevation in metres at one point.
+
+    Was SRTM-only, which covers 60S-60N — so every Kola query (69N) returned
+    null. Now falls through to the global tile set. See services/elevation.py.
+    """
     try:
-        elev = _srtm_data.get_elevation(lat, lon)
-        return jsonify({"elevation": elev})
-    except Exception as e:
-        # SRTM tile download may have failed or timed out
+        from services.elevation import get_elevation as _get_elev
+        return jsonify({"elevation": _get_elev(lat, lon, _srtm_data)})
+    except Exception:  # noqa: BLE001
         return jsonify({"elevation": None})
+
+
+@app.route("/api/elevation/batch", methods=["POST"])
+def elevation_batch():
+    """Elevations for many points at once.
+
+    Body: {"points": [[lat, lon], ...]}
+    Returns: {"elevations": [metres | null, ...]} — same order and length.
+
+    A route terrain profile wants a few hundred samples along a line. One
+    request that groups them by source tile is the difference between a
+    handful of tile fetches and one per point.
+    """
+    body = request.get_json(silent=True) or {}
+    points = body.get("points")
+    if not isinstance(points, list):
+        return jsonify({"error": "points must be a list of [lat, lon]"}), 400
+    if len(points) > MAX_ELEVATION_POINTS:
+        return jsonify({
+            "error": f"too many points (max {MAX_ELEVATION_POINTS})",
+        }), 400
+    try:
+        from services.elevation import get_elevations
+        return jsonify({"elevations": get_elevations(points, _srtm_data)})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("elevation batch failed: %s", e)
+        return jsonify({"elevations": [None] * len(points)})
 
 
 @app.route("/api/sessions/<sid>/debug", methods=["GET"])

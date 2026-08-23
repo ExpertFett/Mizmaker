@@ -49,4 +49,7 @@ openpyxl>=3.1
 # nixpacks.toml for Railway. Lazy-imported with a graceful fallback to PDF
 # bytes when Poppler is missing.
 pdf2image>=1.17
-
+# Pillow — decodes the global Terrarium elevation tiles in services/elevation.py.
+# Arrived transitively via python-pptx before; declared now that it is a
+# direct dependency.
+Pillow>=10.0

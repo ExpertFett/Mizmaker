@@ -667,17 +667,27 @@ def find_client_units(mission: dict) -> list:
             p = pylons_raw[pnum]
             clsid = p.get("CLSID", "")
             full_name = resolve_clsid(clsid)
+            # Per-pylon laser code as well as the unit-level one. The station
+            # loadout diagram shows which STATION carries which code — a jet
+            # can have a pod on one code and an LGB on another, which the
+            # single unit-level value cannot express.
+            pylon_code = None
+            settings = p.get("settings", {})
+            if isinstance(settings, dict) and "laser_code" in settings:
+                try:
+                    pylon_code = int(settings["laser_code"])
+                except (TypeError, ValueError):
+                    pylon_code = None
             pylons.append({
                 "number": pnum,
                 "clsid": clsid,
                 "name": full_name,
                 "shortName": short_weapon_name(full_name),
+                "laserCode": pylon_code,
             })
-            # Extract laser code from first laser-carrying pylon
-            if laser_code is None and clsid in LASER_CLSIDS:
-                settings = p.get("settings", {})
-                if isinstance(settings, dict) and "laser_code" in settings:
-                    laser_code = int(settings["laser_code"])
+            # Unit-level code: first laser-carrying pylon wins.
+            if laser_code is None and clsid in LASER_CLSIDS and pylon_code is not None:
+                laser_code = pylon_code
 
         # Extract radio presets stored in the .miz. Structure (per unit):
         #   unit["Radio"][1].channels = {1: 251.000, 2: 305.000, ...}
