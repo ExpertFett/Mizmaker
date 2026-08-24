@@ -14,6 +14,8 @@ const OVERLAY_LAYERS = [
   { id: 'drawings', label: 'Drawings' },
   { id: 'plannerDrawings', label: 'Plan Overlays' },
   { id: 'triggerZones', label: 'Trigger Zones' },
+  // Real road/rail network from the DCS terrain files (default off).
+  { id: 'dcsRoads', label: 'DCS Roads/Rails' },
 ];
 
 // Per-category filter labels — order matches the typical

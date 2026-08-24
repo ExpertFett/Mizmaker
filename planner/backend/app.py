@@ -7,6 +7,7 @@ Routes:
   POST /api/export/json         — Export planning data as JSON
   GET  /api/sam-ranges          — SAM/AAA threat range data
   GET  /api/projections         — Theater projection parameters
+  GET  /api/terrain/{theater}/roads — DCS terrain road/rail network (static gz)
   GET  /api/elevation/{lat}/{lon} — SRTM terrain elevation
   GET  /api/launcher-settings/{clsid} — Weapon settings schema
   GET  /api/weather/presets     — Weather presets
@@ -1882,6 +1883,28 @@ def sam_ranges():
 @app.route("/api/projections", methods=["GET"])
 def projections():
     return jsonify(THEATERS)
+
+
+@app.route("/api/terrain/<theater>/roads", methods=["GET"])
+def terrain_roads(theater):
+    """Road/rail network extracted from the DCS terrain files.
+
+    Static per-theater data generated offline by tools/extract_terrain.py
+    and committed under data/terrain/. Stored gzipped and served as-is with
+    Content-Encoding so the browser inflates it natively.
+    """
+    if not theater.replace("_", "").isalnum():
+        return jsonify({"error": "bad theater"}), 400
+    path = os.path.join(
+        os.path.dirname(__file__), "data", "terrain", f"{theater}.roads.json.gz")
+    if not os.path.exists(path):
+        return jsonify({"error": f"no road data for {theater}"}), 404
+    resp = send_file(path, mimetype="application/json")
+    resp.headers["Content-Encoding"] = "gzip"
+    # The data only changes when a DCS terrain update ships and the
+    # extractor re-runs — a day of browser cache is safe.
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @app.route("/api/elevation/<float:lat>/<float:lon>", methods=["GET"])

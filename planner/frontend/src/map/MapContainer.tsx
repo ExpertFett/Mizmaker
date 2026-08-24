@@ -19,6 +19,7 @@ import { useMapStore } from '../store/mapStore';
 import { createUnitLayer, populateUnitLayer } from './layers/unitLayer';
 import { createRouteLayer, populateRouteLayer } from './layers/routeLayer';
 import { createThreatLayer, populateThreatLayer } from './layers/threatLayer';
+import { createTerrainRoadsLayer, loadTerrainRoads } from './layers/terrainRoadsLayer';
 import { createAirbaseLayer, populateAirbaseLayer } from './layers/airbaseLayer';
 import { createBullseyeLayer, populateBullseyeLayer } from './layers/bullseyeLayer';
 import { createDrawingLayer, populateDrawingLayer } from './layers/drawingLayer';
@@ -142,7 +143,8 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     drawing: ReturnType<typeof createDrawingLayer> | null;
     triggerZone: ReturnType<typeof createTriggerZoneLayer> | null;
     plannerDrawing: ReturnType<typeof createPlannerDrawingLayer> | null;
-  }>({ unit: null, route: null, threat: null, airbase: null, bullseye: null, drawing: null, triggerZone: null, plannerDrawing: null });
+    dcsRoads: ReturnType<typeof createTerrainRoadsLayer> | null;
+  }>({ unit: null, route: null, threat: null, airbase: null, bullseye: null, drawing: null, triggerZone: null, plannerDrawing: null, dcsRoads: null });
   const dragCleanup = useRef<(() => void) | null>(null);
   const isInteracting = useRef(false); // true during drag or add — blocks route layer redraws
   const pendingRedraw = useRef(false); // set when a redraw was skipped during interaction
@@ -306,7 +308,8 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     const drawingLayer = createDrawingLayer();
     const triggerZoneLayer = createTriggerZoneLayer();
     const plannerDrawingLayer = createPlannerDrawingLayer();
-    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, bullseye: bullseyeLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer };
+    const dcsRoadsLayer = createTerrainRoadsLayer();
+    layerRefs.current = { unit: unitLayer, route: routeLayer, threat: threatLayer, airbase: airbaseLayer, bullseye: bullseyeLayer, drawing: drawingLayer, triggerZone: triggerZoneLayer, plannerDrawing: plannerDrawingLayer, dcsRoads: dcsRoadsLayer };
 
     // Compute initial center from mission data already in store (avoids Caucasus flash on tab-switch remounts)
     const initStore = useMissionStore.getState();
@@ -333,7 +336,7 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
       target: mapRef.current,
       layers: [
         darkLayer, osmLayer, satLayer, topoLayer,
-        drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, bullseyeLayer, routeLayer, unitLayer,
+        dcsRoadsLayer, drawingLayer, triggerZoneLayer, plannerDrawingLayer, threatLayer, airbaseLayer, bullseyeLayer, routeLayer, unitLayer,
       ],
       interactions: defaultInteractions({ doubleClickZoom: false }),
       view: new View({
@@ -881,6 +884,14 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     if (layerRefs.current.bullseye) layerRefs.current.bullseye.setVisible(layers.bullseye !== false);
     if (layerRefs.current.drawing) layerRefs.current.drawing.setVisible(layers.drawings !== false);
     if (layerRefs.current.plannerDrawing) layerRefs.current.plannerDrawing.setVisible(layers.plannerDrawings !== false);
+    const roads = layerRefs.current.dcsRoads;
+    if (roads) {
+      const on = layers.dcsRoads === true; // default OFF — opt-in overlay
+      roads.setVisible(on);
+      // Lazy: geometry is only fetched the first time the layer turns on.
+      const theater = useMissionStore.getState().theater;
+      if (on && theater) void loadTerrainRoads(roads, theater);
+    }
   }, [layers]);
 
   // Toggle base map

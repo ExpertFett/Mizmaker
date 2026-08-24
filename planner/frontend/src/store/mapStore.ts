@@ -74,6 +74,7 @@ export const useMapStore = create<MapState>((set) => ({
     statics: false,  // hidden by default — declutter
     plannerDrawings: true,
     triggerZones: true,
+    dcsRoads: false,  // DCS terrain road/rail overlay — opt-in, lazy-loaded
     baseMap: 'dark',
     mapLang: 'en',
   },
