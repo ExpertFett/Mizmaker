@@ -1188,6 +1188,31 @@ def session_join(sid):
         return jsonify({"error": f"Failed to load session: {str(e)}"}), 500
 
 
+@app.route("/api/sessions/<sid>/original", methods=["GET"])
+def session_original(sid):
+    """The original uploaded .miz, exactly as received.
+
+    The mission library keeps the ORIGINAL bytes client-side so a mission can
+    be reopened later; a session resumed after a refresh has no blob in the
+    browser any more, which silently exempted resumed sessions from the
+    library. This hands the bytes back. Same token gate as /join — host or
+    invited participant."""
+    session = _get_session(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    token = request.args.get("token")
+    if not token or (token != session.get("host_token")
+                     and token not in session.get("participants", {})):
+        return jsonify({"error": "Invalid token"}), 403
+    from flask import Response
+    fname = (session.get("filename") or "mission.miz").replace('"', '')
+    return Response(
+        session["miz_bytes"],
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @app.route("/api/sessions/<sid>/state", methods=["GET"])
 def session_state(sid):
     """Get current session state — for reconnection."""

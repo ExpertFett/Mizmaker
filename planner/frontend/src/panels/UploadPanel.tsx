@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
 import { ResumeBanner } from '../session/ResumeBanner';
 import { setOriginalMiz } from '../store/originalMiz';
+import { saveCurrentMission } from '../store/missionLibraryActions';
 import { useMissionStore } from '../store/missionStore';
 import { useGoalsStore } from '../store/goalsStore';
 import { useDmpiStore } from '../store/dmpiStore';
@@ -41,6 +42,11 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
         setOriginalMiz(file, file.name);
         setActiveTheater(data.theater);
         loadMission(data);
+        // Into the library immediately. Saving only on download meant a
+        // mission uploaded and edited but never downloaded was invisible in
+        // Recent Missions — the exact mid-edit work the panel protects.
+        void saveCurrentMission(file, file.name)
+          .catch((err) => console.warn('library save on upload failed:', err));
         // Seed the Mission Goals store from whatever the .miz had in
         // its `["goals"]` block. Closes the round-trip the writer
         // shipped in v0.9.13 — re-uploading a planner-generated mission

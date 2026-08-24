@@ -14,6 +14,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useMissionStore } from '../store/missionStore';
+import { setOriginalMiz } from '../store/originalMiz';
+import { saveCurrentMission } from '../store/missionLibraryActions';
 import {
   getResumePoint, clearResumePoint, resumeAge, type ResumePoint,
 } from './resume';
@@ -35,6 +37,19 @@ export function ResumeBanner() {
       const data = await res.json();
       loadMission(data);
       // loadMission re-saves the point; App switches to the editor on its own.
+      // Pull the original bytes back so this resumed session behaves like a
+      // fresh upload — mission library entry included. Fail-silent: resume
+      // itself already succeeded.
+      void (async () => {
+        try {
+          const orig = await fetch(
+            `/api/sessions/${point.sessionId}/original?token=${encodeURIComponent(point.token)}`);
+          if (!orig.ok) return;
+          const blob = await orig.blob();
+          setOriginalMiz(blob, point.filename);
+          await saveCurrentMission(blob, point.filename);
+        } catch { /* library is a convenience, never a blocker */ }
+      })();
     } catch {
       // 404 = the server aged the session out; anything else, same answer for
       // the user — this session is gone, say so instead of a silent no-op.

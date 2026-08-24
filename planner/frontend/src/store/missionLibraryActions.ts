@@ -25,6 +25,7 @@
 
 import { uploadMission } from '../api/client';
 import { useMissionStore } from './missionStore';
+import { setOriginalMiz, getOriginalMiz } from './originalMiz';
 import { useEditStore } from './editStore';
 import { useTriggerStore } from './triggerStore';
 import { useSopStore } from '../sop/sopStore';
@@ -178,8 +179,61 @@ export async function loadLibraryEntry(id: string): Promise<boolean> {
     }
   } catch (e) { console.warn('hydrate selectedGroup failed', e); }
 
+  // Keep the blob in hand so this session can re-save to the library the
+  // same way a fresh upload can — without this, a mission reopened FROM the
+  // library could never update its own entry again.
+  setOriginalMiz(entry.mizBlob, entry.name);
+
   // Best-effort LRU bump — fire-and-forget so the UI doesn't wait
   // for the disk write before navigating into the editor.
   void touchMission(id);
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mid-edit auto-snapshot (v1.19.131).
+ *
+ * The library used to be written ONLY on download, so a mission that was
+ * uploaded and edited but never downloaded never appeared in Recent
+ * Missions at all — which is exactly the mid-edit work the panel exists to
+ * protect. Now any change to the stores the snapshot captures re-saves the
+ * current mission's entry, debounced so a burst of edits costs one
+ * IndexedDB write, not fifty.
+ */
+
+const SNAPSHOT_DEBOUNCE_MS = 5000;
+let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function scheduleLibrarySnapshot(): void {
+  if (snapshotTimer) clearTimeout(snapshotTimer);
+  snapshotTimer = setTimeout(() => {
+    snapshotTimer = null;
+    const original = getOriginalMiz();
+    if (!original) return;                       // no blob, nothing to key on
+    if (!useMissionStore.getState().sessionId) return;   // not in a mission
+    saveCurrentMission(original.blob, original.name)
+      .catch((e) => console.warn('library auto-snapshot failed:', e));
+  }, SNAPSHOT_DEBOUNCE_MS);
+}
+
+if (typeof window !== 'undefined') {
+  // Every store the snapshot captures re-schedules on change. Reference
+  // checks keep the listeners cheap; the debounce coalesces the rest.
+  useEditStore.subscribe((s, prev) => {
+    if (s.edits !== prev.edits || s.kneeboardSettings !== prev.kneeboardSettings) {
+      scheduleLibrarySnapshot();
+    }
+  });
+  useTriggerStore.subscribe((s, prev) => {
+    if (s.rules !== prev.rules) scheduleLibrarySnapshot();
+  });
+  useGoalsStore.subscribe((s, prev) => {
+    if (s.goals !== prev.goals) scheduleLibrarySnapshot();
+  });
+  useDmpiStore.subscribe((s, prev) => {
+    if (s.dmpis !== prev.dmpis) scheduleLibrarySnapshot();
+  });
+  useVisibilityStore.subscribe((s, prev) => {
+    if (s.hiddenForParticipants !== prev.hiddenForParticipants) scheduleLibrarySnapshot();
+  });
 }
