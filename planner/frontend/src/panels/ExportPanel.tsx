@@ -8,7 +8,7 @@ import { saveCurrentMission } from '../store/missionLibraryActions';
 import { getOriginalMiz } from '../store/originalMiz';
 import type { WaypointEdit } from '../types/mission';
 import { isPlayerGroup } from '../utils/groups';
-import { RouteCard } from '../kneeboard/RouteCard';
+
 import { FlightCard } from '../kneeboard/FlightCard';
 import { StationLoadoutCard } from '../kneeboard/StationLoadoutCard';
 import { RouteProfileCard } from '../kneeboard/RouteProfileCard';
@@ -23,7 +23,6 @@ import { RadioPresetCard } from '../kneeboard/RadioPresetCard';
 import { FuelLadderCard } from '../kneeboard/FuelLadderCard';
 import { SupportAssetsCard, supportAssetsPageCount } from '../kneeboard/SupportAssetsCard';
 import { RadioLadderCard } from '../kneeboard/RadioLadderCard';
-import { AirbaseRefCard } from '../kneeboard/AirbaseRefCard';
 import { WeaponCard } from '../kneeboard/WeaponCard';
 import { matchWeaponsToLoadout } from '../kneeboard/weaponData';
 import { PopupAttackCard } from '../kneeboard/PopupAttackCard';
@@ -68,7 +67,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 export function ExportPanel({ mode }: { mode: AppMode }) {
   const [editsOpen, setEditsOpen] = useState(false);
-  const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, theater, missionOptions } = useMissionStore();
+  const { sessionId, filename, clear, groups, overview, clientUnits, threats, airbases, missionOptions } = useMissionStore();
   const { edits, isDirty, clearEdits, injectKneeboards, stripRequiredModules, setStripRequiredModules, kneeboardSettings } = useEditStore();
   // Active SOP — needed if the user has the SOP Comms kneeboard card
   // enabled and wants it injected into the .miz on download.
@@ -167,13 +166,14 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
         const aircraftType = g.units[0]?.type || 'unknown';
         const safeName = g.groupName.replace(/\s+/g, '_');
         try {
-          if (cards.lineup)
-            await addCard(aircraftType, `${safeName}_Route.png`,
-              createElement(RouteCard, { group: g, weather: wx, coordFormat: kneeboardSettings.coordFormat, speedRef: kneeboardSettings.speedRef as any, machThreshold: kneeboardSettings.machThreshold, notes: cardNotes.lineup }));
-          if (cards.flight)
+          // v1.19.136 — Route Card merged into the Flight Card (one page).
+          if (cards.flight || cards.lineup)
             await addCard(aircraftType, `${safeName}_Flight.png`,
               createElement(FlightCard, { opts, group: g, clientUnits, notes: cardNotes.flight,
-                laserCodeBase: activeSop?.laserCodeBase }));
+                laserCodeBase: activeSop?.laserCodeBase, weather: wx,
+                coordFormat: kneeboardSettings.coordFormat,
+                speedRef: kneeboardSettings.speedRef as any,
+                machThreshold: kneeboardSettings.machThreshold }));
           if (cards.stationLoadout)
             await addCard(aircraftType, `${safeName}_Stations.png`,
               createElement(StationLoadoutCard, { opts, group: g, clientUnits,
@@ -258,13 +258,7 @@ export function ExportPanel({ mode }: { mode: AppMode }) {
             sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits),
             order: kneeboardSettings.radioLadderOrder,
             notes: cardNotes.radioLadder }));
-        if (cards.airbaseRef)
-          await addCard(sharedType, 'Airbase_Ref.png', createElement(AirbaseRefCard, { opts,
-            airbases, theater: theater || '', groups, coalition,
-            notes: cardNotes.airbaseRef, coordFormat: kneeboardSettings.coordFormat,
-            // groups + coalition trigger the route-relevance filter so we
-            // don't dump all 36 Kola airfields onto a kneeboard.
-          }));
+        // v1.19.136 — Airbase Reference retired (merged into Home Plate).
         if (cards.bullseyeRef && overview)
           await addCard(sharedType, 'Bullseye_Ref.png', createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat: kneeboardSettings.coordFormat }));
         if (cards.threatCard) {

@@ -727,6 +727,21 @@ def find_client_units(mission: dict) -> list:
     return clients
 
 
+import re as _re_chname
+
+# DCS's stock channel descriptions are sentences, not callsigns — "Frequency
+# of VFR aircraft indicating they are not under ATC control" printed on a
+# kneeboard is noise (Fett report, v1.19.136). Blank them so cards fall back
+# to showing just the frequency.
+_DCS_BOILERPLATE_CHANNEL_NAME = _re_chname.compile(
+    r"not\s+under\s+ATC\s+control|VFR\s+aircraft", _re_chname.IGNORECASE)
+
+
+def _clean_channel_name(name) -> str:
+    s = str(name or "")
+    return "" if _DCS_BOILERPLATE_CHANNEL_NAME.search(s) else s
+
+
 def _extract_unit_radio_presets(unit: dict) -> list:
     """Pull radio preset channels off a unit's Radio[] block.
 
@@ -790,7 +805,7 @@ def _extract_unit_radio_presets(unit: dict) -> list:
                 "ch": int(ch_num),
                 "freq_mhz": freq_mhz,
                 "modulation": int(modulations.get(ch_num, 0) or 0),
-                "name": names_int.get(ch_num, ""),
+                "name": _clean_channel_name(names_int.get(ch_num, "")),
             })
 
         # Skip radios that ended up empty after parsing (avoids serializing

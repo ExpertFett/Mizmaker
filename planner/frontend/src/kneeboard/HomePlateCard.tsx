@@ -9,12 +9,24 @@
 import {
   cardRoot, headerStyle, titleStyle, subtitleStyle, sectionTitle,
   cell, th, TEXT_MUTED, DIM, ROW_ALT,
-  footerStyle, notesBox, MissionDateLine,
+  footerStyle, MissionDateLine,
 } from './cardStyles';
 import type { MissionGroup, Airbase, MissionOverviewData } from '../types/mission';
 import { getAircraftType } from '../utils/groups';
 import { formatCoord, type CoordFormat } from './coords';
 import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
+import { getAirbaseComms } from '../data/airbaseComms';
+
+/** ILS from the curated per-field DB (theater data has none). */
+function ilsLabel(name: string): string {
+  return getAirbaseComms(name)?.ils || '—';
+}
+
+/** Field elevation (ft) from the curated per-field DB. */
+function elevLabel(name: string): string {
+  const e = getAirbaseComms(name)?.elevation;
+  return e != null ? `${e.toLocaleString()}` : '—';
+}
 
 interface HomePlateCardProps {
   group: MissionGroup;
@@ -201,9 +213,11 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
           <thead>
             <tr>
               <th style={{ ...th, textAlign: 'left' }}>FIELD</th>
-              <th style={{ ...th, width: 130 }}>COORD</th>
-              <th style={{ ...th, width: 70 }}>RWY</th>
-              <th style={{ ...th, width: 80 }}>TWR</th>
+              <th style={{ ...th, width: 118 }}>COORD</th>
+              <th style={{ ...th, width: 62 }}>RWY</th>
+              <th style={{ ...th, width: 68 }}>TWR</th>
+              <th style={{ ...th, width: 96 }}>ILS</th>
+              <th style={{ ...th, width: 54 }}>ELEV</th>
             </tr>
           </thead>
           <tbody>
@@ -219,6 +233,14 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
               </td>
               <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 15 }}>
                 {twrLabel(home)}
+              </td>
+              {/* ILS + field elevation absorbed from the retired Airbase
+                  Reference card (Fett, v1.19.136). */}
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 13 }}>
+                {ilsLabel(home.name)}
+              </td>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
+                {elevLabel(home.name)}
               </td>
             </tr>
           </tbody>
@@ -246,6 +268,8 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
             <th style={{ ...th, width: 92 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
             <th style={{ ...th, width: 56 }}>RWY</th>
             <th style={{ ...th, width: 62 }}>TWR</th>
+            <th style={{ ...th, width: 78 }}>ILS</th>
+            <th style={{ ...th, width: 48 }}>ELEV</th>
             <th style={{ ...th, width: 34 }} title="Runway present — can take fixed wing">SVC</th>
           </tr>
         </thead>
@@ -254,24 +278,29 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
             <tr key={a.name} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, fontWeight: 600, overflow: 'hidden',
                            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</td>
-              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace" }}>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
                 {Math.round(a.brg).toString().padStart(3, '0')}°
               </td>
-              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace" }}>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
                 {a.dist < 1 ? '<1' : Math.round(a.dist)} nm
               </td>
-              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: coordFormat === 'mgrs' ? 14 : 12, textAlign: 'center' }}>
+              <td style={{ ...cell, fontFamily: "'B612 Mono', monospace", fontSize: coordFormat === 'mgrs' ? 13 : 11, textAlign: 'center' }}>
                 {formatCoord(a.lat, a.lon, coordFormat, 3)}
               </td>
               {/* Runway headings, tower and services come straight from the
-                  theater airfield data. The card used to print a dead "—" here
-                  and a strip telling the pilot to fill RWY/ILS in by hand from
-                  the SOP — data the app already had. */}
-              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
+                  theater airfield data; ILS + elevation from the curated DB
+                  (absorbed from the retired Airbase Reference card). */}
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 13 }}>
                 {rwyLabel(a)}
               </td>
-              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 14 }}>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 13 }}>
                 {twrLabel(a)}
+              </td>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 12 }}>
+                {ilsLabel(a.name)}
+              </td>
+              <td style={{ ...cell, textAlign: 'center', fontFamily: "'B612 Mono', monospace", fontSize: 13 }}>
+                {elevLabel(a.name)}
               </td>
               <td style={{ ...cell, textAlign: 'center',
                            color: USE_MARK[canService(a, owner, side)].color, fontWeight: 700 }}>
@@ -285,9 +314,8 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
       <div style={{ padding: '8px 0 0', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ fontSize: 14, color: TEXT_MUTED, marginBottom: 2 }}>
           SVC: ✔ friendly field, fuel + rearm available · ✖ enemy-held or dry ·
-          ? ownership not set in mission. TWR in MHz.
+          ? ownership not set in mission. TWR in MHz · ELEV in ft.
         </div>
-        <div style={notesBox} />
       </div>
 
       <div style={footerStyle}>Generated by DCS:OPT | VMFA-224(AW)</div>

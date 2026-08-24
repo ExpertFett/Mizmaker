@@ -960,6 +960,9 @@ def _extract_group(
             # the real number — so without this the recovery frequency for a
             # deck-launched flight was simply missing.
             "frequency": normalize_freq_mhz(u.get("frequency")),
+            # Facing in degrees true (mission stores radians) — drives the
+            # oriented unit silhouettes on target imagery.
+            "heading_deg": round(math.degrees(_num(u.get("heading"))) % 360.0, 1),
             "category": category,
             "coalition": coalition,
             "country": country,

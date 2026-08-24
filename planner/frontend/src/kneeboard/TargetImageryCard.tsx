@@ -23,6 +23,7 @@ import {
   MissionDateLine,
 } from './cardStyles';
 import { TileMap, createProjection } from './TileMap';
+import { UnitGlyph, classifyUnit } from './unitGlyphs';
 import type { Dmpi } from '../store/dmpiStore';
 import type { MissionGroup, MissionOverviewData } from '../types/mission';
 import { metersToFeet } from '../utils/conversions';
@@ -52,6 +53,10 @@ interface TargetImageryCardProps {
   /** Mission groups — units inside the frame are marked on the print so the
    *  crew sees what's actually parked at the aim point. */
   groups?: MissionGroup[];
+  /** Mega-zoom variant (per-DMPI "Detail zoom" checkbox): a ~0.3 NM frame at
+   *  max tile zoom, full-card size, so building-level detail resolves. Ring
+   *  drops to 100 m and the corner inset is skipped — this IS the close-up. */
+  detail?: boolean;
 }
 
 /** Cap the unit marks: past this the chip is a SAM garrison, not a target
@@ -66,12 +71,18 @@ function unitsInFrame(
   minLat: number, maxLat: number, minLon: number, maxLon: number,
 ) {
   if (!groups) return [];
-  const out: { lat: number; lon: number; type: string; coalition: string }[] = [];
+  const out: {
+    lat: number; lon: number; type: string; coalition: string;
+    category: string; heading?: number;
+  }[] = [];
   for (const g of groups) {
     for (const u of g.units ?? []) {
       if (u.lat == null || u.lon == null) continue;
       if (u.lat < minLat || u.lat > maxLat || u.lon < minLon || u.lon > maxLon) continue;
-      out.push({ lat: u.lat, lon: u.lon, type: u.type, coalition: g.coalition });
+      out.push({
+        lat: u.lat, lon: u.lon, type: u.type, coalition: g.coalition,
+        category: g.category, heading: u.heading_deg,
+      });
       if (out.length >= MAX_UNIT_MARKS) return out;
     }
   }
@@ -80,10 +91,13 @@ function unitsInFrame(
 
 export function TargetImageryCard({
   dmpi, index, total, overview, coordFormat = 'mgrs', squadron, notes,
-  opts = DEFAULT_OPTIONS, groups,
+  opts = DEFAULT_OPTIONS, groups, detail = false,
 }: TargetImageryCardProps) {
   const { lat, lon } = dmpi;
-  const CHIP_HALF_NM = opts.weapons.targetChipNm || CHIP_HALF_NM_DEFAULT;
+  const CHIP_HALF_NM = detail
+    ? 0.16   // ~300 m half-frame — building-level
+    : (opts.weapons.targetChipNm || CHIP_HALF_NM_DEFAULT);
+  const maxZoom = detail ? 17 : undefined;
 
   // Square-ish chip: longitude degrees shrink with latitude, so scale them by
   // cos(lat) or the picture stretches badly at Kola latitudes.
@@ -92,10 +106,11 @@ export function TargetImageryCard({
 
   const minLat = lat - dLat, maxLat = lat + dLat;
   const minLon = lon - dLon, maxLon = lon + dLon;
-  const proj = createProjection(minLat, maxLat, minLon, maxLon, IMG_W, IMG_H);
+  const proj = createProjection(minLat, maxLat, minLon, maxLon, IMG_W, IMG_H, maxZoom);
   const [cx, cy] = proj.project(lat, lon);
-  // 500 m ring gives the crew a built-in scale reference on the picture.
-  const ring = proj.metersToPixels(500);
+  // Scale ring: 500 m on the standard chip, 100 m on the detail frame.
+  const ringM = detail ? 100 : 500;
+  const ring = proj.metersToPixels(ringM);
 
   const elevFt = dmpi.elevation ? Math.round(metersToFeet(dmpi.elevation)) : null;
 
@@ -107,11 +122,23 @@ export function TargetImageryCard({
 
   const satellite = opts.nav.mapLayer !== 'dark';
 
+  // Detail inset — the recon-print close-up box. A packed battery is a blob
+  // at chip zoom; a ±350 m frame on the aim point resolves the individual
+  // silhouettes. Drawn only when units sit near the aim point.
+  const INSET = 190;
+  const iHalfLat = 350 / 111000;
+  const iHalfLon = iHalfLat / Math.max(0.15, Math.cos((lat * Math.PI) / 180));
+  const insetUnits = marks.filter((u) =>
+    Math.abs(u.lat - lat) < iHalfLat && Math.abs(u.lon - lon) < iHalfLon);
+  const showInset = satellite && insetUnits.length > 0 && !detail;
+  const iProj = createProjection(
+    lat - iHalfLat, lat + iHalfLat, lon - iHalfLon, lon + iHalfLon, INSET, INSET);
+
   return (
     <div style={cardRoot}>
       <div style={headerStyle}>
         <div style={titleStyle}>
-          TARGET {total > 1 ? `${index}/${total}` : ''} — {(dmpi.name || 'DMPI').toUpperCase()}
+          TARGET {total > 1 ? `${index}/${total}` : ''} — {(dmpi.name || 'DMPI').toUpperCase()}{detail ? ' (DETAIL)' : ''}
         </div>
         {squadron && <div style={subtitleStyle}>{squadron}</div>}
         {overview && (
@@ -124,39 +151,38 @@ export function TargetImageryCard({
         )}
       </div>
 
-      {/* The print. Satellite imagery filtered to recon-photo monochrome so
-          the red annotation carries; the SVG overlay sits OUTSIDE the filter
-          so the marks stay full-color. */}
+      {/* The print. Satellite imagery in recon-photo monochrome (baked into
+          the tile pixels — CSS filters don't survive the html2canvas export);
+          the SVG overlay sits on top at full color so the marks carry. */}
       <div style={{
         width: IMG_W, height: IMG_H, margin: '0 auto', position: 'relative',
         overflow: 'hidden', flexShrink: 0,
       }}>
-        <div style={satellite ? { filter: 'grayscale(1) contrast(1.18) brightness(1.06)' } : undefined}>
-          <TileMap
-            width={IMG_W}
-            height={IMG_H}
-            minLat={minLat}
-            maxLat={maxLat}
-            minLon={minLon}
-            maxLon={maxLon}
-            layer={satellite ? 'satellite' : 'dark'}
-          />
-        </div>
+        <TileMap
+          width={IMG_W}
+          height={IMG_H}
+          minLat={minLat}
+          maxLat={maxLat}
+          minLon={minLon}
+          maxLon={maxLon}
+          layer={satellite ? 'satellite' : 'dark'}
+          mono={satellite}
+          maxZoom={maxZoom}
+        />
         <svg width={IMG_W} height={IMG_H} style={{ position: 'absolute', inset: 0 }}>
             {/* 500 m scale ring */}
             <circle cx={cx} cy={cy} r={ring} fill="none"
                     stroke="rgba(255,255,255,0.55)" strokeWidth={1} strokeDasharray="4 4" />
-            {/* Units in frame — hollow diamonds by coalition, so the crew
-                sees what's actually parked at the aim point. */}
+            {/* Units in frame — oriented silhouettes by type and coalition,
+                rotated to each unit's actual mission heading, so the crew
+                sees what's parked at the aim point and which way it faces. */}
             {marks.map((u, i) => (
               <g key={i}>
-                <rect x={-4.5} y={-4.5} width={9} height={9}
-                      transform={`translate(${u.x}, ${u.y}) rotate(45)`}
-                      fill="none" stroke={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals}
-                      strokeWidth={1.8} paintOrder="stroke"
-                      style={{ filter: 'drop-shadow(0 0 1.5px rgba(255,255,255,0.9))' }} />
+                <UnitGlyph x={u.x} y={u.y} headingDeg={u.heading}
+                           kind={classifyUnit(u.type, u.category)}
+                           color={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals} />
                 {labelUnits && (
-                  <text x={u.x + 8} y={u.y + 4} fontSize={10} fontWeight={700}
+                  <text x={u.x + 11} y={u.y + 4} fontSize={10} fontWeight={700}
                         fill={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals}
                         stroke="#fff" strokeWidth={2} paintOrder="stroke">
                     {u.type.length > 14 ? `${u.type.slice(0, 13)}…` : u.type}
@@ -183,9 +209,39 @@ export function TargetImageryCard({
             </text>
             <text x={8} y={IMG_H - 8} fontSize={11} fill="rgba(255,255,255,0.85)"
                   stroke="#000" strokeWidth={2.5} paintOrder="stroke">
-              ring 500 m{marks.length ? ` | ${marks.length} unit${marks.length !== 1 ? 's' : ''} in frame` : ''}
+              ring {ringM} m{marks.length ? ` | ${marks.length} unit${marks.length !== 1 ? 's' : ''} in frame (marks not to scale)` : ''}
             </text>
         </svg>
+
+        {/* Detail inset — ±350 m close-up on the aim point so the individual
+            silhouettes resolve instead of clustering into a blob. */}
+        {showInset && (
+          <div style={{
+            position: 'absolute', right: 6, bottom: 20, width: INSET, height: INSET,
+            border: '2px solid rgba(255,255,255,0.9)', overflow: 'hidden',
+            boxShadow: '0 0 8px rgba(0,0,0,0.8)',
+          }}>
+            <TileMap width={INSET} height={INSET}
+                     minLat={lat - iHalfLat} maxLat={lat + iHalfLat}
+                     minLon={lon - iHalfLon} maxLon={lon + iHalfLon}
+                     layer="satellite" hideCredit mono />
+            <svg width={INSET} height={INSET} style={{ position: 'absolute', inset: 0 }}>
+              {insetUnits.map((u, i) => {
+                const [ix, iy] = iProj.project(u.lat, u.lon);
+                return (
+                  <UnitGlyph key={i} x={ix} y={iy} headingDeg={u.heading}
+                             kind={classifyUnit(u.type, u.category)}
+                             color={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals} />
+                );
+              })}
+              <text x={5} y={INSET - 6} fontSize={10} fontWeight={700}
+                    fill="rgba(255,255,255,0.9)" stroke="#000" strokeWidth={2}
+                    paintOrder="stroke">
+                DETAIL — 700 m frame
+              </text>
+            </svg>
+          </div>
+        )}
       </div>
 
       <div style={sectionTitle}>AIM POINT</div>
@@ -216,18 +272,21 @@ export function TargetImageryCard({
         </div>
       )}
 
-      <div style={sectionTitle}>NOTES</div>
-      <div style={notesBox}>
-        {notes && notes.trim() ? (
-          <div style={{ fontSize: 16, color: TEXT, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
-            {notes.trim()}
-          </div>
-        ) : (
-          [...Array(2)].map((_, i) => (
-            <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 22, marginBottom: 2 }} />
-          ))
-        )}
-      </div>
+      {/* Notes only when typed (v1.19.136) — no empty box. */}
+      {notes && notes.trim() && (<>
+        <div style={sectionTitle}>NOTES</div>
+        <div style={notesBox}>
+          {notes && notes.trim() ? (
+            <div style={{ fontSize: 16, color: TEXT, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
+              {notes.trim()}
+            </div>
+          ) : (
+            [...Array(2)].map((_, i) => (
+              <div key={i} style={{ borderBottom: `1px solid ${BORDER_MED}`, height: 22, marginBottom: 2 }} />
+            ))
+          )}
+        </div>
+      </>)}
 
       <div style={footerStyle}>
         Target imagery | real-world satellite of mission coordinates | Generated by DCS:OPT

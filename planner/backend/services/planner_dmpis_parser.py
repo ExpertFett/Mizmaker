@@ -147,5 +147,8 @@ def parse_planner_dmpis(mission_text: str) -> list[dict]:
             "description": _extract_string_field(entry, "description"),
             "weaponDelivery": _extract_string_field(entry, "weaponDelivery"),
             "notes": _extract_string_field(entry, "notes"),
+            # Detail-zoom card flag (v1.19.136) — absent in older missions.
+            "detailZoom": bool(re.search(
+                r'\["detailZoom"\]\s*=\s*true', entry)),
         })
     return out

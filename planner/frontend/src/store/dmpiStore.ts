@@ -27,6 +27,9 @@ export interface Dmpi {
   description: string;
   weaponDelivery: string;
   notes: string;
+  /** Also generate a second, much closer imagery card (~300 m frame at max
+   *  tile zoom) so building-level detail is visible. (v1.19.136) */
+  detailZoom?: boolean;
 }
 
 interface DmpiState {
@@ -44,6 +47,10 @@ interface DmpiState {
   /** Map calls this on a click while picking. Updates the DMPI's
    *  lat/lon and clears picking mode. */
   finishPicking: (lat: number, lon: number) => void;
+  /** Fill elevation from terrain at the DMPI's position — ground level is
+   *  the right default for an aim point (Fett, v1.19.136). Skips DMPIs
+   *  where the user already typed a non-zero elevation. */
+  autofillElevation: (id: string) => void;
   cancelPicking: () => void;
   /** Bulk replacement, used by UploadPanel to seed from the parsed
    *  `["plannerDmpis"]` block on session load (v0.9.15). */
@@ -101,6 +108,31 @@ export const useDmpiStore = create<DmpiState>((set, get) => ({
       ),
       pickingForId: null,
     }));
+    get().autofillElevation(targetId);
+  },
+
+  autofillElevation: (id) => {
+    const d = get().dmpis.find((x) => x.id === id);
+    if (!d || !d.lat || !d.lon) return;
+    if (d.elevation) return;   // user already set one — leave it
+    // Batch endpoint on purpose: the GET route's <float:> converters reject
+    // negative longitudes (Nevada), the POST body doesn't care.
+    void fetch('/api/elevation/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points: [[d.lat, d.lon]] }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const elev = j?.elevations?.[0];
+        if (typeof elev !== 'number') return;
+        // Re-check before writing: the user may have typed an elevation or
+        // moved the point while the fetch was in flight.
+        const cur = get().dmpis.find((x) => x.id === id);
+        if (!cur || cur.elevation || cur.lat !== d.lat || cur.lon !== d.lon) return;
+        get().update(id, { elevation: Math.round(elev) });
+      })
+      .catch(() => { /* terrain lookup is a convenience, never a blocker */ });
   },
 
   cancelPicking: () => set({ pickingForId: null }),

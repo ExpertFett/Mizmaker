@@ -560,35 +560,43 @@ export function StripMapCard({
         )}
       </div>
 
-      {/* Footer: doghouse legend + notes */}
-      <div style={{
-        fontSize: 13,
-        color: TEXT_MUTED,
-        textAlign: 'center',
-        marginBottom: 4,
-      }}>
-        Doghouse: <span style={{ color: TEXT_BRIGHT }}>MC</span> magnetic course ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>DIST</span> leg distance (nm) ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>TIME</span> leg time at planned speed ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>ALT</span> at next WP ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>ELAP</span> since takeoff ·{' '}
-        <span style={{ color: TEXT_BRIGHT }}>FUEL</span> lbs remaining
-      </div>
-      <div style={{
-        backgroundColor: BG_NOTES,
-        border: `1px solid ${BORDER_LIGHT}`,
-        flex: 1,
-        padding: '6px 10px',
-        fontSize: 16,
-        color: TEXT_BRIGHT,
-        whiteSpace: 'pre-wrap',
-        overflow: 'hidden',
-      }}>
-        <div style={{ color: ACCENT, fontWeight: 'bold', fontSize: 17, marginBottom: 4 }}>
-          NOTES
+      {/* Footer legend — only when leg boxes were actually drawn. A single-
+          waypoint route has no legs, and a legend describing boxes that are
+          not on the map just confuses (Fett report, v1.19.136). Reworded from
+          "Doghouse" to point at the boxes themselves. */}
+      {projected.length > 1 && (
+        <div style={{
+          fontSize: 13,
+          color: TEXT_MUTED,
+          textAlign: 'center',
+          marginBottom: 4,
+        }}>
+          Leg boxes: <span style={{ color: TEXT_BRIGHT }}>MC</span> magnetic course ·{' '}
+          <span style={{ color: TEXT_BRIGHT }}>DIST</span> leg distance (nm) ·{' '}
+          <span style={{ color: TEXT_BRIGHT }}>TIME</span> leg time at planned speed ·{' '}
+          <span style={{ color: TEXT_BRIGHT }}>ALT</span> at next WP ·{' '}
+          <span style={{ color: TEXT_BRIGHT }}>ELAP</span> since takeoff ·{' '}
+          <span style={{ color: TEXT_BRIGHT }}>FUEL</span> lbs remaining
         </div>
-        {notes || ''}
-      </div>
+      )}
+      {/* Notes only when typed (v1.19.136). */}
+      {notes && notes.trim() && (
+        <div style={{
+          backgroundColor: BG_NOTES,
+          border: `1px solid ${BORDER_LIGHT}`,
+          flex: 1,
+          padding: '6px 10px',
+          fontSize: 16,
+          color: TEXT_BRIGHT,
+          whiteSpace: 'pre-wrap',
+          overflow: 'hidden',
+        }}>
+          <div style={{ color: ACCENT, fontWeight: 'bold', fontSize: 17, marginBottom: 4 }}>
+            NOTES
+          </div>
+          {notes.trim()}
+        </div>
+      )}
     </div>
   );
 }

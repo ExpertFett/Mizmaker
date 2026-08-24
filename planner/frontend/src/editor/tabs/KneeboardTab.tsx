@@ -10,8 +10,7 @@ import JSZip from 'jszip';
 import { useMissionStore } from '../../store/missionStore';
 import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useEditStore, type KneeboardCards } from '../../store/editStore';
-import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
-import { FlightCard } from '../../kneeboard/FlightCard';
+import { FlightCard, type KneeboardSpeedRef } from '../../kneeboard/FlightCard';
 import { StationLoadoutCard } from '../../kneeboard/StationLoadoutCard';
 import { CamelotCard } from '../../kneeboard/CamelotCard';
 import { ReconImageryCard } from '../../kneeboard/ReconImageryCard';
@@ -32,7 +31,6 @@ import { buildRadioLadder, applyLadderOrder } from '../../kneeboard/radioLadder'
 import { presetsForUnits } from '../../kneeboard/radioPresets';
 import { RadioLadderOrderEditor } from './RadioLadderOrderEditor';
 import { FlightLeadControls } from './FlightLeadControls';
-import { AirbaseRefCard } from '../../kneeboard/AirbaseRefCard';
 import { BullseyeRefCard } from '../../kneeboard/BullseyeRefCard';
 import { ThreatCard, threatCardPageCount } from '../../kneeboard/ThreatCard';
 import { WeatherBriefCard } from '../../kneeboard/WeatherBriefCard';
@@ -57,8 +55,9 @@ import { isPlayerGroup } from '../../utils/groups';
 import { resolveOptions, NOTES_FRACTION, type KneeboardOptions } from '../../kneeboard/options';
 
 const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
-  { key: 'lineup', label: 'Lineup Card', desc: 'Waypoints, coords, alt, speed, ETE' },
-  { key: 'flight', label: 'Flight Card', desc: 'Callsigns, loadout, fuel, datalink' },
+  // v1.19.136 — Lineup/Route Card merged INTO the Flight Card (route table +
+  // METAR line absorbed); one page instead of two.
+  { key: 'flight', label: 'Flight Card', desc: 'Route, callsigns, loadout, fuel, TOLD, datalink — one page' },
   { key: 'stationLoadout', label: 'Station Loadout', desc: 'Stores drawn on the airframe, one box per pylon, with laser codes' },
   { key: 'routeProfile', label: 'Route Profile', desc: 'Side view: terrain under the route, planned altitude, per-leg MSA' },
   { key: 'airfieldDiagram', label: 'Airfield Diagrams', desc: 'Generated plate per usable field: runway headings, ATC, elevation' },
@@ -75,7 +74,6 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
 const SHARED_CARDS: { key: keyof KneeboardCards; label: string; desc: string }[] = [
   { key: 'supportAssets', label: 'Support Assets', desc: 'Tankers, AWACS, frequencies' },
   { key: 'radioLadder', label: 'Radio Ladder', desc: 'Shared frequency reference' },
-  { key: 'airbaseRef', label: 'Airbase Reference', desc: 'Airfield info, ILS, TACAN' },
   { key: 'bullseyeRef', label: 'Bullseye Reference', desc: 'Bullseye point and radials' },
   { key: 'threatCard', label: 'Threat Card', desc: 'Enemy air defenses map + inventory' },
   { key: 'weatherBrief', label: 'Weather Briefing', desc: 'Full weather summary card' },
@@ -107,7 +105,6 @@ const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean
   { key: 'fuelLadder', label: 'Fuel Ladder', perFlight: true },
   { key: 'supportAssets', label: 'Support Assets', perFlight: false },
   { key: 'radioLadder', label: 'Radio Ladder', perFlight: false },
-  { key: 'airbaseRef', label: 'Airbase Reference', perFlight: false },
   { key: 'bullseyeRef', label: 'Bullseye Reference', perFlight: false },
   { key: 'threatCard', label: 'Threat Card', perFlight: false },
   { key: 'weatherBrief', label: 'Weather Briefing', perFlight: false },
@@ -247,12 +244,10 @@ export function KneeboardTab() {
     // drop the popup card without changing what the strikers get. (v1.19.126)
     const cards = cardsFor(g.groupName);
 
-    if (cards.lineup) {
-      const el = createElement(RouteCard, { group: g, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined, notes: cardNotes.lineup });
-      results.push({ name: `${safeName}_Route.png`, blob: await renderCardToBlob(el, theme, themeVars) });
-    }
-    if (cards.flight) {
-      const el = createElement(FlightCard, { opts, group: g, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[g.groupName], flightDataOverride: flightDataOverrides[g.groupName] });
+    // v1.19.136 — the old Route Card ('lineup') merged into the Flight Card:
+    // one page now carries route + crew + stores + TOLD.
+    if (cards.flight || cards.lineup) {
+      const el = createElement(FlightCard, { opts, group: g, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[g.groupName], flightDataOverride: flightDataOverrides[g.groupName], weather: wx, coordFormat, speedRef, machThreshold });
       results.push({ name: `${safeName}_Flight.png`, blob: await renderCardToBlob(el, theme, themeVars) });
     }
     if (cards.stationLoadout) {
@@ -369,17 +364,8 @@ export function KneeboardTab() {
       const el = createElement(RadioLadderCard, { opts, groups, coalition, group: selectedGroup, airbases, sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits), order: radioLadderOrder, overview: overview || undefined, notes: cardNotes.radioLadder });
       results.push({ name: 'Radio_Ladder.png', blob: await renderCardToBlob(el, theme, themeVars) });
     }
-    if (cards.airbaseRef) {
-      // Pass groups + coalition so the route-relevance filter fires.
-      // Without them the card falls back to listing all theater
-      // airfields — Kola has 71, Sinai has 51, way too many to be
-      // useful as a kneeboard reference.
-      const el = createElement(AirbaseRefCard, { opts,
-        airbases, theater, overview: overview || undefined, groups, coalition,
-        notes: cardNotes.airbaseRef, coordFormat,
-      });
-      results.push({ name: 'Airbase_Ref.png', blob: await renderCardToBlob(el, theme, themeVars) });
-    }
+    // v1.19.136 — Airbase Reference retired: its ILS/elevation columns moved
+    // onto the Home Plate / Divert card, which already carried the rest.
     if (cards.bullseyeRef && overview) {
       const el = createElement(BullseyeRefCard, { overview, airbases, groups, threats, coalition, notes: cardNotes.bullseyeRef, coordFormat });
       results.push({ name: 'Bullseye_Ref.png', blob: await renderCardToBlob(el, theme, themeVars) });
@@ -447,6 +433,16 @@ export function KneeboardTab() {
         });
         const safe = (valid[i].name || `Target_${i + 1}`).replace(/\s+/g, '_');
         results.push({ name: `Target_${i + 1}_${safe}.png`, blob: await renderCardToBlob(el, theme, themeVars) });
+        // Per-DMPI "Detail zoom" — a second, much closer print of the same
+        // aim point (max tile zoom, ~0.3 NM frame).
+        if (valid[i].detailZoom) {
+          const det = createElement(TargetImageryCard, { opts,
+            dmpi: valid[i], index: i + 1, total: valid.length,
+            overview: overview || undefined, coordFormat,
+            squadron: activeSop?.squadron, groups, detail: true,
+          });
+          results.push({ name: `Target_${i + 1}_${safe}_Detail.png`, blob: await renderCardToBlob(det, theme, themeVars) });
+        }
       }
     }
     if (cards.notesCard) {
@@ -1546,16 +1542,11 @@ function CardCarousel({
     const list: CardEntry[] = [];
 
     if (selectedGroup) {
-      if (cards.lineup) {
-        list.push({
-          key: 'lineup', label: 'Route Card',
-          element: createElement(RouteCard, { group: selectedGroup, weather: wx, coordFormat, speedRef, machThreshold, overview: overview || undefined, notes: cardNotes.lineup }),
-        });
-      }
-      if (cards.flight) {
+      // v1.19.136 — Route Card merged into the Flight Card (one page).
+      if (cards.flight || cards.lineup) {
         list.push({
           key: 'flight', label: 'Flight Card',
-          element: createElement(FlightCard, { opts, group: selectedGroup, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[selectedGroup.groupName], flightDataOverride: flightDataOverrides[selectedGroup.groupName] }),
+          element: createElement(FlightCard, { opts, group: selectedGroup, clientUnits, laserCodeBase: activeSop?.laserCodeBase, overview: overview || undefined, highlightUnitId: selectedPilotId ?? undefined, notes: cardNotes.flight, fuelOverride: fuelOverrides[selectedGroup.groupName], flightDataOverride: flightDataOverrides[selectedGroup.groupName], weather: wx, coordFormat, speedRef, machThreshold }),
         });
       }
       if (cards.airfieldDiagram) {
@@ -1676,15 +1667,7 @@ function CardCarousel({
         element: createElement(RadioLadderCard, { opts, groups, coalition, group: selectedGroup, airbases, sopComms: activeSop?.comms, presets: presetsForUnits(clientUnits), order: radioLadderOrder, overview: overview || undefined, notes: cardNotes.radioLadder }),
       });
     }
-    if (cards.airbaseRef) {
-      list.push({
-        key: 'airbaseRef', label: 'Airbase Reference',
-        element: createElement(AirbaseRefCard, { opts,
-          airbases, theater, overview: overview || undefined, groups, coalition,
-          notes: cardNotes.airbaseRef, coordFormat,
-        }),
-      });
-    }
+    // v1.19.136 — Airbase Reference retired (merged into Home Plate / Divert).
     if (cards.bullseyeRef && overview) {
       list.push({
         key: 'bullseyeRef', label: 'Bullseye Reference',
@@ -1755,6 +1738,16 @@ function CardCarousel({
             squadron: activeSop?.squadron, groups,
           }),
         });
+        if (d.detailZoom) {
+          list.push({
+            key: `targetImagery-${d.id}-detail`, label: `Target — ${d.name} (detail)`,
+            element: createElement(TargetImageryCard, { opts,
+              dmpi: d, index: i + 1, total: valid.length,
+              overview: overview || undefined, coordFormat,
+              squadron: activeSop?.squadron, groups, detail: true,
+            }),
+          });
+        }
       });
     }
     if (cards.notesCard) {

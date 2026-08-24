@@ -4,9 +4,80 @@
  * Uses slippy-map math to compute which tiles cover the bounding box,
  * then renders them as <img> elements that html2canvas can capture.
  * Children (SVG route overlay) are positioned on top.
+ *
+ * The recon-print monochrome look is baked into the tile PIXELS (canvas
+ * re-encode per tile) rather than applied as a CSS filter: html2canvas —
+ * the kneeboard export renderer — ignores CSS `filter`, so a CSS-filtered
+ * card previews mono but EXPORTS in full color. Baked pixels survive any
+ * renderer. Both tile providers send ACAO:*, so the canvas stays untainted.
  */
 
+import { useEffect, useState } from 'react';
+
 const TILE_SIZE = 256;
+
+/** The recon-print treatment, expressed once. */
+const MONO_FILTER = 'grayscale(1) contrast(1.18) brightness(1.06)';
+
+const monoCache = new Map<string, string>();
+
+/** Desaturate a tile into a data URL. Falls back to the color source on any
+ *  failure (tainted canvas, unsupported ctx.filter, network error). */
+function toMono(src: string): Promise<string> {
+  const hit = monoCache.get(src);
+  if (hit) return Promise.resolve(hit);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || TILE_SIZE;
+        c.height = img.naturalHeight || TILE_SIZE;
+        const ctx = c.getContext('2d')!;
+        if (typeof ctx.filter === 'string') {
+          ctx.filter = MONO_FILTER;
+          ctx.drawImage(img, 0, 0);
+        } else {
+          // No ctx.filter (old Safari) — manual luminance pass.
+          ctx.drawImage(img, 0, 0);
+          const d = ctx.getImageData(0, 0, c.width, c.height);
+          const p = d.data;
+          for (let i = 0; i < p.length; i += 4) {
+            const g = 0.2126 * p[i] + 0.7152 * p[i + 1] + 0.0722 * p[i + 2];
+            const v = Math.min(255, Math.max(0, (g - 128) * 1.18 + 128) * 1.06);
+            p[i] = p[i + 1] = p[i + 2] = v;
+          }
+          ctx.putImageData(d, 0, 0);
+        }
+        const url = c.toDataURL('image/png');
+        monoCache.set(src, url);
+        resolve(url);
+      } catch {
+        resolve(src);
+      }
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+}
+
+function MonoTile({ src, left, top, opacity }: {
+  src: string; left: number; top: number; opacity: number;
+}) {
+  const [url, setUrl] = useState<string | null>(monoCache.get(src) ?? null);
+  useEffect(() => {
+    let live = true;
+    if (!monoCache.has(src)) toMono(src).then((u) => { if (live) setUrl(u); });
+    return () => { live = false; };
+  }, [src]);
+  if (!url) return null;
+  return (
+    <img src={url} width={TILE_SIZE} height={TILE_SIZE}
+         style={{ position: 'absolute', left, top, display: 'block',
+                  imageRendering: 'auto', opacity }} alt="" />
+  );
+}
 
 export type BaseLayer = 'dark' | 'satellite';
 
@@ -47,7 +118,9 @@ function lat2tile(lat: number, zoom: number): number {
   );
 }
 
-/** Find the highest zoom level where the bbox fits within the given pixel dimensions */
+/** Find the highest zoom level where the bbox fits within the given pixel
+ *  dimensions. `maxZoom` defaults to 16 — the detail cards push to 17, the
+ *  practical ceiling of ESRI World Imagery coverage outside big cities. */
 function fitZoom(
   minLat: number,
   maxLat: number,
@@ -55,8 +128,9 @@ function fitZoom(
   maxLon: number,
   width: number,
   height: number,
+  maxZoom = 16,
 ): number {
-  for (let z = 16; z >= 2; z--) {
+  for (let z = maxZoom; z >= 2; z--) {
     const x0 = lon2tile(minLon, z);
     const x1 = lon2tile(maxLon, z);
     const y0 = lat2tile(maxLat, z); // Note: y increases downward
@@ -84,6 +158,12 @@ export interface TileMapProps {
   layer?: BaseLayer;
   /** Suppress the attribution strip (only when the caller draws its own). */
   hideCredit?: boolean;
+  /** Recon-print monochrome, baked into the tile pixels so it survives the
+   *  html2canvas export (CSS filters do not). */
+  mono?: boolean;
+  /** Tile-zoom ceiling — must match the value given to createProjection or
+   *  overlays land off the imagery. Detail cards pass 17. */
+  maxZoom?: number;
 }
 
 /**
@@ -97,8 +177,9 @@ export function createProjection(
   maxLon: number,
   width: number,
   height: number,
+  maxZoom?: number,
 ) {
-  const zoom = fitZoom(minLat, maxLat, minLon, maxLon, width, height);
+  const zoom = fitZoom(minLat, maxLat, minLon, maxLon, width, height, maxZoom);
 
   // Center of the bbox in tile-space
   const centerTileX = (lon2tile(minLon, zoom) + lon2tile(maxLon, zoom)) / 2;
@@ -138,9 +219,11 @@ export function TileMap({
   children,
   layer = 'satellite',
   hideCredit = false,
+  mono = false,
+  maxZoom,
 }: TileMapProps) {
   const base = LAYERS[layer] ?? LAYERS.satellite;
-  const zoom = fitZoom(minLat, maxLat, minLon, maxLon, width, height);
+  const zoom = fitZoom(minLat, maxLat, minLon, maxLon, width, height, maxZoom);
 
   // Center of the bbox in tile-space
   const centerTileX = (lon2tile(minLon, zoom) + lon2tile(maxLon, zoom)) / 2;
@@ -186,22 +269,30 @@ export function TileMap({
     >
       {/* Map tiles */}
       {tiles.map((t) => (
-        <img
-          key={`${zoom}-${t.x}-${t.y}`}
-          src={base.url(zoom, t.x, t.y)}
-          crossOrigin="anonymous"
-          width={TILE_SIZE}
-          height={TILE_SIZE}
-          style={{
-            position: 'absolute',
-            left: t.left,
-            top: t.top,
-            display: 'block',
-            imageRendering: 'auto',
-            opacity: base.opacity,
-          }}
-          alt=""
-        />
+        mono ? (
+          <MonoTile
+            key={`m-${zoom}-${t.x}-${t.y}`}
+            src={base.url(zoom, t.x, t.y)}
+            left={t.left} top={t.top} opacity={base.opacity}
+          />
+        ) : (
+          <img
+            key={`${zoom}-${t.x}-${t.y}`}
+            src={base.url(zoom, t.x, t.y)}
+            crossOrigin="anonymous"
+            width={TILE_SIZE}
+            height={TILE_SIZE}
+            style={{
+              position: 'absolute',
+              left: t.left,
+              top: t.top,
+              display: 'block',
+              imageRendering: 'auto',
+              opacity: base.opacity,
+            }}
+            alt=""
+          />
+        )
       ))}
       {/* SVG overlay */}
       {children && (

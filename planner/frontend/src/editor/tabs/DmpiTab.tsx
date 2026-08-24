@@ -12,6 +12,7 @@
 
 import { forward as toMGRS } from 'mgrs';
 import { useDmpiStore, type Dmpi } from '../../store/dmpiStore';
+import { metersToFeet, feetToMeters } from '../../utils/conversions';
 import { TextInput } from '../../components/TextInput';
 import { Select } from '../../components/Select';
 import { DmpiMapPanel } from './DmpiMapPanel';
@@ -36,6 +37,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
   const add = useDmpiStore((s) => s.add);
   const update = useDmpiStore((s) => s.update);
   const remove = useDmpiStore((s) => s.remove);
+  const autofillElevation = useDmpiStore((s) => s.autofillElevation);
   const startPicking = useDmpiStore((s) => s.startPicking);
   const cancelPicking = useDmpiStore((s) => s.cancelPicking);
 
@@ -126,6 +128,7 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
               <th style={{ ...thStyle, width: 130 }}>MGRS</th>
               <th style={thStyle}>DESCRIPTION</th>
               <th style={{ ...thStyle, width: 110 }}>WPN DELIVERY</th>
+              <th style={{ ...thStyle, width: 55 }} title="Also render a second, much closer imagery card (~300 m frame at max zoom) so building-level detail is visible">ZOOM</th>
               <th style={{ ...thStyle, width: 40 }}></th>
               <th style={{ ...thStyle, width: 30 }}></th>
             </tr>
@@ -147,16 +150,22 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                 <td style={tdStyle}>
                   <TextInput size="sm" type="number" step="0.0001" value={d.lat || ''}
                     onChange={(e) => update(d.id, { lat: parseFloat(e.target.value) || 0 })}
+                    onBlur={() => autofillElevation(d.id)}
                     style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="N 00.0000" />
                 </td>
                 <td style={tdStyle}>
                   <TextInput size="sm" type="number" step="0.0001" value={d.lon || ''}
                     onChange={(e) => update(d.id, { lon: parseFloat(e.target.value) || 0 })}
+                    onBlur={() => autofillElevation(d.id)}
                     style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} placeholder="E 00.0000" />
                 </td>
                 <td style={tdStyle}>
-                  <TextInput size="sm" type="number" value={d.elevation || ''}
-                    onChange={(e) => update(d.id, { elevation: parseInt(e.target.value, 10) || 0 })}
+                  {/* Store keeps metres (what the cards convert from); this
+                      column edits in FEET as labelled. Empty = auto-filled
+                      with ground level once the point is placed. */}
+                  <TextInput size="sm" type="number"
+                    value={d.elevation ? Math.round(metersToFeet(d.elevation)) : ''}
+                    onChange={(e) => update(d.id, { elevation: feetToMeters(parseInt(e.target.value, 10) || 0) })}
                     style={{ width: '95%', fontFamily: "'B612 Mono', monospace" }} />
                 </td>
                 <td style={{ ...tdStyle, fontFamily: "'B612 Mono', monospace", fontSize: 11, color: '#cccccc' }}>
@@ -183,6 +192,12 @@ export function DmpiTab({ onPickOnMap }: Props = {}) {
                     <option value="Strafe">Strafe</option>
                     <option value="Rockets">Rockets</option>
                   </Select>
+                </td>
+                <td style={{ ...tdStyle, textAlign: 'center' }}>
+                  <input type="checkbox" checked={!!d.detailZoom}
+                    onChange={(e) => update(d.id, { detailZoom: e.target.checked })}
+                    title="Add a second, much closer target print (detail zoom card)"
+                    style={{ accentColor: '#d29922', cursor: 'pointer' }} />
                 </td>
                 <td style={tdStyle}>
                   <button

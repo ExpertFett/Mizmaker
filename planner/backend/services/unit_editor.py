@@ -3009,6 +3009,7 @@ def _replace_planner_dmpis(text: str, dmpis: list) -> str:
                 f'            ["description"] = "{_esc(d.get("description", ""))}",\n'
                 f'            ["weaponDelivery"] = "{_esc(d.get("weaponDelivery", ""))}",\n'
                 f'            ["notes"] = "{_esc(d.get("notes", ""))}",\n'
+                f'            ["detailZoom"] = {"true" if d.get("detailZoom") else "false"},\n'
                 f'        }}, -- end of [{i}]'
             )
         inner = '\n'.join(entries)

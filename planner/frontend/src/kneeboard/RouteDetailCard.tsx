@@ -27,9 +27,17 @@ interface RouteDetailCardProps {
   drawings?: MissionDrawing[];
 }
 
+/** The table is a fixed form: always this many rows, filled top-down, the
+ *  rest left as blank write-in boxes. The capacity is visible on the card
+ *  itself, so an over-long route reads as "doesn't fit" instead of quietly
+ *  wrecking the layout (Fett, v1.19.136). */
+const ROUTE_TABLE_ROWS = 9;
+
 export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs', drawings = [] }: RouteDetailCardProps) {
   const airframe = getAircraftType(group);
   const wps = group.waypoints;
+  const shown = wps.slice(0, ROUTE_TABLE_ROWS);
+  const blanks = Math.max(0, ROUTE_TABLE_ROWS - shown.length);
 
   return (
     <div style={{ ...cardRoot, position: 'relative' }}>
@@ -61,7 +69,7 @@ export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs', 
           </tr>
         </thead>
         <tbody>
-          {wps.map((wp, i) => (
+          {shown.map((wp, i) => (
             <tr key={wp.waypoint_number} style={{ background: i % 2 === 0 ? 'transparent' : ROW_ALT }}>
               <td style={{ ...cell, textAlign: 'center', color: ACCENT, fontWeight: 600 }}>{wp.waypoint_number}</td>
               <td style={{ ...cell }}>{(wp.waypoint_name || '').substring(0, 14)}</td>
@@ -77,8 +85,21 @@ export function RouteDetailCard({ group, overview, notes, coordFormat = 'mgrs', 
               </td>
             </tr>
           ))}
+          {/* Blank write-in boxes down to the fixed row count. */}
+          {Array.from({ length: blanks }, (_, i) => (
+            <tr key={`blank-${i}`} style={{ background: (shown.length + i) % 2 === 0 ? 'transparent' : ROW_ALT }}>
+              {Array.from({ length: 6 }, (_, c) => (
+                <td key={c} style={{ ...cell, color: DIM }}>{' '}</td>
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
+      {wps.length > ROUTE_TABLE_ROWS && (
+        <div style={{ padding: '2px 16px', fontSize: 13, color: DIM }}>
+          Route exceeds the card — {ROUTE_TABLE_ROWS} of {wps.length} waypoints shown
+        </div>
+      )}
 
       {/* Notes — only rendered when the planner typed one, so a blank
           ruled box doesn't take space under the map. (v0.9.71) */}

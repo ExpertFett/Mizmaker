@@ -323,6 +323,12 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
             if ch_key in radio_comm:
                 mod = miz_modulations.get(ch_num, 0)
                 name = miz_names.get(str(ch_num), f"CH {ch_num}")
+                # DCS's stock sentence-length channel descriptions ("VFR
+                # aircraft ... not under ATC control") are noise in the jet's
+                # COMM display — collapse them to the plain channel number.
+                from services.unit_extractor import _clean_channel_name
+                if not _clean_channel_name(name):
+                    name = f"CH {ch_num}"
                 radio_comm[ch_key] = _make_comm_channel(ch_num, freq, mod, name)
 
         comm[f"COMM{radio_num}"] = radio_comm

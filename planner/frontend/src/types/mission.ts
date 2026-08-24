@@ -47,6 +47,9 @@ export interface MissionUnit {
    *  here rather than on the group — a carrier's group frequency is 0 while
    *  the unit holds the real number. 0 when the unit has none. (v1.19.123) */
   frequency?: number;
+  /** Facing in degrees true (0 = north) — orients the unit silhouettes on
+   *  target imagery. (v1.19.136) */
+  heading_deg?: number;
 }
 
 export interface MissionGroup {
