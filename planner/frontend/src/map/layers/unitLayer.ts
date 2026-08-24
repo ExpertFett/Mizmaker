@@ -59,6 +59,25 @@ export function populateUnitLayer(
   filteredGroups = filteredGroups.filter((g) => effective[g.category as keyof UnitCategoryFilter] !== false);
 
 
+  // Deck-parked flights sit within metres of each other, so their labels
+  // overprinted into an unreadable stack and only the topmost marker could
+  // be clicked. Bucket labelled groups into ~250 m cells and give each a
+  // stacking slot; the label offset climbs one line per slot so every name
+  // stays legible. (v1.19.130)
+  const labelSlot = new Map<number, number>();
+  {
+    const cellCount = new Map<string, number>();
+    for (const group of filteredGroups) {
+      const u = group.units.find((x) => x.lat && x.lon);
+      if (!u) continue;
+      if (!(isPlayerGroup(group) || isCarrierGroup(group))) continue;
+      const cell = `${Math.round(u.lat! * 400)},${Math.round(u.lon! * 400)}`;
+      const n = cellCount.get(cell) ?? 0;
+      labelSlot.set(group.groupId, n);
+      cellCount.set(cell, n + 1);
+    }
+  }
+
   for (const group of filteredGroups) {
     const firstUnit = group.units.find((u) => u.lat && u.lon);
     if (!firstUnit) continue;
@@ -110,7 +129,9 @@ export function populateUnitLayer(
     const label = showLabel
       ? new Text({
           text: finalLabelText,
-          offsetY: -18,
+          // Co-located groups stack upward one line per slot instead of
+          // overprinting.
+          offsetY: -18 - (labelSlot.get(group.groupId) ?? 0) * 14,
           font: `${player ? 'bold 13px' : '12px'} sans-serif`,
           fill: new Fill({
             color: isHiddenFromFLs

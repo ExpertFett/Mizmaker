@@ -161,6 +161,12 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
   const [contextMenu, setContextMenu] = useState<
     { x: number; y: number; groupId: number } | null
   >(null);
+  // Stacked-unit chooser (v1.19.130). Deck-parked flights overlap within a
+  // few pixels, so a click that lands on several groups opens a small list
+  // to pick from instead of silently selecting whichever drew last.
+  const [groupChooser, setGroupChooser] = useState<
+    { x: number; y: number; options: { id: number; name: string }[] } | null
+  >(null);
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview, sessionId } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, highlightMode, setSelectedWpIndex } = useMapStore();
@@ -340,6 +346,11 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
         new ScaleLine({ units: 'nautical' }),
       ]),
     });
+    // Dev-only handle so browser-driven verification can convert coordinates
+    // to pixels and dispatch real interactions. Absent from production builds.
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__olmap = map;
+    }
 
     // If mission data is already loaded, fit to extent now (eliminates any visible flash)
     if (initCoords.length > 1) {
@@ -357,6 +368,7 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
     map.on('click', (e) => {
       const { addWaypointMode, measureMode } = useMapStore.getState();
       if (addWaypointMode || measureMode) return;
+      setGroupChooser(null);
 
       // DMPI placement mode — when armed from the DMPI tab, the next
       // click captures coords into the targeted DMPI and triggers the
@@ -375,7 +387,32 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
       const hits: any[] = [];
       map.forEachFeatureAtPixel(e.pixel, (f) => { hits.push(f); }, { hitTolerance: 10 });
 
-      // Prioritize waypoint hits
+      // Stacked cluster check FIRST. On a carrier deck the client flights
+      // sit within pixels of each other AND under someone's route waypoint,
+      // so waypoint priority silently ate the click and the tester could
+      // never reach the flights below the top marker. When several distinct
+      // unit groups share the click, the chooser outranks everything.
+      const unitHits = hits.filter(
+        (f) => f.get('featureType') === 'unit' && f.get('groupId') != null);
+      // Plain object dedupe — `Map` is shadowed by OpenLayers' Map here.
+      const byId: Record<number, string> = {};
+      for (const f of unitHits) {
+        const id = f.get('groupId') as number;
+        if (!(id in byId)) {
+          byId[id] = (f.get('unit')?.groupName as string) || `Group ${id}`;
+        }
+      }
+      const distinct = Object.entries(byId);
+      if (distinct.length > 1) {
+        const oe = e.originalEvent as MouseEvent;
+        setGroupChooser({
+          x: oe.clientX, y: oe.clientY,
+          options: distinct.map(([id, name]) => ({ id: Number(id), name })),
+        });
+        return;
+      }
+
+      // Prioritize waypoint hits over a single unit marker.
       const wpHit = hits.find((f) => f.get('featureType') === 'waypoint' && f.get('wpIndex') > 0);
       if (wpHit) {
         const gid = wpHit.get('groupId');
@@ -385,7 +422,7 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
         return;
       }
 
-      // Then check for unit or route hits
+      // Single group (unit or route line) — select directly, as before.
       const groupHit = hits.find((f) => f.get('groupId') != null);
       if (groupHit) {
         selectGroup(groupHit.get('groupId'));
@@ -890,6 +927,39 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
 
       {/* Visibility context menu — opens when the mission maker
           right-clicks a unit marker. v0.9.28. */}
+      {groupChooser && (
+        <div style={{
+          position: 'fixed', left: groupChooser.x, top: groupChooser.y,
+          zIndex: 1000, background: '#1e242b', border: '1px solid #4a5a6a',
+          borderRadius: 4, padding: 4, minWidth: 160,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ fontSize: 10, color: '#8a9aa8', padding: '2px 8px 4px',
+                        textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {groupChooser.options.length} groups here
+          </div>
+          {groupChooser.options.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => {
+                selectGroup(o.id);
+                setSelectedWpIndex(null);
+                setGroupChooser(null);
+              }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: '#dddddd', fontSize: 13, padding: '5px 8px',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(ev) => { ev.currentTarget.style.background = '#2d3a48'; }}
+              onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
+            >
+              {o.name}
+            </button>
+          ))}
+        </div>
+      )}
       {contextMenu && (
         <UnitContextMenu
           x={contextMenu.x}
