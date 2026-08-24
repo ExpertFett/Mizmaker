@@ -369,7 +369,11 @@ export function StripMapCard({
               <g key={`thr-${i}`}>
                 <circle cx={o.x} cy={o.y} r={o.r} fill="rgba(217,80,80,0.10)"
                         stroke="rgba(217,80,80,0.85)" strokeWidth={1.2} strokeDasharray="5 4" />
-                <text transform={upright(o.x, o.y - 4)} x={o.x} y={o.y - 4} fontSize={11} fill="#ff8a8a" textAnchor="middle"
+                {/* Clamped into the frame — a ring centred near the edge
+                    otherwise pushes its label off the sheet. */}
+                <text transform={upright(Math.min(Math.max(o.x, 40), drawW - 40), o.y - 4)}
+                      x={Math.min(Math.max(o.x, 40), drawW - 40)} y={o.y - 4}
+                      fontSize={11} fill="#ff8a8a" textAnchor="middle"
                       stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={700}>
                   {/* Short designator, not the raw unit name: "S-300PS", not
                       "301 S-300PS 40B6M tr | 3rd Co, 202nd AD Bde". */}
@@ -383,7 +387,13 @@ export function StripMapCard({
               <g key={`div-${i}`}>
                 <circle cx={o.x} cy={o.y} r={4} fill="none" stroke="#7fd97f" strokeWidth={1.6} />
                 <line x1={o.x - 6} y1={o.y} x2={o.x + 6} y2={o.y} stroke="#7fd97f" strokeWidth={1.2} />
-                <text transform={upright(o.x + 8, o.y + 4)} x={o.x + 8} y={o.y + 4} fontSize={11} fill="#7fd97f"
+                {/* A start-anchored label on a marker in the right third of
+                    the frame runs off the sheet ("Monchegorsk 49" measured
+                    8px outside) — flip it to the marker's left instead. */}
+                <text transform={upright(o.x > drawW * 0.7 ? o.x - 8 : o.x + 8, o.y + 4)}
+                      x={o.x > drawW * 0.7 ? o.x - 8 : o.x + 8} y={o.y + 4}
+                      fontSize={11} fill="#7fd97f"
+                      textAnchor={o.x > drawW * 0.7 ? 'end' : 'start'}
                       stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={600}>
                   {o.a.name} {Math.round(o.nm)}
                 </text>

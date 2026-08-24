@@ -129,7 +129,9 @@ function FieldPanel({ ab, elevationFt, coalition, coordFormat }: {
                   stroke="#2f2f2f" strokeWidth={1} />
           {[0, 90, 180, 270].map((deg) => {
             const rad = ((deg - 90) * Math.PI) / 180;
-            const r = SIZE / 2 - 3;
+            // -7, not -3: the E/W glyphs are centre-anchored and were
+            // hanging 2px outside the frame.
+            const r = SIZE / 2 - 7;
             return (
               <text key={deg} x={CX + Math.cos(rad) * r} y={CY + Math.sin(rad) * r + 3}
                     fill={deg === 0 ? ACCENT : DIM} fontSize={9} textAnchor="middle">

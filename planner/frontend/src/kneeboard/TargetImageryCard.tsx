@@ -109,9 +109,16 @@ export function TargetImageryCard({
             <line x1={cx} y1={cy - 26} x2={cx} y2={cy - 8} stroke="#ff3b30" strokeWidth={2} />
             <line x1={cx} y1={cy + 8} x2={cx} y2={cy + 26} stroke="#ff3b30" strokeWidth={2} />
             <circle cx={cx} cy={cy} r={3} fill="#ff3b30" />
+            {/* Truncated: the crosshair sits at frame centre, so a long
+                target name printed start-anchored beside it ran 75px off the
+                chip. 24 characters is what half the frame holds at this
+                size; the full name is in the card header directly above. */}
             <text x={cx + 30} y={cy - 8} fontSize={13} fill="#ff3b30"
                   stroke="#000" strokeWidth={2.5} paintOrder="stroke" fontWeight={700}>
-              {(dmpi.name || 'DMPI').toUpperCase()}
+              {(() => {
+                const n = (dmpi.name || 'DMPI').toUpperCase();
+                return n.length > 24 ? `${n.slice(0, 23)}…` : n;
+              })()}
             </text>
             <text x={8} y={IMG_H - 8} fontSize={11} fill="rgba(255,255,255,0.75)"
                   stroke="#000" strokeWidth={2.5} paintOrder="stroke">

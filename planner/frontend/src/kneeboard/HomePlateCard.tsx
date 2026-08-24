@@ -240,8 +240,9 @@ export function HomePlateCard({ group, airbases, allGroups, overview, coordForma
         <thead>
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>FIELD</th>
-            <th style={{ ...th, width: 50 }}>BRG</th>
-            <th style={{ ...th, width: 50 }}>DIST</th>
+            <th style={{ ...th, width: 46 }}>BRG</th>
+            {/* "105 nm" measured 13px past the old 50px column. */}
+            <th style={{ ...th, width: 60 }}>DIST</th>
             <th style={{ ...th, width: 92 }}>{coordFormat === 'mgrs' ? 'MGRS' : 'LAT/LON'}</th>
             <th style={{ ...th, width: 56 }}>RWY</th>
             <th style={{ ...th, width: 62 }}>TWR</th>

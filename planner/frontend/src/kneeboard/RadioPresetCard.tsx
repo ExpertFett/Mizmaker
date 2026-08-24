@@ -140,8 +140,12 @@ export function RadioPresetCard({ aircraft, plan, overview, title }: RadioPreset
                 {maps.map((m) => (
                   <React.Fragment key={`h-${m.radio}`}>
                     <th style={{ ...thStyle, width: '7%' }}>PB</th>
-                    <th style={{ ...thStyle, width: '21%' }}>{m.radioLabel || `Radio ${m.radio}`}</th>
-                    <th style={{ ...thStyle, width: '22%' }}>ID</th>
+                    {/* 15/28, not 21/22: the frequency is seven fixed glyphs
+                        while the net name is the column that actually runs
+                        long ("Marshal CVN-73 Washington" was ellipsizing at
+                        the ship's name). */}
+                    <th style={{ ...thStyle, width: '15%' }}>{m.radioLabel || `Radio ${m.radio}`}</th>
+                    <th style={{ ...thStyle, width: '28%' }}>ID</th>
                   </React.Fragment>
                 ))}
               </tr>
@@ -160,7 +164,13 @@ export function RadioPresetCard({ aircraft, plan, overview, title }: RadioPreset
                         <td style={{ ...tdStyle, textAlign: 'center', fontFamily: MONO, fontSize: 13, whiteSpace: 'nowrap' }}>
                           {cell.freq}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {/* Font steps down for long net names so "Marshal
+                            CVN-73 Washington" keeps its meaning instead of
+                            ellipsizing at the ship's name. */}
+                        <td style={{ ...tdStyle,
+                                     fontSize: (net?.name?.length ?? 0) > 22 ? 10
+                                       : (net?.name?.length ?? 0) > 18 ? 11 : 13,
+                                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {cell.id}
                         </td>
                       </React.Fragment>

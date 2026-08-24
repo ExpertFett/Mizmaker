@@ -159,7 +159,11 @@ export const cell: React.CSSProperties = {
   padding: '3px 6px',
   border: `1px solid ${BORDER}`,
   color: TEXT,
-  fontSize: 19,
+  // 18, not 19: with nowrap + overflow hidden, every tight column clips
+  // silently, and a full legibility sweep found 19px digits losing their
+  // last glyph in the narrow ETE / DIST / FUEL columns. One point down is
+  // invisible at cockpit distance and recovers ~5% width in every table.
+  fontSize: 18,
   fontFamily: FONT,
   whiteSpace: 'nowrap',
   overflow: 'hidden',

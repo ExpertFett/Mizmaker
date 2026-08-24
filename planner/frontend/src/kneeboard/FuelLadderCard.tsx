@@ -166,12 +166,12 @@ export function FuelLadderCard({ group, clientUnits, overview, notes, fuelOverri
               gauge is the only column with slack, so it gives the width up. */}
           <col style={{ width: 34 }} />
           <col style={{ width: 58 }} />
-          <col style={{ width: 52 }} />
+          <col style={{ width: 60 }} />
           <col style={{ width: 46 }} />
-          <col style={{ width: 44 }} />
-          <col style={{ width: 52 }} />
-          <col style={{ width: 58 }} />
-          <col style={{ width: 72 }} />
+          <col style={{ width: 60 }} />
+          <col style={{ width: 60 }} />
+          <col style={{ width: 66 }} />
+          <col style={{ width: 76 }} />
           <col />
         </colgroup>
         <thead>
