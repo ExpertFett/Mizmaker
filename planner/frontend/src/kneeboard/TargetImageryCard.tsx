@@ -24,7 +24,7 @@ import {
 } from './cardStyles';
 import { TileMap, createProjection } from './TileMap';
 import type { Dmpi } from '../store/dmpiStore';
-import type { MissionOverviewData } from '../types/mission';
+import type { MissionGroup, MissionOverviewData } from '../types/mission';
 import { metersToFeet } from '../utils/conversions';
 import { formatCoord, type CoordFormat } from './coords';
 import { DEFAULT_OPTIONS, type KneeboardOptions } from './options';
@@ -49,11 +49,38 @@ interface TargetImageryCardProps {
   notes?: string;
   /** Flight lead controls — chip zoom and base layer. */
   opts?: KneeboardOptions;
+  /** Mission groups — units inside the frame are marked on the print so the
+   *  crew sees what's actually parked at the aim point. */
+  groups?: MissionGroup[];
+}
+
+/** Cap the unit marks: past this the chip is a SAM garrison, not a target
+ *  picture, and the marks would bury the imagery. */
+const MAX_UNIT_MARKS = 50;
+const UNIT_COLOR: Record<string, string> = {
+  red: '#d81f1f', blue: '#2f6fd8', neutrals: '#9a9a9a',
+};
+
+function unitsInFrame(
+  groups: MissionGroup[] | undefined,
+  minLat: number, maxLat: number, minLon: number, maxLon: number,
+) {
+  if (!groups) return [];
+  const out: { lat: number; lon: number; type: string; coalition: string }[] = [];
+  for (const g of groups) {
+    for (const u of g.units ?? []) {
+      if (u.lat == null || u.lon == null) continue;
+      if (u.lat < minLat || u.lat > maxLat || u.lon < minLon || u.lon > maxLon) continue;
+      out.push({ lat: u.lat, lon: u.lon, type: u.type, coalition: g.coalition });
+      if (out.length >= MAX_UNIT_MARKS) return out;
+    }
+  }
+  return out;
 }
 
 export function TargetImageryCard({
   dmpi, index, total, overview, coordFormat = 'mgrs', squadron, notes,
-  opts = DEFAULT_OPTIONS,
+  opts = DEFAULT_OPTIONS, groups,
 }: TargetImageryCardProps) {
   const { lat, lon } = dmpi;
   const CHIP_HALF_NM = opts.weapons.targetChipNm || CHIP_HALF_NM_DEFAULT;
@@ -72,6 +99,14 @@ export function TargetImageryCard({
 
   const elevFt = dmpi.elevation ? Math.round(metersToFeet(dmpi.elevation)) : null;
 
+  const marks = unitsInFrame(groups, minLat, maxLat, minLon, maxLon)
+    .map((u) => { const [x, y] = proj.project(u.lat, u.lon); return { ...u, x, y }; });
+  // Type labels only while they stay legible — a dozen marks with text reads
+  // as annotation, fifty reads as noise.
+  const labelUnits = marks.length <= 12;
+
+  const satellite = opts.nav.mapLayer !== 'dark';
+
   return (
     <div style={cardRoot}>
       <div style={headerStyle}>
@@ -89,20 +124,46 @@ export function TargetImageryCard({
         )}
       </div>
 
-      <div style={{ padding: '0 16px' }}>
-        <TileMap
-          width={IMG_W}
-          height={IMG_H}
-          minLat={minLat}
-          maxLat={maxLat}
-          minLon={minLon}
-          maxLon={maxLon}
-          layer={opts.nav.mapLayer === "dark" ? "dark" : "satellite"}
-        >
-          <svg width={IMG_W} height={IMG_H} style={{ display: 'block' }}>
+      {/* The print. Satellite imagery filtered to recon-photo monochrome so
+          the red annotation carries; the SVG overlay sits OUTSIDE the filter
+          so the marks stay full-color. */}
+      <div style={{
+        width: IMG_W, height: IMG_H, margin: '0 auto', position: 'relative',
+        overflow: 'hidden', flexShrink: 0,
+      }}>
+        <div style={satellite ? { filter: 'grayscale(1) contrast(1.18) brightness(1.06)' } : undefined}>
+          <TileMap
+            width={IMG_W}
+            height={IMG_H}
+            minLat={minLat}
+            maxLat={maxLat}
+            minLon={minLon}
+            maxLon={maxLon}
+            layer={satellite ? 'satellite' : 'dark'}
+          />
+        </div>
+        <svg width={IMG_W} height={IMG_H} style={{ position: 'absolute', inset: 0 }}>
             {/* 500 m scale ring */}
             <circle cx={cx} cy={cy} r={ring} fill="none"
                     stroke="rgba(255,255,255,0.55)" strokeWidth={1} strokeDasharray="4 4" />
+            {/* Units in frame — hollow diamonds by coalition, so the crew
+                sees what's actually parked at the aim point. */}
+            {marks.map((u, i) => (
+              <g key={i}>
+                <rect x={-4.5} y={-4.5} width={9} height={9}
+                      transform={`translate(${u.x}, ${u.y}) rotate(45)`}
+                      fill="none" stroke={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals}
+                      strokeWidth={1.8} paintOrder="stroke"
+                      style={{ filter: 'drop-shadow(0 0 1.5px rgba(255,255,255,0.9))' }} />
+                {labelUnits && (
+                  <text x={u.x + 8} y={u.y + 4} fontSize={10} fontWeight={700}
+                        fill={UNIT_COLOR[u.coalition] || UNIT_COLOR.neutrals}
+                        stroke="#fff" strokeWidth={2} paintOrder="stroke">
+                    {u.type.length > 14 ? `${u.type.slice(0, 13)}…` : u.type}
+                  </text>
+                )}
+              </g>
+            ))}
             {/* Aim point crosshair — gapped so the target itself stays visible */}
             <line x1={cx - 26} y1={cy} x2={cx - 8} y2={cy} stroke="#ff3b30" strokeWidth={2} />
             <line x1={cx + 8} y1={cy} x2={cx + 26} y2={cy} stroke="#ff3b30" strokeWidth={2} />
@@ -120,12 +181,11 @@ export function TargetImageryCard({
                 return n.length > 24 ? `${n.slice(0, 23)}…` : n;
               })()}
             </text>
-            <text x={8} y={IMG_H - 8} fontSize={11} fill="rgba(255,255,255,0.75)"
+            <text x={8} y={IMG_H - 8} fontSize={11} fill="rgba(255,255,255,0.85)"
                   stroke="#000" strokeWidth={2.5} paintOrder="stroke">
-              ring 500 m
+              ring 500 m{marks.length ? ` | ${marks.length} unit${marks.length !== 1 ? 's' : ''} in frame` : ''}
             </text>
-          </svg>
-        </TileMap>
+        </svg>
       </div>
 
       <div style={sectionTitle}>AIM POINT</div>
@@ -170,7 +230,7 @@ export function TargetImageryCard({
       </div>
 
       <div style={footerStyle}>
-        Target imagery | Generated by DCS:OPT
+        Target imagery | real-world satellite of mission coordinates | Generated by DCS:OPT
       </div>
     </div>
   );

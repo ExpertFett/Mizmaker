@@ -443,7 +443,7 @@ export function KneeboardTab() {
         const el = createElement(TargetImageryCard, { opts,
           dmpi: valid[i], index: i + 1, total: valid.length,
           overview: overview || undefined, coordFormat,
-          squadron: activeSop?.squadron,
+          squadron: activeSop?.squadron, groups,
         });
         const safe = (valid[i].name || `Target_${i + 1}`).replace(/\s+/g, '_');
         results.push({ name: `Target_${i + 1}_${safe}.png`, blob: await renderCardToBlob(el, theme, themeVars) });
@@ -1752,7 +1752,7 @@ function CardCarousel({
           element: createElement(TargetImageryCard, { opts,
             dmpi: d, index: i + 1, total: valid.length,
             overview: overview || undefined, coordFormat,
-            squadron: activeSop?.squadron,
+            squadron: activeSop?.squadron, groups,
           }),
         });
       });
@@ -1798,7 +1798,13 @@ function CardCarousel({
       return i < 0 ? Number.MAX_SAFE_INTEGER : i;
     };
     return [...list].sort((a, b) => rank(a.key) - rank(b.key));
-  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks]);
+  // profileSamples and fieldElevations arrive ASYNC after their fetch
+  // effects — leaving them out of this list froze the Route Profile card at
+  // its initial empty samples forever ("Route needs at least two positioned
+  // waypoints" with a fully planned route; Fett report 2026-08-23) and left
+  // airfield diagrams without elevations. Every value the card elements
+  // close over must be here or the stale element keeps rendering.
+  }, [selectedGroup, cards, groups, clientUnits, threats, airbases, theater, overview, coalition, wx, coordFormat, speedRef, machThreshold, threatFidelity, threatMapVisible, activeSop, dmpis, notesText, notesTitle, cardNotes, fuelOverrides, flightDataOverrides, weaponIds, popupAttacks, profileSamples, fieldElevations, diagramFields, opts, drawings, radioLadderOrder, camelotOverrides, reconGroupIds, selectedPilotId]);
 
   // Clamp index when list changes
   useEffect(() => {
