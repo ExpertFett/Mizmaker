@@ -709,6 +709,9 @@ def find_client_units(mission: dict) -> list:
             "voiceCallsignLabel": props.get("VoiceCallsignLabel", ""),
             "voiceCallsignNumber": props.get("VoiceCallsignNumber", ""),
             "stnL16": props.get("STN_L16", ""),
+            # Tail number ("modex") as painted on the jet — the A/C column on
+            # squadron flight cards. Editable via unit_editor; empty when unset.
+            "onboardNum": unit.get("onboard_num", ""),
             "donors": donors,
             "teamMembers": members,
             "hasDatalinks": bool(datalinks),

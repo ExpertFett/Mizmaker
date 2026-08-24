@@ -13,6 +13,8 @@ import { useEditStore, type KneeboardCards } from '../../store/editStore';
 import { RouteCard, type KneeboardSpeedRef } from '../../kneeboard/RouteCard';
 import { FlightCard } from '../../kneeboard/FlightCard';
 import { StationLoadoutCard } from '../../kneeboard/StationLoadoutCard';
+import { CamelotCard } from '../../kneeboard/CamelotCard';
+import { ReconImageryCard } from '../../kneeboard/ReconImageryCard';
 import { RouteProfileCard } from '../../kneeboard/RouteProfileCard';
 import { sampleRoute, fetchRouteTerrain, type RouteSample } from '../../utils/routeProfile';
 import { AirfieldDiagramCard, airfieldCardCount } from '../../kneeboard/AirfieldDiagramCard';
@@ -60,6 +62,7 @@ const PER_FLIGHT_CARDS: { key: keyof KneeboardCards; label: string; desc: string
   { key: 'stationLoadout', label: 'Station Loadout', desc: 'Stores drawn on the airframe, one box per pylon, with laser codes' },
   { key: 'routeProfile', label: 'Route Profile', desc: 'Side view: terrain under the route, planned altitude, per-leg MSA' },
   { key: 'airfieldDiagram', label: 'Airfield Diagrams', desc: 'Generated plate per usable field: runway headings, ATC, elevation' },
+  { key: 'camelot', label: 'Camelot Kneeboards', desc: 'Squadron-format flight card: crew/IFF/laser grid, comms, flight plan, tanker line' },
   { key: 'comms', label: 'Comms Card', desc: 'Radio presets, mission phase flow' },
   { key: 'routeDetail', label: 'Route Detail', desc: 'Map with route, threats, terrain' },
   { key: 'stripMap', label: 'Strip Map', desc: 'North-up route map with per-leg doghouse (MC / DIST / TIME / ALT)' },
@@ -95,6 +98,8 @@ const NOTE_CARDS: { key: keyof KneeboardCards; label: string; perFlight: boolean
   { key: 'stationLoadout', label: 'Station Loadout', perFlight: true },
   { key: 'routeProfile', label: 'Route Profile', perFlight: true },
   { key: 'airfieldDiagram', label: 'Airfield Diagrams', perFlight: true },
+  { key: 'camelot', label: 'Camelot Kneeboards', perFlight: true },
+  { key: 'reconImagery', label: 'Recon Imagery', perFlight: false },
   { key: 'comms', label: 'Comms Card', perFlight: true },
   { key: 'routeDetail', label: 'Route Detail', perFlight: true },
   { key: 'stripMap', label: 'Strip Map', perFlight: true },
@@ -165,6 +170,8 @@ export function KneeboardTab() {
   // and a stored blob missing a newer option still loads. (v1.19.126)
   const opts = resolveOptions(kneeboardSettings.options);
   const cardsPerFlight = kneeboardSettings.cardsPerFlight ?? {};
+  const camelotOverrides = kneeboardSettings.camelotOverrides ?? {};
+  const reconGroupIds = kneeboardSettings.reconGroupIds ?? [];
   // Notes box height rides the theme-variable channel, so one value on the
   // capture container resizes every notes box on every card at once.
   const themeVars = {
@@ -264,6 +271,17 @@ export function KneeboardTab() {
         group: g, samples, overview: overview || undefined, notes: cardNotes.routeProfile,
       });
       results.push({ name: `${safeName}_Profile.png`, blob: await renderCardToBlob(el, theme, themeVars) });
+    }
+    if (cards.camelot) {
+      const el = createElement(CamelotCard, {
+        group: g, clientUnits, allGroups: groups, airbases,
+        overview: overview || undefined,
+        overrides: camelotOverrides[g.groupName],
+        laserCodeBase: activeSop?.laserCodeBase,
+        flightDataOverride: flightDataOverrides[g.groupName],
+        notes: cardNotes.camelot,
+      });
+      results.push({ name: `${safeName}_Camelot.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
     }
     if (cards.airfieldDiagram) {
       const fields = airfieldsForFlight(g, airbases, coalition, opts.diverts.count, opts.diverts.enemyFields);
@@ -382,6 +400,18 @@ export function KneeboardTab() {
     // No-op when the user has the toggle on but no SOP loaded; we don't
     // want to silently fail or emit a blank card. The carousel shows a
     // hint in that case so it's discoverable.
+    if (cards.reconImagery) {
+      for (const gid of reconGroupIds) {
+        const rg = groups.find((g) => g.groupId === gid);
+        if (!rg) continue;
+        const el = createElement(ReconImageryCard, {
+          group: rg, overview: overview || undefined, coordFormat,
+          notes: cardNotes.reconImagery,
+        });
+        const safe = rg.groupName.replace(/[^A-Za-z0-9]+/g, '_');
+        results.push({ name: `Recon_${safe}.png`, blob: await renderCardToBlob(el, theme, customThemeVars) });
+      }
+    }
     if (cards.sopComms && activeSop) {
       // One card per source comm sheet when the SOP carries them.
       const pages = sopCommsPageCount(activeSop);
@@ -895,6 +925,88 @@ export function KneeboardTab() {
         );
       })()}
 
+      {/* Camelot card fields the mission cannot answer — event name, MIDS,
+          push time, IFF bases. Per flight. (v1.19.132) */}
+      {cards.camelot && selectedGroup && isPlayerGroup(selectedGroup) && (() => {
+        const gName = selectedGroup.groupName;
+        const ovr = camelotOverrides[gName] ?? {};
+        const setField = (key: string, val: string) => {
+          const next = { ...ovr, [key]: val || undefined };
+          const map = { ...camelotOverrides, [gName]: next };
+          if (Object.values(next).every((v) => !v)) delete map[gName];
+          setKneeboardSettings({ camelotOverrides: map });
+        };
+        const field = (label: string, key: keyof typeof ovr, width = 90, hint = '') => (
+          <label style={{ display: 'block', fontSize: 11, color: '#aaaaaa' }}>
+            <span style={{ display: 'block', color: '#cccccc', fontWeight: 600, marginBottom: 3 }}>{label}</span>
+            <input
+              type="text" value={ovr[key] ?? ''} placeholder={hint}
+              onChange={(e) => setField(key, e.target.value)}
+              style={{ width, background: '#262626', border: '1px solid #3a3a3a',
+                       borderRadius: 3, color: '#e0e0e0', fontSize: 12, padding: '4px 6px' }}
+            />
+          </label>
+        );
+        return (
+          <div style={{ border: '1px solid #333333', borderRadius: 4, padding: '8px 10px', marginTop: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#cccccc', marginBottom: 6 }}>
+              Camelot card — {gName}
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {field('Event', 'event', 110, 'OREX98')}
+              {field('MIDS A', 'midsA', 54, '30')}
+              {field('MIDS B', 'midsB', 54, '31')}
+              {field('Push', 'push', 64, '9.53')}
+              {field('M1', 'm1', 48, '21')}
+              {field('M3 base', 'm3Base', 64, '3211')}
+            </div>
+            <div style={{ fontSize: 10, color: '#888888', marginTop: 5 }}>
+              M3 counts up per crew row. Laser, presets, flight plan, home field and the
+              tanker line fill from the mission; blank cells stay blank for handwriting.
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Recon imagery group picker — one monochrome print per picked group,
+          targets numbered. (v1.19.132) */}
+      {cards.reconImagery && (() => {
+        const candidates = groups
+          .filter((g) => (g.units ?? []).some((u) => u.lat != null))
+          .filter((g) => g.category !== 'static')
+          .sort((a, b) => (a.coalition === b.coalition ? a.groupName.localeCompare(b.groupName)
+            : a.coalition === 'red' ? -1 : 1));
+        const togglePick = (gid: number, on: boolean) => {
+          const next = on ? [...reconGroupIds, gid] : reconGroupIds.filter((x) => x !== gid);
+          setKneeboardSettings({ reconGroupIds: next });
+        };
+        return (
+          <div style={{ border: '1px solid #333333', borderRadius: 4, padding: '8px 10px', marginTop: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#cccccc', marginBottom: 2 }}>
+              Recon imagery — pick target groups
+            </div>
+            <div style={{ fontSize: 10, color: '#888888', marginBottom: 6 }}>
+              One print per group: monochrome satellite of the mission coordinates,
+              every unit numbered with a coordinate table. Red groups listed first.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+                          gap: '2px 10px', maxHeight: 180, overflowY: 'auto' }}>
+              {candidates.map((g) => (
+                <label key={g.groupId} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5,
+                  color: g.coalition === 'red' ? '#e08a8a' : '#cccccc', cursor: 'pointer',
+                }}>
+                  <input type="checkbox" checked={reconGroupIds.includes(g.groupId)}
+                         onChange={(e) => togglePick(g.groupId, e.target.checked)} />
+                  {g.groupName}
+                  <span style={{ color: '#777777', fontSize: 10 }}>({g.units.length})</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Flight lead controls — the doctrine and presentation numbers the
           cards used to hardcode. (v1.19.126) */}
       <div style={{ marginTop: 10 }}>
@@ -1303,6 +1415,8 @@ export function KneeboardTab() {
         fuelOverrides={fuelOverrides}
           radioLadderOrder={radioLadderOrder}
           opts={opts}
+          camelotOverrides={camelotOverrides}
+          reconGroupIds={reconGroupIds}
         flightDataOverrides={flightDataOverrides}
         weaponIds={weaponIds}
         popupAttacks={popupAttacks}
@@ -1345,6 +1459,8 @@ interface CarouselProps {
   fuelOverrides: Record<string, { start?: number; joker?: number; bingo?: number }>;
   radioLadderOrder: string[];
   opts: KneeboardOptions;
+  camelotOverrides: Record<string, { event?: string; midsA?: string; midsB?: string; push?: string; m3Base?: string; m1?: string }>;
+  reconGroupIds: number[];
   flightDataOverrides: Record<string, { tacan?: string; icls?: string; iffM1?: string; iffM3?: string }>;
   weaponIds: string[];
   popupAttacks: PopupAttackInput[];
@@ -1371,7 +1487,7 @@ function CardCarousel({
   notesText,
   notesTitle,
   cardNotes,
-  fuelOverrides, radioLadderOrder, opts,
+  fuelOverrides, radioLadderOrder, opts, camelotOverrides, reconGroupIds,
   flightDataOverrides,
   weaponIds,
   popupAttacks,
@@ -1461,6 +1577,19 @@ function CardCarousel({
           element: createElement(RouteProfileCard, { opts,
             group: selectedGroup, samples: profileSamples,
             overview: overview || undefined, notes: cardNotes.routeProfile,
+          }),
+        });
+      }
+      if (cards.camelot) {
+        list.push({
+          key: 'camelot', label: 'Camelot Kneeboard',
+          element: createElement(CamelotCard, {
+            group: selectedGroup, clientUnits, allGroups: groups, airbases,
+            overview: overview || undefined,
+            overrides: camelotOverrides[selectedGroup.groupName],
+            laserCodeBase: activeSop?.laserCodeBase,
+            flightDataOverride: flightDataOverrides[selectedGroup.groupName],
+            notes: cardNotes.camelot,
           }),
         });
       }
@@ -1577,6 +1706,19 @@ function CardCarousel({
         key: 'weatherBrief', label: 'Weather Briefing',
         element: createElement(WeatherBriefCard, { opts, overview, notes: cardNotes.weatherBrief }),
       });
+    }
+    if (cards.reconImagery) {
+      for (const gid of reconGroupIds) {
+        const rg = groups.find((g) => g.groupId === gid);
+        if (!rg) continue;
+        list.push({
+          key: `recon-${gid}`, label: `Recon — ${rg.groupName}`,
+          element: createElement(ReconImageryCard, {
+            group: rg, overview: overview || undefined, coordFormat,
+            notes: cardNotes.reconImagery,
+          }),
+        });
+      }
     }
     if (cards.sopComms && activeSop) {
       const sopPages = sopCommsPageCount(activeSop);

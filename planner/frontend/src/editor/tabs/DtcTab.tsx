@@ -845,6 +845,38 @@ export function DtcTab() {
     }
   }, [sessionId, selectedFlight, dtcData]);
 
+  // One .dtc per player flight in a single zip. The flight open in the
+  // editor exports WITH its edits; the rest build from mission data + the
+  // SA auto-fill, which is the server's default when no edits are sent.
+  const [exportingAll, setExportingAll] = useState(false);
+  const handleExportAll = useCallback(async () => {
+    if (!sessionId || dtcFlights.length === 0) return;
+    setExportingAll(true);
+    setError(null);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      for (const name of dtcFlights) {
+        const blob = await dtcGenerate(
+          sessionId, name, name === selectedFlight ? dtcData : undefined);
+        zip.file(`${name.replace(/[^A-Za-z0-9_-]+/g, '_')}.dtc`, blob);
+      }
+      const out = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(out);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'DTC_all_flights.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Batch export failed');
+    } finally {
+      setExportingAll(false);
+    }
+  }, [sessionId, dtcFlights, selectedFlight, dtcData]);
+
   if (dtcFlights.length === 0) {
     return (
       <div style={{ color: '#aaaaaa', fontSize: 15, padding: 20 }}>
@@ -903,9 +935,16 @@ export function DtcTab() {
           {loading ? 'Loading...' : 'Load DTC'}
         </button>
         {dtcData && (
-          <button onClick={handleExport} disabled={exporting} style={{ ...btnStyle, background: '#1a4a2a', borderColor: '#2a6a3a' }}>
-            {exporting ? 'Exporting...' : 'Export .dtc'}
-          </button>
+          <>
+            <button onClick={handleExportAll} disabled={exportingAll}
+                    title="One .dtc per player flight; the open flight keeps its edits"
+                    style={{ ...btnStyle }}>
+              {exportingAll ? 'Exporting all…' : 'Export all (.zip)'}
+            </button>
+            <button onClick={handleExport} disabled={exporting} style={{ ...btnStyle, background: '#1a4a2a', borderColor: '#2a6a3a' }}>
+              {exporting ? 'Exporting...' : 'Export .dtc'}
+            </button>
+          </>
         )}
 
         {/* Copy/Paste DTC across flights (v0.9.38). Copy stages

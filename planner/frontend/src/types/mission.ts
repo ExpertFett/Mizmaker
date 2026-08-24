@@ -273,6 +273,8 @@ export interface ClientUnit {
   voiceCallsignLabel: string;
   voiceCallsignNumber: string;
   stnL16: string;
+  /** Tail number (modex) painted on the jet — "200", "218". (v1.19.132) */
+  onboardNum?: string;
   donors: DonorInfo[];
   teamMembers: DonorInfo[];
   hasDatalinks: boolean;

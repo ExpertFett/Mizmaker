@@ -42,6 +42,11 @@ export interface KneeboardCards {
   /** Generated airfield diagrams for home plate + nearest usable diverts.
    *  (v1.19.122) */
   airfieldDiagram: boolean;
+  /** Squadron-format flight card ("Camelot Kneeboards"). (v1.19.132) */
+  camelot: boolean;
+  /** Recon prints — monochrome satellite of picked groups with numbered
+   *  targets. (v1.19.132) */
+  reconImagery: boolean;
   /** Notes Card — free-text mission notes the planner types in the
    *  Kneeboard tab. Renders the planner's notesText verbatim as a
    *  printable card. Empty-state placeholder when no text. (v0.9.69) */
@@ -123,6 +128,14 @@ export interface KneeboardSettings {
    *  absent means the derived phase order stands. Ids that no longer exist
    *  are ignored at render, so a stale order never drops a rung. (v1.19.119) */
   radioLadderOrder: string[];
+  /** Per-flight Camelot card fields the mission cannot answer (event name,
+   *  MIDS channels, push time, M1/M3 base), keyed by group name. (v1.19.132) */
+  camelotOverrides: Record<string, {
+    event?: string; midsA?: string; midsB?: string;
+    push?: string; m3Base?: string; m1?: string;
+  }>;
+  /** Groups picked for recon imagery cards. (v1.19.132) */
+  reconGroupIds: number[];
   /** Flight lead controls — the doctrine and presentation numbers the cards
    *  used to hardcode. Stored partial so a settings blob saved before an
    *  option existed still loads; resolveOptions() fills the gaps. See
@@ -299,6 +312,8 @@ export const useEditStore = create<EditState>((set) => ({
     cardNotes: {},
     fuelOverrides: {},
     radioLadderOrder: [],
+    camelotOverrides: {},
+    reconGroupIds: [],
     options: DEFAULT_OPTIONS,
     cardsPerFlight: {},
     flightDataOverrides: {},
@@ -312,7 +327,7 @@ export const useEditStore = create<EditState>((set) => ({
       // them when the planner has opted in (notes written / weapons picked /
       // profiles defined), so an empty card doesn't ride along every download.
       sopComms: true, goalsCard: true, dmpiCard: true, targetImagery: true,
-      stationLoadout: true, routeProfile: true, airfieldDiagram: true, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
+      stationLoadout: true, routeProfile: true, airfieldDiagram: true, camelot: false, reconImagery: false, notesCard: false, weaponsRef: false, weaponsAuto: false, popupAttack: false,
       // Strip Map defaults ON for player flights — it's the kind of card
       // every aviator wants in the kneeboard pack by default. Mission
       // makers who don't want it can untick.
