@@ -997,6 +997,228 @@ def _find_inline_rule_bounds_by_name(
     return None
 
 
+# ── Runtime-trig compilation ───────────────────────────────────────────────
+# DCS EXECUTES triggers from the compiled mission["trig"] tables
+# (conditions / actions / func / funcStartup / flag); trigrules is only what
+# the Mission Editor displays and recompiles on resave. Proven empirically
+# 2026-08-23 on the dedicated server: a trigrules-only rule (this module's
+# old behaviour) shows in the ME but NEVER fires in-game. So every rule we
+# append or replace must also be compiled into trig at the same index.
+
+def _lua_quote(s: Any) -> str:
+    """Escape raw text for embedding inside a double-quoted Lua string."""
+    return (str(s).replace("\\", "\\\\").replace('"', '\\"')
+            .replace("\r\n", "\n").replace("\n", "\\n"))
+
+
+def _num_or_quoted(v: Any) -> str:
+    """Group/unit/zone ids appear as bare numbers in compiled calls."""
+    s = str(v)
+    try:
+        float(s)
+        return s
+    except ValueError:
+        return f'"{_lua_quote(s)}"'
+
+
+def _compile_condition_call(cond: Dict) -> Optional[str]:
+    t = cond.get("type")
+    p = cond.get("params", {}) if isinstance(cond.get("params"), dict) else {}
+    if t == "TIME_MORE_THAN":
+        return f'c_time_after({int(float(p.get("seconds", 0)))})'
+    if t == "TIME_LESS_THAN":
+        return f'c_time_before({int(float(p.get("seconds", 0)))})'
+    if t == "FLAG_IS_TRUE":
+        return f'c_flag_is_true("{_lua_quote(p.get("flag", "1"))}")'
+    if t == "FLAG_IS_FALSE":
+        return f'c_flag_is_false("{_lua_quote(p.get("flag", "1"))}")'
+    if t == "FLAG_EQUALS":
+        return f'c_flag_equals("{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 0)))})'
+    if t == "FLAG_LESS_THAN":
+        return f'c_flag_less("{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 0)))})'
+    if t == "FLAG_MORE_THAN":
+        return f'c_flag_more("{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 0)))})'
+    if t == "GROUP_DEAD":
+        return f'c_group_dead({_num_or_quoted(p.get("group", 0))})'
+    if t == "GROUP_ALIVE":
+        return f'c_group_alive({_num_or_quoted(p.get("group", 0))})'
+    if t == "UNIT_ALIVE":
+        return f'c_unit_alive({_num_or_quoted(p.get("unit", 0))})'
+    if t == "UNIT_IN_ZONE":
+        return f'c_unit_in_zone({_num_or_quoted(p.get("unit", 0))}, {_num_or_quoted(p.get("zone", 0))})'
+    if t == "PART_OF_GROUP_IN_ZONE":
+        return f'c_part_of_group_in_zone({_num_or_quoted(p.get("group", 0))}, {_num_or_quoted(p.get("zone", 0))})'
+    if t == "COALITION_IN_ZONE":
+        return f'c_part_of_coalition_in_zone("{_lua_quote(p.get("coalition", "blue"))}", {_num_or_quoted(p.get("zone", 0))})'
+    if t == "RANDOM_LESS_THAN":
+        return f'c_random_less({int(float(p.get("percent", 0)))})'
+    if t in ("LUA_PREDICATE", "CUSTOM_LUA") and p.get("lua"):
+        lua = str(p["lua"]).strip()
+        # CUSTOM_LUA round-trips the whole "return(...)" string; use verbatim.
+        if lua.startswith("return"):
+            return None if t == "CUSTOM_LUA" else f'c_predicate("{_lua_quote(lua)}")'
+        return f'c_predicate("{_lua_quote(lua)}")'
+    if isinstance(p.get("rawArgs"), list):
+        pred = CONDITION_TYPE_TO_PREDICATE.get(t)
+        if pred:
+            return f'{pred}({", ".join(str(a) for a in p["rawArgs"])})'
+    return None
+
+
+def _compile_action_call(act: Dict) -> Optional[str]:
+    t = act.get("type")
+    p = act.get("params", {}) if isinstance(act.get("params"), dict) else {}
+    if t == "SET_FLAG":
+        v = p.get("value", True)
+        if v is False:
+            return f'a_clear_flag("{_lua_quote(p.get("flag", "1"))}");'
+        if v is True:
+            return f'a_set_flag("{_lua_quote(p.get("flag", "1"))}");'
+        return f'a_set_flag("{_lua_quote(p.get("flag", "1"))}", {int(float(v))});'
+    if t == "CLEAR_FLAG":
+        return f'a_clear_flag("{_lua_quote(p.get("flag", "1"))}");'
+    if t == "FLAG_INCREASE":
+        return f'a_flag_increase("{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 1)))});'
+    if t == "FLAG_DECREASE":
+        return f'a_flag_decrease("{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 1)))});'
+    if t == "MESSAGE_TO_ALL":
+        return (f'a_out_text_delay("{_lua_quote(p.get("text", ""))}", '
+                f'{int(float(p.get("duration", 10)))}, false, 0);')
+    if t == "MESSAGE_TO_COALITION":
+        return (f'a_out_text_delay_coalition("{_lua_quote(p.get("coalition", "blue"))}", '
+                f'"{_lua_quote(p.get("text", ""))}", {int(float(p.get("duration", 10)))}, false, 0);')
+    if t == "DO_SCRIPT":
+        return f'a_do_script("{_lua_quote(p.get("lua", ""))}");'
+    if t == "DO_SCRIPT_FILE":
+        f = str(p.get("file", ""))
+        if f.startswith("ResKey"):
+            return f'a_do_script_file(getValueResourceByKey("{_lua_quote(f)}"));'
+        return f'a_do_script_file("{_lua_quote(f)}");'
+    if t == "GROUP_ACTIVATE":
+        return f'a_activate_group({_num_or_quoted(p.get("group", 0))});'
+    if t == "GROUP_DEACTIVATE":
+        return f'a_deactivate_group({_num_or_quoted(p.get("group", 0))});'
+    if t == "AI_ON":
+        return f'a_ai_on({_num_or_quoted(p.get("group", 0))});'
+    if t == "AI_OFF":
+        return f'a_ai_off({_num_or_quoted(p.get("group", 0))});'
+    if t == "ADD_RADIO_ITEM" and "text" in p:
+        return (f'a_add_radio_item("{_lua_quote(p.get("text", ""))}", '
+                f'"{_lua_quote(p.get("flag", "1"))}", {int(float(p.get("value", 1)))});')
+    if t == "REMOVE_RADIO_ITEM" and "text" in p:
+        return f'a_remove_radio_item("{_lua_quote(p.get("text", ""))}");'
+    if t == "AI_TASK" and isinstance(p.get("rawArgs"), list) is False and "group" in p:
+        return f'a_ai_task({_num_or_quoted(p.get("group", 0))}, {int(float(p.get("task", 1)))});'
+    if t == "CARRIER_LIGHTS" and "unit" in p:
+        return f'a_set_carrier_illumination_mode({_num_or_quoted(p.get("unit", 0))}, {int(float(p.get("mode", 0)))});'
+    if t == "CUSTOM_LUA" and (act.get("rawLua") or p.get("lua")):
+        raw = str(act.get("rawLua") or p.get("lua")).strip()
+        if raw.endswith(";") or "(" in raw:
+            return raw if raw.endswith(";") else raw + ";"
+    if isinstance(p.get("rawArgs"), list):
+        pred = ACTION_TYPE_TO_PREDICATE.get(t)
+        if pred:
+            return f'{pred}({", ".join(str(a) for a in p["rawArgs"])});'
+    return None
+
+
+def _compile_rule_trig(rule: Dict, rule_id: int) -> Optional[Dict[str, str]]:
+    """Compile a structured rule into its runtime-trig entry strings.
+
+    Returns None when any condition/action cannot be compiled — the caller
+    leaves trig alone for that rule rather than emit a wrong entry.
+    """
+    cond_calls = []
+    for c in rule.get("conditions") or []:
+        call = _compile_condition_call(c)
+        if call is None:
+            return None
+        cond_calls.append(call)
+    act_calls = []
+    for a in rule.get("actions") or []:
+        call = _compile_action_call(a)
+        if call is None:
+            return None
+        act_calls.append(call)
+    if not act_calls:
+        return None
+
+    predicate = rule.get("predicate") or {
+        "once": "triggerOnce",
+        "continuous": "triggerContinuous",
+        "onMissionStart": "triggerStart",
+    }.get(rule.get("eventType", "once"), "triggerOnce")
+
+    cond_str = "return(" + (" and ".join(cond_calls) if cond_calls else "true") + " )"
+    action_str = "".join(act_calls)
+    if predicate == "triggerOnce":
+        action_str += f" mission.trig.func[{rule_id}]=nil;"
+    func_str = (f"if mission.trig.conditions[{rule_id}]() "
+                f"then mission.trig.actions[{rule_id}]() end")
+    return {
+        "condition": cond_str,
+        "action": action_str,
+        "func": func_str,
+        "funcSection": "funcStartup" if predicate == "triggerStart" else "func",
+    }
+
+
+def _upsert_trig_entry(text: str, section: str, rule_id: int, value_lua: str) -> str:
+    """Set mission["trig"][section][rule_id] = value_lua (replace or append)."""
+    tm = re.search(r'\["trig"\]\s*=\s*\n?\s*\{', text)
+    if not tm:
+        return text
+    trig_open = text.index("{", tm.start())
+    trig_close = _find_matching_brace(text, trig_open)  # position AFTER the }
+
+    block = text[trig_open:trig_close]
+    sm = re.search(r'\["' + section + r'"\]\s*=\s*(\{\}|\n?\s*\{)', block)
+    if not sm:
+        return text
+
+    if sm.group(1) == "{}":
+        # empty single-line section — expand it
+        abs_open = trig_open + sm.end() - 2
+        replacement = "{\n\t\t\t[%d] = %s,\n\t\t}" % (rule_id, value_lua)
+        return text[:abs_open] + replacement + text[abs_open + 2:]
+
+    sec_open = trig_open + block.index("{", sm.start())
+    sec_close = _find_matching_brace(text, sec_open)  # after the }
+    body = text[sec_open:sec_close]
+
+    em = re.search(r'\n(\t+)\[' + str(rule_id) + r'\] = ', body)
+    if em:
+        # replace the existing entry — runs to the start of the next entry
+        # at the same indent, or to the closing brace line
+        start = sec_open + em.start()
+        nxt = re.search(r'\n\t+\[\d+\] = ', body[em.end():])
+        end = sec_open + em.end() + nxt.start() if nxt else sec_close - len(body.split("\n")[-1]) - 1
+        entry = "\n%s[%d] = %s," % (em.group(1), rule_id, value_lua)
+        return text[:start] + entry + text[end:]
+
+    # append before the closing brace line
+    close_line_start = text.rfind("\n", 0, sec_close - 1)
+    entry = "\n\t\t\t[%d] = %s," % (rule_id, value_lua)
+    return text[:close_line_start] + entry + text[close_line_start:]
+
+
+def _compile_rules_into_trig(mission_text: str,
+                             placed: List[Tuple[Dict, int]]) -> str:
+    """Write compiled runtime-trig entries for every placed (rule, id)."""
+    for rule, rid in placed:
+        compiled = _compile_rule_trig(rule, rid)
+        if not compiled:
+            continue
+        mission_text = _upsert_trig_entry(
+            mission_text, "conditions", rid, f'"{_lua_quote(compiled["condition"])}"')
+        mission_text = _upsert_trig_entry(
+            mission_text, "actions", rid, f'"{_lua_quote(compiled["action"])}"')
+        mission_text = _upsert_trig_entry(
+            mission_text, compiled["funcSection"], rid, f'"{_lua_quote(compiled["func"])}"')
+        mission_text = _upsert_trig_entry(mission_text, "flag", rid, "true")
+    return mission_text
+
+
 def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
     """Upsert rules into the inline-format trigrules block.
 
@@ -1018,6 +1240,12 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
     m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
     if not m:
         return mission_text
+
+    # Every placed rule (replaced or appended) with a real body must also
+    # be compiled into the runtime trig tables at the same index — DCS
+    # executes trig, not trigrules (see module comment above
+    # _lua_quote). Collected here, compiled at the end.
+    placed: List[Tuple[Dict, int]] = []
 
     # Replace-by-name pass first so the append pass below sees the
     # latest existing names (post-replace) when computing next_id.
@@ -1041,6 +1269,7 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
         # edits, F10-menu regen, framework DO_SCRIPT_FILE adds) still replace.
         if not rule.get("conditions") and not rule.get("actions"):
             continue
+        placed.append((rule, rule_id))
         replacement = _render_inline_rule(rule, rule_id, indent="\t\t")
         # Preserve the trailing newline that would have followed the
         # original entry by appending one if the slice didn't already
@@ -1050,7 +1279,7 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
         mission_text = mission_text[:start] + replacement + mission_text[end:]
 
     if not to_append:
-        return mission_text
+        return _compile_rules_into_trig(mission_text, placed)
 
     # Recompute open/close positions because the replace pass moved them.
     m = re.search(r'\["trigrules"\]\s*=\s*\n?\s*\{', mission_text)
@@ -1071,16 +1300,18 @@ def append_inline_rules(mission_text: str, new_rules: List[Dict]) -> str:
     pieces: List[str] = []
     for rule in to_append:
         pieces.append(_render_inline_rule(rule, next_id, indent="\t\t"))
+        placed.append((rule, next_id))
         next_id += 1
 
     if not pieces:
-        return mission_text
+        return _compile_rules_into_trig(mission_text, placed)
 
     insertion = "\n" + "\n".join(pieces)
     line_start = mission_text.rfind("\n", 0, close_pos)
     if line_start < 0:
         line_start = close_pos
-    return mission_text[:line_start] + insertion + mission_text[line_start:]
+    mission_text = mission_text[:line_start] + insertion + mission_text[line_start:]
+    return _compile_rules_into_trig(mission_text, placed)
 
 
 def _replace_lua_block(text: str, key: str, trigger_data: Dict, is_trig: bool) -> str:

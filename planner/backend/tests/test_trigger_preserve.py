@@ -71,7 +71,10 @@ def test_adding_framework_trigger_is_idempotent():
     txt = _mission_text()
     once = append_inline_rules(txt, [dict(FRAMEWORK_RULE)])
     twice = append_inline_rules(once, [dict(FRAMEWORK_RULE)])
-    assert once.count("CivTraffic-Syria.lua") == twice.count("CivTraffic-Syria.lua") == 1
+    # The filename appears exactly twice per add: the trigrules display copy
+    # and the compiled runtime copy in trig.actions (DCS executes the latter
+    # — see test_trig_compile.py). Re-adding must not grow either.
+    assert once.count("CivTraffic-Syria.lua") == twice.count("CivTraffic-Syria.lua") == 2
 
 
 def test_genuine_edit_with_body_still_replaces():

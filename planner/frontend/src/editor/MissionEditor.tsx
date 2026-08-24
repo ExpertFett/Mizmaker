@@ -110,7 +110,9 @@ const SIDEBAR: SidebarItem[] = [
   // Both were target-tool surfaces; the old code comment for JTAC's
   // placement already said "lives next to DMPI because both are target
   // tools" — this finishes the thought.
-  { kind: 'tab', id: 'dmpi',        label: 'Targets',     icon: <DmpiIcon /> },
+  // v1.19.134 — label back to "DMPI" (what the squadron calls it); JTAC
+  // stays as the second sub-tab inside.
+  { kind: 'tab', id: 'dmpi',        label: 'DMPI',        icon: <DmpiIcon /> },
 
   { kind: 'section', label: 'FLIGHTS' },
   { kind: 'tab', id: 'roster',      label: 'Roster',      icon: <RosterIcon /> },
@@ -153,9 +155,11 @@ type TabId = (typeof TABS)[number]['id'];
 // the tabs for the active mode; section headers left with no tabs are dropped.
 // Editing returns SIDEBAR unchanged — zero behaviour change.
 // Tabs kept in SIDEBAR (so Planning can still show them) but hidden from the
-// EDITOR sidebar — Threats + Targets are flight-planning surfaces, not
-// mission-authoring ones, so they only appear in Planning mode. (v1.19.110)
-const EDITOR_HIDDEN_TAB_IDS: ReadonlySet<string> = new Set(['threats', 'dmpi']);
+// EDITOR sidebar — Threats is a flight-planning surface, not a
+// mission-authoring one, so it only appears in Planning mode. (v1.19.110)
+// v1.19.134 — DMPI restored to the editor sidebar at Fett's request:
+// mission makers author DMPIs while building, not just while planning.
+const EDITOR_HIDDEN_TAB_IDS: ReadonlySet<string> = new Set(['threats']);
 
 function sidebarForMode(mode: AppMode): SidebarItem[] {
   const allow = tabsForMode(mode);
