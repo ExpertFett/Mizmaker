@@ -4,6 +4,7 @@ import type {
   MissionOverviewData, MissionOptions, UploadResponse, ClientUnit, LaserCapableUnit, UnitEdit, GroupRenamerData,
   CountryInfo,
 } from '../types/mission';
+import { saveResumePoint, clearResumePoint } from '../session/resume';
 
 interface MissionState {
   sessionId: string | null;
@@ -99,6 +100,19 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   readyRoomLink: null,
 
   loadMission: (data) => {
+    // One F5 used to forget the session id and strand a live server session —
+    // remember how to walk back in. Every successful load (upload or join)
+    // passes through here, so this is the one place to do it. (v1.19.129)
+    const rSid = (data as any).sessionId ?? (data as any).session_id;
+    const rTok = (data as any).hostToken || (data as any).token;
+    if (rSid && rTok) {
+      saveResumePoint({
+        sessionId: String(rSid),
+        token: String(rTok),
+        filename: (data as any).filename || 'mission.miz',
+        theater: (data as any).theater || '',
+      });
+    }
     const assignedGroup = (data as any).assignedGroup || null;
     // Auto-select the assigned group for flight leads
     let autoSelectId: number | null = null;
@@ -154,7 +168,10 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   setReadyRoomLink: (readyRoomLink) => set({ readyRoomLink }),
 
-  clear: () =>
+  clear: () => {
+    // Deliberate exit — the resume banner must not offer a session the user
+    // chose to leave.
+    clearResumePoint();
     set({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
       role: 'mission_maker' as const, filename: null, theater: null, overview: null,
@@ -165,7 +182,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       taskLists: { air: [], ground: [], ship: [] },
       selectedGroupId: null,
       readyRoomLink: null,
-    }),
+    });
+  },
 
   selectedGroup: () => {
     const { groups, selectedGroupId } = get();

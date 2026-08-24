@@ -218,6 +218,30 @@ function savePopupAttacks(p: PopupAttackInput[]): void {
 // so a planner working on Mission A then uploading Mission B doesn't
 // see ghost edits from Mission A leak onto the new groups.
 const EDITS_LS_PREFIX = 'dcsopt.edits.';
+
+// Kneeboard settings persist beside the edit queue: card notes, fuel
+// overrides, per-flight card sets and the flight lead controls are exactly
+// the "previous work" a refresh used to eat even once the session itself
+// became resumable. Same lifecycle as the edit queue — keyed by session,
+// pruned with it. (v1.19.129)
+const KBSET_LS_PREFIX = 'dcsopt.kbset.';
+const KBSET_LS_KEY = (sid: string) => `${KBSET_LS_PREFIX}${sid}`;
+
+function loadSettingsForSession(sid: string): Partial<KneeboardSettings> | null {
+  if (!sid || typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(KBSET_LS_KEY(sid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch { return null; }
+}
+
+function saveSettingsForSession(sid: string, settings: KneeboardSettings): void {
+  if (!sid || typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(KBSET_LS_KEY(sid), JSON.stringify(settings)); }
+  catch { /* quota / private mode — best-effort */ }
+}
 const EDITS_LS_KEY = (sid: string) => `${EDITS_LS_PREFIX}${sid}`;
 
 function loadEditsForSession(sid: string): (WaypointEdit | UnitEdit)[] {
@@ -247,8 +271,10 @@ function pruneStaleEditQueues(currentSid: string | null): void {
     const stale: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (!k || !k.startsWith(EDITS_LS_PREFIX)) continue;
-      if (currentSid && k === EDITS_LS_KEY(currentSid)) continue;
+      const isEdits = k?.startsWith(EDITS_LS_PREFIX);
+      const isKbset = k?.startsWith(KBSET_LS_PREFIX);
+      if (!k || (!isEdits && !isKbset)) continue;
+      if (currentSid && (k === EDITS_LS_KEY(currentSid) || k === KBSET_LS_KEY(currentSid))) continue;
       stale.push(k);
     }
     stale.forEach((k) => localStorage.removeItem(k));
@@ -322,10 +348,16 @@ export const useEditStore = create<EditState>((set) => ({
       if (sid === s.sessionId) return s;
       pruneStaleEditQueues(sid);
       const restored = sid ? loadEditsForSession(sid) : [];
+      // Merge, not replace: a blob saved before a settings field existed
+      // must not strip the newer defaults.
+      const restoredSettings = sid ? loadSettingsForSession(sid) : null;
       return {
         sessionId: sid,
         edits: restored,
         isDirty: restored.length > 0,
+        ...(restoredSettings
+          ? { kneeboardSettings: { ...s.kneeboardSettings, ...restoredSettings } }
+          : {}),
       };
     }),
 
@@ -353,6 +385,9 @@ if (typeof window !== 'undefined') {
     }
     if (s.edits !== prev.edits && s.sessionId) {
       saveEditsForSession(s.sessionId, s.edits);
+    }
+    if (s.kneeboardSettings !== prev.kneeboardSettings && s.sessionId) {
+      saveSettingsForSession(s.sessionId, s.kneeboardSettings);
     }
   });
 }

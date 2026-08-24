@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { uploadMission } from '../api/client';
+import { ResumeBanner } from '../session/ResumeBanner';
 import { setOriginalMiz } from '../store/originalMiz';
 import { useMissionStore } from '../store/missionStore';
 import { useGoalsStore } from '../store/goalsStore';
@@ -122,6 +123,9 @@ export function UploadPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
       </div>
 
       <div style={{ maxWidth: 1040, width: '100%', padding: '0 20px' }}>
+        {/* A refresh or crash used to strand the live server session with no
+            way back in — offer it by name. (v1.19.129) */}
+        <ResumeBanner />
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <img
