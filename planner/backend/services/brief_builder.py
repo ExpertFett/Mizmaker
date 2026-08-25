@@ -145,6 +145,17 @@ class AirThreatRow:
 
 
 @dataclass
+class ControlMeasureRow:
+    """One row on the CONTROL MEASURES slide — a named reference point the
+    package steers to or deconflicts around."""
+    kind: str      # "BULLSEYE" / "STEER POINT" / "TARGET" / "ROZ" / "HOLDING AREA" / "TANKER TRACK"
+    name: str      # "ROCK", "AEGIS", "KB HELHEIM", ...
+    ll: str        # "N71° 07.661'  E024° 29.797'"  (deg + decimal-min)
+    mgrs: str      # "35W PT 11645 37846"  ("" if unavailable)
+    elevation: str # "282 FT" or "—"
+
+
+@dataclass
 class WaypointRow:
     number: int       # steerpoint index, 1-based for pilot readability
     name: str         # waypoint name (e.g. "MARSHAL", "TGT", "RTB")
@@ -279,6 +290,30 @@ class WingBrief:
     # Brief renderer applies each key when present; absent keys leave the
     # default. (See render_wing_brief in brief_renderer.py.)
     theme_colors: Dict[str, str] = field(default_factory=dict)
+    # v1.19.137 — Control measures table (bullseye, steerpoints/DMPIs, ROZ /
+    # holding areas from trigger zones, tanker tracks). Each row is a
+    # serialised ControlMeasureRow. Empty -> renderer omits the slide.
+    control_measures: List[Dict[str, str]] = field(default_factory=list)
+    # v1.19.137 — Single-line METAR for the WX slide (matches the squadron's
+    # hand brief). Empty -> no METAR line.
+    metar: str = ""
+    # v1.19.137 — "Classified document" styling toggle + banner text. When
+    # classified is True the renderer stamps a top/bottom banner on every
+    # slide and adds a classification block to the cover. Fiction only —
+    # a disclaimer footer says so. classification defaults to the common
+    # exercise marking; the mission maker can edit it.
+    classified: bool = False
+    classification: str = "TOP SECRET // REL TO COALITION"
+    # v1.19.137 — Package timeline ladder (Gantt). Each entry:
+    # {callsign, role, push_z, tot_z, land_z, push_min, tot_min, land_min}.
+    # Empty -> renderer omits the slide.
+    package_timeline: List[Dict[str, Any]] = field(default_factory=list)
+    # v1.19.137 — Rules of engagement. Seeded with a standard editable
+    # template (ROE isn't in the .miz); the mission maker tailors it. Empty
+    # dict -> renderer omits the ROE slide. Shape:
+    #   {weapons_status, threat_posture, fire_authority, hostile_authority,
+    #    hostile_criteria: [{code, category, text}], nofire: [str], abort}
+    roe: Dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1993,6 +2028,290 @@ def build_flight_briefs(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Control measures + METAR (v1.19.137)
+# ---------------------------------------------------------------------------
+
+def _fmt_ddm(lat: Optional[float], lon: Optional[float]) -> str:
+    """Latitude/longitude as degrees + decimal minutes, the form the squadron
+    brief uses: N71° 07.661'  E024° 29.797'."""
+    if lat is None or lon is None:
+        return ""
+    def one(v: float, pos: str, neg: str, width: int) -> str:
+        hemi = pos if v >= 0 else neg
+        v = abs(v)
+        d = int(v)
+        m = (v - d) * 60.0
+        return f"{hemi}{d:0{width}d}° {m:06.3f}'"
+    return f"{one(lat, 'N', 'S', 2)}  {one(lon, 'E', 'W', 3)}"
+
+
+def _latlon_to_mgrs(lat: Optional[float], lon: Optional[float]) -> str:
+    if lat is None or lon is None:
+        return ""
+    try:
+        import mgrs as _mgrs
+        raw = _mgrs.MGRS().toMGRS(lat, lon, MGRSPrecision=5)
+        # "35WPT1164537846" -> "35W PT 11645 37846"
+        m = re.match(r"^(\d{1,2}[C-X])([A-Z]{2})(\d{5})(\d{5})$", raw)
+        if m:
+            return f"{m.group(1)} {m.group(2)} {m.group(3)} {m.group(4)}"
+        return raw
+    except Exception:
+        return ""
+
+
+def _build_metar(overview: dict, mission_name: str, theater: str) -> str:
+    """A one-line METAR for the WX slide, styled like the squadron brief:
+       METAR <STATION> <DDHHMML> <wind> <vis> <clouds> <QNH> <temp>."""
+    wx = overview.get("weather")
+    if not isinstance(wx, dict):
+        return ""
+    start = overview.get("start_time")
+    date = str(overview.get("date") or "")
+    dd = "  "
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", date)
+    if m:
+        dd = m.group(3)
+    try:
+        hh = int(start) // 3600
+        mm = (int(start) % 3600) // 60
+        stamp = f"{dd}{hh:02d}{mm:02d}L"
+    except Exception:
+        stamp = ""
+
+    parts = [f"METAR {(theater or 'AO').upper()} AO", stamp]
+
+    g = (wx.get("wind") or {}).get("atGround") or {}
+    spd, dr = g.get("speed"), g.get("dir")
+    if isinstance(spd, (int, float)) and isinstance(dr, (int, float)):
+        kt = round(spd * 1.94384)
+        parts.append("00000KT" if kt == 0 else f"{int(round(dr)) % 360:03d}{kt:02d}KT")
+
+    vis = wx.get("visibility_m")
+    if isinstance(vis, (int, float)) and vis:
+        parts.append("9999" if vis >= 9999 else f"{int(vis):04d}")
+
+    base, dens = wx.get("clouds_base_m"), wx.get("clouds_density")
+    if isinstance(base, (int, float)) and isinstance(dens, (int, float)) and dens:
+        cover = "FEW" if dens <= 2 else "SCT" if dens <= 4 else "BKN" if dens <= 7 else "OVC"
+        parts.append(f"{cover}{int(round(base * 3.28084 / 100)):03d}")
+
+    t = wx.get("temperature_c")
+    if isinstance(t, (int, float)):
+        ti = int(round(t))
+        parts.append(f"M{abs(ti):02d}/" if ti < 0 else f"{ti:02d}/")
+
+    q = wx.get("qnh_inhg")
+    if isinstance(q, (int, float)):
+        parts.append(f"A{int(round(q * 100)):04d}")
+    return " ".join(p for p in parts if p)
+
+
+def _build_control_measures(
+    overview: dict,
+    groups: List[dict],
+    dmpis: Optional[List[dict]],
+    theater: str,
+    elevation_fn=None,
+) -> List[Dict[str, str]]:
+    """Build the CONTROL MEASURES table from mission reference points.
+
+    Sources, in slide order:
+      BULLSEYE      — the blue bullseye
+      TARGET        — planner DMPIs (aim points)
+      HOLDING AREA  — trigger zones named like a hold/marshal/CAP point
+      ROZ           — other named trigger zones
+      TANKER TRACK  — refuelling groups' orbit centre
+
+    elevation_fn(lat, lon) -> feet|None fills the ELEV column; when None the
+    row carries the source's own elevation or '—'.
+    """
+    rows: List[ControlMeasureRow] = []
+
+    def _elev(lat, lon, own_ft=None, is_alt=False) -> str:
+        # own_ft is either a ground elevation (DMPI) or a block altitude
+        # (tanker track). is_alt tags the latter so it reads "26,000 FT MSL".
+        if own_ft not in (None, 0, ""):
+            try:
+                v = int(round(float(own_ft)))
+                return f"{v:,} FT{' MSL' if is_alt else ''}"
+            except (TypeError, ValueError):
+                pass
+        if elevation_fn and lat is not None and lon is not None:
+            try:
+                e = elevation_fn(lat, lon)
+                if isinstance(e, (int, float)):
+                    ft = round(e * 3.28084)
+                    # SRTM returns void/ocean garbage (-32768, deep negatives)
+                    # over water; the lowest real land is the Dead Sea ~-1400.
+                    if ft <= -1400:
+                        return "SL"
+                    return f"{ft:,} FT"
+            except Exception:
+                pass
+        return "—"
+
+    def _add(kind, name, lat, lon, own_ft=None, is_alt=False):
+        if lat is None or lon is None:
+            return
+        rows.append(ControlMeasureRow(
+            kind=kind, name=str(name or "").strip() or kind,
+            ll=_fmt_ddm(lat, lon), mgrs=_latlon_to_mgrs(lat, lon),
+            elevation=_elev(lat, lon, own_ft, is_alt)))
+
+    # BULLSEYE (blue)
+    be = (overview.get("bullseye") or {}).get("blue") or {}
+    if be.get("lat") is not None:
+        _add("BULLSEYE", "BULLSEYE", be.get("lat"), be.get("lon"))
+
+    # TARGET — planner DMPIs
+    for d in (dmpis or []):
+        if (d.get("name") or "").strip():
+            _add("TARGET", d.get("name"), d.get("lat"), d.get("lon"),
+                 d.get("elevation"))
+
+    # Trigger zones → HOLDING AREA / ROZ. Most zones in a mission are
+    # scripting/sound triggers, not navigational airspace, so INCLUDE only
+    # zones whose name signals real airspace and skip everything else
+    # (v1.19.137 — a Caucasus mission had 17 zones, only a few navigational).
+    _hold_re = re.compile(r"\b(hold|marshal|cap|orbit|anchor|wheel|push|ip)\b",
+                          re.IGNORECASE)
+    _roz_re = re.compile(r"\b(roz|killbox|kill\s*box|wez|mez|fez|corridor|"
+                         r"station|airspace|zone\s*\d)\b", re.IGNORECASE)
+    for z in (overview.get("_trigger_zones") or []):
+        nm = (z.get("name") or "").strip()
+        if not nm:
+            continue
+        if _hold_re.search(nm):
+            _add("HOLDING AREA", nm, z.get("lat"), z.get("lon"))
+        elif _roz_re.search(nm):
+            _add("ROZ", nm, z.get("lat"), z.get("lon"))
+        # else: scripting/sound/spawn zone — not a control measure, skip.
+
+    # TANKER TRACK — refuelling groups' orbit anchor, tagged with the orbit
+    # BLOCK ALTITUDE (not terrain under it — that's meaningless for a track,
+    # and SRTM returns ocean garbage there anyway). Prefer the waypoint that
+    # actually carries an Orbit/Tanker task; else the first positioned point.
+    for g in groups:
+        if (g.get("task") or "").lower() != "refueling":
+            continue
+        wps = g.get("waypoints") or []
+        anchor = next((w for w in wps
+                       if w.get("lat") is not None
+                       and re.search(r"orbit|tanker|refuel|racetrack",
+                                     str(w.get("waypoint_type") or "")
+                                     + str(w.get("waypoint_action") or ""),
+                                     re.IGNORECASE)), None)
+        anchor = anchor or next((w for w in wps if w.get("lat") is not None), None)
+        if anchor:
+            alt_m = anchor.get("altitude_m")
+            alt_ft = round(alt_m * 3.28084) if isinstance(alt_m, (int, float)) and alt_m else None
+            _add("TANKER TRACK", g.get("groupName") or "TANKER",
+                 anchor.get("lat"), anchor.get("lon"), own_ft=alt_ft, is_alt=True)
+
+    return [asdict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Package timeline ladder (v1.19.137) — a Gantt of when each flight pushes,
+# hits its action point (TOT / on-station), and recovers.
+# ---------------------------------------------------------------------------
+
+_ACTION_WP_RE = re.compile(
+    r"tgt|target|ip\b|tot|cap|station|strike|attack|push|marshal|anchor|"
+    r"vul|onsta|hold", re.IGNORECASE)
+
+
+def _build_package_timeline(groups: List[dict],
+                            start_seconds: Optional[float]) -> List[Dict[str, Any]]:
+    """One ladder row per blue player flight: push / action / recovery times.
+
+    Times are Zulu HHMM labels plus minute offsets from the package's first
+    push, which the renderer uses to place the bars on a shared axis.
+    """
+    base = int(start_seconds) if isinstance(start_seconds, (int, float)) else 0
+
+    rows: List[Dict[str, Any]] = []
+    for g in groups:
+        if not _is_player_group(g):
+            continue
+        wps = g.get("waypoints") or []
+        timed = [w for w in wps if w.get("cumulative_eta") is not None]
+        if len(timed) < 2:
+            continue
+        push_s = float(timed[0].get("cumulative_eta") or 0)
+        land_s = float(timed[-1].get("cumulative_eta") or 0)
+        # Action point: the named waypoint that reads like a target / station /
+        # IP; else the highest-index interior waypoint (the turn deepest into
+        # the route). Falls back to the route midpoint.
+        action = None
+        for w in timed[1:-1]:
+            if _ACTION_WP_RE.search(str(w.get("waypoint_name") or "")
+                                    + str(w.get("waypoint_type") or "")):
+                action = w
+                break
+        if action is None and len(timed) > 2:
+            action = timed[len(timed) // 2]
+        act_s = float(action.get("cumulative_eta")) if action else (push_s + land_s) / 2
+
+        units = g.get("units") or []
+        callsign = (units[0].get("name") if units else "") or g.get("groupName", "")
+        rows.append({
+            "callsign": callsign,
+            "role": _infer_role_from_task(g.get("task", "")),
+            "push_z": _format_zulu(base + push_s),
+            "tot_z": _format_zulu(base + act_s),
+            "land_z": _format_zulu(base + land_s),
+            "push_min": round(push_s / 60.0, 1),
+            "tot_min": round(act_s / 60.0, 1),
+            "land_min": round(land_s / 60.0, 1),
+        })
+
+    # Sort by push time so the ladder reads top-to-bottom in launch order.
+    rows.sort(key=lambda r: (r["push_min"], r["callsign"]))
+    return rows
+
+
+def _default_roe() -> Dict[str, Any]:
+    """A standard, editable ROE template. ROE isn't carried in the .miz, so
+    every brief seeds this starter page and the mission maker tailors it.
+    Wording follows a common exercise ROE (declared-hostile weapons control,
+    numbered hostile-act / hostile-intent / SAM lines, no-fire conditions)."""
+    return {
+        "weapons_status": "WEAPONS TIGHT",
+        "threat_posture": "YELLOW",
+        "fire_authority": (
+            "Weapons may be fired only at contacts positively identified or "
+            "declared HOSTILE in accordance with mission ROE."),
+        "hostile_authority": "MISSION COMMANDER",
+        "hostile_criteria": [
+            {"code": "01", "category": "HOSTILE ACT",
+             "text": "Aircraft fires on, launches against, or damages friendly assets."},
+            {"code": "01c", "category": "HOSTILE INTENT",
+             "text": "Aircraft manoeuvres into a position indicating imminent "
+                     "weapons employment against friendly assets."},
+            {"code": "11", "category": "SAM THREAT",
+             "text": "SAM fire-control radar lock greater than 5 seconds on "
+                     "friendly assets, or a SAM launch on friendly assets."},
+            {"code": "12a", "category": "SAM THREAT",
+             "text": "Emitting SAM site declared hostile when it engages or "
+                     "locks friendly aircraft inside its lethal range."},
+        ],
+        "nofire": [
+            "Do not fire on unidentified aircraft.",
+            "Do not fire into neutral airspace unless cleared.",
+            "Do not pursue across restricted borders without mission-commander approval.",
+            "Do not fire through friendly formations.",
+            "Do not release CAS ordnance without JTAC clearance unless in self-defence.",
+            "Do not attack civilian or non-military vehicles.",
+        ],
+        "abort": (
+            "Abort or disengage if fuel state, weather, comms, ROE uncertainty, "
+            "battle damage, or package deconfliction prevents safe continuation."),
+    }
+
+
 def build_wing_brief(
     *,
     mission_data: dict,
@@ -2000,6 +2319,8 @@ def build_wing_brief(
     filename: str,
     dictionary_text: Optional[str] = None,
     popup_attacks: Optional[List[Dict[str, Any]]] = None,
+    dmpis: Optional[List[dict]] = None,
+    elevation_fn=None,
 ) -> Dict[str, Any]:
     """Build a complete WingBrief from parsed mission data.
 
@@ -2026,6 +2347,9 @@ def build_wing_brief(
     airbases = mission_data.get("airbases") or []
     start_seconds = overview.get("start_time")
     dictionary = parse_dictionary(dictionary_text)
+    # Stash trigger zones onto overview so _build_control_measures can read
+    # them without widening its signature (they live at mission_data top level).
+    overview = {**overview, "_trigger_zones": mission_data.get("triggerZones") or []}
 
     # Mission name precedence: resolved sortie → unresolved sortie literal
     # → filename → "Untitled Mission". Some .miz files have a sortie DictKey
@@ -2068,5 +2392,10 @@ def build_wing_brief(
 
         comms=_build_comms(groups),
         popup_attacks=list(popup_attacks or []),
+        control_measures=_build_control_measures(
+            overview, groups, dmpis, theater, elevation_fn=elevation_fn),
+        metar=_build_metar(overview, str(mission_name), theater),
+        package_timeline=_build_package_timeline(groups, start_seconds),
+        roe=_default_roe(),
     )
     return asdict(brief)

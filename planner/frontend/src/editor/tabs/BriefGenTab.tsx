@@ -77,6 +77,37 @@ interface WingBrief {
   // strings; missing keys fall through to renderer defaults.
   // Roles: bg / text / bright / accent / dim / border / header_bg / cell_bg.
   theme_colors?: Record<string, string>;
+  // v1.19.137 — single-line METAR + control-measures table, auto-built from
+  // the mission (bullseye / DMPIs / airspace zones / tanker tracks).
+  metar?: string;
+  control_measures?: ControlMeasureRow[];
+  // v1.19.137 — package-timeline ladder rows (derived; no editor card).
+  package_timeline?: Array<Record<string, unknown>>;
+  // v1.19.137 — "classified document" styling (banners top/bottom every
+  // slide + a fiction disclaimer). Cosmetic immersion only.
+  classified?: boolean;
+  classification?: string;
+  // v1.19.137 — Rules of engagement (seeded template; editable).
+  roe?: Roe;
+}
+
+interface RoeCriterion { code: string; category: string; text: string }
+interface Roe {
+  weapons_status: string;
+  threat_posture: string;
+  fire_authority: string;
+  hostile_authority: string;
+  hostile_criteria: RoeCriterion[];
+  nofire: string[];
+  abort: string;
+}
+
+interface ControlMeasureRow {
+  kind: string;
+  name: string;
+  ll: string;
+  mgrs: string;
+  elevation: string;
 }
 
 type OutputFormat = 'pptx' | 'pdf' | 'png' | 'jpg';
@@ -724,6 +755,25 @@ export function BriefGenTab() {
       return { ...b, [field]: arr };
     });
   }
+  function setCM(idx: number, patch: Partial<ControlMeasureRow>) {
+    setBrief((b) => {
+      if (!b) return null;
+      const arr = [...(b.control_measures ?? [])];
+      arr[idx] = { ...arr[idx], ...patch };
+      return { ...b, control_measures: arr };
+    });
+  }
+  function setRoe(patch: Partial<Roe>) {
+    setBrief((b) => (b && b.roe ? { ...b, roe: { ...b.roe, ...patch } } : b));
+  }
+  function setRoeCrit(idx: number, patch: Partial<RoeCriterion>) {
+    setBrief((b) => {
+      if (!b || !b.roe) return b;
+      const arr = [...b.roe.hostile_criteria];
+      arr[idx] = { ...arr[idx], ...patch };
+      return { ...b, roe: { ...b.roe, hostile_criteria: arr } };
+    });
+  }
   function addRow<F extends 'timeline' | 'threats' | 'air_threats' | 'flights' | 'comms'>(field: F, blank: WingBrief[F][number]) {
     setBrief((b) => (b ? { ...b, [field]: [...b[field], blank] as WingBrief[F] } : null));
   }
@@ -1270,14 +1320,84 @@ export function BriefGenTab() {
             </div>
           </Card>
 
+          <Card title="Classified Styling">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={!!brief.classified}
+                     onChange={(e) => set('classified', e.target.checked)} />
+              Stamp classification banners on every slide (immersion only)
+            </label>
+            {brief.classified && (
+              <input style={{ ...textareaStyle, marginTop: 8 }}
+                     value={brief.classification || 'TOP SECRET // REL TO COALITION'}
+                     onChange={(e) => set('classification', e.target.value)}
+                     placeholder="TOP SECRET // REL TO COALITION" />
+            )}
+            <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>
+              Fiction only — a disclaimer footer states the markings denote nothing real.
+            </div>
+          </Card>
+
           <Card title="Theatre Overview">
             <textarea style={textareaStyle} rows={6} value={brief.theatre_overview}
                       onChange={(e) => set('theatre_overview', e.target.value)} />
           </Card>
 
           <Card title="Weather">
+            <label style={{ fontSize: 12, color: '#888', display: 'block', marginBottom: 3 }}>METAR</label>
+            <input style={{ ...textareaStyle, fontFamily: 'monospace', marginBottom: 10 }}
+                   value={brief.metar || ''}
+                   onChange={(e) => set('metar', e.target.value)}
+                   placeholder="METAR ... auto-built from mission weather" />
+            <label style={{ fontSize: 12, color: '#888', display: 'block', marginBottom: 3 }}>Weather briefing</label>
             <textarea style={textareaStyle} rows={4} value={brief.weather_brief || ''}
                       onChange={(e) => set('weather_brief', e.target.value)} />
+          </Card>
+
+          <Card title="Control Measures">
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
+              Auto-built from the mission: bullseye, DMPIs, airspace zones (ROZ / holding),
+              and tanker tracks. Edit names/types here; coordinates come from the mission.
+            </div>
+            {(brief.control_measures ?? []).length === 0 ? (
+              <div style={{ fontSize: 13, color: '#666', padding: '6px 0' }}>
+                No control measures found. Add DMPIs (Targets) or airspace-named trigger zones,
+                or rely on bullseye + tanker tracks.
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#888', textAlign: 'left' }}>
+                    <th style={{ padding: '2px 4px' }}>TYPE</th>
+                    <th style={{ padding: '2px 4px' }}>NAME</th>
+                    <th style={{ padding: '2px 4px' }}>LAT / LONG</th>
+                    <th style={{ padding: '2px 4px' }}>MGRS</th>
+                    <th style={{ padding: '2px 4px' }}>ELEV</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(brief.control_measures ?? []).map((cm, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid #262626' }}>
+                      <td style={{ padding: '1px 4px' }}>
+                        <input style={cmCell} value={cm.kind}
+                               onChange={(e) => setCM(i, { kind: e.target.value })} />
+                      </td>
+                      <td style={{ padding: '1px 4px' }}>
+                        <input style={cmCell} value={cm.name}
+                               onChange={(e) => setCM(i, { name: e.target.value })} />
+                      </td>
+                      <td style={{ padding: '1px 4px', color: '#aaa', fontFamily: 'monospace' }}>{cm.ll}</td>
+                      <td style={{ padding: '1px 4px', color: '#aaa', fontFamily: 'monospace' }}>{cm.mgrs}</td>
+                      <td style={{ padding: '1px 4px', color: '#aaa', fontFamily: 'monospace' }}>{cm.elevation}</td>
+                      <td style={{ padding: '1px 4px' }}>
+                        <button style={{ background: 'none', border: 'none', color: '#a55', cursor: 'pointer' }}
+                                onClick={() => set('control_measures', (brief.control_measures ?? []).filter((_, j) => j !== i))}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
 
           <Card title="Scenario">
@@ -1752,9 +1872,63 @@ export function BriefGenTab() {
 
           <Card title="Special Instructions / Notes">
             <textarea style={textareaStyle} rows={6} value={brief.notes}
-                      placeholder="ROE, special procedures, contingency plans, code-words, divert decisions…"
+                      placeholder="Special procedures, contingency plans, code-words, divert decisions…"
                       onChange={(e) => set('notes', e.target.value)} />
           </Card>
+
+          {brief.roe && (
+            <Card title="Rules of Engagement">
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <label style={roeLbl}>WEAPONS STATUS</label>
+                  <input style={cmCell} value={brief.roe.weapons_status}
+                         onChange={(e) => setRoe({ weapons_status: e.target.value })} />
+                </div>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <label style={roeLbl}>THREAT POSTURE</label>
+                  <input style={cmCell} value={brief.roe.threat_posture}
+                         onChange={(e) => setRoe({ threat_posture: e.target.value })} />
+                </div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <label style={roeLbl}>HOSTILE DECL AUTH</label>
+                  <input style={cmCell} value={brief.roe.hostile_authority}
+                         onChange={(e) => setRoe({ hostile_authority: e.target.value })} />
+                </div>
+              </div>
+              <label style={roeLbl}>FIRE AUTHORITY</label>
+              <textarea style={{ ...textareaStyle, marginBottom: 10 }} rows={2}
+                        value={brief.roe.fire_authority}
+                        onChange={(e) => setRoe({ fire_authority: e.target.value })} />
+
+              <label style={roeLbl}>HOSTILE DECLARATION CRITERIA</label>
+              {brief.roe.hostile_criteria.map((c, i) => (
+                <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'flex-start' }}>
+                  <input style={{ ...cmCell, width: 60 }} value={c.code} placeholder="code"
+                         onChange={(e) => setRoeCrit(i, { code: e.target.value })} />
+                  <input style={{ ...cmCell, width: 130 }} value={c.category} placeholder="HOSTILE ACT"
+                         onChange={(e) => setRoeCrit(i, { category: e.target.value })} />
+                  <input style={{ ...cmCell, flex: 1 }} value={c.text} placeholder="criterion text"
+                         onChange={(e) => setRoeCrit(i, { text: e.target.value })} />
+                  <button style={roeDel} onClick={() => setRoe({ hostile_criteria: brief.roe!.hostile_criteria.filter((_, j) => j !== i) })}>×</button>
+                </div>
+              ))}
+              <button style={roeAdd} onClick={() => setRoe({ hostile_criteria: [...brief.roe!.hostile_criteria, { code: '', category: 'HOSTILE ACT', text: '' }] })}>+ criterion</button>
+
+              <label style={{ ...roeLbl, marginTop: 12 }}>NO-FIRE / RESTRICTED</label>
+              {brief.roe.nofire.map((nf, i) => (
+                <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                  <input style={{ ...cmCell, flex: 1 }} value={nf}
+                         onChange={(e) => { const arr = [...brief.roe!.nofire]; arr[i] = e.target.value; setRoe({ nofire: arr }); }} />
+                  <button style={roeDel} onClick={() => setRoe({ nofire: brief.roe!.nofire.filter((_, j) => j !== i) })}>×</button>
+                </div>
+              ))}
+              <button style={roeAdd} onClick={() => setRoe({ nofire: [...brief.roe!.nofire, ''] })}>+ no-fire line</button>
+
+              <label style={{ ...roeLbl, marginTop: 12 }}>ABORT CRITERIA</label>
+              <textarea style={textareaStyle} rows={2} value={brief.roe.abort}
+                        onChange={(e) => setRoe({ abort: e.target.value })} />
+            </Card>
+          )}
         </BriefCardCtx.Provider>
       )}
 
@@ -2538,6 +2712,20 @@ const textareaStyle: React.CSSProperties = {
 const selectStyle: React.CSSProperties = {
   background: '#2a2a2a', border: '1px solid #4a4a4a', color: '#e0e0e0',
   padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer',
+};
+const cmCell: React.CSSProperties = {
+  width: '100%', background: '#1a1a1a', border: '1px solid #333',
+  color: '#e0e0e0', padding: '2px 4px', fontSize: 12,
+};
+const roeLbl: React.CSSProperties = {
+  fontSize: 11, color: '#888', display: 'block', marginBottom: 3, fontWeight: 600,
+};
+const roeDel: React.CSSProperties = {
+  background: 'none', border: 'none', color: '#a55', cursor: 'pointer', fontSize: 15, padding: '0 4px',
+};
+const roeAdd: React.CSSProperties = {
+  background: '#262626', border: '1px solid #3a3a3a', color: '#cccccc',
+  fontSize: 11, padding: '4px 10px', borderRadius: 3, cursor: 'pointer', marginTop: 2,
 };
 const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'collapse',

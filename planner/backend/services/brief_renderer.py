@@ -1142,11 +1142,47 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # A brief always briefs the sky. The wing brief carried no weather at all
     # until v1.19.116; weather_brief states it as consequence (icing, night
     # recovery, instrument approach) rather than a row of raw values.
-    if (brief.get("weather_brief") or "").strip():
+    _metar = (brief.get("metar") or "").strip()
+    if (brief.get("weather_brief") or "").strip() or _metar:
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
         _slide_header(s, "WEATHER")
-        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-             brief["weather_brief"], size=16, color=LIGHT)
+        _body_y = Inches(1.4)
+        # METAR line first, in a monospace panel — matches the squadron's
+        # hand brief (v1.19.137).
+        if _metar:
+            panel = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6),
+                                       Inches(1.4) + _MY, Inches(12.1), Inches(0.7))
+            panel.fill.solid(); panel.fill.fore_color.rgb = TABLE_HEADER_BG
+            panel.line.color.rgb = BORDER; panel.line.width = Pt(0.75)
+            tf = panel.text_frame; tf.word_wrap = True
+            tf.margin_left = Inches(0.15); tf.margin_top = Inches(0.08)
+            r = tf.paragraphs[0].add_run(); r.text = _metar
+            r.font.size = Pt(15); r.font.name = "Consolas"
+            r.font.color.rgb = BRIGHT; r.font.bold = True
+            _body_y = Inches(2.35)
+        if (brief.get("weather_brief") or "").strip():
+            _txt(s, Inches(0.6), _body_y, Inches(12.1),
+                 Inches(7.0) - _body_y, brief["weather_brief"], size=16, color=LIGHT)
+
+    # ---------- Slide 3c: Control measures (table) -----------------------
+    # Bullseye, steerpoints/DMPIs, ROZ / holding areas, tanker tracks — the
+    # named reference points the package steers to and deconflicts around,
+    # each with DDM lat/lon, MGRS and elevation. (v1.19.137)
+    cms = brief.get("control_measures") or []
+    if cms:
+        # ~14 rows fit at this size; paginate beyond that.
+        per_page = 14
+        pages = max(1, (len(cms) + per_page - 1) // per_page)
+        for pg in range(pages):
+            chunk = cms[pg * per_page:(pg + 1) * per_page]
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            title = "CONTROL MEASURES" if pages == 1 else f"CONTROL MEASURES ({pg + 1}/{pages})"
+            _slide_header(s, title)
+            rows = [[c.get("kind", ""), c.get("name", ""), c.get("ll", ""),
+                     c.get("mgrs", ""), c.get("elevation", "")] for c in chunk]
+            _table(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(0.4 + 0.42 * len(rows)),
+                   ["TYPE", "NAME", "LAT / LONG (DDM)", "MGRS", "ELEV"], rows,
+                   col_widths=[Inches(1.9), Inches(2.7), Inches(3.6), Inches(2.6), Inches(1.3)])
 
     # ---------- Slide 4: Commander's intent ------------------------------
     # Omitted when empty: a brief should never carry a blank slide
@@ -1372,6 +1408,79 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _txt(s, Inches(0.6), Inches(1.6), Inches(12), Inches(1),
              "No player flights detected.", size=18, color=DIM, italic=True)
 
+    # ---------- Slide 6b: Package timeline (Gantt ladder) ----------------
+    # One bar per flight from push to recovery, with a TOT/on-station marker,
+    # on a shared time axis — the squadron brief's package-timeline slide.
+    # (v1.19.137)
+    ptl = brief.get("package_timeline") or []
+    if ptl:
+        role_color = {
+            "CAP": RGBColor(0x4A, 0x8F, 0xD4), "DCA": RGBColor(0x4A, 0x8F, 0xD4),
+            "OCA": RGBColor(0x6F, 0xB5, 0xE8), "Escort": RGBColor(0x6F, 0xB5, 0xE8),
+            "SEAD": RGBColor(0xE0, 0x8A, 0x2B), "DEAD": RGBColor(0xE0, 0x8A, 0x2B),
+            "Strike": RGBColor(0xD9, 0x50, 0x50), "CAS": RGBColor(0x7F, 0xD9, 0x7F),
+            "Tanker": RGBColor(0x9A, 0x9A, 0x9A), "AWACS": RGBColor(0xB0, 0x8A, 0xD9),
+        }
+        # Rows fit ~16 at 0.34" each; paginate beyond.
+        per_page = 16
+        pages = max(1, (len(ptl) + per_page - 1) // per_page)
+        # Shared axis across ALL rows (not per page) so pages align.
+        t_min = min(r.get("push_min", 0) for r in ptl)
+        t_max = max(r.get("land_min", 0) for r in ptl)
+        span = max(1.0, t_max - t_min)
+        AX_X = Inches(2.9)                 # left edge of the bar area
+        AX_W = Inches(9.6)                 # bar-area width
+        def _x_at(minute):
+            frac = (minute - t_min) / span
+            return int(AX_X + frac * AX_W)
+        for pg in range(pages):
+            chunk = ptl[pg * per_page:(pg + 1) * per_page]
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            title = "PACKAGE TIMELINE" if pages == 1 else f"PACKAGE TIMELINE ({pg + 1}/{pages})"
+            _slide_header(s, title)
+            top = Inches(1.5)
+            # Time axis ticks — 6 gridlines with Zulu labels.
+            for k in range(7):
+                mnt = t_min + span * k / 6.0
+                gx = _x_at(mnt)
+                gl = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, gx, top,
+                                        Inches(0.012), Inches(0.28) + Inches(0.34 * len(chunk)))
+                gl.fill.solid(); gl.fill.fore_color.rgb = BORDER; gl.line.fill.background()
+                hh = int(mnt) // 60; mm = int(mnt) % 60
+                _txt(s, gx - Inches(0.35), top - Inches(0.32), Inches(0.7), Inches(0.3),
+                     f"+{hh:02d}:{mm:02d}", size=9, color=DIM, align_center=True)
+            # One row per flight.
+            for ri, r in enumerate(chunk):
+                ry = top + Inches(0.36) + Inches(0.34 * ri)
+                _txt(s, Inches(0.4), ry - Inches(0.06), Inches(2.4), Inches(0.34),
+                     f"{r.get('callsign','')}  ", size=12, bold=True, color=BRIGHT)
+                _txt(s, Inches(0.4), ry + Inches(0.14), Inches(2.4), Inches(0.2),
+                     r.get("role", ""), size=9, color=DIM)
+                x0 = _x_at(r.get("push_min", 0)); x1 = _x_at(r.get("land_min", 0))
+                bar = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x0, ry,
+                                         max(Inches(0.12), x1 - x0), Inches(0.22))
+                bar.fill.solid(); bar.fill.fore_color.rgb = role_color.get(r.get("role", ""), ACCENT)
+                bar.line.fill.background()
+                try:
+                    bar.adjustments[0] = 0.5
+                except Exception:
+                    pass
+                # TOT marker.
+                tx = _x_at(r.get("tot_min", 0))
+                tick = s.shapes.add_shape(MSO_SHAPE.DIAMOND, tx - Inches(0.07),
+                                          ry - Inches(0.02), Inches(0.14), Inches(0.26))
+                tick.fill.solid(); tick.fill.fore_color.rgb = BRIGHT; tick.line.fill.background()
+                # Push / land labels at the ends.
+                _txt(s, x0 - Inches(0.02), ry + Inches(0.22), Inches(0.9), Inches(0.2),
+                     r.get("push_z", ""), size=8, color=DIM)
+                _txt(s, x1 - Inches(0.5), ry + Inches(0.22), Inches(0.9), Inches(0.2),
+                     r.get("land_z", ""), size=8, color=DIM)
+            # Legend: TOT marker meaning.
+            _txt(s, Inches(0.4), top + Inches(0.36) + Inches(0.34 * len(chunk)) + Inches(0.1),
+                 Inches(12), Inches(0.3),
+                 "◆ = time on target / on-station    bar = push → recovery",
+                 size=10, color=DIM)
+
     # ---------- Slide 7: Comms ------------------------------------------
     s = prs.slides.add_slide(BLANK); _apply_bg(s)
     _slide_header(s, "COMMS")
@@ -1412,6 +1521,76 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _slide_header(s, "SPECIAL INSTRUCTIONS / NOTES")
         _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
              brief["notes"], size=15, color=LIGHT)
+
+    # ---------- Slide 10b: Rules of Engagement --------------------------
+    # Weapons status + numbered hostile-declaration criteria + no-fire
+    # conditions + abort criteria. Seeded from a standard template and
+    # tailored by the mission maker. (v1.19.137)
+    roe = brief.get("roe") or {}
+    if roe and (roe.get("hostile_criteria") or roe.get("nofire") or roe.get("fire_authority")):
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "RULES OF ENGAGEMENT")
+        col_w = Inches(5.9)
+        gap = Inches(0.4)
+        left_x = Inches(0.6)
+        right_x = left_x + col_w + gap
+        y = Inches(1.5)
+
+        # --- Weapons status strip (three stat callouts) ---
+        stats = [
+            ("WEAPONS STATUS", roe.get("weapons_status", "")),
+            ("THREAT POSTURE", roe.get("threat_posture", "")),
+            ("HOSTILE DECL AUTH", roe.get("hostile_authority", "")),
+        ]
+        sw = Inches(3.9)
+        for i, (lbl, val) in enumerate(stats):
+            sx = left_x + i * (sw + Inches(0.15))
+            box = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, sx, y, sw, Inches(0.9))
+            box.fill.solid(); box.fill.fore_color.rgb = TABLE_HEADER_BG
+            box.line.color.rgb = BORDER; box.line.width = Pt(0.75)
+            tf = box.text_frame; tf.word_wrap = True
+            tf.margin_left = Inches(0.12); tf.margin_top = Inches(0.06)
+            p0 = tf.paragraphs[0]; r0 = p0.add_run(); r0.text = lbl
+            r0.font.size = Pt(10); r0.font.color.rgb = DIM; r0.font.name = "Arial"
+            p1 = tf.add_paragraph(); r1 = p1.add_run(); r1.text = str(val)
+            r1.font.size = Pt(15); r1.font.bold = True; r1.font.color.rgb = ACCENT
+            r1.font.name = "Arial"
+
+        body_y = y + Inches(1.15)
+
+        # --- Fire authority line ---
+        if roe.get("fire_authority"):
+            _txt(s, left_x, body_y, Inches(12.1), Inches(0.7),
+                 str(roe["fire_authority"]), size=12, color=LIGHT)
+            body_y = body_y + Inches(0.8)
+
+        # --- Left column: hostile declaration criteria ---
+        _txt(s, left_x, body_y, col_w, Inches(0.35),
+             "HOSTILE DECLARATION CRITERIA", size=13, bold=True, color=ACCENT)
+        cy = body_y + Inches(0.4)
+        for c in (roe.get("hostile_criteria") or [])[:6]:
+            code = f"{c.get('category','')}  {c.get('code','')}".strip()
+            _txt(s, left_x, cy, col_w, Inches(0.3), code, size=11, bold=True, color=BRIGHT)
+            tf = _txt(s, left_x, cy + Inches(0.26), col_w, Inches(0.6),
+                      str(c.get("text", "")), size=10, color=LIGHT)
+            # advance by an estimate of wrapped height
+            lines = max(1, (len(str(c.get("text", ""))) // 62) + 1)
+            cy = cy + Inches(0.26) + Inches(0.22 * lines) + Inches(0.12)
+
+        # --- Right column: no-fire + abort ---
+        _txt(s, right_x, body_y, col_w, Inches(0.35),
+             "NO-FIRE / RESTRICTED", size=13, bold=True, color=ACCENT)
+        ny = body_y + Inches(0.4)
+        for nf in (roe.get("nofire") or [])[:8]:
+            _txt(s, right_x, ny, col_w, Inches(0.4), f"•  {nf}", size=10, color=LIGHT)
+            lines = max(1, (len(str(nf)) // 58) + 1)
+            ny = ny + Inches(0.22 * lines) + Inches(0.05)
+        if roe.get("abort"):
+            ny = ny + Inches(0.15)
+            _txt(s, right_x, ny, col_w, Inches(0.3), "ABORT CRITERIA",
+                 size=13, bold=True, color=ACCENT)
+            _txt(s, right_x, ny + Inches(0.4), col_w, Inches(0.9),
+                 str(roe["abort"]), size=10, color=LIGHT)
 
     # ---------- Slide 11: Popup attack profiles (optional) ---------------
     # Pages through the kneeboard popup-attack profiles, one row per
@@ -1556,6 +1735,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # AFTER speaker notes (which attach by slide object, order-independent).
     if sections:
         _apply_section_layout(prs, n_template_slides, sections)
+
+    # v1.19.137 — "classified document" banners. Stamp the classification
+    # marking top + bottom on every built slide, and a fiction disclaimer on
+    # the last one. Cosmetic only — this is a game brief, not a real record;
+    # the disclaimer says so. Runs LAST so it sits above all content.
+    if brief.get("classified"):
+        _apply_classification_banners(
+            prs, n_template_slides,
+            str(brief.get("classification") or "TOP SECRET // REL TO COALITION"),
+            ACCENT, BG, dark)
 
     out = io.BytesIO()
     prs.save(out)
@@ -1724,6 +1913,62 @@ def _apply_section_layout(prs, n_template_slides: int, sections: List[Dict[str, 
             sldIdLst.append(id_elems[i])
     except Exception:
         pass  # never break the render over layout
+
+
+def _apply_classification_banners(prs, n_template_slides: int, marking: str,
+                                  accent, bg, dark: bool) -> None:
+    """Stamp a classification marking top + bottom of every built slide.
+
+    Cosmetic 'classified document' styling for immersion — a game brief, not
+    a real classified record. The last built slide also carries a small
+    fiction disclaimer so the marking can't be mistaken for the real thing.
+    Fail-soft: any error leaves the deck as-is.
+    """
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Inches, Pt
+    try:
+        slides = list(prs.slides)[n_template_slides:]
+    except Exception:
+        return
+    if not slides:
+        return
+    W = prs.slide_width
+    H = prs.slide_height
+    band_h = Inches(0.3)
+    band_fill = RGBColor(0x00, 0x00, 0x00) if dark else RGBColor(0xE8, 0xE8, 0xE8)
+
+    def _band(slide, y):
+        bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, y, W, band_h)
+        bar.fill.solid(); bar.fill.fore_color.rgb = band_fill
+        bar.line.fill.background()
+        tf = bar.text_frame
+        tf.margin_top = Pt(1); tf.margin_bottom = Pt(1)
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+        r = p.add_run(); r.text = marking.upper()
+        r.font.size = Pt(11); r.font.bold = True
+        r.font.color.rgb = accent; r.font.name = "Arial"
+
+    for slide in slides:
+        try:
+            _band(slide, 0)
+            _band(slide, H - band_h)
+        except Exception:
+            pass
+
+    # Fiction disclaimer on the last slide.
+    try:
+        tx = slides[-1].shapes.add_textbox(Inches(0.4), H - Inches(0.62),
+                                           Inches(12.5), Inches(0.28))
+        p = tx.text_frame.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = ("FICTIONAL — DCS World mission brief. Classification markings "
+                  "are for immersion only and denote nothing real.")
+        r.font.size = Pt(8); r.font.italic = True
+        r.font.color.rgb = RGBColor(0x88, 0x88, 0x88); r.font.name = "Arial"
+    except Exception:
+        pass
 
 
 def _apply_speaker_notes(prs, n_template_slides: int, notes_map: Dict[str, str]) -> None:

@@ -2354,12 +2354,30 @@ def brief_build_wing():
             warehouses_text=_warehouses_for(session))
         # Pull the dictionary so DictKey_* refs resolve to user-visible text.
         dictionary_text = extract_dictionary_from_miz(session["miz_bytes"])
+        # Planner DMPIs → control-measures TARGET rows (v1.19.137). Parsed
+        # from the mission's private plannerDmpis block; empty on a fresh miz.
+        try:
+            from services.planner_dmpis_parser import parse_planner_dmpis
+            _dmpis = parse_planner_dmpis(session["original_mission_text"])
+        except Exception:
+            _dmpis = []
+
+        def _elev_ft_source(lat, lon):
+            """metres at (lat, lon) — the builder converts to feet."""
+            try:
+                from services.elevation import get_elevation as _ge
+                return _ge(lat, lon, _srtm_data)
+            except Exception:
+                return None
+
         brief = build_wing_brief(
             mission_data=mission_data,
             theater=session["theater"],
             filename=session.get("filename") or "",
             dictionary_text=dictionary_text,
             popup_attacks=body.get("popupAttacks") or [],
+            dmpis=_dmpis,
+            elevation_fn=_elev_ft_source,
         )
     except Exception as e:
         import traceback
