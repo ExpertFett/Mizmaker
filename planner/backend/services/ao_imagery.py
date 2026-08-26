@@ -180,20 +180,52 @@ def _stitch(lat: float, lon: float, z: int, out_w: int, out_h: int):
     return canvas.crop((crop_x, crop_y, crop_x + out_w, crop_y + out_h))
 
 
-def _apply_gradient(img, gradient: str):
-    """Bake a dark gradient into img so it fades into the slide bg (#0d0f12).
+def _apply_gradient(img, gradient: str, scrim=(13, 15, 18)):
+    """Bake a gradient scrim into img so text over it stays legible.
+
+    scrim is the colour faded in — a theme's background, so a dark theme
+    scrims toward its charcoal and a light theme toward its paper (dark text
+    then reads over the imagery). One layout serves both.
 
     gradient:
-      "bottom" — clear at top, dark at the bottom (cover: title strip legible)
-      "left"   — dark at the left, clearing by ~62% width (situation/intent
-                 prose sits on the dark side)
+      "bottom" — clear at top, scrim at the bottom (cover: title strip)
+      "left"   — scrim at the left, clearing by ~62% width (situation/intent)
       "right"  — mirror of "left"
-      "full"   — a flat, even darkening over the whole frame (threats: rings
-                 and a table ride on top)
+      "full"   — a flat, even scrim over the whole frame (threats table/rings)
     """
     from PIL import Image
     w, h = img.size
-    dark = Image.new("RGB", (w, h), (13, 15, 18))
+    dark = Image.new("RGB", (w, h), tuple(scrim))
+    light = sum(scrim) / 3.0 > 150  # light theme -> heavier scrim for dark text
+
+    if gradient == "full":
+        mask = Image.new("L", (w, h), int((0.55 if light else 0.45) * 255))
+    elif gradient == "bottom":
+        col = Image.new("L", (1, h))
+        peak = 0.97 if light else 0.94
+        for yy in range(h):
+            t = yy / max(1, h - 1)
+            # ramp: transparent over the top ~35%, then climb to near-opaque
+            a = 0.0 if t < 0.35 else ((t - 0.35) / 0.65) ** 1.4 * peak
+            col.putpixel((0, yy), int(a * 255))
+        mask = col.resize((w, h))
+    elif gradient in ("left", "right"):
+        row = Image.new("L", (w, 1))
+        floor = 0.28 if light else 0.12
+        peak = 0.99 if light else 0.97
+        for xx in range(w):
+            t = xx / max(1, w - 1)
+            if gradient == "right":
+                t = 1.0 - t
+            # opaque at the edge, clearing by ~62% across
+            a = max(0.0, 1.0 - (t / 0.62)) * peak
+            a = max(a, floor)  # keep a floor so the far side still holds text
+            row.putpixel((xx, 0), int(a * 255))
+        mask = row.resize((w, h))
+    else:
+        return img
+
+    return Image.composite(dark, img, mask)
 
     if gradient == "full":
         mask = Image.new("L", (w, h), int(0.45 * 255))
@@ -223,11 +255,39 @@ def _apply_gradient(img, gradient: str):
     return Image.composite(dark, img, mask)
 
 
+def _apply_tint(img, tint: dict):
+    """Tone imagery per a theme's tint spec (see brief_themes).
+
+    {"duotone": [(dark_rgb), (light_rgb)]} maps greyscale onto a two-colour
+    ramp (blueprint blue, NVG green, amber CRT, chart navy). Otherwise
+    sat/bright enhance plus an optional {"mul": (r,g,b)} colour multiply
+    (coyote sepia, aggressor red, arctic cool).
+    """
+    from PIL import ImageOps, ImageEnhance, Image, ImageChops
+    if "duotone" in tint:
+        dark, light = tint["duotone"]
+        return ImageOps.colorize(img.convert("L"),
+                                 black=tuple(dark), white=tuple(light)).convert("RGB")
+    s = tint.get("sat", 1.0)
+    b = tint.get("bright", 1.0)
+    if s != 1.0:
+        img = ImageEnhance.Color(img).enhance(s)
+    if b != 1.0:
+        img = ImageEnhance.Brightness(img).enhance(b)
+    mul = tint.get("mul")
+    if mul:
+        layer = Image.new("RGB", img.size, tuple(mul))
+        img = ImageChops.multiply(img, layer)
+    return img
+
+
 def fetch_ao_image(lat: float, lon: float, span_km: float,
                    out_w: int, out_h: int, *,
                    saturate: float = 0.6, brightness: float = 0.66,
                    gradient: Optional[str] = None,
-                   zoom: Optional[int] = None) -> Optional[bytes]:
+                   zoom: Optional[int] = None,
+                   tint: Optional[dict] = None,
+                   scrim=(13, 15, 18)) -> Optional[bytes]:
     """Satellite AO background as PNG bytes, or None on any failure.
 
     lat/lon    — centre of the operating area
@@ -262,12 +322,15 @@ def fetch_ao_image(lat: float, lon: float, span_km: float,
         return None
 
     try:
-        if saturate != 1.0:
-            img = ImageEnhance.Color(img).enhance(saturate)
-        if brightness != 1.0:
-            img = ImageEnhance.Brightness(img).enhance(brightness)
+        if tint:
+            img = _apply_tint(img, tint)
+        else:
+            if saturate != 1.0:
+                img = ImageEnhance.Color(img).enhance(saturate)
+            if brightness != 1.0:
+                img = ImageEnhance.Brightness(img).enhance(brightness)
         if gradient:
-            img = _apply_gradient(img, gradient)
+            img = _apply_gradient(img, gradient, scrim)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()

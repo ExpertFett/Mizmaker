@@ -2668,6 +2668,13 @@ def brief_sample_template():
     )
 
 
+@app.route("/api/brief/themes", methods=["GET"])
+def brief_themes():
+    """List the selectable brief design themes (id, name, description, dark)."""
+    from services.brief_themes import list_themes, DEFAULT_THEME
+    return jsonify({"themes": list_themes(), "default": DEFAULT_THEME})
+
+
 @app.route("/api/brief/capabilities", methods=["GET"])
 def brief_capabilities():
     """Report which output formats this server can produce.

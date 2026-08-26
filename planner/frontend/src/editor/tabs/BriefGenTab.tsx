@@ -196,6 +196,15 @@ export function BriefGenTab() {
   const [error, setError] = useState<string | null>(null);
   const [format, setFormat] = useState<OutputFormat>('pptx');
   const [availableFormats, setAvailableFormats] = useState<OutputFormat[]>(['pptx']);
+  // v1.19.141 — design theme. Applied at render (brief.theme); the default is
+  // the satellite-imagery deck (vanguard). List comes from /api/brief/themes.
+  const [theme, setTheme] = useState<string>('vanguard');
+  const [themes, setThemes] = useState<Array<{ id: string; name: string; description: string; dark: boolean }>>([]);
+  useEffect(() => {
+    fetch('/api/brief/themes').then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.themes)) setThemes(d.themes); })
+      .catch(() => { /* keep default */ });
+  }, []);
 
   // Per-flight brief editor (v1.13.x). Loaded on demand from the mission
   // (build-package); when present, the package render uses THESE edited
@@ -498,7 +507,7 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/render-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief: { ...brief, route_overview_base64 }, format, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
+        body: JSON.stringify({ brief: { ...brief, theme, route_overview_base64 }, format, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Render failed' }));
@@ -578,7 +587,7 @@ export function BriefGenTab() {
       const renderRes = await fetch('/api/brief/render-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wing: { ...pkg.wing, route_overview_base64 }, flights, format: pkgFormat, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
+        body: JSON.stringify({ wing: { ...pkg.wing, theme, route_overview_base64 }, flights, format: pkgFormat, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (!renderRes.ok) {
         const err = await renderRes.json().catch(() => ({ error: 'Render failed' }));
@@ -858,6 +867,17 @@ export function BriefGenTab() {
             >
               {rendering ? 'Rendering…' : 'Wing + Flights (.zip)'}
             </button>
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              disabled={rendering}
+              style={selectStyle}
+              title="Design theme for the brief"
+            >
+              {(themes.length ? themes : [{ id: 'vanguard', name: 'Vanguard (satellite)', description: '', dark: true }]).map((t) => (
+                <option key={t.id} value={t.id} title={t.description}>{t.name}</option>
+              ))}
+            </select>
             <select
               value={format}
               onChange={(e) => setFormat(e.target.value as OutputFormat)}

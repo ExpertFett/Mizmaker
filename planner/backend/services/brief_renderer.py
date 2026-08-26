@@ -75,6 +75,32 @@ def _load_silhouette(family: Optional[str]) -> Optional[bytes]:
     return data
 
 
+# Theme motif assets (v1.19.141) — full-slide background textures (paper, chart,
+# carbon) and transparent overlays (grid, scanlines, hazard bars, compass),
+# bundled in backend/assets/themes/. A missing file just means the theme falls
+# back to its solid palette background with no motif — never an error.
+_THEME_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "themes")
+_theme_asset_cache: Dict[str, Optional[bytes]] = {}
+
+
+def _load_theme_asset(name: Optional[str]) -> Optional[bytes]:
+    """PNG bytes for a theme texture/overlay, or None if we have none."""
+    if not name:
+        return None
+    if name in _theme_asset_cache:
+        return _theme_asset_cache[name]
+    data: Optional[bytes] = None
+    try:
+        path = os.path.join(_THEME_DIR, f"{name}.png")
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                data = f.read()
+    except Exception:
+        data = None
+    _theme_asset_cache[name] = data
+    return data
+
+
 def _cover_date(iso: str) -> str:
     """YYYY-MM-DD -> '08 NOV 06'. The cover printed an ISO date while the
     scenario slide printed '08 NOV 06'; two formats for the same date in one
@@ -854,7 +880,17 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # master branding shows through — so the text palette must match the
     # template's background brightness, or text vanishes (e.g. light grey
     # on a white master). Auto-detect dark vs light from the master bg.
+    # v1.19.141 — Template theme. When we own the deck (no user .pptx / image
+    # backdrop) the selected theme drives dark/light, the palette, fonts,
+    # imagery treatment and motif. On a user template we leave their branding
+    # alone. Unknown / missing id -> the default (vanguard, satellite imagery).
+    from services.brief_themes import get_theme
+    _theme = get_theme(brief.get("theme"))
+    _own_deck = (not use_template) and (not bg_img_bytes)
+
     dark = True if not use_template else _master_bg_is_dark(prs)
+    if _own_deck:
+        dark = bool(_theme["dark"])
     # Image template: pick text palette from the backdrop's luminance so
     # text reads on it (light text on a dark backdrop, dark text on light).
     if bg_img_bytes:
@@ -898,6 +934,42 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             return RGBColor(int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
         except Exception:
             return None
+
+    def _hex_tuple(h, default=(13, 15, 18)):
+        try:
+            s = str(h).strip().lstrip("#")
+            if len(s) == 3:
+                s = "".join(c + c for c in s)
+            return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+        except Exception:
+            return default
+
+    # Apply the selected theme's palette when we own the deck. Font faces and
+    # the theme flags come along too. brief.theme_colors (a per-brief squadron
+    # override) still wins on top of this, below.
+    DISPLAY_F, BODY_F, MONO_F, LABEL_F = "Oswald", "Barlow", "Consolas", "Barlow Semi Condensed"
+    if _own_deck:
+        _pal = _theme["palette"]
+        for role, var in (("bg", "BG"), ("text", "LIGHT"), ("bright", "BRIGHT"),
+                          ("accent", "ACCENT"), ("dim", "DIM"), ("border", "BORDER"),
+                          ("header_bg", "TABLE_HEADER_BG"), ("cell_bg", "CELL_BG")):
+            rgb = _hex_to_rgb(_pal.get(role))
+            if rgb is None:
+                continue
+            if var == "BG": BG = rgb
+            elif var == "LIGHT": LIGHT = rgb
+            elif var == "BRIGHT": BRIGHT = rgb
+            elif var == "ACCENT": ACCENT = rgb
+            elif var == "DIM": DIM = rgb
+            elif var == "BORDER": BORDER = rgb
+            elif var == "TABLE_HEADER_BG": TABLE_HEADER_BG = rgb
+            elif var == "CELL_BG": CELL_BG = rgb
+        _f = _theme["fonts"]
+        DISPLAY_F = _f.get("display") or DISPLAY_F
+        BODY_F = _f.get("body") or BODY_F
+        MONO_F = _f.get("mono") or MONO_F
+        LABEL_F = _f.get("label") or LABEL_F
+
     theme_overrides = brief.get("theme_colors") or {}
     if isinstance(theme_overrides, dict) and theme_overrides:
         for role, target_var in (
@@ -972,16 +1044,40 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         spTree = rect._element.getparent()
         spTree.remove(rect._element)
         spTree.insert(2, rect._element)
+        # Theme background texture (paper, chart, carbon…) on non-imagery
+        # themes — imagery themes cover it, so skip there.
+        if _texture_bytes and not _theme["imagery"]:
+            try:
+                slide.shapes.add_picture(io.BytesIO(_texture_bytes), 0, 0,
+                                         width=prs.slide_width, height=prs.slide_height)
+            except Exception:
+                pass
+        _place_overlay(slide)
 
-    # v1.19.139 — Satellite AO backgrounds. Active only when we own the slide
-    # background (default dark deck, not a user .pptx template or image
-    # backdrop) and the mission gave us an operating-area centre. A slide that
-    # wants imagery calls _ao_bg() straight after _apply_bg(): it fetches the
-    # composite once (cached within this render), inserts it full-bleed over
-    # the flat rect with a baked gradient, and returns True. False -> the slide
-    # keeps its flat-dark background, so nothing ever renders worse than before.
+    # v1.19.141 — theme motif (texture + transparent overlay) and imagery tint.
+    _scrim_rgb = _hex_tuple(_theme["palette"].get("bg")) if _own_deck else (13, 15, 18)
+    _tint = _theme.get("tint") if _own_deck else None
+    _texture_bytes = _load_theme_asset(_theme["bg_texture"]) if _own_deck else None
+    _overlay_bytes = _load_theme_asset(_theme["overlay"]) if _own_deck else None
+
+    def _place_overlay(slide):
+        if not _overlay_bytes:
+            return
+        try:
+            slide.shapes.add_picture(io.BytesIO(_overlay_bytes), 0, 0,
+                                     width=prs.slide_width, height=prs.slide_height)
+        except Exception:
+            pass
+
+    # v1.19.139 — Satellite AO backgrounds. Active only when we own the deck and
+    # the selected theme uses imagery and the mission gave us an operating-area
+    # centre. A slide that wants imagery calls _ao_bg() right after _apply_bg():
+    # it fetches the composite once (cached), tones it per the theme tint, bakes
+    # a scrim toward the theme bg so text stays legible, inserts it full-bleed
+    # and lays the theme overlay on top. False -> the slide keeps its themed
+    # solid/texture background, so nothing renders worse than before.
     _ao = brief.get("ao_center") if isinstance(brief.get("ao_center"), dict) else None
-    _ao_own_bg = (not use_template) and (not bg_img_bytes) and dark
+    _ao_own_bg = _own_deck and bool(_theme["imagery"])
     _ao_cache: Dict[tuple, Any] = {}
 
     def _ao_bg(slide, gradient, *, span_scale=1.0, zoom=None):
@@ -998,7 +1094,8 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             try:
                 from services import ao_imagery
                 png = ao_imagery.fetch_ao_image(
-                    lat, lon, span, 1280, 720, gradient=gradient, zoom=zoom)
+                    lat, lon, span, 1280, 720, gradient=gradient, zoom=zoom,
+                    tint=_tint, scrim=_scrim_rgb)
             except Exception:
                 png = None
             _ao_cache[key] = png
@@ -1007,13 +1104,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         try:
             slide.shapes.add_picture(io.BytesIO(png), 0, 0,
                                      width=prs.slide_width, height=prs.slide_height)
+            _place_overlay(slide)
             return True
         except Exception:
             return False
 
     def _txt(slide, x, y, w, h, text, *, size=18, bold=False, color=LIGHT,
-             align_center=False, italic=False, font="Arial", shift=True,
+             align_center=False, italic=False, font=None, shift=True,
              line_spacing=None):
+        if font is None:
+            font = BODY_F
         # Shift content down by the template inset; trim height so a tall
         # body box doesn't run off the bottom edge. shift=False opts a box
         # out of the inset (used by the imagery slides, which own their own
@@ -1039,19 +1139,29 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             r.font.name = font
         return tf
 
-    def _slide_header(slide, label):
-        """Top-of-slide section title — short amber tick + white Oswald title.
+    _classic_headers = bool(_own_deck and _theme.get("classic_headers"))
 
-        v1.19.139: dropped the full-width underline (it read as a slide-
-        template rule). A short accent tick above a bright condensed title
-        matches the imagery slides so the whole deck feels of a piece.
+    def _slide_header(slide, label):
+        """Top-of-slide section title.
+
+        Default (v1.19.139): a short accent tick above a bright condensed
+        title, matching the imagery slides. The Classic theme restores the
+        original full-width accent underline under an accent-coloured label.
         """
+        if _classic_headers:
+            _txt(slide, Inches(0.6), Inches(0.4), Inches(12), Inches(0.6),
+                 label, size=24, bold=True, color=ACCENT, font=DISPLAY_F)
+            line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6),
+                                          Inches(1.05) + _MY, Inches(12.1), Inches(0.04))
+            line.fill.solid(); line.fill.fore_color.rgb = ACCENT
+            line.line.fill.background()
+            return
         tick = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62),
                                       Inches(0.46) + _MY, Inches(0.55), Inches(0.05))
         tick.fill.solid(); tick.fill.fore_color.rgb = ACCENT
         tick.line.fill.background()
         _txt(slide, Inches(0.6), Inches(0.6), Inches(12), Inches(0.7),
-             label, size=26, bold=True, color=BRIGHT, font="Oswald")
+             label, size=26, bold=True, color=BRIGHT, font=DISPLAY_F)
 
     def _img_header(slide, eyebrow, title):
         """Header for an imagery slide: small amber eyebrow + big Oswald title.
@@ -1061,9 +1171,9 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         """
         _txt(slide, Inches(0.6), Inches(0.5), Inches(11.5), Inches(0.4),
              eyebrow.upper(), size=14, bold=True, color=ACCENT,
-             font="Barlow Semi Condensed", shift=False)
+             font=LABEL_F, shift=False)
         _txt(slide, Inches(0.57), Inches(0.85), Inches(11.5), Inches(0.85),
-             title, size=32, bold=True, color=BRIGHT, font="Oswald", shift=False)
+             title, size=32, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
 
     def _chip(slide, x, y, w, text, *, mono=False):
         """A small translucent-looking fact chip for imagery slides."""
@@ -1077,7 +1187,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         p = tf.paragraphs[0]
         r = p.add_run(); r.text = text
         r.font.size = Pt(12.5); r.font.color.rgb = LIGHT
-        r.font.name = "Consolas" if mono else "Barlow Semi Condensed"
+        r.font.name = MONO_F if mono else LABEL_F
         return box
 
     def _table(slide, x, y, w, h, headers, rows, col_widths=None):
@@ -1100,7 +1210,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                     r.font.bold = True
                     r.font.color.rgb = ACCENT
                     r.font.size = Pt(13)
-                    r.font.name = "Arial"
+                    r.font.name = LABEL_F
 
         # Body rows
         for ri, row in enumerate(rows, start=1):
@@ -1112,7 +1222,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                     for r in p.runs:
                         r.font.color.rgb = LIGHT
                         r.font.size = Pt(12)
-                        r.font.name = "Arial"
+                        r.font.name = BODY_F
         return table
 
     # ---------- Slide 1: Cover -------------------------------------------
@@ -1210,11 +1320,11 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         cp = ctf.paragraphs[0]; cp.alignment = PP_ALIGN.CENTER
         cr = cp.add_run(); cr.text = "WING BRIEF"
         cr.font.size = Pt(14); cr.font.bold = True
-        cr.font.name = "Barlow Semi Condensed"; cr.font.color.rgb = BG
+        cr.font.name = LABEL_F; cr.font.color.rgb = BG
 
         _txt(s, Inches(0.57), Inches(4.7), Inches(11.8), Inches(1.5),
              brief["mission_name"], size=54, bold=True, color=BRIGHT,
-             font="Oswald", shift=False)
+             font=DISPLAY_F, shift=False)
 
         # Meta strip along the very bottom — key/value columns.
         meta = [("THEATER", brief["theater"]),
@@ -1226,9 +1336,9 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         mx = Inches(0.62)
         for k, v in meta:
             _txt(s, mx, Inches(6.62), Inches(2.6), Inches(0.3), k,
-                 size=11, bold=True, color=DIM, font="Barlow Semi Condensed", shift=False)
+                 size=11, bold=True, color=DIM, font=LABEL_F, shift=False)
             _txt(s, mx, Inches(6.86), Inches(2.6), Inches(0.45), str(v),
-                 size=17, bold=True, color=BRIGHT, font="Oswald", shift=False)
+                 size=17, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
             mx += Inches(2.75)
     else:
         # ---- Text/hero cover: centred title in the lower band ----
@@ -1238,7 +1348,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         title_top = HERO_HEIGHT + Inches(0.4) if cover_img else Inches(2.6)
         _txt(s, Inches(0.6), title_top, Inches(12.1), Inches(1.4),
              brief["mission_name"], size=56, bold=True, color=BRIGHT,
-             align_center=True, font="Oswald")
+             align_center=True, font=DISPLAY_F)
         sub_top = title_top + Inches(1.5)
         _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
              f"{brief['theater'].upper()}   ·   {_cover_date(brief['date'])}   ·   "
@@ -1270,7 +1380,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             # the map instead of clipping.
             fs = 16 if len(_body) < 460 else (14 if len(_body) < 820 else 12)
             _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
-                 _body, size=fs, color=LIGHT, font="Barlow", shift=False,
+                 _body, size=fs, color=LIGHT, font=BODY_F, shift=False,
                  line_spacing=1.12)
             # METAR chip in the map's lower-right — a quick-glance sky line
             # that also stops the imagery side reading as empty.
@@ -1301,7 +1411,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             tf = panel.text_frame; tf.word_wrap = True
             tf.margin_left = Inches(0.15); tf.margin_top = Inches(0.08)
             r = tf.paragraphs[0].add_run(); r.text = _metar
-            r.font.size = Pt(15); r.font.name = "Consolas"
+            r.font.size = Pt(15); r.font.name = MONO_F
             r.font.color.rgb = BRIGHT; r.font.bold = True
             _body_y = Inches(2.35)
         if (brief.get("weather_brief") or "").strip():
@@ -1325,10 +1435,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                 card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
                 _txt(s, cx, cy + Inches(0.18), card_w, Inches(0.4),
                      st.get("label", ""), size=12, bold=True, color=ACCENT,
-                     font="Barlow Semi Condensed", align_center=True)
+                     font=LABEL_F, align_center=True)
                 _txt(s, cx, cy + Inches(0.6), card_w, Inches(0.7),
                      st.get("value", ""), size=22, bold=True, color=BRIGHT,
-                     font="Oswald", align_center=True)
+                     font=DISPLAY_F, align_center=True)
                 cx += card_w + gap
 
     # ---------- Slide 3c: Control measures (table) -----------------------
@@ -1362,7 +1472,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             _img_header(s, "Commander's Intent", "The Plan")
             fs = 17 if len(_ci) < 460 else (15 if len(_ci) < 820 else 13)
             _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
-                 _ci, size=fs, color=LIGHT, font="Barlow", shift=False,
+                 _ci, size=fs, color=LIGHT, font=BODY_F, shift=False,
                  line_spacing=1.15)
         else:
             _slide_header(s, "COMMANDER'S INTENT")
@@ -1556,16 +1666,16 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                 # Type + class (stacked, left of the text block)
                 _txt(s, text_x, cy + Inches(0.09), Inches(3.05), Inches(0.42),
                      a.get("composition") or "?", size=16, bold=True,
-                     color=ACCENT, font="Oswald")
+                     color=ACCENT, font=DISPLAY_F)
                 _txt(s, text_x, cy + Inches(0.55), Inches(3.05), Inches(0.4),
-                     a.get("airframe_class") or "—", size=10.5, color=DIM, font="Barlow")
+                     a.get("airframe_class") or "—", size=10.5, color=DIM, font=BODY_F)
                 # Weapons + how-to-fight (stacked, right block)
                 wx = text_x + Inches(3.15)
                 ww = Inches(0.6) + Inches(12.1) - wx - Inches(0.2)
                 _txt(s, wx, cy + Inches(0.08), ww, Inches(0.4),
-                     a.get("weapons") or "—", size=11, bold=True, color=LIGHT, font="Barlow")
+                     a.get("weapons") or "—", size=11, bold=True, color=LIGHT, font=BODY_F)
                 _txt(s, wx, cy + Inches(0.44), ww, Inches(0.55),
-                     a.get("notes") or "—", size=9.5, color=DIM, font="Barlow")
+                     a.get("notes") or "—", size=9.5, color=DIM, font=BODY_F)
 
     # ---------- Target imagery (satellite close-up per DMPI) -------------
     # v1.19.140 — a real strike brief carries target photos: an overhead of
@@ -1652,10 +1762,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                 cbox.fill.solid(); cbox.fill.fore_color.rgb = CELL_BG
                 cbox.line.color.rgb = BORDER; cbox.line.width = Pt(0.75)
                 _txt(s, bx + Inches(0.02), Inches(6.6), cw, Inches(0.25), lbl,
-                     size=9, bold=True, color=ACCENT, font="Barlow Semi Condensed")
+                     size=9, bold=True, color=ACCENT, font=LABEL_F)
                 _txt(s, bx + Inches(0.02), Inches(6.82), cw, Inches(0.35), str(val),
                      size=13, bold=True, color=BRIGHT,
-                     font="Consolas" if mono else "Oswald")
+                     font=MONO_F if mono else DISPLAY_F)
             if not png:
                 _txt(s, Inches(0.6), Inches(3.4), Inches(12.1), Inches(0.5),
                      "Satellite imagery unavailable — coordinates above.",
