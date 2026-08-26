@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
+import LayerGroup from 'ol/layer/Group';
 import OSM from 'ol/source/OSM';
 import XYZ from 'ol/source/XYZ';
 import { fromLonLat, toLonLat } from 'ol/proj';
@@ -63,28 +64,39 @@ const THEATER_CENTERS: Record<string, [number, number]> = {
 };
 
 // Tile layer factories
-function createDarkLayer(): TileLayer {
-  // Use `dark_all` (not `dark_nolabels`) so city/town/country labels are
-  // visible by default — previously the map was label-free, which hid
-  // towns entirely. Airfields come from our own airbase overlay layer.
-  return new TileLayer({
+//
+// Dark basemap: Esri "Dark Gray Canvas" (Base + Reference), no API key. We
+// moved off CARTO's basemaps.cartocdn.com in v1.19.142 — CARTO now watermarks
+// unauthenticated tiles ("API key required" baked into the image). Esri is the
+// same host we already use for satellite, needs no key, and the Reference
+// layer restores the city/town labels CARTO's dark_all gave us. Its raster
+// canvas caps at z16, so the source over-zooms tiles past that.
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+function createDarkLayer(): LayerGroup {
+  const base = new TileLayer({
     source: new XYZ({
-      url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      maxZoom: 20,
-      attributions: '&copy; CARTO',
+      url: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+      maxZoom: 16, attributions: 'Tiles &copy; Esri',
     }),
-    properties: { name: 'dark' },
-    visible: true, // default
   });
+  const reference = new TileLayer({
+    source: new XYZ({
+      url: `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+      maxZoom: 16,
+    }),
+  });
+  return new LayerGroup({ layers: [base, reference], properties: { name: 'dark' }, visible: true });
 }
 
 function createOsmLayer(lang: string = 'en'): TileLayer {
+  // "Street" basemap: OSM for local labels, else Esri World Street Map (labels
+  // baked in, no key) — the CARTO Voyager replacement.
   const source = lang === 'local'
     ? new OSM()
     : new XYZ({
-        url: `https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png`,
-        maxZoom: 20,
-        attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        url: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+        maxZoom: 19,
+        attributions: 'Tiles &copy; Esri',
       });
   return new TileLayer({ source, properties: { name: 'osm' }, visible: false });
 }
@@ -133,7 +145,7 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
   useEffect(() => { onDmpiPickedRef.current = onDmpiPicked; }, [onDmpiPicked]);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
-  const baseLayers = useRef<{ dark: TileLayer; osm: TileLayer; satellite: TileLayer; topo: TileLayer } | null>(null);
+  const baseLayers = useRef<{ dark: LayerGroup; osm: TileLayer; satellite: TileLayer; topo: TileLayer } | null>(null);
   const layerRefs = useRef<{
     unit: ReturnType<typeof createUnitLayer> | null;
     route: ReturnType<typeof createRouteLayer> | null;

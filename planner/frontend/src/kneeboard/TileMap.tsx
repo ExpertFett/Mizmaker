@@ -91,9 +91,11 @@ const LAYERS: Record<BaseLayer, {
   credit: string;
 }> = {
   dark: {
-    url: (z, x, y) => `https://basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png`,
-    opacity: 0.7,
-    credit: '(c) OpenStreetMap, (c) CARTO',
+    // Esri Dark Gray Canvas — no API key (CARTO now watermarks
+    // unauthenticated tiles). Esri {z}/{y}/{x} order. v1.19.142.
+    url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${z}/${y}/${x}`,
+    opacity: 0.85,
+    credit: 'Basemap (c) Esri',
   },
   satellite: {
     url: (z, x, y) =>

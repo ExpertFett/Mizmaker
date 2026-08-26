@@ -110,7 +110,7 @@ export async function captureRouteImage(
   // Dark base tile layer
   const baseLayer = new TileLayer({
     source: new XYZ({
-      url: 'https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       attributions: '',
       crossOrigin: 'anonymous',
     }),
@@ -233,7 +233,7 @@ export async function captureOverviewImage(
   const vectorLayer = new VectorLayer({ source: new VectorSource({ features }) });
   const baseLayer = new TileLayer({
     source: new XYZ({
-      url: 'https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       attributions: '', crossOrigin: 'anonymous',
     }),
   });

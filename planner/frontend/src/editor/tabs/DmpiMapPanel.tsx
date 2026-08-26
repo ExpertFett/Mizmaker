@@ -56,12 +56,14 @@ import { useMissionStore } from '../../store/missionStore';
 // on a detailed background. Keys persisted to localStorage so the
 // choice survives mission swaps.
 const BASEMAPS: { id: BasemapId; label: string; url: string; attribution: string }[] = [
+  // Esri gray canvas — no API key (CARTO now watermarks unauthenticated
+  // tiles). Esri {z}/{y}/{x} order; caps at z16. v1.19.142.
   { id: 'dark',  label: 'Dark',
-    url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-    attribution: '© CARTO © OpenStreetMap' },
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri' },
   { id: 'light', label: 'Light',
-    url: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-    attribution: '© CARTO © OpenStreetMap' },
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri' },
   { id: 'osm',   label: 'OSM',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '© OpenStreetMap contributors' },

@@ -1605,8 +1605,10 @@ export function LiveMap({ group, profile }: { group: GroupSummary; profile: Serv
         // editor's map options so the DM can pick the same view they're used
         // to. Dark default; switcher in the left sidebar swaps visibility.
         ...((() => {
-          const dark = new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 20, attributions: '© CARTO' }), visible: basemap === 'dark' });
-          const voyager = new TileLayer({ source: new XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 20, attributions: '© OpenStreetMap, © CARTO' }), visible: basemap === 'voyager' });
+          // Esri Dark Gray Canvas / Street — no API key (CARTO now watermarks
+          // unauthenticated tiles). v1.19.142.
+          const dark = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16, attributions: 'Tiles © Esri' }), visible: basemap === 'dark' });
+          const voyager = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 19, attributions: 'Tiles © Esri' }), visible: basemap === 'voyager' });
           const satellite = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 19, attributions: 'Tiles © Esri' }), visible: basemap === 'satellite' });
           const topo = new TileLayer({ source: new XYZ({ url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZoom: 17, attributions: 'Map data: OpenTopoMap (CC-BY-SA)' }), visible: basemap === 'topo' });
           baseLayersRef.current = { dark, voyager, satellite, topo };
