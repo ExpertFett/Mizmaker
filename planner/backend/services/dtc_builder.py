@@ -103,6 +103,20 @@ def _make_mez_threat(num, name="", x=0.0, y=0.0, threat_level=1, threat_ring_rad
     }
 
 
+def _make_corridor(num, note, points_xy):
+    """One SA-page corridor (a polyline). points_xy is a list of (x, y).
+    Matches the real DTC shape: id CORR_N, per-vertex id CORR_N_PT_M."""
+    return {
+        "id": f"CORR_{num}",
+        "note": str(note or ""),
+        "num": num,
+        "points": [
+            {"id": f"CORR_{num}_PT_{i}", "x": float(x or 0), "y": float(y or 0)}
+            for i, (x, y) in enumerate(points_xy, start=1)
+        ],
+    }
+
+
 def _make_cap_point(num, note="", x=0.0, y=0.0, course=0, diameter=9260, length=37040, turn_direction="Left"):
     """One SA-page CAP point (race-track orbit marker). Mirrors a real exported
     DTC: id/num + position + leg geometry. `diameter` defaults to 9260 m (5 nm)
@@ -277,6 +291,98 @@ def extract_flight_for_dtc(mission: dict, group_name: str):
     return None
 
 
+# DCS unit-type substring → short SAM designation for the MEZ ring label.
+# Ordered most-specific first; first match wins. (v1.19.138)
+_SAM_LABELS = [
+    ("s-300", "SA-10"), ("sa-10", "SA-10"), ("s-200", "SA-5"), ("sa-5", "SA-5"),
+    ("patriot", "PATRIOT"), ("mim-104", "PATRIOT"),
+    ("buk", "SA-11"), ("sa-11", "SA-11"), ("sa-17", "SA-17"),
+    ("kub", "SA-6"), ("1s91", "SA-6"), ("sa-6", "SA-6"),
+    ("s-125", "SA-3"), ("sa-3", "SA-3"), ("sa-2", "SA-2"), ("sa-75", "SA-2"),
+    ("tor", "SA-15"), ("sa-15", "SA-15"),
+    ("osa", "SA-8"), ("sa-8", "SA-8"),
+    ("tunguska", "SA-19"), ("2s6", "SA-19"), ("sa-19", "SA-19"),
+    ("strela-10", "SA-13"), ("sa-13", "SA-13"),
+    ("strela-1", "SA-9"), ("sa-9", "SA-9"),
+    ("igla", "SA-18"), ("sa-18", "SA-18"), ("sa-16", "SA-16"), ("manpad", "MANPAD"),
+    ("roland", "ROLAND"), ("hawk", "HAWK"), ("nasams", "NASAMS"),
+    ("rapier", "RAPIER"), ("avenger", "AVENGER"), ("chaparral", "CHAPARRAL"),
+    ("linebacker", "LINEBACKER"), ("gepard", "GEPARD"),
+    ("zsu-23", "ZSU-23"), ("shilka", "ZSU-23"), ("zu-23", "ZU-23"),
+    ("vulcan", "VULCAN"), ("hq-7", "HQ-7"),
+]
+
+# Threat level by tier for the MEZ ring (mirrors the brief's tiering).
+# STRATEGIC area SAMs = 3, tactical = 2, short-range / guns = 1.
+_STRATEGIC = ("SA-10", "SA-5", "SA-12", "SA-20", "SA-21", "PATRIOT")
+_TACTICAL = ("SA-2", "SA-3", "SA-6", "SA-11", "SA-17", "HAWK")
+
+
+def _sam_label(type_str: str) -> str:
+    s = (type_str or "").lower()
+    for pat, lbl in _SAM_LABELS:
+        if pat in s:
+            return lbl
+    # Unknown — first token of the raw type, upper-cased, trimmed.
+    return (type_str or "THREAT").split()[0].upper()[:12]
+
+
+def _cluster_threats_to_sites(threats):
+    """Cluster co-located enemy threats into SAM sites — one MEZ ring each.
+
+    Greedy: process by range (longest first) so a battery's search/track
+    radar anchors the site; absorb every threat within CLUSTER_M. Each site
+    takes the label + range of its most-capable member and the centroid of
+    its members. Returns [{name, x, y, range_m, level}] sorted by range desc.
+    """
+    CLUSTER_M = 4000.0  # a SAM battery footprint; ~2.2 nm
+    positioned = [t for t in threats
+                  if (t.get("x") or t.get("y"))]
+    # Longest-range first so the anchor is the real threat, not a gun.
+    positioned.sort(key=lambda t: -(t.get("range") or 0))
+    used = [False] * len(positioned)
+    sites = []
+    for i, t in enumerate(positioned):
+        if used[i]:
+            continue
+        used[i] = True
+        members = [t]
+        tx, ty = t.get("x", 0), t.get("y", 0)
+        for j in range(i + 1, len(positioned)):
+            if used[j]:
+                continue
+            o = positioned[j]
+            if abs((o.get("x", 0)) - tx) <= CLUSTER_M and \
+               abs((o.get("y", 0)) - ty) <= CLUSTER_M:
+                used[j] = True
+                members.append(o)
+        # Anchor = the longest-range member (already t, since sorted).
+        label = _sam_label(t.get("type") or t.get("name") or "")
+        level = 3 if label in _STRATEGIC else 2 if label in _TACTICAL else 1
+        sites.append({
+            "name": label,
+            "x": tx, "y": ty,
+            "range_m": t.get("range") or 0,
+            "level": level,
+        })
+
+    # Second pass: merge SAME-SYSTEM sites that sit within one battery spread
+    # of each other. A big site (S-300) scatters its launchers 5-10 km, which
+    # the tight first-pass cluster splits into duplicate rings. Same label
+    # within max(8 km, 30% of its own range) is one battery. Keeps distinct
+    # batteries of the same type apart (they're usually far further).
+    merged = []
+    for s in sorted(sites, key=lambda s: -s["range_m"]):
+        spread = max(8000.0, s["range_m"] * 0.30)
+        host = next((m for m in merged
+                     if m["name"] == s["name"]
+                     and abs(m["x"] - s["x"]) <= spread
+                     and abs(m["y"] - s["y"]) <= spread), None)
+        if host is None:
+            merged.append(s)
+    return merged
+
+
 def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
     """Build a complete F/A-18C DTC JSON from extracted flight data.
 
@@ -377,28 +483,29 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
     }
 
     # SA page (2026 radar/SA DTC update). Start from defaults, then drop the
-    # mission's threats onto the page as MEZ markers (name + position). Only the
-    # flight's enemy threats are included when a side is known.
+    # mission's threats onto the page as MEZ markers. Only the flight's
+    # ENEMY threats are included, and — critically — co-located launchers /
+    # radars are CLUSTERED into one ring per SITE. Dumping every launcher of
+    # an S-300 battery (tr + 2 sr = 3 units) or 24 scattered ZSU guns as
+    # separate rings made the SA page unreadable (v1.19.138). Each site's
+    # ring is sized to its most-capable system and labelled with that
+    # system's short SAM designation.
     sa = copy.deepcopy(SA_DEFAULTS)
     flight_side = flight_data.get("side")
     threats = flight_data.get("threats", []) or []
-    num = 0
-    for t in threats:
-        if flight_side and t.get("coalition") and t.get("coalition") == flight_side:
-            continue  # skip friendly threats
-        num += 1
-        # threat_ring_radius is in NAUTICAL MILES on the SA page (confirmed
-        # against a real DTC: SA-9 4.2km→2.268nm, Hawk 45km→24.3nm). The
-        # mission threat's `range` is in metres → nm = m / 1852. Falls back to
-        # a 1 nm marker when the threat has no defined range.
-        rng_m = t.get("range") or 0
-        radius_nm = round(rng_m / 1852.0, 3) if rng_m else 1
+    enemy = [t for t in threats
+             if not (flight_side and t.get("coalition") == flight_side)]
+    for num, site in enumerate(_cluster_threats_to_sites(enemy), start=1):
+        # threat_ring_radius is NAUTICAL MILES (confirmed vs a real DTC:
+        # Hawk 45km→24.3nm). Site max range in metres → nm.
+        radius_nm = round(site["range_m"] / 1852.0, 2) if site["range_m"] else 1
         sa["MEZ_THRTS"].append(_make_mez_threat(
             num,
-            name=t.get("name", "") or t.get("type", ""),
-            x=t.get("x", 0),
-            y=t.get("y", 0),
+            name=site["name"],
+            x=site["x"],
+            y=site["y"],
             threat_ring_radius=radius_nm,
+            threat_level=site["level"],
         ))
 
     # CAP points auto-filled from the flight's orbit waypoints (only when none
@@ -416,6 +523,16 @@ def build_dtc_from_flight(flight_data: dict, dtc_name: str = None):
                 diameter=9260,
                 turn_direction="Left",
             ))
+
+    # Corridor auto-filled from the flight's route (v1.19.138). A real DTC
+    # carries an ingress/egress corridor; here it's the planned track — every
+    # positioned waypoint becomes a corridor vertex — so the SA page shows the
+    # route as a drawn line the pilot can follow or edit. Only when none is set.
+    if not sa["CORRIDORS"]:
+        route_xy = [(w.get("x"), w.get("y")) for w in miz_waypoints
+                    if (w.get("x") or w.get("y"))]
+        if len(route_xy) >= 2:
+            sa["CORRIDORS"].append(_make_corridor(1, "INGRESS", route_xy))
 
     dtc = {
         "data": {

@@ -45,14 +45,21 @@ def test_mez_autofill_filters_to_enemy():
         {"name": "FRIENDLY", "type": "Patriot", "x": 1, "y": 2, "coalition": "blue", "range": 100000},
     ]
     sa = build_dtc_from_flight(_flight(threats, side="blue"), "T")["data"]["SA"]
-    assert len(sa["MEZ_THRTS"]) == 2  # blue friendly dropped
+    # Blue friendly dropped; the two red threats sit ~8 km apart (> the 4 km
+    # cluster radius) so they stay two separate sites. (v1.19.138)
+    assert len(sa["MEZ_THRTS"]) == 2
     m = sa["MEZ_THRTS"][0]
     assert set(m.keys()) == MEZ_KEYS
-    assert m["text"] == "RIVER SA-10" and m["x"] == -289055.21
+    # Ring label is now the SHORT SAM designation from the unit type
+    # ("S-300" → "SA-10"), not the raw mission name — that's what belongs on
+    # a threat ring. Longest-range site sorts first.
+    assert m["text"] == "SA-10" and m["x"] == -289055.21
     assert m["threat_type"] == "Custom" and m["id"] == "MEZ_THRTS_1"
-    # threat_ring_radius is nautical miles = range_m / 1852 (45 km → 24.298 nm)
-    assert m["threat_ring_radius"] == round(45000 / 1852.0, 3)
+    assert m["threat_level"] == 3  # SA-10 is a strategic-tier area SAM
+    # threat_ring_radius is nautical miles = range_m / 1852 (45 km → 24.30 nm)
+    assert m["threat_ring_radius"] == round(45000 / 1852.0, 2)
     # no-range threat falls back to a 1 nm marker
+    assert sa["MEZ_THRTS"][1]["text"] == "SA-6"
     assert sa["MEZ_THRTS"][1]["threat_ring_radius"] == 1
 
 
@@ -61,6 +68,29 @@ def test_mez_autofill_includes_all_when_side_unknown():
     f = _flight(threats); f["side"] = None
     sa = build_dtc_from_flight(f, "T")["data"]["SA"]
     assert len(sa["MEZ_THRTS"]) == 1
+
+
+def test_mez_clusters_battery_into_one_ring():
+    """A SAM battery's co-located launchers/radars collapse to ONE ring, not
+    one per unit — the pre-v1.19.138 behaviour made the SA page unusable
+    (an S-300 site = 3 units = 3 rings; 24 ZSU guns = 24 rings)."""
+    # An S-300 battery: track radar + two search radars within 3 km, plus
+    # three ZSU guns co-located within 1 km at a different spot.
+    threats = [
+        {"type": "S-300PS 40B6M tr", "x": 100000, "y": 200000, "coalition": "red", "range": 120000},
+        {"type": "S-300PS 64H6E sr", "x": 101500, "y": 200800, "coalition": "red", "range": 120000},
+        {"type": "S-300PS 40B6MD sr", "x": 99000, "y": 201200, "coalition": "red", "range": 120000},
+        {"type": "ZSU-23-4 Shilka", "x": 300000, "y": 400000, "coalition": "red", "range": 2500},
+        {"type": "ZSU-23-4 Shilka", "x": 300400, "y": 400300, "coalition": "red", "range": 2500},
+        {"type": "ZSU-23-4 Shilka", "x": 300200, "y": 399800, "coalition": "red", "range": 2500},
+    ]
+    sa = build_dtc_from_flight(_flight(threats, side="blue"), "T")["data"]["SA"]
+    mez = sa["MEZ_THRTS"]
+    assert len(mez) == 2  # one S-300 site + one ZSU site
+    assert mez[0]["text"] == "SA-10" and mez[0]["threat_level"] == 3
+    assert mez[1]["text"] == "ZSU-23" and mez[1]["threat_level"] == 1
+    # Long-range site sorts first.
+    assert mez[0]["threat_ring_radius"] > mez[1]["threat_ring_radius"]
 
 
 def test_comm_export_reconcile():
