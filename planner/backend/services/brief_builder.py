@@ -142,6 +142,7 @@ class AirThreatRow:
     weapons: str         # "R-27ER/ET (BVR ~30nm) · R-73 (WVR)"
     notes: str           # terse tactical advice for blue pilots
     coalition: str       # "red"
+    silhouette: str = "" # recognition-silhouette family (backend/assets/aircraft)
 
 
 @dataclass
@@ -314,6 +315,23 @@ class WingBrief:
     #   {weapons_status, threat_posture, fire_authority, hostile_authority,
     #    hostile_criteria: [{code, category, text}], nofire: [str], abort}
     roe: Dict[str, Any] = field(default_factory=dict)
+    # v1.19.139 — Operating-area centre, used by the renderer to fetch a
+    # satellite background for the place-driven slides (cover, situation,
+    # threats, intent). {lat, lon, span_km} framing the route + threats, or
+    # None when the mission carries no usable coordinates (renderer then falls
+    # back to its flat-dark slides). Not user-edited — recomputed each build.
+    ao_center: Optional[Dict[str, Any]] = None
+    # v1.19.139 — Glanceable WX cards (wind/vis/cloud/temp/QNH) rendered as a
+    # chip row under the METAR on the weather slide, so a clean (map-less)
+    # slide still carries real content. Empty -> just METAR + prose.
+    weather_stats: List[Dict[str, str]] = field(default_factory=list)
+    # v1.19.140 — Target imagery: one satellite close-up slide per DMPI/aim
+    # point, like a real strike brief's target photos. Each entry:
+    # {name, lat, lon, ll, mgrs, elev, weapon, description}. lat/lon are
+    # numeric (the renderer fetches ESRI imagery centred there); the rest are
+    # preformatted display strings. Built from the placed DMPIs. Empty -> no
+    # target-imagery slides.
+    target_imagery: List[Dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1718,6 +1736,93 @@ _AIRFRAME_DB: "list[tuple[str, dict]]" = [
 ]
 
 
+# Recognition-silhouette family per airframe, keyed like _AIRFRAME_DB (a
+# substring of the DCS type; longest match wins). Grouped by planform so one
+# drawing serves a whole family — a Flanker is a Flanker. Only types we have
+# artwork for map to a name; everything else stays "" and the renderer draws
+# no thumbnail (better a clean row than a wrong shape). Artwork lives in
+# backend/assets/aircraft/<family>.png. Expand both together.
+_SILHOUETTE_DB: List[Tuple[str, str]] = [
+    # ---- Flanker family (twin-tail; canard variants get the canard shape) ----
+    ("Su-33", "flanker_canard"),   # navalised Flanker — canards
+    ("Su-30", "flanker_canard"),   # canard Flanker variant
+    ("Su-34", "flanker_canard"),   # Fullback — canards
+    ("Su-37", "flanker_canard"),
+    ("J-15",  "flanker_canard"),   # Chinese naval Flanker — canards
+    ("Su-27", "flanker"),
+    ("Su-35", "flanker"),
+    ("J-11",  "flanker"),           # Chinese Flanker
+    # ---- Fulcrum ----
+    ("MiG-29", "fulcrum"),
+    ("MiG-35", "fulcrum"),
+    # ---- Frogfoot ----
+    ("Su-25", "frogfoot"),
+    ("Su-39", "frogfoot"),
+    # ---- Foxbat / Foxhound (boxy twin-tail interceptors) ----
+    ("MiG-25", "foxbat"),
+    ("MiG-31", "foxbat"),
+    # ---- Fishbed (tailed delta) ----
+    ("MiG-21", "fishbed"),
+    # ---- Flogger / Fitter (variable-sweep, single tail) ----
+    ("MiG-23", "flogger"),
+    ("MiG-27", "flogger"),
+    ("Su-17",  "flogger"),
+    ("Su-22",  "flogger"),
+    # ---- Fencer (Su-24 strike) ----
+    ("Su-24", "fencer"),
+    # ---- Western fighters (may fly as red) ----
+    ("F-15",  "eagle"),
+    ("F-16",  "viper"),
+    ("JF-17", "viper"),
+    ("FA-18", "hornet"),
+    ("F/A-18", "hornet"),
+    ("F-14",  "tomcat"),
+    ("M-2000", "mirage"),
+    ("Mirage", "mirage"),
+    ("F-4",   "phantom"),
+    # ---- Bombers ----
+    ("Tu-22", "backfire"),
+    ("Tu-160", "backfire"),
+    ("Tu-95", "bear"),
+    ("Tu-142", "bear"),
+    # ---- Support (transport / tanker / AWACS) ----
+    ("IL-76", "candid"),
+    ("IL-78", "candid"),
+    ("A-50",  "mainstay"),
+    # ---- Helicopters ----
+    ("Ka-50", "helo_coaxial"),
+    ("Ka-52", "helo_coaxial"),
+    ("Mi-24", "helo_attack"),
+    ("Mi-28", "helo_attack"),
+    ("AH-64", "helo_attack"),
+    ("Mi-8",  "helo_transport"),
+    ("Mi-17", "helo_transport"),
+    ("Mi-26", "helo_transport"),
+    ("UH-60", "helo_transport"),
+    ("UH-1",  "helo_transport"),
+    ("CH-47", "helo_transport"),
+    # ---- Early jets / trainers / light fighters -> generic swept fighter ----
+    ("F-5",   "generic"),
+    ("F-86",  "generic"),
+    ("MiG-15", "generic"),
+    ("MiG-17", "generic"),
+    ("MiG-19", "generic"),
+    ("Hawk",  "generic"),
+    ("L-39",  "generic"),
+    ("C-101", "generic"),
+]
+
+
+def _silhouette_for(dcs_type: str) -> str:
+    """Recognition-silhouette family for a DCS type, or '' if we have none."""
+    t = (dcs_type or "").lower()
+    best, blen = "", -1
+    for key, fam in _SILHOUETTE_DB:
+        if key.lower() in t and len(key) > blen:
+            best, blen = fam, len(key)
+    return best
+
+
 def _airframe_profile(dcs_type: str) -> dict:
     """Return {name, class, weapons, notes} for a DCS unit type. Longest
     substring match wins; unknown types get a generic 'verify' profile."""
@@ -1765,6 +1870,7 @@ def _build_air_threats(groups: List[dict], bullseye: Optional[dict] = None) -> L
             weapons=prof["weapons"],
             notes=prof["notes"],
             coalition="red",
+            silhouette=_silhouette_for(dcs_type),
         ))
     return [asdict(r) for r in rows]
 
@@ -2108,6 +2214,50 @@ def _build_metar(overview: dict, mission_name: str, theater: str) -> str:
     return " ".join(p for p in parts if p)
 
 
+def _build_weather_stats(overview: dict) -> List[Dict[str, str]]:
+    """Glanceable WX cards for the weather slide: wind, vis, cloud, temp, QNH.
+
+    Pulls the same overview.weather values _build_metar decodes, but formats
+    them for a human at a glance. Keeps the weather slide from reading as a
+    lonely METAR line — it becomes a proper WX board. Only cards with real
+    data are returned; an empty list leaves the slide as METAR + prose.
+    """
+    wx = overview.get("weather")
+    if not isinstance(wx, dict):
+        return []
+    cards: List[Dict[str, str]] = []
+
+    g = (wx.get("wind") or {}).get("atGround") or {}
+    spd, dr = g.get("speed"), g.get("dir")
+    if isinstance(spd, (int, float)):
+        kt = round(spd * 1.94384)
+        if kt == 0:
+            cards.append({"label": "WIND", "value": "CALM"})
+        elif isinstance(dr, (int, float)):
+            cards.append({"label": "WIND", "value": f"{int(round(dr)) % 360:03d}° / {kt} kt"})
+
+    vis = wx.get("visibility_m")
+    if isinstance(vis, (int, float)) and vis:
+        cards.append({"label": "VISIBILITY",
+                      "value": "10+ km" if vis >= 9999 else f"{vis / 1000:.0f} km"})
+
+    base, dens = wx.get("clouds_base_m"), wx.get("clouds_density")
+    if isinstance(base, (int, float)) and isinstance(dens, (int, float)) and dens:
+        cover = "FEW" if dens <= 2 else "SCT" if dens <= 4 else "BKN" if dens <= 7 else "OVC"
+        cards.append({"label": "CLOUD",
+                      "value": f"{cover} {int(round(base * 3.28084)):,} ft"})
+
+    t = wx.get("temperature_c")
+    if isinstance(t, (int, float)):
+        cards.append({"label": "TEMP", "value": f"{int(round(t))}°C"})
+
+    q = wx.get("qnh_inhg")
+    if isinstance(q, (int, float)):
+        cards.append({"label": "QNH", "value": f"{q:.2f} inHg"})
+
+    return cards
+
+
 def _build_control_measures(
     overview: dict,
     groups: List[dict],
@@ -2312,6 +2462,99 @@ def _default_roe() -> Dict[str, Any]:
     }
 
 
+def _compute_ao_center(groups: List[dict], threats: List[dict],
+                       overview: dict) -> Optional[Dict[str, Any]]:
+    """Frame the operating area for the satellite background.
+
+    Collects lat/lon from the blue player flights' waypoints and from the
+    surface threats — the route and what it flies against — and falls back to
+    the blue bullseye. Returns {lat, lon, span_km} centred on the bounding box,
+    with span padded so the imagery shows context around the action, or None
+    when nothing carries coordinates (the renderer then stays flat-dark).
+    """
+    pts: List[Tuple[float, float]] = []
+
+    for g in groups:
+        if not _is_player_group(g) or g.get("coalition") != "blue":
+            continue
+        for wp in (g.get("waypoints") or []):
+            la, lo = wp.get("lat"), wp.get("lon")
+            if la is not None and lo is not None:
+                pts.append((float(la), float(lo)))
+
+    for t in (threats or []):
+        la, lo = t.get("lat"), t.get("lon")
+        if la is not None and lo is not None:
+            pts.append((float(la), float(lo)))
+
+    if not pts:
+        be = (overview.get("bullseye") or {}).get("blue") or {}
+        if be.get("lat") is not None and be.get("lon") is not None:
+            return {"lat": float(be["lat"]), "lon": float(be["lon"]),
+                    "span_km": 160.0}
+        return None
+
+    lats = [p[0] for p in pts]
+    lons = [p[1] for p in pts]
+    lat_c = (min(lats) + max(lats)) / 2.0
+    lon_c = (min(lons) + max(lons)) / 2.0
+
+    # Bounding-box extent in km (equirectangular is plenty at AO scale).
+    import math as _m
+    h_km = (max(lats) - min(lats)) * 110.57
+    w_km = (max(lons) - min(lons)) * 111.32 * _m.cos(_m.radians(lat_c))
+    span = max(h_km, w_km) * 1.35  # pad so the action isn't edge-to-edge
+    span = max(45.0, min(650.0, span))
+    return {"lat": lat_c, "lon": lon_c, "span_km": round(span, 1)}
+
+
+def _build_target_imagery(dmpis: Optional[List[dict]],
+                          elevation_fn=None) -> List[Dict[str, Any]]:
+    """One target-imagery entry per placed DMPI (aim point).
+
+    lat/lon stay numeric so the renderer can fetch a satellite close-up
+    centred there; ll/mgrs/elev/weapon are preformatted for the data strip.
+    Elevation prefers the authoritative terrain lookup (elevation_fn), which
+    sidesteps the unit ambiguity of a DMPI's own stored elevation.
+    """
+    out: List[Dict[str, Any]] = []
+    for d in (dmpis or []):
+        lat, lon = d.get("lat"), d.get("lon")
+        if lat is None or lon is None:
+            continue
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+
+        elev = "—"
+        if elevation_fn:
+            try:
+                e = elevation_fn(lat, lon)
+                if isinstance(e, (int, float)):
+                    ft = round(e * 3.28084)
+                    elev = "SL" if ft <= -1400 else f"{ft:,} FT"
+            except Exception:
+                pass
+        if elev == "—":  # fall back to the DMPI's own elevation (feet, as the
+            own = d.get("elevation")  # control-measures table treats it)
+            if isinstance(own, (int, float)) and own not in (0,):
+                elev = f"{int(round(float(own))):,} FT"
+
+        out.append({
+            "name": (d.get("name") or "DMPI").strip() or "DMPI",
+            "lat": lat, "lon": lon,
+            "ll": _fmt_ddm(lat, lon),
+            "mgrs": _latlon_to_mgrs(lat, lon),
+            "elev": elev,
+            "weapon": (d.get("weaponDelivery") or d.get("weapon")
+                       or d.get("weapon_delivery") or "").strip(),
+            "description": (d.get("description") or "").strip(),
+            "detail": bool(d.get("detail") or d.get("detailZoom")),
+        })
+    return out
+
+
 def build_wing_brief(
     *,
     mission_data: dict,
@@ -2397,5 +2640,8 @@ def build_wing_brief(
         metar=_build_metar(overview, str(mission_name), theater),
         package_timeline=_build_package_timeline(groups, start_seconds),
         roe=_default_roe(),
+        ao_center=_compute_ao_center(groups, threats, overview),
+        weather_stats=_build_weather_stats(overview),
+        target_imagery=_build_target_imagery(dmpis, elevation_fn=elevation_fn),
     )
     return asdict(brief)

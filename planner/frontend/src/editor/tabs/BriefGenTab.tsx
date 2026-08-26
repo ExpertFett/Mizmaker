@@ -42,7 +42,7 @@ interface TimelineRow { phase: string; time_zulu: string; note: string }
 interface FlightRow { callsign: string; aircraft: string; count: number; role: string;
                       frequency: string; tacan: string; home_plate: string }
 interface ThreatRow { name: string; type: string; coalition: string; range_km: number; location: string }
-interface AirThreatRow { composition: string; airframe_class: string; weapons: string; notes: string; coalition?: string }
+interface AirThreatRow { composition: string; airframe_class: string; weapons: string; notes: string; coalition?: string; silhouette?: string }
 interface CommsRow  { label: string; value: string }
 
 interface WingBrief {
@@ -89,6 +89,20 @@ interface WingBrief {
   classification?: string;
   // v1.19.137 — Rules of engagement (seeded template; editable).
   roe?: Roe;
+  // v1.19.139 — Operating-area centre {lat, lon, span_km}, used by the
+  // renderer to fetch a satellite background for the place-driven slides.
+  // Derived each build; not user-edited. Passed through the round-trip so
+  // imagery survives edits.
+  ao_center?: { lat: number; lon: number; span_km: number } | null;
+  // v1.19.139 — Glanceable WX cards (wind/vis/cloud/temp/QNH) shown under
+  // the METAR on the clean weather slide. Derived; no editor card.
+  weather_stats?: Array<{ label: string; value: string }>;
+  // v1.19.140 — Target-imagery slides (one satellite close-up per DMPI).
+  // Derived from placed DMPIs; passed through the round-trip. No editor card.
+  target_imagery?: Array<{
+    name: string; lat: number; lon: number; ll: string; mgrs: string;
+    elev: string; weapon: string; description: string; detail: boolean;
+  }>;
 }
 
 interface RoeCriterion { code: string; category: string; text: string }

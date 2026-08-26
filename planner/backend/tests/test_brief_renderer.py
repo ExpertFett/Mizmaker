@@ -295,7 +295,9 @@ class TestRenderWingBriefBaseTemplate:
     def test_default_render_has_ten_slides(self):
         from services.brief_renderer import render_wing_brief
         prs = Presentation(io.BytesIO(render_wing_brief(_minimal_wing_brief())))
-        assert len(prs.slides._sldIdLst) == 10  # built-in cover + 9 content
+        # v1.19.139: theatre-overview + scenario merged into one SITUATION
+        # slide, so the minimal deck is now cover + 8 content = 9.
+        assert len(prs.slides._sldIdLst) == 9
 
     def test_base_template_keeps_its_cover_and_drops_builtin(self):
         from services.brief_renderer import render_wing_brief
@@ -303,8 +305,8 @@ class TestRenderWingBriefBaseTemplate:
         prs = Presentation(io.BytesIO(
             render_wing_brief(_minimal_wing_brief(), base_template_b64=tpl)
         ))
-        # 2 template slides + 9 content (built-in cover dropped) = 11.
-        assert len(prs.slides._sldIdLst) == 11
+        # 2 template slides + 8 content (built-in cover dropped) = 10.
+        assert len(prs.slides._sldIdLst) == 10
         # The deck still opens and the first slide is the template's cover.
         first = prs.slides[0]
         text = " ".join(
@@ -319,7 +321,7 @@ class TestRenderWingBriefBaseTemplate:
             render_wing_brief(_minimal_wing_brief(), base_template_b64="not-valid-base64!!")
         ))
         # Garbage template must not break the brief — falls back to default.
-        assert len(prs.slides._sldIdLst) == 10
+        assert len(prs.slides._sldIdLst) == 9
 
     def test_data_uri_prefixed_template_is_accepted(self):
         from services.brief_renderer import render_wing_brief
@@ -327,8 +329,8 @@ class TestRenderWingBriefBaseTemplate:
         prs = Presentation(io.BytesIO(
             render_wing_brief(_minimal_wing_brief(), base_template_b64=tpl)
         ))
-        # 1 template slide + 9 content = 10.
-        assert len(prs.slides._sldIdLst) == 10
+        # 1 template slide + 8 content = 9.
+        assert len(prs.slides._sldIdLst) == 9
 
 
 def _set_master_bg(prs, inner_fill_xml: str):
@@ -479,8 +481,8 @@ class TestPaletteDetection:
         prs = Presentation(io.BytesIO(
             render_wing_brief(_minimal_wing_brief(), base_template_b64=_make_cover_template())
         ))
-        # cover + 9 content = 10 (blank dropped; would be 11 otherwise).
-        assert len(prs.slides._sldIdLst) == 10
+        # cover + 8 content = 9 (blank dropped; would be 10 otherwise).
+        assert len(prs.slides._sldIdLst) == 9
         # slide after the cover is real content, not an empty page.
         s1 = " ".join(sh.text_frame.text for sh in prs.slides[1].shapes if sh.has_text_frame)
         assert s1.strip() != ""
@@ -552,7 +554,7 @@ class TestAirThreatsSlide:
              "weapons": "R-27ER/ET BVR", "notes": "Defend the R-27 early.", "coalition": "red"},
         ]
         prs = Presentation(io.BytesIO(render_wing_brief(brief)))
-        assert len(prs.slides._sldIdLst) == 11  # default 10 + 1 air-threats slide
+        assert len(prs.slides._sldIdLst) == 10  # default 9 + 1 air-threats slide
         joined = "\n".join(
             sh.text_frame.text for s in prs.slides for sh in s.shapes if sh.has_text_frame
         )
@@ -562,7 +564,7 @@ class TestAirThreatsSlide:
     def test_no_air_threats_keeps_default_slide_count(self):
         from services.brief_renderer import render_wing_brief
         prs = Presentation(io.BytesIO(render_wing_brief(_minimal_wing_brief())))
-        assert len(prs.slides._sldIdLst) == 10
+        assert len(prs.slides._sldIdLst) == 9
 
     def test_first_threats_slide_is_titled_surface_threats(self):
         from services.brief_renderer import render_wing_brief
@@ -732,25 +734,25 @@ def _slide_text_all(pptx_bytes: bytes) -> list[str]:
 
 class TestPopupAttackSlide:
     def test_empty_profiles_no_extra_slide(self):
-        """Empty popup_attacks → existing 10-slide layout unchanged."""
+        """Empty popup_attacks → existing 9-slide layout unchanged."""
         from services.brief_renderer import render_wing_brief
         brief = _minimal_wing_brief() | {"popup_attacks": []}
         prs = Presentation(io.BytesIO(render_wing_brief(brief)))
-        assert len(prs.slides._sldIdLst) == 10
+        assert len(prs.slides._sldIdLst) == 9
 
     def test_single_profile_adds_one_slide(self):
         from services.brief_renderer import render_wing_brief
         brief = _minimal_wing_brief() | {"popup_attacks": [_popup_profile()]}
         prs = Presentation(io.BytesIO(render_wing_brief(brief)))
-        assert len(prs.slides._sldIdLst) == 11
+        assert len(prs.slides._sldIdLst) == 10
 
     def test_pagination_4_per_slide(self):
-        """5 profiles → 2 popup slides (4 + 1) on top of the 10 base slides."""
+        """5 profiles → 2 popup slides (4 + 1) on top of the 9 base slides."""
         from services.brief_renderer import render_wing_brief
         profiles = [_popup_profile(name=f"P{i}") for i in range(5)]
         brief = _minimal_wing_brief() | {"popup_attacks": profiles}
         prs = Presentation(io.BytesIO(render_wing_brief(brief)))
-        assert len(prs.slides._sldIdLst) == 12
+        assert len(prs.slides._sldIdLst) == 11
 
     def test_slide_header_pagination_label(self):
         """Multi-page popup-attack slides label themselves '(N/M)'."""
@@ -758,24 +760,24 @@ class TestPopupAttackSlide:
         profiles = [_popup_profile(name=f"P{i}") for i in range(5)]
         brief = _minimal_wing_brief() | {"popup_attacks": profiles}
         slides = _slide_text_all(render_wing_brief(brief))
-        # Slides 11/12 (0-indexed 10/11) are the popup-attack pages.
-        assert "POPUP ATTACK (1/2)" in slides[10]
-        assert "POPUP ATTACK (2/2)" in slides[11]
+        # Slides 10/11 (0-indexed 9/10) are the popup-attack pages.
+        assert "POPUP ATTACK (1/2)" in slides[9]
+        assert "POPUP ATTACK (2/2)" in slides[10]
 
     def test_single_page_no_pagination_label(self):
         from services.brief_renderer import render_wing_brief
         brief = _minimal_wing_brief() | {"popup_attacks": [_popup_profile()]}
         slides = _slide_text_all(render_wing_brief(brief))
-        assert "POPUP ATTACK" in slides[10]
+        assert "POPUP ATTACK" in slides[9]
         # Header is bare 'POPUP ATTACK' — no '(1/1)' on a single-page section.
-        assert "(1/1)" not in slides[10]
+        assert "(1/1)" not in slides[9]
 
     def test_profile_data_renders_as_text(self):
         from services.brief_renderer import render_wing_brief
         brief = _minimal_wing_brief() | {"popup_attacks": [
             _popup_profile(name="LGB Run"),
         ]}
-        slide_text = _slide_text_all(render_wing_brief(brief))[10]
+        slide_text = _slide_text_all(render_wing_brief(brief))[9]
         assert "LGB Run" in slide_text
         assert "Type 1 Popup" in slide_text
         # Parameters appear in the two-column ladder.
@@ -796,14 +798,14 @@ class TestPopupAttackSlide:
         }
         out = render_wing_brief(brief)
         prs = Presentation(io.BytesIO(out))
-        assert len(prs.slides._sldIdLst) == 11
+        assert len(prs.slides._sldIdLst) == 10
         # Type label maps to a human-readable string in the slide chip.
         labels = {
             "type1": "Type 1 Popup", "type2": "Type 2 Popup",
             "type3": "Type 3 Popup", "laydown": "Lay-Down",
             "loft": "Loft (Toss)", "dive": "Straight Dive",
         }
-        assert labels[attack_type] in _slide_text_all(out)[10]
+        assert labels[attack_type] in _slide_text_all(out)[9]
 
     def test_degenerate_profile_renders(self):
         """Bad inputs (zero angles, missing fields) should clamp, not crash."""
@@ -820,7 +822,7 @@ class TestPopupAttackSlide:
         # Must not raise; output is still a valid pptx.
         out = render_wing_brief(brief)
         prs = Presentation(io.BytesIO(out))
-        assert len(prs.slides._sldIdLst) == 11
+        assert len(prs.slides._sldIdLst) == 10
 
     def test_builder_passthrough(self):
         """build_wing_brief accepts popup_attacks kwarg and the dict it

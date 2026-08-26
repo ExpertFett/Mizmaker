@@ -45,6 +45,36 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 TOKEN_RE = re.compile(r"\{\{\s*([a-zA-Z][a-zA-Z0-9_.\[\]]*)\s*\}\}")
 
 
+# ---------------------------------------------------------------------------
+# Aircraft recognition silhouettes (v1.19.140). Top-down planform PNGs
+# (transparent, light fill) bundled in backend/assets/aircraft/, keyed by the
+# family name brief_builder._silhouette_for() attaches to each air-threat row.
+# DCS ships no usable image for the AI red-air (it renders the live 3D model),
+# so these are drawn in-house — one planform per family (a Flanker is a
+# Flanker). Loaded once and cached; a missing file just means no thumbnail.
+# ---------------------------------------------------------------------------
+_SILHOUETTE_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "aircraft")
+_silhouette_cache: Dict[str, Optional[bytes]] = {}
+
+
+def _load_silhouette(family: Optional[str]) -> Optional[bytes]:
+    """PNG bytes for an aircraft-silhouette family, or None if we have none."""
+    if not family:
+        return None
+    if family in _silhouette_cache:
+        return _silhouette_cache[family]
+    data: Optional[bytes] = None
+    try:
+        path = os.path.join(_SILHOUETTE_DIR, f"{family}.png")
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                data = f.read()
+    except Exception:
+        data = None
+    _silhouette_cache[family] = data
+    return data
+
+
 def _cover_date(iso: str) -> str:
     """YYYY-MM-DD -> '08 NOV 06'. The cover printed an ISO date while the
     scenario slide printed '08 NOV 06'; two formats for the same date in one
@@ -830,14 +860,17 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     if bg_img_bytes:
         dark = _image_is_dark(bg_img_bytes)
     if dark:
-        BG = RGBColor(0x1A, 0x1A, 0x1A)
-        LIGHT = RGBColor(0xE0, 0xE0, 0xE0)
+        # v1.19.139 — warmer, near-black palette matching the satellite-AO
+        # redesign (amber accent, cool-charcoal ground) so the flat data
+        # slides and the imagery slides read as one deck.
+        BG = RGBColor(0x12, 0x15, 0x1A)
+        LIGHT = RGBColor(0xD3, 0xD7, 0xDB)
         BRIGHT = RGBColor(0xFF, 0xFF, 0xFF)
-        ACCENT = RGBColor(0xFF, 0xA5, 0x00)
-        DIM = RGBColor(0xAA, 0xAA, 0xAA)
-        BORDER = RGBColor(0x55, 0x55, 0x55)
-        TABLE_HEADER_BG = RGBColor(0x33, 0x33, 0x33)
-        CELL_BG = RGBColor(0x1A, 0x1A, 0x1A)
+        ACCENT = RGBColor(0xD9, 0x8A, 0x3A)
+        DIM = RGBColor(0x8A, 0x90, 0x98)
+        BORDER = RGBColor(0x2C, 0x33, 0x3C)
+        TABLE_HEADER_BG = RGBColor(0x1C, 0x22, 0x2A)
+        CELL_BG = RGBColor(0x0F, 0x12, 0x16)
     else:
         # Light template — dark text, light table panels, a strong dark
         # amber accent that reads on white.
@@ -940,11 +973,53 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         spTree.remove(rect._element)
         spTree.insert(2, rect._element)
 
+    # v1.19.139 — Satellite AO backgrounds. Active only when we own the slide
+    # background (default dark deck, not a user .pptx template or image
+    # backdrop) and the mission gave us an operating-area centre. A slide that
+    # wants imagery calls _ao_bg() straight after _apply_bg(): it fetches the
+    # composite once (cached within this render), inserts it full-bleed over
+    # the flat rect with a baked gradient, and returns True. False -> the slide
+    # keeps its flat-dark background, so nothing ever renders worse than before.
+    _ao = brief.get("ao_center") if isinstance(brief.get("ao_center"), dict) else None
+    _ao_own_bg = (not use_template) and (not bg_img_bytes) and dark
+    _ao_cache: Dict[tuple, Any] = {}
+
+    def _ao_bg(slide, gradient, *, span_scale=1.0, zoom=None):
+        if not (_ao_own_bg and _ao):
+            return False
+        try:
+            lat = float(_ao.get("lat")); lon = float(_ao.get("lon"))
+            span = float(_ao.get("span_km") or 160.0) * span_scale
+        except (TypeError, ValueError):
+            return False
+        key = (round(lat, 4), round(lon, 4), round(span, 1), gradient, zoom)
+        png = _ao_cache.get(key, False)
+        if png is False:
+            try:
+                from services import ao_imagery
+                png = ao_imagery.fetch_ao_image(
+                    lat, lon, span, 1280, 720, gradient=gradient, zoom=zoom)
+            except Exception:
+                png = None
+            _ao_cache[key] = png
+        if not png:
+            return False
+        try:
+            slide.shapes.add_picture(io.BytesIO(png), 0, 0,
+                                     width=prs.slide_width, height=prs.slide_height)
+            return True
+        except Exception:
+            return False
+
     def _txt(slide, x, y, w, h, text, *, size=18, bold=False, color=LIGHT,
-             align_center=False, italic=False):
+             align_center=False, italic=False, font="Arial", shift=True,
+             line_spacing=None):
         # Shift content down by the template inset; trim height so a tall
-        # body box doesn't run off the bottom edge.
-        tx = slide.shapes.add_textbox(x, y + _MY, w, max(h - _MY, Inches(0.4)))
+        # body box doesn't run off the bottom edge. shift=False opts a box
+        # out of the inset (used by the imagery slides, which own their own
+        # absolute layout).
+        oy = _MY if shift else 0
+        tx = slide.shapes.add_textbox(x, y + oy, w, max(h - oy, Inches(0.4)))
         tf = tx.text_frame
         tf.word_wrap = True
         # Multi-paragraph support — split body text on \n into separate paragraphs.
@@ -953,24 +1028,57 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             if align_center:
                 p.alignment = PP_ALIGN.CENTER
+            if line_spacing is not None:
+                p.line_spacing = line_spacing
             r = p.add_run()
             r.text = line
             r.font.size = Pt(size)
             r.font.bold = bold
             r.font.italic = italic
             r.font.color.rgb = color
-            r.font.name = "Arial"
+            r.font.name = font
         return tf
 
     def _slide_header(slide, label):
-        """Top-of-slide section title in accent color."""
-        _txt(slide, Inches(0.6), Inches(0.4), Inches(12), Inches(0.6),
-             label, size=24, bold=True, color=ACCENT)
-        # Thin underline
-        line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.05) + _MY,
-                                      Inches(12.1), Inches(0.04))
-        line.fill.solid(); line.fill.fore_color.rgb = ACCENT
-        line.line.fill.background()
+        """Top-of-slide section title — short amber tick + white Oswald title.
+
+        v1.19.139: dropped the full-width underline (it read as a slide-
+        template rule). A short accent tick above a bright condensed title
+        matches the imagery slides so the whole deck feels of a piece.
+        """
+        tick = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62),
+                                      Inches(0.46) + _MY, Inches(0.55), Inches(0.05))
+        tick.fill.solid(); tick.fill.fore_color.rgb = ACCENT
+        tick.line.fill.background()
+        _txt(slide, Inches(0.6), Inches(0.6), Inches(12), Inches(0.7),
+             label, size=26, bold=True, color=BRIGHT, font="Oswald")
+
+    def _img_header(slide, eyebrow, title):
+        """Header for an imagery slide: small amber eyebrow + big Oswald title.
+
+        Uses shift=False — imagery slides own an absolute layout over the
+        full-bleed background rather than living under the template inset.
+        """
+        _txt(slide, Inches(0.6), Inches(0.5), Inches(11.5), Inches(0.4),
+             eyebrow.upper(), size=14, bold=True, color=ACCENT,
+             font="Barlow Semi Condensed", shift=False)
+        _txt(slide, Inches(0.57), Inches(0.85), Inches(11.5), Inches(0.85),
+             title, size=32, bold=True, color=BRIGHT, font="Oswald", shift=False)
+
+    def _chip(slide, x, y, w, text, *, mono=False):
+        """A small translucent-looking fact chip for imagery slides."""
+        h = Inches(0.42)
+        box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+        box.fill.solid(); box.fill.fore_color.rgb = CELL_BG
+        box.line.color.rgb = BORDER; box.line.width = Pt(0.75)
+        tf = box.text_frame; tf.word_wrap = True
+        tf.margin_left = Inches(0.1); tf.margin_right = Inches(0.08)
+        tf.margin_top = Inches(0.03); tf.margin_bottom = Inches(0.03)
+        p = tf.paragraphs[0]
+        r = p.add_run(); r.text = text
+        r.font.size = Pt(12.5); r.font.color.rgb = LIGHT
+        r.font.name = "Consolas" if mono else "Barlow Semi Condensed"
+        return box
 
     def _table(slide, x, y, w, h, headers, rows, col_widths=None):
         ncols = len(headers)
@@ -1039,6 +1147,11 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     cover_img = _decode_image(brief.get("cover_image_base64") or "")
     HERO_HEIGHT = Inches(3.6)  # upper 48% of the slide
 
+    # v1.19.139 — with no custom hero, use the operating-area satellite as a
+    # full-bleed cover (bottom gradient baked in). The title block then sits
+    # lower-left over the fade, tag-chip + big title + meta strip.
+    ao_cover = _ao_bg(s, "bottom") if not cover_img else False
+
     if cover_img:
         # Hero image — full slide width, top of slide. python-pptx will
         # crop/letterbox via the size we specify; we set both width and
@@ -1055,25 +1168,19 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                 prs.slide_width, Inches(0.6),
             )
             grad.fill.solid(); grad.fill.fore_color.rgb = BG
-            # Soft fade by setting transparency through the XML — easier
-            # to just set a flat 50% opaque dark bar than to add a real
-            # gradient stop in this codepath.
             grad.fill.fore_color.rgb = BG
             grad.line.fill.background()
         except Exception:
             cover_img = None  # decode-but-render failure: fall back to text-only
 
-    if not cover_img:
-        # No hero image — give the top a styled accent block so the
-        # cover doesn't feel empty. Two horizontal bars frame the
-        # eyebrow text.
+    if not cover_img and not ao_cover:
+        # No hero and no imagery — styled accent block so the cover doesn't
+        # feel empty.
         bar_top = s.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(0.08),
         )
         bar_top.fill.solid(); bar_top.fill.fore_color.rgb = ACCENT
         bar_top.line.fill.background()
-
-        # Vertical accent ticks at left + right edges — quiet visual frame
         for x_in in (Inches(0.4), prs.slide_width - Inches(0.5)):
             tick = s.shapes.add_shape(
                 MSO_SHAPE.RECTANGLE, x_in, Inches(1.4), Inches(0.06), Inches(2.5),
@@ -1092,51 +1199,88 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         except Exception:
             pass
 
-    # Eyebrow ("WING BRIEF") — top-left, smaller when there's a hero so
-    # it doesn't fight the image, larger otherwise
-    eyebrow_y = Inches(0.4) if cover_img else Inches(0.55)
-    _txt(s, Inches(0.6), eyebrow_y, Inches(8), Inches(0.5),
-         "WING BRIEF", size=14, bold=True, color=ACCENT)
+    if ao_cover:
+        # ---- Imagery cover: bottom-left title block over the gradient ----
+        chip = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62), Inches(4.05),
+                                  Inches(1.85), Inches(0.42))
+        chip.fill.solid(); chip.fill.fore_color.rgb = ACCENT
+        chip.line.fill.background()
+        ctf = chip.text_frame
+        ctf.margin_top = Inches(0.02); ctf.margin_bottom = Inches(0.02)
+        cp = ctf.paragraphs[0]; cp.alignment = PP_ALIGN.CENTER
+        cr = cp.add_run(); cr.text = "WING BRIEF"
+        cr.font.size = Pt(14); cr.font.bold = True
+        cr.font.name = "Barlow Semi Condensed"; cr.font.color.rgb = BG
 
-    # Title block — sits below the hero or in the styled top half
-    title_top = HERO_HEIGHT + Inches(0.4) if cover_img else Inches(2.6)
+        _txt(s, Inches(0.57), Inches(4.7), Inches(11.8), Inches(1.5),
+             brief["mission_name"], size=54, bold=True, color=BRIGHT,
+             font="Oswald", shift=False)
 
-    _txt(s, Inches(0.6), title_top, Inches(12.1), Inches(1.4),
-         brief["mission_name"], size=56, bold=True, color=BRIGHT,
-         align_center=True)
-
-    # Theater · Date · Time strip — accent colour, smaller
-    sub_top = title_top + Inches(1.5)
-    _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
-         f"{brief['theater'].upper()}   ·   {_cover_date(brief['date'])}   ·   "
-         f"TAKEOFF {brief['time_zulu']}",
-         size=18, bold=True, color=ACCENT, align_center=True)
+        # Meta strip along the very bottom — key/value columns.
+        meta = [("THEATER", brief["theater"]),
+                ("DATE", _cover_date(brief["date"])),
+                ("TAKEOFF", brief["time_zulu"])]
+        n_fl = len(brief.get("flights") or [])
+        if n_fl:
+            meta.append(("PACKAGE", f"{n_fl} flight{'' if n_fl == 1 else 's'}"))
+        mx = Inches(0.62)
+        for k, v in meta:
+            _txt(s, mx, Inches(6.62), Inches(2.6), Inches(0.3), k,
+                 size=11, bold=True, color=DIM, font="Barlow Semi Condensed", shift=False)
+            _txt(s, mx, Inches(6.86), Inches(2.6), Inches(0.45), str(v),
+                 size=17, bold=True, color=BRIGHT, font="Oswald", shift=False)
+            mx += Inches(2.75)
+    else:
+        # ---- Text/hero cover: centred title in the lower band ----
+        eyebrow_y = Inches(0.4) if cover_img else Inches(0.55)
+        _txt(s, Inches(0.6), eyebrow_y, Inches(8), Inches(0.5),
+             "WING BRIEF", size=14, bold=True, color=ACCENT)
+        title_top = HERO_HEIGHT + Inches(0.4) if cover_img else Inches(2.6)
+        _txt(s, Inches(0.6), title_top, Inches(12.1), Inches(1.4),
+             brief["mission_name"], size=56, bold=True, color=BRIGHT,
+             align_center=True, font="Oswald")
+        sub_top = title_top + Inches(1.5)
+        _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
+             f"{brief['theater'].upper()}   ·   {_cover_date(brief['date'])}   ·   "
+             f"TAKEOFF {brief['time_zulu']}",
+             size=18, bold=True, color=ACCENT, align_center=True)
 
     # Bottom accent bar — visual anchor at the bottom of the slide
     bottom_bar = s.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, 0, prs.slide_height - Inches(0.08),
-        prs.slide_width, Inches(0.08),
+        MSO_SHAPE.RECTANGLE, 0, prs.slide_height - Inches(0.06),
+        prs.slide_width, Inches(0.06),
     )
     bottom_bar.fill.solid(); bottom_bar.fill.fore_color.rgb = ACCENT
     bottom_bar.line.fill.background()
 
-    # ---------- Slide 2: Theatre overview -------------------------------
-    # Omitted when empty: a brief should never carry a blank slide
-    # or a "go author this" prompt.
-    if (brief.get("theatre_overview") or "").strip():
+    # ---------- Slide 2: Situation (theatre overview + scenario) ---------
+    # v1.19.139 — merged into one "SITUATION" slide over the operating-area
+    # satellite (theatre blurb as lead, scenario as body). Kills two thin
+    # prose slides and gives the merge real visual weight. Falls back to a
+    # flat, unmerged pair of slides when no imagery is available.
+    _theatre = (brief.get("theatre_overview") or "").strip()
+    _scenario = (brief.get("scenario") or "").strip()
+    if _theatre or _scenario:
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        _slide_header(s, "THEATRE OVERVIEW")
-        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-             brief["theatre_overview"], size=16, color=LIGHT)
-
-    # ---------- Slide 3: Scenario ----------------------------------------
-    # Omitted when empty: a brief should never carry a blank slide
-    # or a "go author this" prompt.
-    if (brief.get("scenario") or "").strip():
-        s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        _slide_header(s, "SCENARIO")
-        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-             brief["scenario"], size=16, color=LIGHT)
+        on_img = _ao_bg(s, "left")
+        _body = "\n\n".join([p for p in (_theatre, _scenario) if p])
+        if on_img:
+            _img_header(s, "Situation", "Area of Operations")
+            # Auto-shrink so the merged prose fits the left column beside
+            # the map instead of clipping.
+            fs = 16 if len(_body) < 460 else (14 if len(_body) < 820 else 12)
+            _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
+                 _body, size=fs, color=LIGHT, font="Barlow", shift=False,
+                 line_spacing=1.12)
+            # METAR chip in the map's lower-right — a quick-glance sky line
+            # that also stops the imagery side reading as empty.
+            _m = (brief.get("metar") or "").strip()
+            if _m:
+                _chip(s, Inches(8.35), Inches(6.35), Inches(4.35), _m, mono=True)
+        else:
+            _slide_header(s, "SITUATION")
+            _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+                 _body, size=16, color=LIGHT)
 
     # ---------- Slide 3b: Weather ----------------------------------------
     # A brief always briefs the sky. The wing brief carried no weather at all
@@ -1162,7 +1306,30 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
             _body_y = Inches(2.35)
         if (brief.get("weather_brief") or "").strip():
             _txt(s, Inches(0.6), _body_y, Inches(12.1),
-                 Inches(7.0) - _body_y, brief["weather_brief"], size=16, color=LIGHT)
+                 Inches(2.0), brief["weather_brief"], size=16, color=LIGHT)
+        # v1.19.139 — WX stat cards so the (clean, map-less) weather slide
+        # carries real content instead of a lonely METAR line. Big number +
+        # small label, laid across the lower band.
+        _wstats = brief.get("weather_stats") or []
+        if _wstats:
+            _wstats = _wstats[:5]
+            gap = Inches(0.25)
+            total_w = Inches(12.1)
+            card_w = (total_w - gap * (len(_wstats) - 1)) / len(_wstats)
+            cy = Inches(4.5)
+            cx = Inches(0.6)
+            for st in _wstats:
+                card = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, cx, cy + _MY,
+                                          card_w, Inches(1.4))
+                card.fill.solid(); card.fill.fore_color.rgb = CELL_BG
+                card.line.color.rgb = BORDER; card.line.width = Pt(0.75)
+                _txt(s, cx, cy + Inches(0.18), card_w, Inches(0.4),
+                     st.get("label", ""), size=12, bold=True, color=ACCENT,
+                     font="Barlow Semi Condensed", align_center=True)
+                _txt(s, cx, cy + Inches(0.6), card_w, Inches(0.7),
+                     st.get("value", ""), size=22, bold=True, color=BRIGHT,
+                     font="Oswald", align_center=True)
+                cx += card_w + gap
 
     # ---------- Slide 3c: Control measures (table) -----------------------
     # Bullseye, steerpoints/DMPIs, ROZ / holding areas, tanker tracks — the
@@ -1189,9 +1356,18 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # or a "go author this" prompt.
     if (brief.get("commanders_intent") or "").strip():
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        _slide_header(s, "COMMANDER'S INTENT")
-        _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-             brief["commanders_intent"], size=16, color=LIGHT)
+        on_img = _ao_bg(s, "left")
+        _ci = brief["commanders_intent"]
+        if on_img:
+            _img_header(s, "Commander's Intent", "The Plan")
+            fs = 17 if len(_ci) < 460 else (15 if len(_ci) < 820 else 13)
+            _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
+                 _ci, size=fs, color=LIGHT, font="Barlow", shift=False,
+                 line_spacing=1.15)
+        else:
+            _slide_header(s, "COMMANDER'S INTENT")
+            _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
+                 _ci, size=16, color=LIGHT)
 
     # ---------- Slide 4b: Route overview map (client-rendered) -----------
     # All flight tracks + threat rings on one image (captureOverviewImage,
@@ -1231,6 +1407,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
 
     def _render_threats_slide(rows_for_slide, page_idx, total_pages):
         s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        # v1.19.139 — the threat picture is inherently about terrain, so it
+        # earns the satellite AO. "full" evenly darkens it enough that the
+        # bright table text still reads on top.
+        _ao_bg(s, "full")
         title = "SURFACE THREATS" if total_pages == 1 else f"SURFACE THREATS ({page_idx}/{total_pages})"
         _slide_header(s, title)
 
@@ -1334,17 +1514,17 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # Enemy aircraft aggregated by airframe TYPE (e.g. "8× Su-27"), each with a
     # capability rundown for friendly pilots: class, A2A weapons/WEZ, and how to
     # fight it. Paginated like the surface threats slide.
+    # v1.19.140 — Air threats as recognition CARDS: a top-down planform
+    # silhouette beside each airframe's type / class / A2A weapons / how-to-
+    # fight note. Enemy types are few, so cards give each one room and a
+    # picture, the way an intel card reads — not a dense table row.
     air_list = brief.get("air_threats") or []
     if air_list:
-        AIR_COLS = (  # (label, x, w) — non-overlapping, total 12.1"
-            ("TYPE",    Inches(0.6),  Inches(2.3)),
-            ("CLASS",   Inches(3.0),  Inches(2.4)),
-            ("WEAPONS", Inches(5.5),  Inches(3.3)),
-            ("NOTES",   Inches(8.9),  Inches(3.8)),
-        )
-        A_ROWS = _threats_per_slide
+        CARDS_PER = 4 if _top > 0 else 5
         n_air = len(air_list)
-        air_pages = (n_air + A_ROWS - 1) // A_ROWS
+        air_pages = (n_air + CARDS_PER - 1) // CARDS_PER
+        CARD_H = Inches(1.02)
+        GAP = Inches(0.13)
         for pidx in range(air_pages):
             s = prs.slides.add_slide(BLANK); _apply_bg(s)
             a_title = "AIR THREATS" if air_pages == 1 else f"AIR THREATS ({pidx + 1}/{air_pages})"
@@ -1354,26 +1534,132 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                      f"{n_air} enemy airframe type{'' if n_air == 1 else 's'} on the map — A2A weapons and "
                      f"how to fight each.",
                      size=11, color=DIM, italic=True)
-            A_TOP = Inches(1.7) if pidx == 0 else Inches(1.3)
-            A_ROW_H = Inches(0.7)  # taller — NOTES wraps to ~2 lines
-            for label, x, w in AIR_COLS:
-                _txt(s, x, A_TOP, w, A_ROW_H, label, size=12, bold=True, color=ACCENT)
-            a_underline = s.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE, Inches(0.6), A_TOP + Inches(0.5) + _MY,
-                Inches(12.1), Inches(0.025),
-            )
-            a_underline.fill.solid(); a_underline.fill.fore_color.rgb = BORDER
-            a_underline.line.fill.background()
-            for i, a in enumerate(air_list[pidx * A_ROWS:(pidx + 1) * A_ROWS]):
-                y = A_TOP + Inches(0.7) + A_ROW_H * i
-                _txt(s, AIR_COLS[0][1], y, AIR_COLS[0][2], A_ROW_H,
-                     a.get("composition") or "?", size=14, bold=True, color=ACCENT)
-                _txt(s, AIR_COLS[1][1], y, AIR_COLS[1][2], A_ROW_H,
-                     a.get("airframe_class") or "—", size=12, color=LIGHT)
-                _txt(s, AIR_COLS[2][1], y, AIR_COLS[2][2], A_ROW_H,
-                     a.get("weapons") or "—", size=11, color=LIGHT)
-                _txt(s, AIR_COLS[3][1], y, AIR_COLS[3][2], A_ROW_H,
-                     a.get("notes") or "—", size=10, color=DIM)
+            top = Inches(1.65) if pidx == 0 else Inches(1.35)
+            for i, a in enumerate(air_list[pidx * CARDS_PER:(pidx + 1) * CARDS_PER]):
+                cy = top + (CARD_H + GAP) * i
+                # Card panel
+                box = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), cy + _MY,
+                                         Inches(12.1), CARD_H)
+                box.fill.solid(); box.fill.fore_color.rgb = CELL_BG
+                box.line.color.rgb = BORDER; box.line.width = Pt(0.5)
+                # Silhouette thumbnail at the card's left
+                text_x = Inches(0.85)
+                sil = _load_silhouette(a.get("silhouette"))
+                if sil:
+                    try:
+                        s.shapes.add_picture(io.BytesIO(sil), Inches(0.75),
+                                             cy + Inches(0.08) + _MY,
+                                             height=CARD_H - Inches(0.16))
+                        text_x = Inches(1.95)
+                    except Exception:
+                        pass
+                # Type + class (stacked, left of the text block)
+                _txt(s, text_x, cy + Inches(0.09), Inches(3.05), Inches(0.42),
+                     a.get("composition") or "?", size=16, bold=True,
+                     color=ACCENT, font="Oswald")
+                _txt(s, text_x, cy + Inches(0.55), Inches(3.05), Inches(0.4),
+                     a.get("airframe_class") or "—", size=10.5, color=DIM, font="Barlow")
+                # Weapons + how-to-fight (stacked, right block)
+                wx = text_x + Inches(3.15)
+                ww = Inches(0.6) + Inches(12.1) - wx - Inches(0.2)
+                _txt(s, wx, cy + Inches(0.08), ww, Inches(0.4),
+                     a.get("weapons") or "—", size=11, bold=True, color=LIGHT, font="Barlow")
+                _txt(s, wx, cy + Inches(0.44), ww, Inches(0.55),
+                     a.get("notes") or "—", size=9.5, color=DIM, font="Barlow")
+
+    # ---------- Target imagery (satellite close-up per DMPI) -------------
+    # v1.19.140 — a real strike brief carries target photos: an overhead of
+    # each aim point so the crew recognises it on the run-in. One slide per
+    # DMPI, ESRI satellite centred on the coordinates with a crosshair, scale
+    # ring and a coords/elev/weapon strip. Only when we own the slide bg
+    # (default deck) — a user template/backdrop keeps its own look.
+    targets = brief.get("target_imagery") or []
+    if targets and _ao_own_bg:
+        RED = RGBColor(0xFF, 0x3B, 0x30)
+        MAX_TARGETS = 8
+        for ti in targets[:MAX_TARGETS]:
+            try:
+                tlat = float(ti.get("lat")); tlon = float(ti.get("lon"))
+            except (TypeError, ValueError):
+                continue
+            s = prs.slides.add_slide(BLANK); _apply_bg(s)
+            detail = bool(ti.get("detail"))
+            # Standard frame ~2 km (target area). Detail drops to the deepest
+            # zoom the imagery actually has at these coords (building level
+            # where coverage allows, ~z16-17 in remote areas) — never a grey
+            # "no data" box.
+            png = None
+            zoom = 16
+            try:
+                from services import ao_imagery
+                if detail:
+                    zoom = ao_imagery.best_detail_zoom(tlat, tlon, want=18, floor=15)
+                png = ao_imagery.fetch_ao_image(tlat, tlon, 1.5, 1280, 720,
+                                                brightness=0.92, saturate=0.95,
+                                                zoom=zoom)
+            except Exception:
+                png = None
+            if png:
+                try:
+                    s.shapes.add_picture(io.BytesIO(png), 0, 0,
+                                         width=prs.slide_width, height=prs.slide_height)
+                except Exception:
+                    png = None
+
+            _img_header(s, "Target Imagery", ti.get("name") or "DMPI")
+
+            cx = prs.slide_width // 2
+            cy = prs.slide_height // 2
+            # Scale ring sized from the tile ground resolution at this zoom.
+            try:
+                from services.ao_imagery import _meters_per_pixel
+                mpp = _meters_per_pixel(tlat, zoom)
+                # Ring ~1/4 of the frame, snapped to a round scale value so it
+                # reads as a real distance reference at any zoom.
+                frame_m = 1280 * mpp
+                ring_m = next((r for r in (50, 100, 200, 500, 1000)
+                               if r >= frame_m / 4), 1000) if detail else 500
+                ring_r = int((ring_m / mpp) * (prs.slide_width / 1280))
+            except Exception:
+                ring_r = Inches(1.2)
+            if ring_r > 0:
+                ring = s.shapes.add_shape(MSO_SHAPE.OVAL, cx - ring_r, cy - ring_r,
+                                          ring_r * 2, ring_r * 2)
+                ring.fill.background()
+                ring.line.color.rgb = RED; ring.line.width = Pt(1.25)
+            # Gapped crosshair on the aim point
+            gap = Inches(0.09); arm = Inches(0.42); th = Inches(0.03)
+            for dx, dy, w, h in (
+                (-gap - arm, -th // 2, arm, th),   # left
+                (gap, -th // 2, arm, th),          # right
+                (-th // 2, -gap - arm, th, arm),   # up
+                (-th // 2, gap, th, arm),          # down
+            ):
+                a = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, cx + dx, cy + dy, w, h)
+                a.fill.solid(); a.fill.fore_color.rgb = RED; a.line.fill.background()
+
+            # Data strip along the bottom — coords / MGRS / elev / weapon chips.
+            chips = [("LAT/LONG", ti.get("ll") or "—", True),
+                     ("MGRS", ti.get("mgrs") or "—", True),
+                     ("ELEV", ti.get("elev") or "—", False)]
+            if (ti.get("weapon") or "").strip():
+                chips.append(("WEAPON", ti["weapon"], False))
+            cw = Inches(3.05); gapx = Inches(0.15); x0 = Inches(0.6)
+            for j, (lbl, val, mono) in enumerate(chips):
+                bx = x0 + (cw + gapx) * j
+                cbox = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, bx, Inches(6.55) + _MY,
+                                          cw, Inches(0.62))
+                cbox.fill.solid(); cbox.fill.fore_color.rgb = CELL_BG
+                cbox.line.color.rgb = BORDER; cbox.line.width = Pt(0.75)
+                _txt(s, bx + Inches(0.02), Inches(6.6), cw, Inches(0.25), lbl,
+                     size=9, bold=True, color=ACCENT, font="Barlow Semi Condensed")
+                _txt(s, bx + Inches(0.02), Inches(6.82), cw, Inches(0.35), str(val),
+                     size=13, bold=True, color=BRIGHT,
+                     font="Consolas" if mono else "Oswald")
+            if not png:
+                _txt(s, Inches(0.6), Inches(3.4), Inches(12.1), Inches(0.5),
+                     "Satellite imagery unavailable — coordinates above.",
+                     size=13, color=DIM, italic=True, align_center=True)
 
     # ---------- Slide 6: Force composition -------------------------------
     # Paginated when there are more flights than fit comfortably on one
