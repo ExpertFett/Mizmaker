@@ -1142,26 +1142,45 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     _classic_headers = bool(_own_deck and _theme.get("classic_headers"))
 
     def _slide_header(slide, label):
-        """Top-of-slide section title.
+        """Top-of-slide section title, styled per theme archetype (v1.19.146)
+        so every data slide's header carries the theme's identity, not just its
+        palette. Classic keeps the original full-width accent underline."""
+        def _rule(x, y, w, h, color):
+            r = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y + _MY, w, h)
+            r.fill.solid(); r.fill.fore_color.rgb = color; r.line.fill.background()
 
-        Default (v1.19.139): a short accent tick above a bright condensed
-        title, matching the imagery slides. The Classic theme restores the
-        original full-width accent underline under an accent-coloured label.
-        """
         if _classic_headers:
             _txt(slide, Inches(0.6), Inches(0.4), Inches(12), Inches(0.6),
                  label, size=24, bold=True, color=ACCENT, font=DISPLAY_F)
-            line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6),
-                                          Inches(1.05) + _MY, Inches(12.1), Inches(0.04))
-            line.fill.solid(); line.fill.fore_color.rgb = ACCENT
-            line.line.fill.background()
+            _rule(Inches(0.6), Inches(1.05), Inches(12.1), Inches(0.04), ACCENT)
             return
-        tick = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62),
-                                      Inches(0.46) + _MY, Inches(0.55), Inches(0.05))
-        tick.fill.solid(); tick.fill.fore_color.rgb = ACCENT
-        tick.line.fill.background()
-        _txt(slide, Inches(0.6), Inches(0.6), Inches(12), Inches(0.7),
-             label, size=26, bold=True, color=BRIGHT, font=DISPLAY_F)
+
+        kind = _theme["cover"] if _own_deck else "standard"
+        if kind == "dossier":
+            _txt(slide, Inches(0.5), Inches(0.42), Inches(12), Inches(0.6),
+                 label, size=24, bold=True, color=ACCENT, font=DISPLAY_F)
+            _rule(Inches(0.5), Inches(1.02), Inches(12.33), Inches(0.02), LIGHT)
+        elif kind == "chart":
+            _txt(slide, Inches(0.5), Inches(0.5), Inches(9), Inches(0.4),
+                 "SECTION · " + label, size=14, color=ACCENT, font=MONO_F)
+            _txt(slide, Inches(0.5), Inches(0.8), Inches(12), Inches(0.55),
+                 label, size=26, bold=True, color=BRIGHT, font=DISPLAY_F)
+        elif kind == "editorial":
+            _rule(Inches(0.5), Inches(0.5), Inches(12.33), Inches(0.02), LIGHT)
+            _txt(slide, Inches(0.5), Inches(0.62), Inches(12), Inches(0.7),
+                 label, size=30, bold=True, color=BRIGHT, font=DISPLAY_F)
+            _rule(Inches(0.5), Inches(1.2), Inches(1.6), Inches(0.02), ACCENT)
+        elif kind == "swiss":
+            _rule(Inches(0.62), Inches(0.46), Inches(0.35), Inches(0.35), ACCENT)
+            _txt(slide, Inches(1.15), Inches(0.48), Inches(12), Inches(0.6),
+                 label, size=30, bold=True, color=BRIGHT, font=DISPLAY_F)
+        elif kind == "terminal":
+            _txt(slide, Inches(0.5), Inches(0.52), Inches(12), Inches(0.6),
+                 "> " + label, size=26, bold=True, color=ACCENT, font=DISPLAY_F)
+        else:  # imagery / panel / standard
+            _rule(Inches(0.62), Inches(0.46), Inches(0.55), Inches(0.05), ACCENT)
+            _txt(slide, Inches(0.6), Inches(0.6), Inches(12), Inches(0.7),
+                 label, size=26, bold=True, color=BRIGHT, font=DISPLAY_F)
 
     def _img_header(slide, eyebrow, title):
         """Header for an imagery slide: small amber eyebrow + big Oswald title.
