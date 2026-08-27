@@ -470,7 +470,10 @@ export function BriefGenTab() {
       const res = await fetch('/api/brief/preview-wing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, dpi: 100, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
+        // Merge the selected theme in like render-wing does — the backend reads
+        // it off the brief, so preview must carry it or it always defaults to
+        // vanguard (the satellite deck) regardless of the picker. (v1.19.151)
+        body: JSON.stringify({ brief: { ...brief, theme }, dpi: 100, template: tmplBody, bg_image: bgImageBody, top_margin: topMarginBody, sections: sectionsPayload }),
       });
       if (reqId !== previewReq.current) return; // superseded by a newer render
       if (!res.ok) {
@@ -496,7 +499,7 @@ export function BriefGenTab() {
     } finally {
       if (reqId === previewReq.current) setPreviewLoading(false);
     }
-  }, [brief, templateB64, templateTopMargin, sectionsPayload]);
+  }, [brief, theme, templateB64, templateTopMargin, sectionsPayload]);
 
   const handlePreview = () => runPreview(false);
 
