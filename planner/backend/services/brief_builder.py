@@ -1153,8 +1153,11 @@ def _is_carrier_launched(flight: dict, carriers: List[dict]) -> bool:
 def _build_carrier_spawn_waves(
     groups: List[dict],
     start_seconds: Optional[float],
-) -> List[Dict[str, str]]:
+) -> List[tuple]:
     """Compute carrier spawn waves for the timeline.
+
+    Returns (absolute_seconds, TimelineRow) tuples so the caller can
+    interleave them into the main timeline in chronological order.
 
     Rule (per Fett's SOP): a carrier deck can safely spawn 8 jets at a
     time, with 5 minutes of startup before the next wave can spawn. So a
@@ -1187,7 +1190,7 @@ def _build_carrier_spawn_waves(
     if waves <= 1:
         return []  # one wave fits the deck — no spawn-order row needed
 
-    rows: List[Dict[str, str]] = []
+    rows: List[tuple] = []
     # Distribute flights into waves, packing units up to 8 per wave.
     wave_lists: List[List[str]] = [[] for _ in range(waves)]
     used_in_wave = 0
@@ -1205,7 +1208,7 @@ def _build_carrier_spawn_waves(
         if not members:
             continue
         wave_t = start_seconds + i * WAVE_INTERVAL_MIN * 60
-        rows.append(asdict(TimelineRow(
+        rows.append((wave_t, TimelineRow(
             phase=f"CV Wave {i + 1}",
             time_zulu=_format_zulu(wave_t),
             note=", ".join(members) + (
@@ -1330,32 +1333,37 @@ def _build_timeline(
             "dca":   "On-Station (CAP)",
             "recon": "On-Station (Recon)",
         }[mtype]
-        action_rows = [
-            TimelineRow(f"{on_station_label} Start", _format_zulu(tot_t), tot_note),
-            TimelineRow(f"{on_station_label} End",   _format_zulu(on_station_end),
-                        f"Hand-off / off-station — RTB minus {end_offset_min} min"),
+        action_timed = [
+            (tot_t, TimelineRow(f"{on_station_label} Start", _format_zulu(tot_t), tot_note)),
+            (on_station_end, TimelineRow(f"{on_station_label} End", _format_zulu(on_station_end),
+                        f"Hand-off / off-station — RTB minus {end_offset_min} min")),
         ]
     else:
-        action_rows = [
-            TimelineRow("TOT", _format_zulu(tot_t), tot_note),
-        ]
+        action_timed = [(tot_t, TimelineRow("TOT", _format_zulu(tot_t), tot_note))]
 
-    rows: List[TimelineRow] = [
-        TimelineRow("Ground Ops", _add_minutes(start_seconds, -30), "Pre-flight, brief, walk to jets"),
-        TimelineRow("Engine Start", _add_minutes(start_seconds, -10), "Sequence per ground"),
-        TimelineRow("Takeoff", _format_zulu(start_seconds), "Rolling takeoff, flow takeoff per flight"),
-        TimelineRow("Push", _format_zulu(push_t), push_note),
-        *action_rows,
-        TimelineRow("Egress Complete", _format_zulu(egress_t), egress_note),
-        TimelineRow("RTB", _format_zulu(rtb_t), rtb_note),
+    # Each row carries its absolute time (seconds-from-midnight) so the whole
+    # timeline sorts chronologically. Build order is structural, NOT
+    # chronological — carrier spawn waves happen near takeoff but were being
+    # appended after RTB, so they printed out of order. Sorting on the real
+    # time fixes it generally, not just for carriers. (v1.19.152)
+    ground_t = start_seconds - 30 * 60
+    estart_t = start_seconds - 10 * 60
+    timed: List[tuple[float, TimelineRow]] = [
+        (ground_t, TimelineRow("Ground Ops", _format_zulu(ground_t), "Pre-flight, brief, walk to jets")),
+        (estart_t, TimelineRow("Engine Start", _format_zulu(estart_t), "Sequence per ground")),
+        (start_seconds, TimelineRow("Takeoff", _format_zulu(start_seconds), "Rolling takeoff, flow takeoff per flight")),
+        (push_t, TimelineRow("Push", _format_zulu(push_t), push_note)),
+        *action_timed,
+        (egress_t, TimelineRow("Egress Complete", _format_zulu(egress_t), egress_note)),
+        (rtb_t, TimelineRow("RTB", _format_zulu(rtb_t), rtb_note)),
     ]
 
-    # Append carrier spawn waves (if any) so deck launch sequencing is
-    # visible on the timeline. _build_carrier_spawn_waves returns an
-    # empty list when one wave fits the deck or no carriers are launched.
-    out = [asdict(r) for r in rows]
-    out.extend(_build_carrier_spawn_waves(groups, start_seconds))
-    return out
+    # Interleave carrier spawn waves (empty unless a CV package needs >1 wave)
+    # by their real spawn time, then stable-sort the whole timeline. Equal
+    # times keep structural order (Takeoff before a CV Wave 1 at the same sec).
+    timed.extend(_build_carrier_spawn_waves(groups, start_seconds))
+    timed.sort(key=lambda x: x[0])
+    return [asdict(r) for _, r in timed]
 
 
 def _build_flights(groups: List[dict], airbases: List[dict]) -> List[Dict[str, Any]]:
@@ -1899,8 +1907,19 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
         label = f"TANKER — {_brief_callsign(cs)}"
         if label in seen_labels:
             continue
+        # Freq + TACAN (mirrors the carrier row) — the tanker's TACAN is how
+        # the receiver finds the track, so it belongs on the comm card next to
+        # the frequency. (v1.19.152)
+        info_bits = []
         f = _format_freq(g.get("frequency"))
-        out.append({"label": label, "value": f"{f} MHz" if f else "—"})
+        if f:
+            info_bits.append(f"{f} MHz")
+        if g.get("tacan"):
+            t = g["tacan"]
+            ch = f"{t.get('channel', '')}{t.get('band', '')}"
+            if ch:
+                info_bits.append(f"TCN {ch}")
+        out.append({"label": label, "value": "  ·  ".join(info_bits) if info_bits else "—"})
         seen_labels.add(label)
 
     # AWACS — same pattern
@@ -2254,6 +2273,22 @@ def _build_weather_stats(overview: dict) -> List[Dict[str, str]]:
     q = wx.get("qnh_inhg")
     if isinstance(q, (int, float)):
         cards.append({"label": "QNH", "value": f"{q:.2f} inHg"})
+
+    # Contrail floor — altitude at which the standard-atmosphere temperature
+    # reaches the contrail-onset threshold, anchored on the surface temp. A
+    # planning aid ("stay below to run cold"): jets above this leave persistent
+    # contrails. It's an ESTIMATE — DCS's exact band shifts with humidity, and
+    # CONTRAIL_ONSET_C is a single tunable constant. At ISA (15°C) it lands near
+    # FL280, matching commonly-observed DCS behaviour. (v1.19.152)
+    if isinstance(t, (int, float)):
+        CONTRAIL_ONSET_C = -40.0          # ~Schmidt-Appleman, dry air
+        LAPSE_C_PER_FT = 1.98 / 1000.0    # ISA troposphere lapse rate
+        floor_ft = (float(t) - CONTRAIL_ONSET_C) / LAPSE_C_PER_FT
+        if floor_ft <= 0:
+            cards.append({"label": "CONTRAILS", "value": "~SFC"})  # ~ = estimate
+        else:
+            fl = int(round(floor_ft / 100.0 / 10.0)) * 10  # nearest FL10
+            cards.append({"label": "CONTRAILS", "value": f"~FL{fl:03d}+"})
 
     return cards
 

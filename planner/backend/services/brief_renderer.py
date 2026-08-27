@@ -1658,7 +1658,10 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         # small label, laid across the lower band.
         _wstats = brief.get("weather_stats") or []
         if _wstats:
-            _wstats = _wstats[:5]
+            # Up to 6 cards (wind/vis/cloud/temp/QNH/contrails). Shrink the big
+            # number a touch past 5 so the extra card doesn't clip. (v1.19.152)
+            _wstats = _wstats[:6]
+            _val_size = 22 if len(_wstats) <= 5 else 18
             gap = Inches(0.25)
             total_w = Inches(12.1)
             card_w = (total_w - gap * (len(_wstats) - 1)) / len(_wstats)
@@ -1673,7 +1676,7 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
                      st.get("label", ""), size=12, bold=True, color=ACCENT,
                      font=LABEL_F, align_center=True)
                 _txt(s, cx, cy + Inches(0.6), card_w, Inches(0.7),
-                     st.get("value", ""), size=22, bold=True, color=BRIGHT,
+                     st.get("value", ""), size=_val_size, bold=True, color=BRIGHT,
                      font=DISPLAY_F, align_center=True)
                 cx += card_w + gap
 
