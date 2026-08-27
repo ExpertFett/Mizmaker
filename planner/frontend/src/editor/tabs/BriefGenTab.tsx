@@ -104,6 +104,10 @@ interface WingBrief {
     name: string; lat: number; lon: number; ll: string; mgrs: string;
     elev: string; weapon: string; description: string; detail: boolean;
   }>;
+  // v1.19.153 — AAR plan. `tankers` are the dropdown options; assignments are
+  // one row per flight, auto-suggested (nearest track) and editable.
+  tankers?: Array<{ callsign: string; freq: string; tacan: string }>;
+  tanker_assignments?: Array<{ flight: string; tanker: string; freq: string; tacan: string }>;
 }
 
 interface RoeCriterion { code: string; category: string; text: string }
@@ -162,6 +166,7 @@ const NAV_SECTIONS: { title: string; short: string }[] = [
   { title: 'Friendly Forces', short: 'Forces' },
   { title: 'Per-Flight Briefs', short: 'Flights' },
   { title: 'Comms', short: 'Comms' },
+  { title: 'Tanker Assignments', short: 'Tankers' },
   { title: 'Mission Flow', short: 'Flow' },
   { title: 'Timeline', short: 'Timeline' },
   { title: 'Special Instructions / Notes', short: 'Notes' },
@@ -2001,6 +2006,46 @@ export function BriefGenTab() {
               </tbody>
             </table>
           </Card>
+
+          {(brief.tanker_assignments?.length ?? 0) > 0 && (
+            <Card title="Tanker Assignments">
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8, lineHeight: 1.5 }}>
+                Auto-suggested nearest tanker per flight — change any assignment
+                and its freq &amp; TACAN follow. Renders as the <strong style={{ color: '#ccc' }}>AAR PLAN</strong> slide.
+              </div>
+              <table style={tableStyle}>
+                <thead><tr>
+                  <th style={th}>Flight</th><th style={th}>Tanker</th>
+                  <th style={th}>Freq</th><th style={th}>TACAN</th>
+                </tr></thead>
+                <tbody>
+                  {(brief.tanker_assignments ?? []).map((a, i) => (
+                    <tr key={i}>
+                      <td style={td}>{a.flight}</td>
+                      <td style={td}>
+                        <select
+                          style={cellInput}
+                          value={a.tanker}
+                          onChange={(e) => {
+                            const tk = (brief.tankers ?? []).find((t) => t.callsign === e.target.value);
+                            const next = [...(brief.tanker_assignments ?? [])];
+                            next[i] = { flight: a.flight, tanker: e.target.value, freq: tk?.freq ?? '', tacan: tk?.tacan ?? '' };
+                            set('tanker_assignments', next);
+                          }}
+                        >
+                          {(brief.tankers ?? []).map((t) => (
+                            <option key={t.callsign} value={t.callsign}>{t.callsign}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ ...td, color: '#aaa' }}>{a.freq || '—'}</td>
+                      <td style={{ ...td, color: '#aaa' }}>{a.tacan || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
 
           <Card title="Mission Flow">
             <textarea style={textareaStyle} rows={8} value={brief.mission_flow}

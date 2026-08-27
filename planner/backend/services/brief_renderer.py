@@ -2115,6 +2115,21 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _txt(s, Inches(4.5), y, Inches(8), Inches(0.5), c.get("value", ""),
              size=17, color=LIGHT, bold=True)
 
+    # ---------- Slide 7b: AAR plan (tanker per flight) ------------------
+    # Auto-suggested nearest tanker per flight (editable). Its own slide so a
+    # long comm card never collides with it. Omitted when no tankers. (v1.19.153)
+    _aar = brief.get("tanker_assignments") or []
+    if _aar:
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        _slide_header(s, "AAR PLAN")
+        _table(
+            s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(0.4 + 0.42 * len(_aar)),
+            ["FLIGHT", "TANKER", "FREQ", "TACAN"],
+            [[a.get("flight", ""), a.get("tanker", ""), a.get("freq", ""), a.get("tacan", "")]
+             for a in _aar],
+            col_widths=[Inches(3.2), Inches(3.2), Inches(3.5), Inches(2.2)],
+        )
+
     # ---------- Slide 8: Mission flow -----------------------------------
     # Omitted when empty: a brief should never carry a blank slide
     # or a "go author this" prompt.

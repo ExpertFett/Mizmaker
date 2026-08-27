@@ -332,6 +332,12 @@ class WingBrief:
     # preformatted display strings. Built from the placed DMPIs. Empty -> no
     # target-imagery slides.
     target_imagery: List[Dict[str, Any]] = field(default_factory=list)
+    # v1.19.153 — AAR plan. `tankers` is the pool of friendly tankers
+    # ({callsign, freq, tacan}) the editor offers as options; `tanker_assignments`
+    # is one row per player flight ({flight, tanker, freq, tacan}), auto-suggested
+    # as the nearest track and overridable in the editor. Empty when no tankers.
+    tankers: List[Dict[str, str]] = field(default_factory=list)
+    tanker_assignments: List[Dict[str, str]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -1975,6 +1981,84 @@ def _build_comms(groups: List[dict]) -> List[Dict[str, str]]:
     return out
 
 
+def _collect_tankers(groups: List[dict]) -> List[Dict[str, Any]]:
+    """Friendly tankers as {callsign, freq, tacan, lat, lon}.
+
+    lat/lon come from the orbit anchor (the Orbit/Tanker waypoint, else the
+    first positioned point). Used for both the editor's tanker dropdown and
+    the nearest-track auto-assignment. Deduped by callsign.
+    """
+    out: List[Dict[str, Any]] = []
+    seen: set = set()
+    for g in groups:
+        if (g.get("task") or "").lower() != "refueling":
+            continue
+        if g.get("coalition") != "blue":
+            continue
+        wps = g.get("waypoints") or []
+        anchor = next((w for w in wps
+                       if w.get("lat") is not None
+                       and re.search(r"orbit|tanker|refuel|racetrack",
+                                     str(w.get("waypoint_type") or "")
+                                     + str(w.get("waypoint_action") or ""),
+                                     re.IGNORECASE)), None)
+        anchor = anchor or next((w for w in wps if w.get("lat") is not None), None)
+        cs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
+        callsign = _brief_callsign(cs)
+        if not callsign or callsign in seen:
+            continue
+        seen.add(callsign)
+        f = _format_freq(g.get("frequency"))
+        tac = ""
+        if g.get("tacan"):
+            t = g["tacan"]
+            tac = f"{t.get('channel', '')}{t.get('band', '')}"
+        out.append({
+            "callsign": callsign,
+            "freq": f"{f} MHz" if f else "",
+            "tacan": tac,
+            "lat": anchor.get("lat") if anchor else None,
+            "lon": anchor.get("lon") if anchor else None,
+        })
+    return out
+
+
+def _build_tanker_assignments(groups: List[dict]) -> List[Dict[str, str]]:
+    """Auto-suggest a tanker per blue player flight — the nearest track.
+
+    For each flight we take the tanker whose orbit anchor its route passes
+    closest to (min distance over the flight's waypoints). One row per flight;
+    the planner can override the tanker in the editor. Empty when no tankers
+    have a positioned orbit anchor. (v1.19.153)
+    """
+    tankers = [t for t in _collect_tankers(groups)
+               if t.get("lat") is not None and t.get("lon") is not None]
+    if not tankers:
+        return []
+    out: List[Dict[str, str]] = []
+    for g in groups:
+        if not _is_player_group(g):
+            continue
+        wps = [w for w in (g.get("waypoints") or []) if w.get("lat") is not None]
+        if not wps:
+            continue
+        fcs = (g.get("units") or [{}])[0].get("name") or g.get("groupName", "")
+        flight = _brief_callsign(fcs)
+        best, best_km = None, float("inf")
+        for tk in tankers:
+            d = min(_haversine_km(w["lat"], w["lon"], tk["lat"], tk["lon"]) for w in wps)
+            if d < best_km:
+                best_km, best = d, tk
+        if best:
+            out.append({
+                "flight": flight,
+                "tanker": best["callsign"],
+                "freq": best["freq"],
+                "tacan": best["tacan"],
+            })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Top-level builder
 # ---------------------------------------------------------------------------
@@ -2678,5 +2762,8 @@ def build_wing_brief(
         ao_center=_compute_ao_center(groups, threats, overview),
         weather_stats=_build_weather_stats(overview),
         target_imagery=_build_target_imagery(dmpis, elevation_fn=elevation_fn),
+        tankers=[{"callsign": t["callsign"], "freq": t["freq"], "tacan": t["tacan"]}
+                 for t in _collect_tankers(groups)],
+        tanker_assignments=_build_tanker_assignments(groups),
     )
     return asdict(brief)
