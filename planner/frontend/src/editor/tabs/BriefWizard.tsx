@@ -71,7 +71,15 @@ const BORDER = '#3a3a3a';
 
 export function BriefWizard(p: BriefWizardProps) {
   const [step, setStep] = useState(0);
-  const [deliverable, setDeliverable] = useState<Deliverable>('wing');
+  // Deliverables are a multi-select — a planner can want, say, a wing brief
+  // AND the intel packet from one pass. At least one stays selected.
+  const [picks, setPicks] = useState<Set<Deliverable>>(new Set(['wing']));
+  const togglePick = (d: Deliverable) => {
+    const next = new Set(picks);
+    if (next.has(d)) { if (next.size > 1) next.delete(d); } // keep at least one
+    else next.add(d);
+    setPicks(next);
+  };
   const built = !!p.brief;
   const prevBuilt = useRef(built);
 
@@ -93,6 +101,9 @@ export function BriefWizard(p: BriefWizardProps) {
 
   const onCount = p.slideSections.filter((s) => !p.slidesOff.has(s.id)).length;
   const pkgFormatOk = p.format === 'pptx' || p.format === 'pdf';
+  const packageSel = picks.has('package');
+  const needsFormat = picks.has('wing') || picks.has('package');
+  const DELIVER_LABEL: Record<Deliverable, string> = { wing: 'Wing brief', package: 'Full package', pkt: 'Intel packet' };
 
   return (
     <div style={{ padding: 20, color: '#e0e0e0', overflow: 'auto', height: '100%' }}>
@@ -284,29 +295,31 @@ export function BriefWizard(p: BriefWizardProps) {
       {/* ── Step 3: Deliverable + format ──────────────────────────────── */}
       {step === 3 && (
         <Panel>
-          <StepTitle title="What do you need" hint="Pick one deliverable. You can run the wizard again for another." />
+          <StepTitle title="What do you need" hint="Pick one or more — e.g. a wing brief and the intel packet together." />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <DeliverCard
-              sel={deliverable === 'wing'} onClick={() => setDeliverable('wing')}
+              sel={picks.has('wing')} onClick={() => togglePick('wing')}
               title="Wing brief" icon="🗂️"
               desc="One slide deck covering the whole package — theatre, threats, forces, timeline." />
             <DeliverCard
-              sel={deliverable === 'package'} onClick={() => setDeliverable('package')}
+              sel={picks.has('package')} onClick={() => togglePick('package')}
               title="Full package" icon="📦"
               desc="The wing brief plus one deck per blue flight, zipped together." />
             <DeliverCard
-              sel={deliverable === 'pkt'} onClick={() => setDeliverable('pkt')}
+              sel={picks.has('pkt')} onClick={() => togglePick('pkt')}
               title="Intel packet (PKT)" icon="🔎"
               desc="Standalone intel doc: friendly OOB, A/A threat grid, and recognition cards with how-to-fight." />
           </div>
 
-          {deliverable !== 'pkt' ? (
+          {needsFormat ? (
             <div style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>File format</div>
+              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>
+                File format {packageSel && <span style={{ color: '#888' }}>· applies to the brief &amp; package</span>}
+              </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {['pptx', 'pdf', 'png', 'jpg'].map((f) => {
                   const avail = p.availableFormats.includes(f);
-                  const pkgBlock = deliverable === 'package' && f !== 'pptx' && f !== 'pdf';
+                  const pkgBlock = packageSel && f !== 'pptx' && f !== 'pdf';
                   const disabled = !avail || pkgBlock;
                   const sel = p.format === f;
                   return (
@@ -328,9 +341,14 @@ export function BriefWizard(p: BriefWizardProps) {
                   );
                 })}
               </div>
-              {deliverable === 'package' && !pkgFormatOk && (
+              {packageSel && !pkgFormatOk && (
                 <div style={{ fontSize: 11, color: AMBER, marginTop: 8 }}>
                   Package export is PowerPoint or PDF only — switch format above.
+                </div>
+              )}
+              {picks.has('pkt') && (
+                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+                  The intel packet always exports as PowerPoint (.pptx), regardless of the format above.
                 </div>
               )}
             </div>
@@ -354,38 +372,47 @@ export function BriefWizard(p: BriefWizardProps) {
           }}>
             <span>Design: <b style={{ color: '#ccc' }}>{p.themes.find((t) => t.id === p.theme)?.name || p.theme}</b></span>
             <span>Sections: <b style={{ color: '#ccc' }}>{onCount}/{p.slideSections.length}</b></span>
-            <span>Deliverable: <b style={{ color: '#ccc' }}>{
-              deliverable === 'wing' ? 'Wing brief' : deliverable === 'package' ? 'Full package' : 'Intel packet'
+            <span>Deliverables: <b style={{ color: '#ccc' }}>{
+              (['wing', 'package', 'pkt'] as Deliverable[]).filter((d) => picks.has(d)).map((d) => DELIVER_LABEL[d]).join(', ')
             }</b></span>
-            {deliverable !== 'pkt' && <span>Format: <b style={{ color: '#ccc' }}>{(p.format || 'pptx').toUpperCase()}</b></span>}
+            {needsFormat && <span>Format: <b style={{ color: '#ccc' }}>{(p.format || 'pptx').toUpperCase()}</b></span>}
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            {deliverable === 'wing' && (
+            {picks.has('wing') && (
               <button onClick={p.onPreview} disabled={p.previewLoading}
                 style={{ ...secondaryBtn, borderColor: p.previewOpen ? AMBER : '#4a4a4a', color: p.previewOpen ? AMBER : '#ccc' }}>
-                {p.previewLoading ? 'Rendering…' : p.previewOpen ? '↻ Refresh preview' : '👁 Preview'}
+                {p.previewLoading ? 'Rendering…' : p.previewOpen ? '↻ Refresh preview' : '👁 Preview wing'}
               </button>
             )}
-            <button
-              onClick={
-                deliverable === 'wing' ? p.onRenderWing
-                : deliverable === 'package' ? p.onRenderPackage
-                : p.onPkt
-              }
-              disabled={p.rendering || (deliverable === 'package' && !pkgFormatOk)}
-              style={{ ...bigPrimary, opacity: p.rendering || (deliverable === 'package' && !pkgFormatOk) ? 0.5 : 1 }}
-            >
-              {p.rendering ? 'Rendering…'
-                : deliverable === 'wing' ? '⬇ Download wing brief'
-                : deliverable === 'package' ? '⬇ Download package (.zip)'
-                : '⬇ Download intel packet'}
-            </button>
-            <span style={{ fontSize: 11, color: '#777' }}>Downloads to your browser — nothing is uploaded.</span>
+            {picks.has('wing') && (
+              <button onClick={p.onRenderWing} disabled={p.rendering}
+                style={{ ...bigPrimary, opacity: p.rendering ? 0.5 : 1 }}>
+                {p.rendering ? 'Rendering…' : '⬇ Wing brief'}
+              </button>
+            )}
+            {picks.has('package') && (
+              <button onClick={p.onRenderPackage} disabled={p.rendering || !pkgFormatOk}
+                style={{ ...bigPrimary, opacity: p.rendering || !pkgFormatOk ? 0.5 : 1 }}
+                title={!pkgFormatOk ? 'Package export is PowerPoint or PDF only' : ''}>
+                {p.rendering ? 'Rendering…' : '⬇ Package (.zip)'}
+              </button>
+            )}
+            {picks.has('pkt') && (
+              <button onClick={p.onPkt} disabled={p.rendering}
+                style={{ ...bigPrimary, opacity: p.rendering ? 0.5 : 1 }}>
+                {p.rendering ? 'Rendering…' : '⬇ Intel packet'}
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: '#777', marginTop: 8 }}>
+            {picks.size > 1
+              ? 'Download each file with its button above — nothing is uploaded.'
+              : 'Downloads to your browser — nothing is uploaded.'}
           </div>
 
           {/* Inline preview (wing only) */}
-          {deliverable === 'wing' && p.previewOpen && (
+          {picks.has('wing') && p.previewOpen && (
             <div style={{ marginTop: 16, border: `1px solid ${BORDER}`, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#222' }}>
                 <span style={{ fontSize: 12, color: '#ccc' }}>
@@ -480,7 +507,12 @@ function DeliverCard({ sel, onClick, title, icon, desc }: { sel: boolean; onClic
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span style={{ fontSize: 18 }}>{icon}</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: sel ? AMBER : '#e0e0e0' }}>{title}</span>
-        {sel && <span style={{ marginLeft: 'auto', color: AMBER }}>✓</span>}
+        <span style={{
+          marginLeft: 'auto', width: 18, height: 18, borderRadius: 3,
+          border: `1.5px solid ${sel ? AMBER : '#555'}`, background: sel ? AMBER : 'transparent',
+          color: '#1a1a1a', fontSize: 12, fontWeight: 700,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>{sel ? '✓' : ''}</span>
       </div>
       <div style={{ fontSize: 11.5, color: '#999', lineHeight: 1.4 }}>{desc}</div>
     </button>
