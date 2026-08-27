@@ -2,14 +2,16 @@
  * BriefWizard — a guided, step-by-step front end over the Brief Generator.
  *
  * The full BriefGenTab editor exposes ~15 option cards at once, which new
- * users find intimidating. This wizard sequences the same engine into five
- * plain steps — Build → Look → Content → Deliverable → Generate — calling the
- * parent's existing handlers and driving the parent's own state (theme,
- * format, slide visibility, preview). It adds no new backend surface; it is
- * purely a friendlier path to the same download. Power users switch to the
- * advanced editor at any time via the top-right link. (v1.19.148)
+ * users find intimidating. This wizard sequences the same engine into a
+ * guided tour — Build → Design → Story → Intent → Threats → Content →
+ * Output → Generate — calling the parent's existing handlers and driving the
+ * parent's own state (brief fields, theme, format, slide visibility, AI,
+ * preview). It adds no new backend surface; it is purely a friendlier path to
+ * the same download. Power users switch to the advanced editor via the
+ * top-right link. (v1.19.150)
  */
 import { useEffect, useRef, useState } from 'react';
+import { CommandersIntentEditor } from './commandersIntent';
 
 export interface BriefWizardProps {
   hasSession: boolean;
@@ -30,6 +32,25 @@ export interface BriefWizardProps {
   slideSections: { id: string; label: string }[];
   slidesOff: Set<string>;
   setSlidesOff: (s: Set<string>) => void;
+  // content authoring (brief fields)
+  scenario: string;
+  onSetScenario: (v: string) => void;
+  missionStory: string;
+  setMissionStory: (v: string) => void;
+  commandersIntent: string;
+  onSetIntent: (v: string) => void;
+  threatNarrative: string;
+  onSetThreatNarrative: (v: string) => void;
+  // AI (BYOK — graceful no-key fallback everywhere)
+  aiKey: boolean;
+  aiProvider: string;
+  aiModel: string;
+  aiSteer: string;
+  setAiSteer: (v: string) => void;
+  onAiFullBrief: () => void; aiFullBusy: boolean; aiFullNote: string | null;
+  onAiIntent: () => void; aiIntentBusy: boolean; aiIntentNote: string | null;
+  onAiThreat: () => void; aiThreatBusy: boolean; aiThreatNote: string | null;
+  onAiSpeakerNotes: () => void; aiSpeakerBusy: boolean; aiSpeakerNote: string | null;
   // actions (parent handlers)
   onBuild: () => void;
   onRenderWing: () => void;
@@ -52,6 +73,9 @@ type Deliverable = 'wing' | 'package' | 'pkt';
 const STEPS = [
   { key: 'build', label: 'Mission' },
   { key: 'look', label: 'Design' },
+  { key: 'story', label: 'Story' },
+  { key: 'intent', label: 'Intent' },
+  { key: 'threats', label: 'Threats' },
   { key: 'content', label: 'Content' },
   { key: 'deliver', label: 'Output' },
   { key: 'generate', label: 'Generate' },
@@ -104,6 +128,7 @@ export function BriefWizard(p: BriefWizardProps) {
   const packageSel = picks.has('package');
   const needsFormat = picks.has('wing') || picks.has('package');
   const DELIVER_LABEL: Record<Deliverable, string> = { wing: 'Wing brief', package: 'Full package', pkt: 'Intel packet' };
+  const aiErr = p.error && p.error.startsWith('AI ') ? p.error : null;
 
   return (
     <div style={{ padding: 20, color: '#e0e0e0', overflow: 'auto', height: '100%' }}>
@@ -118,8 +143,9 @@ export function BriefWizard(p: BriefWizardProps) {
         </button>
       </div>
       <p style={{ fontSize: 13, color: '#aaa', margin: '0 0 18px' }}>
-        Five quick steps to a finished briefing. You can jump into the advanced
-        editor any time to fine-tune wording.
+        A guided tour from raw mission to finished briefing. Every step is
+        optional past the first — skip ahead any time, or jump into the
+        advanced editor to fine-tune.
       </p>
 
       {/* Stepper */}
@@ -155,7 +181,7 @@ export function BriefWizard(p: BriefWizardProps) {
         })}
       </div>
 
-      {p.error && (
+      {p.error && !aiErr && (
         <div style={{
           border: '1px solid #5a3a3a', background: '#2a1c1c', color: '#e88',
           padding: '10px 14px', borderRadius: 4, marginBottom: 16, fontSize: 13,
@@ -255,8 +281,126 @@ export function BriefWizard(p: BriefWizardProps) {
         </Panel>
       )}
 
-      {/* ── Step 2: Content (slide visibility) ────────────────────────── */}
+      {/* ── Step 2: Story (mission story → AI full brief) ─────────────── */}
       {step === 2 && (
+        <Panel>
+          <StepTitle title="Set the scene"
+            hint="Write what's happening in this mission. It won't appear on a slide — it's the context the AI uses to draft the written sections. Optional." />
+          <textarea
+            style={taStyle} rows={7}
+            value={p.missionStory}
+            onChange={(e) => p.setMissionStory(e.target.value)}
+            placeholder={'Example: A Russian motor-rifle brigade pushed across the cease-fire line into the Kobuleti valley overnight. Friendly ground forces are pinned at FOB Sentinel. Our package is the first sortie of the morning push — crack the SA-11 belt north of Kobuleti so the strike package behind us can hit the brigade command post before they consolidate.'}
+          />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+            <button
+              onClick={p.onAiFullBrief}
+              disabled={p.aiFullBusy}
+              style={aiBtn(p.aiKey, p.aiFullBusy)}
+              title={p.aiKey
+                ? `Write Scenario, Commander's Intent, Mission Flow and Notes from the story via ${p.aiProvider} (${p.aiModel}).`
+                : 'No AI key configured — click to set one up.'}
+            >
+              {p.aiFullBusy ? 'Writing brief…' : p.aiKey ? '✨ Write the brief from this' : '✨ Set up AI'}
+            </button>
+            {p.aiKey && (
+              <span style={{ fontSize: 11, color: '#888' }}>
+                Fills Scenario · Intent · Mission Flow · Notes. Tables stay as pulled from the .miz.
+              </span>
+            )}
+          </div>
+          {p.aiFullNote && <Note color={AMBER}>{p.aiFullNote}</Note>}
+          {aiErr && <AiError>{aiErr}</AiError>}
+          {!p.aiKey && (
+            <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+              Bring your own Anthropic or Gemini key (AI Settings) to auto-write the brief. Without one you can still fill each section by hand in the next steps.
+            </div>
+          )}
+
+          <div style={{ marginTop: 20, borderTop: `1px solid ${BORDER}`, paddingTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#ddd' }}>Scenario (appears on the brief)</span>
+              {p.missionStory.trim() && (
+                <button onClick={() => p.onSetScenario(p.missionStory)} style={miniBtn}
+                  title="Copy the mission story above into the Scenario text that renders on the slide">
+                  Use mission story
+                </button>
+              )}
+            </div>
+            <textarea style={taStyle} rows={5} value={p.scenario} onChange={(e) => p.onSetScenario(e.target.value)}
+              placeholder="The situation paragraph that renders on the Scenario slide." />
+          </div>
+        </Panel>
+      )}
+
+      {/* ── Step 3: Commander's Intent ────────────────────────────────── */}
+      {step === 3 && (
+        <Panel>
+          <StepTitle title="Commander's intent"
+            hint="Purpose, method, and end state. Generate a tailored draft with AI, or write it yourself — either way it's fully editable." />
+          {p.aiKey && !p.missionStory.trim() && (
+            <div style={{
+              marginBottom: 12, padding: '8px 10px', background: '#3a2a18',
+              border: '1px solid #d9a050', color: '#d9a050', fontSize: 11.5, lineHeight: 1.5,
+            }}>
+              <strong>Heads up:</strong> the mission story (Story step) is empty, so the AI will fall back to
+              role + threat inference and tends to produce generic text. Fill the story for a tailored intent.
+            </div>
+          )}
+          {p.aiKey && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: '#888', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Optional steer (passed to the AI)
+              </div>
+              <input style={inputStyle} value={p.aiSteer} onChange={(e) => p.setAiSteer(e.target.value)}
+                placeholder='e.g. "emphasise SEAD flow", "training-mission tone"' />
+            </div>
+          )}
+          <div style={{ marginBottom: 12 }}>
+            <button onClick={p.onAiIntent} disabled={p.aiIntentBusy} style={aiBtn(p.aiKey, p.aiIntentBusy)}
+              title={p.aiKey ? `Generate via ${p.aiProvider} (${p.aiModel})` : 'No AI key configured — click to set one up.'}>
+              {p.aiIntentBusy ? 'Thinking…' : p.aiKey ? '✨ Generate with AI' : '✨ Set up AI'}
+            </button>
+          </div>
+          {p.aiIntentNote && <Note color={AMBER}>{p.aiIntentNote}</Note>}
+          {aiErr && <AiError>{aiErr}</AiError>}
+          <CommandersIntentEditor value={p.commandersIntent} onChange={p.onSetIntent} />
+          {!p.aiKey && (
+            <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+              Without an AI key the templated starter above stays — fully editable.
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* ── Step 4: Threats ───────────────────────────────────────────── */}
+      {step === 4 && (
+        <Panel>
+          <StepTitle title="Threat picture"
+            hint="The threat tables come straight from the .miz. Here you can add a short written threat brief for the slide — write it or let AI draft it." />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <Stat label="Surface threats" value={String(p.brief?.threats?.length ?? 0)} />
+            <Stat label="Air threats" value={String(p.brief?.air_threats?.length ?? 0)} />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <button onClick={p.onAiThreat} disabled={p.aiThreatBusy} style={aiBtn(p.aiKey, p.aiThreatBusy)}
+              title={p.aiKey ? `Write a 2–4 sentence threat brief via ${p.aiProvider} (${p.aiModel})` : 'No AI key configured — click to set one up.'}>
+              {p.aiThreatBusy ? 'Writing…' : p.aiKey ? '✨ Draft threat brief' : '✨ Set up AI'}
+            </button>
+          </div>
+          {p.aiThreatNote && <Note color={AMBER}>{p.aiThreatNote}</Note>}
+          {aiErr && <AiError>{aiErr}</AiError>}
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#ddd', margin: '6px 0' }}>Threat brief (appears on the brief)</div>
+          <textarea style={taStyle} rows={5} value={p.threatNarrative} onChange={(e) => p.onSetThreatNarrative(e.target.value)}
+            placeholder="A short paragraph on the threat environment and how it shapes the plan." />
+          <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+            Need to add or correct individual SAM / air rows? Do it in the <button onClick={p.onAdvanced} style={{ ...linkBtn, fontSize: 11 }}>advanced editor</button>.
+          </div>
+        </Panel>
+      )}
+
+      {/* ── Step 5: Content (slide visibility) ────────────────────────── */}
+      {step === 5 && (
         <Panel>
           <StepTitle title="What goes in the brief"
             hint={`Toggle sections off to leave them out. ${onCount} of ${p.slideSections.length} on. Edit the actual wording in the advanced editor.`} />
@@ -292,8 +436,8 @@ export function BriefWizard(p: BriefWizardProps) {
         </Panel>
       )}
 
-      {/* ── Step 3: Deliverable + format ──────────────────────────────── */}
-      {step === 3 && (
+      {/* ── Step 6: Deliverable + format ──────────────────────────────── */}
+      {step === 6 && (
         <Panel>
           <StepTitle title="What do you need" hint="Pick one or more — e.g. a wing brief and the intel packet together." />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
@@ -360,8 +504,8 @@ export function BriefWizard(p: BriefWizardProps) {
         </Panel>
       )}
 
-      {/* ── Step 4: Generate ──────────────────────────────────────────── */}
-      {step === 4 && (
+      {/* ── Step 7: Generate ──────────────────────────────────────────── */}
+      {step === 7 && (
         <Panel>
           <StepTitle title="Generate & download"
             hint="Here's your brief. Preview it, then download — or step back to change anything." />
@@ -410,6 +554,22 @@ export function BriefWizard(p: BriefWizardProps) {
               ? 'Download each file with its button above — nothing is uploaded.'
               : 'Downloads to your browser — nothing is uploaded.'}
           </div>
+
+          {/* Optional: AI speaker notes embedded in the PPTX notes pane */}
+          {picks.has('wing') && (
+            <div style={{ marginTop: 16, borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
+              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Presenter aid (optional)</div>
+              <button onClick={p.onAiSpeakerNotes} disabled={p.aiSpeakerBusy}
+                style={{ ...aiBtn(p.aiKey, p.aiSpeakerBusy), borderColor: p.aiKey ? '#7cc66f' : '#4a4a4a', color: p.aiKey ? '#7cc66f' : '#ccc', background: p.aiKey ? '#1f2a18' : '#2a2a2a' }}
+                title={p.aiKey ? `Write 1–4 sentences of speaker notes per slide into the PPTX notes pane via ${p.aiProvider} (${p.aiModel})` : 'No AI key configured — click to set one up.'}>
+                {p.aiSpeakerBusy ? 'Writing notes…' : p.aiKey ? '🎤 Add AI speaker notes' : '🎤 Set up AI for speaker notes'}
+              </button>
+              {p.aiSpeakerNote && <Note color="#7cc66f">{p.aiSpeakerNote}</Note>}
+              <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>
+                Notes ride inside the PowerPoint's notes pane. Generate them before you download.
+              </div>
+            </div>
+          )}
 
           {/* Inline preview (wing only) */}
           {picks.has('wing') && p.previewOpen && (
@@ -497,6 +657,18 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Note({ color, children }: { color: string; children: React.ReactNode }) {
+  return <div style={{ marginTop: 8, fontSize: 11, color, fontFamily: "'B612 Mono', monospace" }}>{children}</div>;
+}
+
+function AiError({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 8, padding: '6px 8px', fontSize: 11, color: '#d95050', border: '1px solid #d95050', borderRadius: 3, lineHeight: 1.4 }}>
+      {children}
+    </div>
+  );
+}
+
 function DeliverCard({ sel, onClick, title, icon, desc }: { sel: boolean; onClick: () => void; title: string; icon: string; desc: string }) {
   return (
     <button onClick={onClick} style={{
@@ -553,3 +725,22 @@ const linkBtn: React.CSSProperties = {
 const badge: React.CSSProperties = {
   fontSize: 9, color: '#1a1a1a', background: AMBER, borderRadius: 3, padding: '1px 5px', fontWeight: 700, letterSpacing: 0.5,
 };
+const taStyle: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', background: '#161616', color: '#e0e0e0',
+  border: `1px solid ${BORDER}`, borderRadius: 4, padding: '8px 10px', fontSize: 13,
+  fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical',
+};
+const inputStyle: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', background: '#161616', color: '#e0e0e0',
+  border: `1px solid ${BORDER}`, borderRadius: 4, padding: '6px 10px', fontSize: 12, fontFamily: 'inherit',
+};
+/** AI action button — amber when a key is present, neutral "set up" when not. */
+function aiBtn(hasKey: boolean, busy: boolean): React.CSSProperties {
+  return {
+    background: hasKey ? '#2a2418' : '#2a2a2a',
+    border: `1px solid ${hasKey ? AMBER : '#4a4a4a'}`,
+    color: hasKey ? AMBER : '#ccc',
+    padding: '8px 15px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    fontFamily: 'inherit', borderRadius: 4, opacity: busy ? 0.6 : 1,
+  };
+}

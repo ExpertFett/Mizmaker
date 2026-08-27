@@ -848,35 +848,63 @@ export function BriefGenTab() {
 
   if (viewMode === 'wizard') {
     return (
-      <BriefWizard
-        hasSession={!!sessionId}
-        brief={brief}
-        building={building}
-        rendering={rendering}
-        error={error}
-        theme={theme}
-        setTheme={setTheme}
-        themes={themes}
-        format={format}
-        setFormat={(f) => setFormat(f as OutputFormat)}
-        availableFormats={availableFormats}
-        formatLabel={FORMAT_LABEL}
-        slideSections={SLIDE_SECTIONS}
-        slidesOff={slidesOff}
-        setSlidesOff={setSlidesOff}
-        onBuild={handleBuild}
-        onRenderWing={handleRender}
-        onRenderPackage={handleRenderPackage}
-        onPkt={handlePkt}
-        onPreview={handlePreview}
-        previewOpen={previewOpen}
-        previewSlides={previewSlides}
-        previewIdx={previewIdx}
-        setPreviewIdx={setPreviewIdx}
-        previewLoading={previewLoading}
-        setPreviewOpen={setPreviewOpen}
-        onAdvanced={() => setView('advanced')}
-      />
+      <>
+        <BriefWizard
+          hasSession={!!sessionId}
+          brief={brief}
+          building={building}
+          rendering={rendering}
+          error={error}
+          theme={theme}
+          setTheme={setTheme}
+          themes={themes}
+          format={format}
+          setFormat={(f) => setFormat(f as OutputFormat)}
+          availableFormats={availableFormats}
+          formatLabel={FORMAT_LABEL}
+          slideSections={SLIDE_SECTIONS}
+          slidesOff={slidesOff}
+          setSlidesOff={setSlidesOff}
+          scenario={brief?.scenario ?? ''}
+          onSetScenario={(v) => set('scenario', v)}
+          missionStory={missionStory}
+          setMissionStory={setMissionStory}
+          commandersIntent={brief?.commanders_intent ?? ''}
+          onSetIntent={(v) => { set('commanders_intent', v); setAiNote(null); }}
+          threatNarrative={brief?.threat_narrative ?? ''}
+          onSetThreatNarrative={(v) => set('threat_narrative', v)}
+          aiKey={!!aiKey}
+          aiProvider={aiProvider}
+          aiModel={aiModel}
+          aiSteer={aiSteer}
+          setAiSteer={setAiSteer}
+          onAiFullBrief={handleAiFullBrief}
+          aiFullBusy={aiFullBusy}
+          aiFullNote={aiFullNote}
+          onAiIntent={handleAiIntent}
+          aiIntentBusy={aiBusy}
+          aiIntentNote={aiNote}
+          onAiThreat={handleAiThreatNarrative}
+          aiThreatBusy={aiThreatBusy}
+          aiThreatNote={aiThreatNote}
+          onAiSpeakerNotes={handleAiSpeakerNotes}
+          aiSpeakerBusy={aiSpeakerBusy}
+          aiSpeakerNote={aiSpeakerNote}
+          onBuild={handleBuild}
+          onRenderWing={handleRender}
+          onRenderPackage={handleRenderPackage}
+          onPkt={handlePkt}
+          onPreview={handlePreview}
+          previewOpen={previewOpen}
+          previewSlides={previewSlides}
+          previewIdx={previewIdx}
+          setPreviewIdx={setPreviewIdx}
+          previewLoading={previewLoading}
+          setPreviewOpen={setPreviewOpen}
+          onAdvanced={() => setView('advanced')}
+        />
+        <AiSettingsPanel open={aiOpen} onClose={() => setAiOpen(false)} />
+      </>
     );
   }
 
