@@ -2317,6 +2317,54 @@ def _build_metar(overview: dict, mission_name: str, theater: str) -> str:
     return " ".join(p for p in parts if p)
 
 
+def parse_dtc_steerpoints(dtc: dict, theater: str = "",
+                          elevation_fn=None) -> List[Dict[str, str]]:
+    """Steerpoints from a premade Hornet .dtc, as CONTROL MEASURES rows.
+
+    Reads ``data.WYPT.NAV_PTS`` and converts each point's DCS x/y to lat/lon
+    with the theatre projection, returning {kind:'STEERPOINT', name, ll, mgrs,
+    elevation} rows the brief merges into control measures. The .dtc's own
+    ``terrain`` wins over the passed theater; unpositioned (0,0) points are
+    skipped. elevation_fn(lat, lon) returns METRES (converted to feet here),
+    matching the rest of the control-measure elevation column. (v1.19.154)
+    """
+    from services.projection import dcs_to_latlon
+    data = dtc.get("data") if isinstance(dtc.get("data"), dict) else dtc
+    terrain = (data.get("terrain") or theater or "").strip()
+    nav_pts = ((data.get("WYPT") or {}).get("NAV_PTS")) or []
+    rows: List[Dict[str, str]] = []
+    for wp in nav_pts:
+        if not isinstance(wp, dict):
+            continue
+        x, y = wp.get("x"), wp.get("y")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            continue
+        if x == 0 and y == 0:
+            continue  # placeholder / unset steerpoint
+        try:
+            lat, lon = dcs_to_latlon(float(x), float(y), terrain)
+        except Exception:
+            continue
+        name = str(wp.get("text_note") or wp.get("note") or wp.get("id")
+                   or f"STPT{wp.get('wypt_num', '')}").strip()
+        elev = ""
+        if elevation_fn:
+            try:
+                m = elevation_fn(lat, lon)
+                if m not in (None, ""):
+                    elev = f"{int(round(float(m) * 3.28084)):,} FT"
+            except Exception:
+                pass
+        rows.append({
+            "kind": "STEERPOINT",
+            "name": name,
+            "ll": _fmt_ddm(lat, lon),
+            "mgrs": _latlon_to_mgrs(lat, lon),
+            "elevation": elev,
+        })
+    return rows
+
+
 def _build_weather_stats(overview: dict) -> List[Dict[str, str]]:
     """Glanceable WX cards for the weather slide: wind, vis, cloud, temp, QNH.
 

@@ -2387,6 +2387,41 @@ def brief_build_wing():
     return jsonify(brief)
 
 
+@app.route("/api/brief/dtc-steerpoints", methods=["POST"])
+def brief_dtc_steerpoints():
+    """Parse a premade Hornet .dtc into CONTROL MEASURES steerpoint rows.
+
+    Request: {"sessionId": "...", "dtc": {...}}  (dtc = parsed .dtc JSON)
+    Response: {"steerpoints": [{kind, name, ll, mgrs, elevation}, ...]}
+
+    The .dtc's own `terrain` drives the DCS x/y -> lat/lon projection; the
+    session (optional) provides SRTM elevation for the ELEV column. (v1.19.154)
+    """
+    body = request.get_json(silent=True) or {}
+    dtc = body.get("dtc")
+    if not isinstance(dtc, dict):
+        return jsonify({"error": "dtc object required"}), 400
+    with _lock:
+        session = sessions.get(body.get("sessionId"))
+    theater = (session or {}).get("theater", "") or ""
+
+    def _elev_m(lat, lon):
+        try:
+            from services.elevation import get_elevation as _ge
+            return _ge(lat, lon, _srtm_data)
+        except Exception:
+            return None
+
+    try:
+        from services.brief_builder import parse_dtc_steerpoints
+        steerpoints = parse_dtc_steerpoints(dtc, theater=theater, elevation_fn=_elev_m)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"DTC parse failed: {e}"}), 500
+    return jsonify({"steerpoints": steerpoints})
+
+
 @app.route("/api/brief/pkt", methods=["POST"])
 def brief_pkt():
     """Build + render a PKT intelligence packet (.pptx) from a session's

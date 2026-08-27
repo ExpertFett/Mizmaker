@@ -208,6 +208,7 @@ export function BriefGenTab() {
     try { localStorage.setItem('brief_view_mode', m); } catch { /* ignore */ }
   };
   const [brief, setBrief] = useState<WingBrief | null>(null);
+  const [dtcNote, setDtcNote] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -577,6 +578,36 @@ export function BriefGenTab() {
       setError(e.message);
     } finally {
       setRendering(false);
+    }
+  };
+
+  // v1.19.154 — attach a premade Hornet .dtc; its steerpoints (x/y projected
+  // to lat/lon server-side) are merged into Control Measures as STEERPOINT
+  // rows. Re-attaching replaces any prior DTC steerpoints. Fett's choice:
+  // waypoints only (drives route/control measures), comms left untouched.
+  const handleDtcAttach = async (file: File) => {
+    if (!brief) return;
+    setDtcNote(null); setError(null);
+    try {
+      const dtc = JSON.parse(await file.text());
+      const res = await fetch('/api/brief/dtc-steerpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, dtc }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ error: 'DTC parse failed' }));
+        throw new Error(e.error || 'DTC parse failed');
+      }
+      const data = await res.json();
+      const steer: ControlMeasureRow[] = data.steerpoints || [];
+      if (!steer.length) { setDtcNote('No positioned steerpoints found in that .dtc.'); return; }
+      // Drop any prior STEERPOINT rows (re-import replaces), keep the rest.
+      const kept = (brief.control_measures ?? []).filter((c) => c.kind !== 'STEERPOINT');
+      set('control_measures', [...kept, ...steer]);
+      setDtcNote(`Added ${steer.length} steerpoint${steer.length === 1 ? '' : 's'} from the DTC.`);
+    } catch (e: any) {
+      setDtcNote(`Couldn't read that .dtc — ${e.message}`);
     }
   };
 
@@ -1518,11 +1549,24 @@ export function BriefGenTab() {
                       onChange={(e) => set('weather_brief', e.target.value)} />
           </Card>
 
-          <Card title="Control Measures">
+          <Card title="Control Measures" right={
+            <label style={{ ...btnSmall, cursor: 'pointer' }}
+                   title="Attach a premade Hornet .dtc — its steerpoints are added here (projected to lat/lon) and render on the CONTROL MEASURES slide">
+              + Attach DTC
+              <input type="file" accept=".dtc,application/json,.json" style={{ display: 'none' }}
+                     onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDtcAttach(f); e.currentTarget.value = ''; }} />
+            </label>
+          }>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>
               Auto-built from the mission: bullseye, DMPIs, airspace zones (ROZ / holding),
               and tanker tracks. Edit names/types here; coordinates come from the mission.
+              <span style={{ color: '#aaa' }}> Attach a premade .dtc to add its steerpoints.</span>
             </div>
+            {dtcNote && (
+              <div style={{ fontSize: 12, color: dtcNote.startsWith("Couldn't") ? '#d95050' : '#3fb950', marginBottom: 6 }}>
+                {dtcNote}
+              </div>
+            )}
             {(brief.control_measures ?? []).length === 0 ? (
               <div style={{ fontSize: 13, color: '#666', padding: '6px 0' }}>
                 No control measures found. Add DMPIs (Targets) or airspace-named trigger zones,
