@@ -33,6 +33,7 @@ import { generateFullBrief } from '../../ai/briefWriter';
 import { generateSpeakerNotes, speakerNotesToBriefMap } from '../../ai/speakerNotes';
 import { generateTemplateMapping } from '../../ai/templateMapper';
 import { AiSettingsPanel } from '../../panels/AiSettingsPanel';
+import { BriefWizard } from './BriefWizard';
 
 // ---------------------------------------------------------------------------
 // Types — mirror services/brief_builder.py WingBrief shape
@@ -190,6 +191,17 @@ const SLIDE_LABEL: Record<string, string> = Object.fromEntries(SLIDE_SECTIONS.ma
 
 export function BriefGenTab() {
   const sessionId = useMissionStore((s) => s.sessionId);
+  // Guided wizard vs the full advanced editor. New/intimidated users land on
+  // the wizard; the choice persists so power users who switch to advanced
+  // stay there. (v1.19.148)
+  const [viewMode, setViewMode] = useState<'wizard' | 'advanced'>(() => {
+    try { return (localStorage.getItem('brief_view_mode') as 'wizard' | 'advanced') || 'wizard'; }
+    catch { return 'wizard'; }
+  });
+  const setView = (m: 'wizard' | 'advanced') => {
+    setViewMode(m);
+    try { localStorage.setItem('brief_view_mode', m); } catch { /* ignore */ }
+  };
   const [brief, setBrief] = useState<WingBrief | null>(null);
   const [building, setBuilding] = useState(false);
   const [rendering, setRendering] = useState(false);
@@ -834,9 +846,54 @@ export function BriefGenTab() {
     setBrief((b) => (b ? { ...b, [field]: b[field].filter((_, i) => i !== idx) as WingBrief[F] } : null));
   }
 
+  if (viewMode === 'wizard') {
+    return (
+      <BriefWizard
+        hasSession={!!sessionId}
+        brief={brief}
+        building={building}
+        rendering={rendering}
+        error={error}
+        theme={theme}
+        setTheme={setTheme}
+        themes={themes}
+        format={format}
+        setFormat={(f) => setFormat(f as OutputFormat)}
+        availableFormats={availableFormats}
+        formatLabel={FORMAT_LABEL}
+        slideSections={SLIDE_SECTIONS}
+        slidesOff={slidesOff}
+        setSlidesOff={setSlidesOff}
+        onBuild={handleBuild}
+        onRenderWing={handleRender}
+        onRenderPackage={handleRenderPackage}
+        onPkt={handlePkt}
+        onPreview={handlePreview}
+        previewOpen={previewOpen}
+        previewSlides={previewSlides}
+        previewIdx={previewIdx}
+        setPreviewIdx={setPreviewIdx}
+        previewLoading={previewLoading}
+        setPreviewOpen={setPreviewOpen}
+        onAdvanced={() => setView('advanced')}
+      />
+    );
+  }
+
   return (
     <div style={{ padding: 20, color: '#e0e0e0', overflow: 'auto', height: '100%' }}>
-      <h2 style={{ fontSize: 18, marginBottom: 6 }}>Brief Generator</h2>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Brief Generator</h2>
+        <span style={{ fontSize: 12, color: '#777' }}>Advanced</span>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={() => setView('wizard')}
+          style={{ background: 'none', border: 'none', color: '#4a8fd4', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+          title="Switch back to the step-by-step guided wizard"
+        >
+          ← Guided wizard
+        </button>
+      </div>
       <p style={{ fontSize: 13, color: '#aaaaaa', marginBottom: 16 }}>
         Auto-build a wing briefing from the loaded mission. Review and edit
         each section, then export as PowerPoint, PDF, or per-slide images.
