@@ -1257,91 +1257,240 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     cover_img = _decode_image(brief.get("cover_image_base64") or "")
     HERO_HEIGHT = Inches(3.6)  # upper 48% of the slide
 
-    # v1.19.139 — with no custom hero, use the operating-area satellite as a
-    # full-bleed cover (bottom gradient baked in). The title block then sits
-    # lower-left over the fade, tag-chip + big title + meta strip.
-    ao_cover = _ao_bg(s, "bottom") if not cover_img else False
+    # v1.19.144 — bespoke per-theme cover. Each theme names a cover archetype
+    # (theme["cover"]); the builder for it uses the theme's own palette + fonts
+    # + motif, so one builder skins every theme that shares the archetype. A
+    # custom hero image or a user .pptx template keep their prior behaviour.
+    def _rect(x, y, w, h, fill=None, line=None, lw=0.75, rot=0):
+        sh = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+        if fill is None:
+            sh.fill.background()
+        else:
+            sh.fill.solid(); sh.fill.fore_color.rgb = fill
+        if line is None:
+            sh.line.fill.background()
+        else:
+            sh.line.color.rgb = line; sh.line.width = Pt(lw)
+        if rot:
+            sh.rotation = rot
+        return sh
 
-    if cover_img:
-        # Hero image — full slide width, top of slide. python-pptx will
-        # crop/letterbox via the size we specify; we set both width and
-        # height so the image fills the banner edge-to-edge.
+    _inset_cache: Dict[float, Any] = {}
+
+    def _ao_inset(span_scale=1.0):
+        """Tinted AO imagery (no scrim) for a framed inset, or None."""
+        if not (_own_deck and _ao):
+            return None
+        key = round(span_scale, 2)
+        if key in _inset_cache:
+            return _inset_cache[key]
+        png = None
         try:
-            s.shapes.add_picture(
-                cover_img, 0, 0,
-                width=prs.slide_width, height=HERO_HEIGHT,
-            )
-            # Subtle dark overlay at the bottom of the hero so the
-            # transition into the dark slide bg isn't a hard line.
-            grad = s.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE, 0, HERO_HEIGHT - Inches(0.6),
-                prs.slide_width, Inches(0.6),
-            )
-            grad.fill.solid(); grad.fill.fore_color.rgb = BG
-            grad.fill.fore_color.rgb = BG
-            grad.line.fill.background()
+            from services import ao_imagery
+            png = ao_imagery.fetch_ao_image(
+                float(_ao["lat"]), float(_ao["lon"]),
+                float(_ao.get("span_km") or 300) * span_scale, 1280, 1000,
+                tint=_tint, brightness=(1.0 if _tint else 0.95),
+                saturate=(1.0 if _tint else 0.7))
         except Exception:
-            cover_img = None  # decode-but-render failure: fall back to text-only
+            png = None
+        _inset_cache[key] = png
+        return png
 
-    if not cover_img and not ao_cover:
-        # No hero and no imagery — styled accent block so the cover doesn't
-        # feel empty.
-        bar_top = s.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, Inches(0.08),
-        )
-        bar_top.fill.solid(); bar_top.fill.fore_color.rgb = ACCENT
-        bar_top.line.fill.background()
-        for x_in in (Inches(0.4), prs.slide_width - Inches(0.5)):
-            tick = s.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE, x_in, Inches(1.4), Inches(0.06), Inches(2.5),
-            )
-            tick.fill.solid(); tick.fill.fore_color.rgb = ACCENT
-            tick.line.fill.background()
+    def _place_inset(png, x, y, w, h, border=None, lw=2.0, rot=0):
+        frame = _rect(x, y, w, h, fill=BG, line=border, lw=lw, rot=rot)
+        if png:
+            try:
+                pic = s.shapes.add_picture(io.BytesIO(png), x + Inches(0.03),
+                                           y + Inches(0.03), width=w - Inches(0.06),
+                                           height=h - Inches(0.06))
+                if rot:
+                    pic.rotation = rot
+            except Exception:
+                pass
+        return frame
 
-    # Squadron logo — rendered top-right, overlays cover image when present
-    logo_img = _decode_image(brief.get("logo_base64") or "")
-    if logo_img:
-        try:
-            s.shapes.add_picture(
-                logo_img, Inches(11.5), Inches(0.3),
-                height=Inches(1.4),
-            )
-        except Exception:
-            pass
+    def _meta_pairs():
+        m = [("THEATER", brief["theater"]), ("DATE", _cover_date(brief["date"])),
+             ("TAKEOFF", brief["time_zulu"])]
+        n = len(brief.get("flights") or [])
+        if n:
+            m.append(("PACKAGE", f"{n} flight{'' if n == 1 else 's'}"))
+        return m
 
-    if ao_cover:
-        # ---- Imagery cover: bottom-left title block over the gradient ----
-        chip = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.62), Inches(4.05),
-                                  Inches(1.85), Inches(0.42))
-        chip.fill.solid(); chip.fill.fore_color.rgb = ACCENT
-        chip.line.fill.background()
-        ctf = chip.text_frame
-        ctf.margin_top = Inches(0.02); ctf.margin_bottom = Inches(0.02)
-        cp = ctf.paragraphs[0]; cp.alignment = PP_ALIGN.CENTER
-        cr = cp.add_run(); cr.text = "WING BRIEF"
-        cr.font.size = Pt(14); cr.font.bold = True
-        cr.font.name = LABEL_F; cr.font.color.rgb = BG
+    def _meta_row(y, x0=Inches(0.62), step=Inches(2.75), kc=DIM):
+        mx = x0
+        for k, v in _meta_pairs():
+            _txt(s, mx, y, Inches(2.6), Inches(0.3), k, size=11, bold=True,
+                 color=kc, font=LABEL_F, shift=False)
+            _txt(s, mx, y + Inches(0.24), Inches(2.6), Inches(0.45), str(v),
+                 size=17, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+            mx += step
 
+    def _accent_bottom():
+        _rect(0, prs.slide_height - Inches(0.06), prs.slide_width, Inches(0.06), fill=ACCENT)
+
+    def _tag(x, y, text="WING BRIEF"):
+        chip = _rect(x, y, Inches(1.85), Inches(0.42), fill=ACCENT)
+        tf = chip.text_frame; tf.margin_top = Inches(0.02); tf.margin_bottom = Inches(0.02)
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+        r = p.add_run(); r.text = text; r.font.size = Pt(14); r.font.bold = True
+        r.font.name = LABEL_F; r.font.color.rgb = BG
+
+    def _cover_imagery():
+        _ao_bg(s, "bottom")
+        _tag(Inches(0.62), Inches(4.05))
         _txt(s, Inches(0.57), Inches(4.7), Inches(11.8), Inches(1.5),
              brief["mission_name"], size=54, bold=True, color=BRIGHT,
              font=DISPLAY_F, shift=False)
+        _meta_row(Inches(6.62))
+        _accent_bottom()
 
-        # Meta strip along the very bottom — key/value columns.
-        meta = [("THEATER", brief["theater"]),
-                ("DATE", _cover_date(brief["date"])),
-                ("TAKEOFF", brief["time_zulu"])]
-        n_fl = len(brief.get("flights") or [])
-        if n_fl:
-            meta.append(("PACKAGE", f"{n_fl} flight{'' if n_fl == 1 else 's'}"))
+    def _cover_panel():
+        png = _ao_inset(1.0)
+        _place_inset(png, Inches(7.0), Inches(1.0), Inches(5.83), Inches(5.5),
+                     border=BRIGHT, lw=2)
+        _tag(Inches(0.6), Inches(1.35))
+        _txt(s, Inches(0.57), Inches(2.0), Inches(6.2), Inches(2.0),
+             brief["mission_name"], size=44, bold=True, color=BRIGHT,
+             font=DISPLAY_F, shift=False)
+        _txt(s, Inches(0.62), Inches(4.35), Inches(6), Inches(0.4),
+             brief["theater"], size=18, color=DIM, font=BODY_F, shift=False)
+        _meta_row(Inches(5.5), x0=Inches(0.62), step=Inches(1.5))
+        _accent_bottom()
+
+    def _cover_dossier():
+        _txt(s, Inches(0.6), Inches(0.5), Inches(8), Inches(0.4),
+             f"FILE No. {brief['theater'][:6].upper()}-{_cover_date(brief['date']).replace(' ','')}  ·  COPY 3 OF 12",
+             size=13, color=DIM, font=MONO_F, shift=False)
+        _rect(Inches(0.6), Inches(0.86), Inches(12.1), Inches(0.025), fill=LIGHT)
+        # Stamp (rotated)
+        stamp = _rect(Inches(9.6), Inches(0.95), Inches(2.7), Inches(0.62),
+                      line=ACCENT, lw=3, rot=352)
+        _txt(s, Inches(9.6), Inches(1.02), Inches(2.7), Inches(0.5), "TOP SECRET",
+             size=22, bold=True, color=ACCENT, font=DISPLAY_F, align_center=True, shift=False)
+        _txt(s, Inches(0.58), Inches(1.5), Inches(7.6), Inches(2.4),
+             brief["mission_name"], size=48, bold=True, color=BRIGHT,
+             font=DISPLAY_F, shift=False)
+        _txt(s, Inches(0.62), Inches(3.85), Inches(6), Inches(2.0),
+             f"THEATER: {brief['theater']}\nDATE-TIME: {_cover_date(brief['date'])} · {brief['time_zulu']}\n"
+             f"PACKAGE: {len(brief.get('flights') or [])} flights\nPREPARED BY: S-2 / VMFA-224(AW)",
+             size=17, color=LIGHT, font=BODY_F, line_spacing=1.3, shift=False)
+        # Taped recon photo (rotated)
+        png = _ao_inset(0.9)
+        _place_inset(png, Inches(8.7), Inches(3.4), Inches(3.9), Inches(2.6),
+                     border=BRIGHT, lw=8, rot=3)
+        _rect(Inches(0.6), prs.slide_height - Inches(0.55), Inches(12.1), Inches(0.025), fill=LIGHT)
+        _txt(s, Inches(0.6), prs.slide_height - Inches(0.5), Inches(12), Inches(0.3),
+             "HANDLE VIA SPECIAL ACCESS CHANNELS ONLY — FICTION / TRAINING USE",
+             size=12, color=DIM, font=MONO_F, shift=False)
+
+    def _cover_chart():
+        _txt(s, Inches(0.6), Inches(0.5), Inches(9), Inches(0.4),
+             "CHART · WING BRIEF · CVW-17", size=15, color=ACCENT, font=MONO_F, shift=False)
+        # Compass rose
+        comp = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(11.4), Inches(0.55),
+                                  Inches(1.1), Inches(1.1))
+        comp.fill.background(); comp.line.color.rgb = BORDER; comp.line.width = Pt(1.5)
+        _txt(s, Inches(0.56), Inches(1.35), Inches(11), Inches(2.6),
+             brief["mission_name"], size=58, bold=True, color=BRIGHT,
+             font=DISPLAY_F, shift=False)
+        _txt(s, Inches(0.62), Inches(4.6), Inches(7), Inches(1.4),
+             f"THEATER · {brief['theater']}\nDTG · {_cover_date(brief['date'])} · {brief['time_zulu']}\n"
+             f"PACKAGE · {len(brief.get('flights') or [])} FLIGHTS",
+             size=16, color=LIGHT, font=MONO_F, line_spacing=1.4, shift=False)
+        png = _ao_inset(0.85)
+        _place_inset(png, Inches(8.9), Inches(4.5), Inches(3.9), Inches(2.3),
+                     border=BORDER, lw=2)
+        _txt(s, Inches(8.9), prs.slide_height - Inches(0.5), Inches(4), Inches(0.3),
+             "SCALE 1:250,000 · SHEET NS-07", size=12, color=DIM, font=MONO_F, shift=False)
+
+    def _cover_editorial():
+        _rect(Inches(0.6), Inches(0.6), Inches(12.13), Inches(0.03), fill=LIGHT)
+        _txt(s, Inches(0.62), Inches(0.78), Inches(11), Inches(0.4),
+             f"The Wing Brief · CVW-17", size=14, bold=True, color=ACCENT,
+             font=LABEL_F, shift=False)
+        _txt(s, Inches(0.57), Inches(1.4), Inches(7.6), Inches(3.0),
+             brief["mission_name"], size=60, bold=True, color=BRIGHT,
+             font=DISPLAY_F, line_spacing=0.98, shift=False)
+        _txt(s, Inches(0.62), Inches(5.0), Inches(6.6), Inches(0.9),
+             f"A carrier air wing surges to hold the line over {brief['theater']}.",
+             size=19, color=LIGHT, font=BODY_F, shift=False)
+        _rect(Inches(0.62), Inches(6.1), Inches(6.6), Inches(0.02), fill=BORDER)
+        _txt(s, Inches(0.62), Inches(6.2), Inches(7), Inches(0.4),
+             f"{brief['theater'].upper()} · {_cover_date(brief['date'])} {brief['time_zulu']} · "
+             f"{len(brief.get('flights') or [])} FLIGHTS", size=13, bold=True, color=DIM,
+             font=LABEL_F, shift=False)
+        png = _ao_inset(1.0)
+        if png:
+            try:
+                s.shapes.add_picture(io.BytesIO(png), Inches(7.9), 0,
+                                     width=Inches(5.43), height=prs.slide_height)
+            except Exception:
+                pass
+
+    def _cover_swiss():
+        _rect(Inches(0.6), Inches(0.62), Inches(12.13), Inches(0.05), fill=BRIGHT)
+        _rect(Inches(0.62), Inches(1.15), Inches(0.45), Inches(0.45), fill=ACCENT)
+        _txt(s, Inches(1.25), Inches(1.22), Inches(8), Inches(0.4),
+             "WING BRIEF / CVW-17", size=15, bold=True, color=BRIGHT, font=LABEL_F, shift=False)
+        _txt(s, Inches(0.56), Inches(2.2), Inches(12.2), Inches(3.0),
+             brief["mission_name"], size=96, bold=True, color=BRIGHT,
+             font=DISPLAY_F, line_spacing=0.9, shift=False)
+        _rect(Inches(0.6), Inches(6.4), Inches(12.13), Inches(0.03), fill=BRIGHT)
         mx = Inches(0.62)
-        for k, v in meta:
-            _txt(s, mx, Inches(6.62), Inches(2.6), Inches(0.3), k,
-                 size=11, bold=True, color=DIM, font=LABEL_F, shift=False)
-            _txt(s, mx, Inches(6.86), Inches(2.6), Inches(0.45), str(v),
-                 size=17, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
-            mx += Inches(2.75)
+        for k, v in _meta_pairs():
+            _txt(s, mx, Inches(6.55), Inches(3), Inches(0.3), k, size=12, bold=True,
+                 color=DIM, font=LABEL_F, shift=False)
+            _txt(s, mx, Inches(6.82), Inches(3), Inches(0.5), str(v), size=26, bold=True,
+                 color=BRIGHT, font=DISPLAY_F, shift=False)
+            mx += Inches(3.1)
+
+    def _cover_terminal():
+        # scanline/box overlay already applied by _apply_bg; add prompt + title
+        _txt(s, Inches(0.5), Inches(0.5), Inches(12), Inches(0.4),
+             "┌─ TACOPS TERMINAL v4.7 ──────────────────── SECURE ─┐",
+             size=17, color=ACCENT, font=MONO_F, shift=False)
+        _txt(s, Inches(0.6), Inches(1.4), Inches(12), Inches(0.5),
+             f"C:\\BRIEF> load {re.sub(r'[^A-Z0-9]+','_',brief['mission_name'].upper())}.brf_",
+             size=22, color=ACCENT, font=MONO_F, shift=False)
+        _txt(s, Inches(0.56), Inches(2.0), Inches(12.2), Inches(2.6),
+             brief["mission_name"].upper(), size=72, bold=True, color=BRIGHT,
+             font=DISPLAY_F, line_spacing=0.9, shift=False)
+        _txt(s, Inches(0.6), Inches(4.9), Inches(12), Inches(1.8),
+             f"> THEATER ...... {brief['theater'].upper()}\n"
+             f"> DTG .......... {_cover_date(brief['date'])} {brief['time_zulu']}\n"
+             f"> PACKAGE ...... {len(brief.get('flights') or [])} FLIGHTS // CVW-17\n"
+             f"> STATUS ....... ARMED", size=22, color=ACCENT, font=MONO_F,
+             line_spacing=1.2, shift=False)
+
+    _COVER_BUILDERS = {
+        "imagery": _cover_imagery, "panel": _cover_panel, "dossier": _cover_dossier,
+        "chart": _cover_chart, "editorial": _cover_editorial, "swiss": _cover_swiss,
+        "terminal": _cover_terminal,
+    }
+
+    # Squadron logo — rendered top-right, overlays cover regardless of layout.
+    logo_img = _decode_image(brief.get("logo_base64") or "")
+
+    if cover_img:
+        # Custom hero image — full-width banner at top, centred title below.
+        try:
+            s.shapes.add_picture(cover_img, 0, 0, width=prs.slide_width, height=HERO_HEIGHT)
+            _rect(0, HERO_HEIGHT - Inches(0.6), prs.slide_width, Inches(0.6), fill=BG)
+        except Exception:
+            cover_img = None
+    if logo_img:
+        try:
+            s.shapes.add_picture(logo_img, Inches(11.5), Inches(0.3), height=Inches(1.4))
+        except Exception:
+            pass
+
+    _cover_kind = _theme["cover"] if _own_deck else "standard"
+    if not cover_img and _cover_kind in _COVER_BUILDERS:
+        _COVER_BUILDERS[_cover_kind]()
     else:
-        # ---- Text/hero cover: centred title in the lower band ----
+        # Standard/text cover (Classic theme, custom hero, or template).
         eyebrow_y = Inches(0.4) if cover_img else Inches(0.55)
         _txt(s, Inches(0.6), eyebrow_y, Inches(8), Inches(0.5),
              "WING BRIEF", size=14, bold=True, color=ACCENT)
@@ -1349,19 +1498,11 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
         _txt(s, Inches(0.6), title_top, Inches(12.1), Inches(1.4),
              brief["mission_name"], size=56, bold=True, color=BRIGHT,
              align_center=True, font=DISPLAY_F)
-        sub_top = title_top + Inches(1.5)
-        _txt(s, Inches(0.6), sub_top, Inches(12.1), Inches(0.5),
+        _txt(s, Inches(0.6), title_top + Inches(1.5), Inches(12.1), Inches(0.5),
              f"{brief['theater'].upper()}   ·   {_cover_date(brief['date'])}   ·   "
-             f"TAKEOFF {brief['time_zulu']}",
-             size=18, bold=True, color=ACCENT, align_center=True)
-
-    # Bottom accent bar — visual anchor at the bottom of the slide
-    bottom_bar = s.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, 0, prs.slide_height - Inches(0.06),
-        prs.slide_width, Inches(0.06),
-    )
-    bottom_bar.fill.solid(); bottom_bar.fill.fore_color.rgb = ACCENT
-    bottom_bar.line.fill.background()
+             f"TAKEOFF {brief['time_zulu']}", size=18, bold=True, color=ACCENT,
+             align_center=True)
+        _accent_bottom()
 
     # ---------- Slide 2: Situation (theatre overview + scenario) ---------
     # v1.19.139 — merged into one "SITUATION" slide over the operating-area
