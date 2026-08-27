@@ -1822,6 +1822,91 @@ def dtc_generate():
         return jsonify({"error": f"DTC generation failed: {str(e)}"}), 400
 
 
+@app.route("/api/dtc/batch", methods=["POST"])
+def dtc_batch():
+    """Build a .dtc for EVERY player flight and return them zipped together.
+
+    Request: {"sessionId": "...", "flights": ["Uzi", ...] (optional),
+              "autoTacan": true}
+    Auto-assigns a deconflicted A/A (Y-band) TACAN channel per flight so
+    flights can yardstick off one another — skipping any channel a tanker or
+    carrier already uses. One click instead of exporting each jet by hand.
+    (v1.19.155)
+    """
+    body = request.get_json(silent=True) or {}
+    sid = body.get("sessionId")
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+
+    auto_tacan = body.get("autoTacan", True)
+    try:
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        full = extract_full_mission_data(mission_dict, session["theater"])
+        threats = full.get("threats", []) or []
+        groups = full.get("groups", []) or []
+
+        # Flight list: client-supplied (its dtcFlights) or derived from the
+        # session's client units.
+        flights = body.get("flights")
+        if not flights:
+            cu = find_client_units(mission_dict) or []
+            flights = sorted({u.get("groupName") for u in cu if u.get("groupName")})
+        flights = [f for f in (flights or []) if f]
+
+        # Channels already used by tankers / carriers / anyone — don't collide.
+        used = set()
+        for g in groups:
+            tc = g.get("tacan") or {}
+            ch = tc.get("channel")
+            try:
+                used.add(int(ch))
+            except (TypeError, ValueError):
+                pass
+
+        chan = 37  # A/A yardstick base (Y band)
+        files = []
+        for gname in flights:
+            fd = extract_flight_for_dtc(mission_dict, gname)
+            if not fd:
+                continue
+            server_wps = session["group_waypoints"].get(gname)
+            if server_wps and gname in session.get("dirty_groups", set()):
+                fd["waypoints"] = server_wps
+            fd["theatre"] = session["theater"]
+            fd["threats"] = threats
+            dtc = build_dtc_from_flight(fd, gname)
+            if auto_tacan:
+                while chan in used:
+                    chan += 1
+                used.add(chan)
+                try:
+                    dtc["data"]["WYPT"]["NAV_SETTINGS"]["TACAN"] = {
+                        "Channel": chan, "ChannelMode": 2, "Mode": 2, "OnOff": True}
+                except (KeyError, TypeError):
+                    pass
+                chan += 1
+            safe = str(gname).replace("/", "_").replace("\\", "_")
+            files.append((f"{safe}.dtc", serialize_dtc(dtc)))
+
+        if not files:
+            return jsonify({"error": "No player flights found to build DTCs for"}), 404
+
+        import zipfile as _zipfile
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as z:
+            for name, data in files:
+                z.writestr(name, data)
+        buf.seek(0)
+        return send_file(buf, mimetype="application/zip", as_attachment=True,
+                         download_name="DTC_all_flights.zip")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Batch DTC generation failed: {e}"}), 400
+
+
 @app.route("/api/dtc/preview", methods=["POST"])
 def dtc_preview():
     body = request.get_json()

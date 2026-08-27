@@ -3,7 +3,7 @@ import { useMissionStore } from '../../store/missionStore';
 import { useEffectiveGroups } from '../../store/effectiveGroups';
 import { useSopStore } from '../../sop/sopStore';
 import type { SOP } from '../../sop/types';
-import { dtcPreview, dtcGenerate } from '../../api/client';
+import { dtcPreview, dtcGenerate, dtcBatch } from '../../api/client';
 import { TabHelp } from '../components/TabHelp';
 
 /* ------------------------------------------------------------------ */
@@ -845,24 +845,18 @@ export function DtcTab() {
     }
   }, [sessionId, selectedFlight, dtcData]);
 
-  // One .dtc per player flight in a single zip. The flight open in the
-  // editor exports WITH its edits; the rest build from mission data + the
-  // SA auto-fill, which is the server's default when no edits are sent.
+  // One .dtc per player flight in a single zip, built server-side in one call
+  // with a deconflicted A/A (Y-band) TACAN auto-assigned per flight. (v1.19.155)
+  // Batch is the "all flights, hands-off" path — per-flight hand edits still
+  // go through the single-flight Generate button.
   const [exportingAll, setExportingAll] = useState(false);
   const handleExportAll = useCallback(async () => {
     if (!sessionId || dtcFlights.length === 0) return;
     setExportingAll(true);
     setError(null);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      for (const name of dtcFlights) {
-        const blob = await dtcGenerate(
-          sessionId, name, name === selectedFlight ? dtcData : undefined);
-        zip.file(`${name.replace(/[^A-Za-z0-9_-]+/g, '_')}.dtc`, blob);
-      }
-      const out = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(out);
+      const blob = await dtcBatch(sessionId, dtcFlights);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = 'DTC_all_flights.zip';
@@ -875,7 +869,7 @@ export function DtcTab() {
     } finally {
       setExportingAll(false);
     }
-  }, [sessionId, dtcFlights, selectedFlight, dtcData]);
+  }, [sessionId, dtcFlights]);
 
   if (dtcFlights.length === 0) {
     return (
@@ -937,9 +931,9 @@ export function DtcTab() {
         {dtcData && (
           <>
             <button onClick={handleExportAll} disabled={exportingAll}
-                    title="One .dtc per player flight; the open flight keeps its edits"
+                    title="Build a .dtc for every player flight in one zip, each with a deconflicted A/A (Y-band) TACAN auto-assigned"
                     style={{ ...btnStyle }}>
-              {exportingAll ? 'Exporting all…' : 'Export all (.zip)'}
+              {exportingAll ? 'Exporting all…' : 'Export all + auto-TACAN (.zip)'}
             </button>
             <button onClick={handleExport} disabled={exporting} style={{ ...btnStyle, background: '#1a4a2a', borderColor: '#2a6a3a' }}>
               {exporting ? 'Exporting...' : 'Export .dtc'}

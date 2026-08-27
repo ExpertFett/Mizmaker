@@ -137,6 +137,18 @@ export async function dtcGenerate(sessionId: string, groupName: string, edits: u
   return res.blob();
 }
 
+/** Build a .dtc for every player flight at once, returned as one .zip.
+ *  autoTacan assigns a deconflicted A/A (Y-band) TACAN per flight. */
+export async function dtcBatch(sessionId: string, flights: string[], autoTacan = true): Promise<Blob> {
+  const res = await fetch(`${BASE}/api/dtc/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, flights, autoTacan }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, 'Batch DTC generation failed'));
+  return res.blob();
+}
+
 // ── Triggers & Audio ──────────────────────────────────────────────────────
 
 import type { TriggerData, AudioFile, TriggerRule, PlannerDrawing } from '../types/mission';
