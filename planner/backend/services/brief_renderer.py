@@ -1509,29 +1509,105 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # satellite (theatre blurb as lead, scenario as body). Kills two thin
     # prose slides and gives the merge real visual weight. Falls back to a
     # flat, unmerged pair of slides when no imagery is available.
+    # v1.19.145 — bespoke prose slide per theme archetype (Phase 2). Situation
+    # and Commander's Intent share the same shape (eyebrow + title + prose +
+    # imagery), so one dispatcher skins both. Same archetypes as the cover.
+    def _prose_slide(label, eyebrow, title, body, metar=None):
+        nonlocal s
+        s = prs.slides.add_slide(BLANK); _apply_bg(s)
+        kind = _theme["cover"] if _own_deck else "standard"
+        fs = 16 if len(body) < 460 else (14 if len(body) < 820 else 12)
+
+        def _et():
+            _txt(s, Inches(0.6), Inches(0.5), Inches(11.5), Inches(0.4),
+                 eyebrow.upper(), size=14, bold=True, color=ACCENT, font=LABEL_F, shift=False)
+            _txt(s, Inches(0.57), Inches(0.85), Inches(11.5), Inches(0.85),
+                 title, size=32, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+
+        if kind == "imagery":
+            _ao_bg(s, "left"); _et()
+            _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0), body,
+                 size=fs, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.12)
+            if metar:
+                _chip(s, Inches(8.35), Inches(6.35), Inches(4.35), metar, mono=True)
+            _accent_bottom()
+        elif kind == "panel":
+            _place_inset(_ao_inset(1.0), Inches(7.0), Inches(1.55), Inches(5.83), Inches(4.7), border=BRIGHT)
+            _et()
+            _txt(s, Inches(0.62), Inches(1.9), Inches(6.1), Inches(4.6), body,
+                 size=fs, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.18)
+            if metar:
+                _chip(s, Inches(0.62), Inches(6.55), Inches(5.6), metar, mono=True)
+            _accent_bottom()
+        elif kind == "dossier":
+            _txt(s, Inches(0.6), Inches(0.5), Inches(8), Inches(0.4), "SECTION · " + label,
+                 size=14, color=ACCENT, font=DISPLAY_F, shift=False)
+            _txt(s, Inches(0.57), Inches(0.82), Inches(11), Inches(0.8), title,
+                 size=34, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+            _rect(Inches(0.6), Inches(1.55), Inches(12.1), Inches(0.02), fill=LIGHT)
+            _txt(s, Inches(0.62), Inches(1.85), Inches(6.7), Inches(4.6), body,
+                 size=fs + 1, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.35)
+            _place_inset(_ao_inset(0.9), Inches(8.3), Inches(1.9), Inches(4.3), Inches(3.0),
+                         border=BRIGHT, lw=8, rot=-2)
+            if metar:
+                _txt(s, Inches(0.62), Inches(6.6), Inches(11), Inches(0.4), "WX: " + metar,
+                     size=15, color=LIGHT, font=BODY_F, shift=False)
+        elif kind == "chart":
+            _txt(s, Inches(0.6), Inches(0.5), Inches(9), Inches(0.4), "SECTION · " + label,
+                 size=14, color=ACCENT, font=MONO_F, shift=False)
+            _txt(s, Inches(0.57), Inches(0.82), Inches(11), Inches(0.8), title,
+                 size=34, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+            _txt(s, Inches(0.62), Inches(1.75), Inches(6.7), Inches(4.7), body,
+                 size=fs, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.3)
+            _place_inset(_ao_inset(0.85), Inches(8.4), Inches(1.7), Inches(4.4), Inches(3.4), border=BORDER)
+            if metar:
+                _txt(s, Inches(0.62), Inches(6.55), Inches(11), Inches(0.4), "WX · " + metar,
+                     size=13, color=ACCENT, font=MONO_F, shift=False)
+        elif kind == "editorial":
+            _rect(Inches(0.6), Inches(0.6), Inches(12.13), Inches(0.02), fill=LIGHT)
+            _txt(s, Inches(0.62), Inches(0.74), Inches(9), Inches(0.4), eyebrow.upper(),
+                 size=14, bold=True, color=ACCENT, font=LABEL_F, shift=False)
+            _txt(s, Inches(0.57), Inches(1.1), Inches(9), Inches(0.8), title,
+                 size=42, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+            _rect(Inches(0.62), Inches(2.0), Inches(12.13), Inches(0.015), fill=BORDER)
+            parts = body.split("\n\n"); mid = (len(parts) + 1) // 2
+            _txt(s, Inches(0.62), Inches(2.2), Inches(3.65), Inches(4.4), "\n\n".join(parts[:mid]),
+                 size=13, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.4)
+            _txt(s, Inches(4.45), Inches(2.2), Inches(3.65), Inches(4.4), "\n\n".join(parts[mid:]),
+                 size=13, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.4)
+            _place_inset(_ao_inset(1.0), Inches(8.4), Inches(2.2), Inches(4.3), Inches(3.9))
+        elif kind == "swiss":
+            _rect(Inches(0.62), Inches(0.6), Inches(0.4), Inches(0.4), fill=ACCENT)
+            _txt(s, Inches(1.2), Inches(0.66), Inches(8), Inches(0.4), "01 / " + label.title(),
+                 size=15, bold=True, color=BRIGHT, font=LABEL_F, shift=False)
+            _txt(s, Inches(0.57), Inches(1.2), Inches(7), Inches(1.6), title,
+                 size=48, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False, line_spacing=0.95)
+            _rect(Inches(0.6), Inches(3.0), Inches(6.6), Inches(0.02), fill=BRIGHT)
+            _txt(s, Inches(0.6), Inches(3.2), Inches(6.6), Inches(3.4), body,
+                 size=fs + 1, color=LIGHT, font=BODY_F, shift=False, line_spacing=1.4)
+            _place_inset(_ao_inset(1.0), Inches(7.4), Inches(0.6), Inches(5.3), Inches(4.6))
+        elif kind == "terminal":
+            _txt(s, Inches(0.6), Inches(0.5), Inches(12), Inches(0.4), "> " + label.replace(" ", "_"),
+                 size=20, color=ACCENT, font=MONO_F, shift=False)
+            _txt(s, Inches(0.56), Inches(0.95), Inches(12), Inches(0.6), title.upper(),
+                 size=34, bold=True, color=BRIGHT, font=DISPLAY_F, shift=False)
+            _place_inset(_ao_inset(1.0), Inches(7.0), Inches(1.7), Inches(5.6), Inches(3.8), border=ACCENT)
+            _txt(s, Inches(0.6), Inches(1.75), Inches(6.0), Inches(4.6), body,
+                 size=fs + 2, color=ACCENT, font=MONO_F, shift=False, line_spacing=1.25)
+            if metar:
+                _txt(s, Inches(0.6), Inches(6.5), Inches(12), Inches(0.4), "> WX: " + metar,
+                     size=16, color=ACCENT, font=MONO_F, shift=False)
+        else:  # standard / classic
+            _slide_header(s, label)
+            _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8), body, size=16, color=LIGHT)
+        return s
+
     _theatre = (brief.get("theatre_overview") or "").strip()
     _scenario = (brief.get("scenario") or "").strip()
     if _theatre or _scenario:
-        s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        on_img = _ao_bg(s, "left")
         _body = "\n\n".join([p for p in (_theatre, _scenario) if p])
-        if on_img:
-            _img_header(s, "Situation", "Area of Operations")
-            # Auto-shrink so the merged prose fits the left column beside
-            # the map instead of clipping.
-            fs = 16 if len(_body) < 460 else (14 if len(_body) < 820 else 12)
-            _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
-                 _body, size=fs, color=LIGHT, font=BODY_F, shift=False,
-                 line_spacing=1.12)
-            # METAR chip in the map's lower-right — a quick-glance sky line
-            # that also stops the imagery side reading as empty.
-            _m = (brief.get("metar") or "").strip()
-            if _m:
-                _chip(s, Inches(8.35), Inches(6.35), Inches(4.35), _m, mono=True)
-        else:
-            _slide_header(s, "SITUATION")
-            _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-                 _body, size=16, color=LIGHT)
+        _prose_slide("SITUATION", "Situation", "Area of Operations", _body,
+                     metar=(brief.get("metar") or "").strip() or None)
 
     # ---------- Slide 3b: Weather ----------------------------------------
     # A brief always briefs the sky. The wing brief carried no weather at all
@@ -1606,19 +1682,8 @@ def render_wing_brief(brief: Dict[str, Any], base_template_b64: Optional[str] = 
     # Omitted when empty: a brief should never carry a blank slide
     # or a "go author this" prompt.
     if (brief.get("commanders_intent") or "").strip():
-        s = prs.slides.add_slide(BLANK); _apply_bg(s)
-        on_img = _ao_bg(s, "left")
-        _ci = brief["commanders_intent"]
-        if on_img:
-            _img_header(s, "Commander's Intent", "The Plan")
-            fs = 17 if len(_ci) < 460 else (15 if len(_ci) < 820 else 13)
-            _txt(s, Inches(0.62), Inches(1.9), Inches(7.35), Inches(5.0),
-                 _ci, size=fs, color=LIGHT, font=BODY_F, shift=False,
-                 line_spacing=1.15)
-        else:
-            _slide_header(s, "COMMANDER'S INTENT")
-            _txt(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.8),
-                 _ci, size=16, color=LIGHT)
+        _prose_slide("COMMANDER'S INTENT", "Commander's Intent", "The Plan",
+                     brief["commanders_intent"])
 
     # ---------- Slide 4b: Route overview map (client-rendered) -----------
     # All flight tracks + threat rings on one image (captureOverviewImage,
