@@ -273,7 +273,24 @@ without Fett's go-ahead.
   / captureRouteImage and rendered into PPTX slides. Discovered while
   re-auditing the parked list 2026-06-09.
 
-- **Weapon-employment kneeboards** for newer pilots and training
+- **~~Weapon-employment kneeboards~~ — SHIPPED.** Built and wired:
+  `kneeboard/weaponData.ts` (WEAPONS catalog, **21 stores** as of
+  v1.19.147) + `kneeboard/WeaponCard.tsx` (paginated card: ENVELOPE /
+  EMPLOYMENT PROFILE / SWITCHOLOGY / COMMON MISTAKES + NATOPS
+  disclaimer). Auto-injection is real: `matchWeaponsToLoadout(pylonNames)`
+  scans each flight's actual pylon display-names (case-insensitive
+  substring `matches[]`) and the `weaponsAuto` card key in
+  `KneeboardTab.tsx` injects exactly the cards for what that flight
+  carries; a manual picker also lists all stores. **Match patterns were
+  verified against the live pydcs WEAPONS_DB — 0 collisions, 93/~Hornet
+  stores routed** (pods/tanks/smoke/practice/TALD correctly card-less).
+  Footgun when adding stores: patterns are plain substrings, so short
+  ones collide (`LAU-10` ⊂ `LAU-105` Sidewinder rail; bare `Paveway` ⊂
+  GBU-24; bare `Harpoon` ⊂ AGM-84E SLAM). Re-run the collision check in
+  `planner/backend` against `reference.loader.get_weapons()` after edits.
+  Original parked spec below (for reference):
+
+- ~~**Weapon-employment kneeboards**~~ for newer pilots and training
   missions. Per-weapon reference cards modeled on the SAM threat-
   cards style (DEFEND banner up top, layout faithful to existing
   squadron cards). Each card covers a single store: AGM-65 family,
