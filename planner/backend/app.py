@@ -2387,6 +2387,42 @@ def brief_build_wing():
     return jsonify(brief)
 
 
+@app.route("/api/brief/pkt", methods=["POST"])
+def brief_pkt():
+    """Build + render a PKT intelligence packet (.pptx) from a session's
+    mission. One-shot download — the packet is auto-generated (recognition +
+    how-to-fight), not an editable dict like the wing brief. (v1.19.143)
+    """
+    body = request.get_json(silent=True) or {}
+    sid = body.get("sessionId")
+    with _lock:
+        session = sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found or expired"}), 404
+    try:
+        from services.miz_parser import parse_mission_text, extract_full_mission_data
+        from services.pkt_builder import build_pkt
+        from services.pkt_renderer import render_pkt
+        mission_dict = parse_mission_text(session["original_mission_text"])
+        mission_data = extract_full_mission_data(
+            mission_dict, session["theater"], warehouses_text=_warehouses_for(session))
+        pkt = build_pkt(
+            mission_data=mission_data, theater=session["theater"],
+            filename=session.get("filename") or "",
+            marking=(body.get("marking") or "TOP SECRET // REL TO COALITION"),
+            decl_on=(body.get("declOn") or ""))
+        pptx_bytes = render_pkt(pkt)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"PKT build failed: {e}"}), 500
+    name = (pkt.get("packet_id") or "PKT") + ".pptx"
+    return send_file(
+        io.BytesIO(pptx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        as_attachment=True, download_name=name)
+
+
 @app.route("/api/brief/preview-template", methods=["POST"])
 def brief_preview_template():
     """Render a custom .pptx template (with {{tokens}} substituted) to

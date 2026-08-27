@@ -530,6 +530,36 @@ export function BriefGenTab() {
     }
   };
 
+  // v1.19.143 — download the PKT intelligence packet (auto-generated .pptx:
+  // friendly OOB, A/A threat grid, and recognition cards with how-to-fight).
+  const handlePkt = async () => {
+    if (!sessionId) return;
+    setRendering(true); setError(null);
+    try {
+      const res = await fetch('/api/brief/pkt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'PKT build failed' }));
+        throw new Error(err.error || 'PKT build failed');
+      }
+      const blob = await res.blob();
+      const safe = ((brief?.mission_name as string) || 'PKT').replace(/[/\\]/g, '_');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PKT_${safe}.pptx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRendering(false);
+    }
+  };
+
   const handleRenderPackage = async () => {
     if (!brief || !sessionId) return;
     // Package render only supports pptx/pdf right now (per-slide image
@@ -866,6 +896,14 @@ export function BriefGenTab() {
               title="Download wing brief + one brief per blue flight as a single .zip (pptx or pdf only)"
             >
               {rendering ? 'Rendering…' : 'Wing + Flights (.zip)'}
+            </button>
+            <button
+              onClick={handlePkt}
+              disabled={rendering || !sessionId}
+              style={{ ...btnSecondary, opacity: rendering ? 0.5 : 1 }}
+              title="Download the PKT intelligence packet (.pptx): friendly OOB, A/A threat grid, and recognition cards with how-to-fight"
+            >
+              {rendering ? 'Rendering…' : 'Intel Packet (PKT)'}
             </button>
             <select
               value={theme}
