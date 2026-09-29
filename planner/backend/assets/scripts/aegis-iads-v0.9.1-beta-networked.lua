@@ -136,7 +136,7 @@
 
 AEGIS = {}
 AEGIS.__index = AEGIS
-AEGIS.Version = "0.9.0-beta-dynamic"
+AEGIS.Version = "0.9.0-beta-dynamic+opt.1"
 
 ---------------------------------------------------------------------------
 -- SYSTEM DATABASE
@@ -188,6 +188,27 @@ AEGIS.SYSTEM_DB = {
 
 -- Fallback for unknown system types
 AEGIS.SYSTEM_DB.UNKNOWN = { wez=15, nez=7, actRange=20, altMin=50, altMax=60000, cat="AREA", needsPower=false, selfProtect=false, trackingBias=1.0 }
+
+-- DCS:OPT engine fix (2026-09-28): MINIMUM RANGE.
+-- Before this AEGIS had no dead zone: a site woke up and went hot for a jet
+-- passing overhead that it physically could not shoot, painting itself for
+-- HARMs for nothing. Values are APPROXIMATE published minimum engagement
+-- ranges (slant, NM); 0 = no dead zone (guns / gun-missile systems).
+-- Tune before AEGIS:New with  AEGIS.SYSTEM_DB.SA10.minRange = 3
+-- or switch the whole feature off with config  minRangeEnabled = false.
+-- Applied to WAKE-UP decisions only; a site already ALERT keeps tracking a
+-- target inside its dead zone (it will exit into the WEZ).
+AEGIS.MIN_RANGE_NM = {
+  SA2 = 3.5, SA3 = 1.8, SA5 = 9, SA6 = 2.2, SA8 = 0.8, SA10 = 2.7, SA10B = 2.7, SA10C = 2.7,
+  SA11 = 1.6, SA12 = 3.5, SA12G = 3.5, SA13 = 0.4, SA15 = 0.8, SA15CH = 0.8, SA17 = 1.6,
+  SA19 = 0, SA20A = 2.7, SA20B = 2.7, SA21 = 1.6, SA22 = 0, SA23 = 3.5, SA23G = 3.5,
+  SA23V4 = 3.5, SA23V4G = 3.5, SAMPT = 1.6, HAWK = 0.8, PATRIOT = 1.6, NASAMS = 0.5,
+  GEPARD = 0, SHILKA = 0, ROLAND = 0.3, RAPIER = 0.3, UNKNOWN = 0,
+}
+for code, d in pairs(AEGIS.SYSTEM_DB) do
+  if d.minRange == nil then d.minRange = AEGIS.MIN_RANGE_NM[code] or 0 end
+end
+
 
 ---------------------------------------------------------------------------
 -- DYNAMIC DISCOVERY: DCS unit type -> AEGIS system code (v0.9.0-dynamic)
@@ -587,6 +608,15 @@ function AEGIS:New(side, config)
   self.jamEmconOffMaxStd = config.jamEmconOffMaxStd or AEGIS.JAM_EMCON_OFF_MAX_STD
   -- EW detection range override
   self.ewDetectionRange     = config.ewDetectionRange     or AEGIS.EW_DETECTION_RANGE
+
+  -- DCS:OPT engine fixes (2026-09-28). Both default ON; false = old behaviour.
+  self.minRangeEnabled = config.minRangeEnabled
+  if self.minRangeEnabled == nil then self.minRangeEnabled = true end
+  -- altMin was compared against feet MSL, so terrain elevation counted
+  -- AGAINST the aircraft (300 ft AGL over a 3,000 ft plateau cleared every
+  -- floor). Floor is now feet AGL; the ceiling (altMax) stays MSL.
+  self.altFloorAGL = config.altFloorAGL
+  if self.altFloorAGL == nil then self.altFloorAGL = true end
 
   -- Dynamic discovery (v0.9.0-dynamic): adopt air-defense groups spawned at runtime
   self.dynamicDiscovery = config.dynamicDiscovery
@@ -1546,10 +1576,7 @@ function AEGIS:_PollNextSector()
                     end
                   end
                   if pos then
-                    table.insert(contacts, {
-                      pos = pos,
-                      alt = pos.y / AEGIS.FT_TO_M,
-                    })
+                    table.insert(contacts, self:_MakeContact(pos))
                     contactCount = contactCount + 1
                     addedAny = true
                   end
@@ -1850,7 +1877,7 @@ end
 -- Respects per-site range overrides from naming convention or API.
 -- Uses squared distance to avoid sqrt.
 -- @return #boolean true if at least one contact is in the zone
-function AEGIS:_CheckWEZ(sam, contacts)
+function AEGIS:_CheckWEZ(sam, contacts, ignoreMin)
   if not sam.pos or not sam.sysData then return false end
   
   local zone = self.siteZoneOverrides[sam.name] or self.defaultZone
@@ -1870,7 +1897,7 @@ function AEGIS:_CheckWEZ(sam, contacts)
   
   for _, contact in ipairs(contacts) do
     -- Altitude check
-    if contact.alt >= altMin and contact.alt <= altMax then
+    if self:_AltOK(sam.sysData, contact) and (ignoreMin or not self:_InsideMinRange(sam, contact)) then
       -- Range check (2D horizontal, squared -- no sqrt needed)
       local dx = sam.pos.x - contact.pos.x
       local dz = sam.pos.z - contact.pos.z
@@ -1897,7 +1924,7 @@ function AEGIS:_CheckFullWEZ(sam, contacts)
   local altMin = sam.sysData.altMin
   local altMax = sam.sysData.altMax
   for _, contact in ipairs(contacts) do
-    if contact.alt >= altMin and contact.alt <= altMax then
+    if self:_AltOK(sam.sysData, contact) then  -- ALERT stay-hot: dead zone deliberately NOT applied
       local dx = sam.pos.x - contact.pos.x
       local dz = sam.pos.z - contact.pos.z
       local horizDistSq = dx*dx + dz*dz
@@ -2027,7 +2054,7 @@ function AEGIS:_CheckActivation(sam, contacts)
   local nearestSq = math.huge
 
   for _, contact in ipairs(contacts) do
-    if contact.alt >= altMin and contact.alt <= altMax then
+    if self:_AltOK(sam.sysData, contact) and not self:_InsideMinRange(sam, contact) then
       local dx = sam.pos.x - contact.pos.x
       local dz = sam.pos.z - contact.pos.z
       local horizDistSq = dx*dx + dz*dz
@@ -2047,7 +2074,7 @@ function AEGIS:_CheckActivation(sam, contacts)
 end
 -- Converts getDetectedTargets() output to contact format for _CheckWEZ().
 -- @return #boolean true if at least one detected target is in the WEZ
-function AEGIS:_DetectedInWEZ(sam, detected)
+function AEGIS:_DetectedInWEZ(sam, detected, ignoreMin)
   if not detected or #detected == 0 then return false end
   
   local contacts = {}
@@ -2068,16 +2095,13 @@ function AEGIS:_DetectedInWEZ(sam, detected)
       if validContact then
         local pos = det.object:getPoint()
         if pos then
-          table.insert(contacts, {
-            pos = pos,
-            alt = pos.y / AEGIS.FT_TO_M,
-          })
+          table.insert(contacts, self:_MakeContact(pos))
         end
       end
     end
   end
   
-  return self:_CheckWEZ(sam, contacts)
+  return self:_CheckWEZ(sam, contacts, ignoreMin)
 end
 
 ---------------------------------------------------------------------------
@@ -2346,7 +2370,7 @@ function AEGIS:_EmconEngagedMonitor(samName, gen)
     local ctrl = grp:getController()
     local detected = ctrl:getDetectedTargets(Controller.Detection.RADAR)
     
-    if aegis:_DetectedInWEZ(sam, detected) then
+    if aegis:_DetectedInWEZ(sam, detected, true) then  -- engaged: dead zone still counts
       sam.lastContactTime = timer.getTime()
     end
     
@@ -4900,6 +4924,38 @@ function AEGIS:_Log(msg, warn)
     env.info(p .. msg)
     if self.debug then trigger.action.outText(p .. msg, 8) end
   end
+end
+
+-- DCS:OPT engine fixes (2026-09-28): contact altitude + minimum range.
+
+--- Build a contact from a world point. alt = feet MSL (ceiling gate);
+--- agl = feet above the terrain under the contact (floor gate). One
+--- land.getHeight per contact per poll.
+function AEGIS:_MakeContact(pos)
+  local c = { pos = pos, alt = pos.y / AEGIS.FT_TO_M }
+  if self.altFloorAGL then
+    local ok, h = pcall(land.getHeight, { x = pos.x, y = pos.z })
+    if ok and type(h) == "number" then c.agl = (pos.y - h) / AEGIS.FT_TO_M end
+  end
+  return c
+end
+
+--- Altitude gate: floor on AGL (falls back to MSL), ceiling on MSL.
+function AEGIS:_AltOK(sysData, contact)
+  local floorAlt = contact.agl or contact.alt
+  return floorAlt >= sysData.altMin and contact.alt <= sysData.altMax
+end
+
+--- Is the contact inside this SAM's minimum-range dead zone (slant range)?
+function AEGIS:_InsideMinRange(sam, contact)
+  if not self.minRangeEnabled then return false end
+  local mr = sam.sysData and sam.sysData.minRange
+  if not mr or mr <= 0 then return false end
+  local dx = sam.pos.x - contact.pos.x
+  local dy = (sam.pos.y or contact.pos.y) - contact.pos.y
+  local dz = sam.pos.z - contact.pos.z
+  local mrM = mr * AEGIS.NM_TO_M
+  return (dx*dx + dy*dy + dz*dz) < mrM * mrM
 end
 
 -- _Warn was called (EW poll recovery + dead-EW path) but never defined, so the

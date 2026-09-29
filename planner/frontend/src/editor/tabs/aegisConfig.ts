@@ -11,7 +11,8 @@
  * the engine's own poll loop is unchanged.
  *
  * Defaults below MIRROR the constants in
- * backend/assets/scripts/aegis-iads-v0.8.4-beta.lua (the bundled engine).
+ * backend/assets/scripts/aegis-iads-v0.8.4-beta.lua (the bundled engine,
+ * v0.8.4-beta+opt.1 — includes the DCS:OPT min-range / AGL-floor fixes).
  * Only keys that differ from the engine default are emitted, so the script
  * stays short and a future engine default change still takes effect.
  */
@@ -34,6 +35,10 @@ export const AEGIS_OPTIONS: AegisOptionDef[] = [
   // Core
   { key: 'defaultZone', label: 'Default engagement zone', group: 'Core', default: 'WEZ', choices: ['WEZ', 'NEZ'], primary: true,
     help: 'WEZ = shoot at max range. NEZ = hold fire until the no-escape zone (ambush). Per-site -NEZ/-WEZ suffixes override.' },
+  { key: 'altFloorAGL', label: 'Altitude floor is AGL', group: 'Core', default: true, primary: true,
+    help: 'Engine fix (v0.8.4+opt.1): SAM minimum altitude measured above the ground, not sea level. Off = old MSL behaviour, where terrain height counted against low flyers.' },
+  { key: 'minRangeEnabled', label: 'Minimum-range dead zone', group: 'Core', default: true, primary: true,
+    help: 'Engine fix (v0.8.4+opt.1): a dark site will not wake up for a target inside its minimum range. Sites already hot keep tracking it.' },
   { key: 'ewPollInterval', label: 'EW poll interval', group: 'Core', default: 10, unit: 's',
     help: 'How often each sector reads its EW picture. Lower = faster cueing, more server work.' },
   { key: 'alertTimeout', label: 'Alert timeout', group: 'Core', default: 60, unit: 's' },
