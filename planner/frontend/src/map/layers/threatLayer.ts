@@ -22,6 +22,15 @@ const THREAT_STYLES: Record<string, Style> = {
   }),
 };
 
+/** EW radar rings: dashed, no fill. The radius is a NOMINAL detection range —
+ *  terrain and radar horizon cut it hard for low flyers — so it must not
+ *  read as a solid weapon ring. */
+const EW_STYLES: Record<string, Style> = {
+  red: new Style({ stroke: new Stroke({ color: 'rgba(217, 80, 80, 0.35)', width: 1, lineDash: [8, 6] }) }),
+  blue: new Style({ stroke: new Stroke({ color: 'rgba(74, 143, 212, 0.35)', width: 1, lineDash: [8, 6] }) }),
+  neutrals: new Style({ stroke: new Stroke({ color: 'rgba(143, 168, 192, 0.3)', width: 1, lineDash: [8, 6] }) }),
+};
+
 export function createThreatLayer(): VectorLayer {
   return new VectorLayer({
     source: new VectorSource(),
@@ -56,7 +65,8 @@ export function populateThreatLayer(
       geometry: new Circle(center, radiusInProjection),
       threat: t,
     });
-    feature.setStyle(THREAT_STYLES[t.coalition] || THREAT_STYLES.red);
+    const styles = t.role === 'ew' ? EW_STYLES : THREAT_STYLES;
+    feature.setStyle(styles[t.coalition] || styles.red);
     feature.setId(`threat-${t.name}-${t.x}-${t.y}`);
     source.addFeature(feature);
   }

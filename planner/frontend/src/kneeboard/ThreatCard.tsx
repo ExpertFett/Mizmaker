@@ -9,6 +9,7 @@ import type { ThreatRing, MissionOverviewData } from '../types/mission';
 import { TileMap, createProjection } from './TileMap';
 import { metersToNm } from '../utils/conversions';
 import { clusterThreatSites } from './threatSites';
+import { lookupAirDefense } from '../data/airDefense';
 import { DEFAULT_OPTIONS, DENSITY_ROWS, type KneeboardOptions } from './options';
 
 /** How much of the threat picture to reveal on the kneeboard. Used as
@@ -100,7 +101,7 @@ export function threatCardPageCount(
   return 1 + Math.ceil((rows.length - page1) / pageN);
 }
 
-/* ---- SAM lookup (mirrors ThreatLibraryTab) ---- */
+/* ---- SAM lookup (shared air-defense DB — data/airDefense) ---- */
 
 interface SamInfo {
   nato: string;
@@ -110,34 +111,13 @@ interface SamInfo {
   category: string;
 }
 
-const SAM_DB: Record<string, SamInfo> = {
-  'S-300':     { nato: 'SA-10 Grumble',   guidance: 'SAR',  rangeKm: 120, altMaxFt: 98000, category: 'strategic' },
-  'Patriot':   { nato: 'MIM-104',         guidance: 'TVM',  rangeKm: 100, altMaxFt: 79000, category: 'strategic' },
-  'Hawk':      { nato: 'SA-24 / MIM-23',  guidance: 'SACW', rangeKm: 45,  altMaxFt: 45000, category: 'medium' },
-  'SA-11':     { nato: 'SA-11 Gadfly',    guidance: 'SAR',  rangeKm: 45,  altMaxFt: 72000, category: 'medium' },
-  'Kub':       { nato: 'SA-6 Gainful',    guidance: 'SAR',  rangeKm: 24,  altMaxFt: 40000, category: 'medium' },
-  'Osa':       { nato: 'SA-8 Gecko',      guidance: 'RCMD', rangeKm: 9,   altMaxFt: 16000, category: 'short' },
-  'Tor':       { nato: 'SA-15 Gauntlet',  guidance: 'RCMD', rangeKm: 12,  altMaxFt: 20000, category: 'short' },
-  'SA-15':     { nato: 'SA-15 Gauntlet',  guidance: 'RCMD', rangeKm: 12,  altMaxFt: 20000, category: 'short' },
-  'Tunguska':  { nato: 'SA-19 Grison',    guidance: 'RDR',  rangeKm: 8,   altMaxFt: 11000, category: 'shorad' },
-  '2S6':       { nato: 'SA-19 Grison',    guidance: 'RDR',  rangeKm: 8,   altMaxFt: 11000, category: 'shorad' },
-  'Strela-10': { nato: 'SA-13 Gopher',    guidance: 'IR',   rangeKm: 5,   altMaxFt: 11500, category: 'shorad' },
-  'Strela-1':  { nato: 'SA-9 Gaskin',     guidance: 'IR',   rangeKm: 4.2, altMaxFt: 11500, category: 'shorad' },
-  'SA-9':      { nato: 'SA-9 Gaskin',     guidance: 'IR',   rangeKm: 4.2, altMaxFt: 11500, category: 'shorad' },
-  'Roland':    { nato: 'Roland',          guidance: 'RCMD', rangeKm: 8,   altMaxFt: 19700, category: 'short' },
-  'Avenger':   { nato: 'Avenger',         guidance: 'IR',   rangeKm: 5.5, altMaxFt: 12500, category: 'shorad' },
-  'Linebacker':{ nato: 'Linebacker',      guidance: 'IR',   rangeKm: 8,   altMaxFt: 12500, category: 'shorad' },
-  'Vulcan':    { nato: 'M163 VADS',       guidance: 'RDR',  rangeKm: 1.5, altMaxFt: 3000,  category: 'aaa' },
-  'Shilka':    { nato: 'ZSU-23-4',        guidance: 'RDR',  rangeKm: 2.5, altMaxFt: 5000,  category: 'aaa' },
-  'ZU-23':     { nato: 'ZU-23',           guidance: 'OPT',  rangeKm: 2.5, altMaxFt: 5000,  category: 'aaa' },
-  'rapier':    { nato: 'Rapier',          guidance: 'RCMD', rangeKm: 7,   altMaxFt: 10000, category: 'short' },
-};
-
 function lookupSam(type: string): SamInfo | null {
-  for (const [key, info] of Object.entries(SAM_DB)) {
-    if (type.toLowerCase().includes(key.toLowerCase())) return info;
-  }
-  return null;
+  const s = lookupAirDefense(type);
+  if (!s) return null;
+  return {
+    nato: s.nato, guidance: s.guidanceShort,
+    rangeKm: s.rangeKm, altMaxFt: s.altMaxFt ?? 0, category: s.category,
+  };
 }
 
 const CAT_COLORS: Record<string, string> = {

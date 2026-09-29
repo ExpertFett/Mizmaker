@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 
 from services.projection import dcs_to_latlon, THEATERS
 
-from reference.loader import get_sam_threat_ranges, get_airbases, get_lotatc_airbases
+from reference.loader import get_sam_threat_ranges, get_ewr_ranges, get_airbases, get_lotatc_airbases
 
 SAM_THREAT_RANGES: Dict[str, int] = get_sam_threat_ranges()
+# EW radars ride in their own list (ewRadars[]), NOT threats[] — threats[] feeds
+# briefs, AI narratives, route exposure and MEZ auto-fill, all of which mean
+# "things that shoot". A 300 km EW ring in there would flag every leg.
+EWR_RANGES: Dict[str, int] = get_ewr_ranges()
 _THEATER_AIRBASES = get_airbases()
 _LOTATC_AIRBASES = get_lotatc_airbases()
 
@@ -423,7 +427,7 @@ def extract_full_mission_data(
     options would render as "Not Set" (gray) when the user has actually
     forced them off.
 
-    Returns dict with: overview, groups[], units[], threats[], airbases[]
+    Returns dict with: overview, groups[], units[], threats[], ewRadars[], airbases[]
     """
     has_projection = theater in THEATERS
 
@@ -431,6 +435,7 @@ def extract_full_mission_data(
     groups = []
     units = []
     threats = []
+    ew_radars = []
     airbases = []
 
     # Load static airbase data for this theater, then overlay this mission's
@@ -487,6 +492,19 @@ def extract_full_mission_data(
                                 # marker is suppressed.
                                 "groupId": g["groupId"],
                             })
+                        elif unit["type"] in EWR_RANGES:
+                            ew_radars.append({
+                                "name": unit["name"],
+                                "type": unit["type"],
+                                "x": unit["x"],
+                                "y": unit["y"],
+                                "lat": unit.get("lat"),
+                                "lon": unit.get("lon"),
+                                "range": EWR_RANGES[unit["type"]],
+                                "coalition": side,
+                                "groupId": g["groupId"],
+                                "role": "ew",
+                            })
 
     drawings = _extract_drawings(mission_dict, theater, has_projection)
     trigger_zones = _extract_trigger_zones(mission_dict, theater, has_projection)
@@ -497,6 +515,7 @@ def extract_full_mission_data(
         "groups": groups,
         "units": units,
         "threats": threats,
+        "ewRadars": ew_radars,
         "airbases": airbases,
         "drawings": drawings,
         "triggerZones": trigger_zones,

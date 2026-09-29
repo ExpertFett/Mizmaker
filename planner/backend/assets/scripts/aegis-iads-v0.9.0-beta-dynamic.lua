@@ -4727,6 +4727,13 @@ function AEGIS:_Log(msg, warn)
   end
 end
 
+-- _Warn was called (EW poll recovery + dead-EW path) but never defined, so the
+-- recovery handler itself threw and DCS dropped the EW poll loop for good.
+-- Added by DCS:OPT 2026-09-28.
+function AEGIS:_Warn(msg)
+  self:_Log(msg, true)
+end
+
 function AEGIS:_PrintTopology()
   self:_Log("=== TOPOLOGY ===")
   for name, sec in pairs(self.sectors) do

@@ -220,3 +220,67 @@ export async function applyFrameworkTriggers(
   }
   return added;
 }
+
+/** Rule-name prefix of the generated AEGIS setup rules (one per side). */
+export const AEGIS_SETUP_RULE_PREFIX = 'AEGIS Setup (';
+
+/**
+ * Does the mission already start AEGIS some other way — a hand-written
+ * DO SCRIPT calling AEGIS:New, or a DO SCRIPT FILE that looks like a setup
+ * file (not the engine itself)? Adding ours on top would run TWO IADS
+ * instances fighting over the same groups.
+ */
+export function findForeignAegisSetup(rules: TriggerRule[]): string | null {
+  for (const r of rules) {
+    if (r.name.startsWith(AEGIS_SETUP_RULE_PREFIX)) continue;
+    for (const a of r.actions ?? []) {
+      const p = a.params as { lua?: string; file?: string };
+      if (a.type === 'DO_SCRIPT' && /AEGIS\s*:\s*New\s*\(/.test(p.lua || '')) return r.name;
+      if (a.type === 'DO_SCRIPT_FILE' && p.file) {
+        const f = p.file.toLowerCase();
+        if (f.includes('aegis') && !f.includes('aegis-iads')) return r.name;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Upsert the generated per-side AEGIS setup rules (fetch → merge → save, like
+ * applyFrameworkTriggers). Previous generated rules are replaced; sides no
+ * longer in `setups` are dropped. Fires once at TIME MORE 2 so it runs after
+ * the mission-start engine load.
+ *
+ * Returns { written, blockedBy }: blockedBy names a foreign setup rule, in
+ * which case NOTHING is written.
+ */
+export async function applyAegisSetupTriggers(
+  sessionId: string,
+  setups: { side: string; lua: string }[],
+): Promise<{ written: string[]; blockedBy: string | null }> {
+  const data = await getTriggers(sessionId);
+  const existing: TriggerRule[] = data.rules || [];
+  const blockedBy = findForeignAegisSetup(existing);
+  if (blockedBy) return { written: [], blockedBy };
+
+  const merged = existing.filter((r) => !r.name.startsWith(AEGIS_SETUP_RULE_PREFIX));
+  let nextId = existing.reduce((max, r) => Math.max(max, r.id), 0);
+  const written: string[] = [];
+  for (const s of setups) {
+    nextId += 1;
+    const name = `${AEGIS_SETUP_RULE_PREFIX}${s.side})`;
+    merged.push({
+      id: nextId,
+      name,
+      enabled: true,
+      oneTime: false,
+      eventType: 'once',
+      conditions: [{ type: 'TIME_MORE_THAN', params: { seconds: 2 } } as never],
+      actions: [{ type: 'DO_SCRIPT', params: { lua: s.lua } } as never],
+    });
+    written.push(name);
+  }
+  await saveTriggers(sessionId, { rules: merged });
+  useTriggerStore.getState().loadTriggers(merged, data.flags || [], data.audioFiles || []);
+  return { written, blockedBy: null };
+}

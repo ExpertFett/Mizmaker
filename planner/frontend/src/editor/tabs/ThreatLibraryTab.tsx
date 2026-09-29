@@ -2,9 +2,10 @@ import { useState, useMemo, useCallback } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { isPlayerGroup } from '../../utils/groups';
 import type { ThreatRing, MissionGroup } from '../../types/mission';
+import { lookupAirDefense } from '../../data/airDefense';
 
 /* ------------------------------------------------------------------ */
-/* SAM threat database — NATO designation, guidance, typical ranges     */
+/* SAM threat info — from the shared air-defense DB (data/airDefense)  */
 /* ------------------------------------------------------------------ */
 
 interface SamInfo {
@@ -13,38 +14,16 @@ interface SamInfo {
   guidance: string;
   rangeKm: number;
   altMaxFt: number;
-  category: 'strategic' | 'medium' | 'short' | 'shorad' | 'manpad' | 'aaa';
+  category: 'strategic' | 'medium' | 'short' | 'shorad' | 'manpad' | 'aaa' | 'ew';
 }
 
-/** Maps DCS unit type substrings → SAM info for display enrichment */
-const SAM_DATABASE: Record<string, SamInfo> = {
-  'S-300':    { nato: 'SA-10 Grumble',    system: 'S-300PS',       guidance: 'Semi-active radar', rangeKm: 120, altMaxFt: 98000, category: 'strategic' },
-  'Patriot':  { nato: 'MIM-104 Patriot',  system: 'Patriot',       guidance: 'Track-via-missile', rangeKm: 100, altMaxFt: 79000, category: 'strategic' },
-  'Hawk':     { nato: 'MIM-23 Hawk',      system: 'Hawk',          guidance: 'Semi-active CW',    rangeKm: 45,  altMaxFt: 45000, category: 'medium' },
-  'SA-11':    { nato: 'SA-11 Gadfly',     system: 'Buk M1',        guidance: 'Semi-active radar', rangeKm: 45,  altMaxFt: 72000, category: 'medium' },
-  'Kub':      { nato: 'SA-6 Gainful',     system: 'Kub (2K12)',    guidance: 'Semi-active radar', rangeKm: 24,  altMaxFt: 40000, category: 'medium' },
-  'Osa':      { nato: 'SA-8 Gecko',       system: 'Osa (9K33)',    guidance: 'Radio command',     rangeKm: 9,   altMaxFt: 16000, category: 'short' },
-  'Tor':      { nato: 'SA-15 Gauntlet',   system: 'Tor (9K330)',   guidance: 'Radio command',     rangeKm: 12,  altMaxFt: 20000, category: 'short' },
-  'SA-15':    { nato: 'SA-15 Gauntlet',   system: 'Tor (9K330)',   guidance: 'Radio command',     rangeKm: 12,  altMaxFt: 20000, category: 'short' },
-  'Tunguska': { nato: 'SA-19 Grison',     system: 'Tunguska (2S6)',guidance: 'Radar/optical',     rangeKm: 8,   altMaxFt: 11000, category: 'shorad' },
-  '2S6':      { nato: 'SA-19 Grison',     system: 'Tunguska (2S6)',guidance: 'Radar/optical',     rangeKm: 8,   altMaxFt: 11000, category: 'shorad' },
-  'Strela-10':{ nato: 'SA-13 Gopher',     system: 'Strela-10',     guidance: 'IR',                rangeKm: 5,   altMaxFt: 11500, category: 'shorad' },
-  'Strela-1': { nato: 'SA-9 Gaskin',      system: 'Strela-1',      guidance: 'IR',                rangeKm: 4.2, altMaxFt: 11500, category: 'shorad' },
-  'SA-9':     { nato: 'SA-9 Gaskin',      system: 'Strela-1',      guidance: 'IR',                rangeKm: 4.2, altMaxFt: 11500, category: 'shorad' },
-  'Roland':   { nato: 'Roland',           system: 'Roland ADS',    guidance: 'Radio command',     rangeKm: 8,   altMaxFt: 19700, category: 'short' },
-  'Avenger':  { nato: 'Avenger',          system: 'AN/TWQ-1',      guidance: 'IR (Stinger)',      rangeKm: 5.5, altMaxFt: 12500, category: 'shorad' },
-  'Linebacker':{ nato: 'Linebacker',      system: 'M6 Linebacker', guidance: 'IR (Stinger)',      rangeKm: 8,   altMaxFt: 12500, category: 'shorad' },
-  'Vulcan':   { nato: 'M163 VADS',        system: 'M163 Vulcan',   guidance: 'Radar/optical',     rangeKm: 1.5, altMaxFt: 3000,  category: 'aaa' },
-  'Shilka':   { nato: 'ZSU-23-4 Shilka',  system: 'ZSU-23-4',      guidance: 'Radar',             rangeKm: 2.5, altMaxFt: 5000,  category: 'aaa' },
-  'ZU-23':    { nato: 'ZU-23',            system: 'ZU-23-2',       guidance: 'Optical',           rangeKm: 2.5, altMaxFt: 5000,  category: 'aaa' },
-  'rapier':   { nato: 'Rapier',           system: 'Rapier FSA',    guidance: 'Radio command',     rangeKm: 7,   altMaxFt: 10000, category: 'short' },
-};
-
 function lookupSamInfo(unitType: string): SamInfo | null {
-  for (const [key, info] of Object.entries(SAM_DATABASE)) {
-    if (unitType.toLowerCase().includes(key.toLowerCase())) return info;
-  }
-  return null;
+  const s = lookupAirDefense(unitType);
+  if (!s) return null;
+  return {
+    nato: s.nato, system: s.system, guidance: s.guidance,
+    rangeKm: s.rangeKm, altMaxFt: s.altMaxFt ?? 0, category: s.category,
+  };
 }
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
@@ -54,6 +33,7 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   shorad:    { label: 'SHORAD',     color: '#3fb950' },
   manpad:    { label: 'MANPAD',     color: '#3fb950' },
   aaa:       { label: 'AAA',        color: '#cccccc' },
+  ew:        { label: 'EW Radar',   color: '#4a8fd4' },
 };
 
 /* ------------------------------------------------------------------ */

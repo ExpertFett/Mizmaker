@@ -2,7 +2,13 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useMissionStore } from '../../store/missionStore';
 import { useEditStore } from '../../store/editStore';
 import type { GroupRenamerData } from '../../types/mission';
-import { applyFrameworkTriggers, AEGIS_BUNDLE } from './frameworkTriggers';
+import { applyFrameworkTriggers, applyAegisSetupTriggers, AEGIS_BUNDLE } from './frameworkTriggers';
+import { AEGIS_SYSTEMS, EWR_TYPES, AEGIS_SEARCH_RADAR_TYPES } from '../../data/airDefense';
+import {
+  AEGIS_OPTIONS, AEGIS_PRESETS, DEFAULT_SCRIPT_OPTIONS, buildAegisSetupLua, changedOptions,
+  presetValues, validateOptions,
+  type AegisOptionDef, type AegisOptionValue, type AegisPresetId, type AegisScriptOptions,
+} from './aegisConfig';
 
 /**
  * Deterministic pseudo-random facing in [0, 2π) keyed off unitId. Using a
@@ -16,77 +22,39 @@ function stableHeading(unitId: number): number {
 }
 
 /* ------------------------------------------------------------------ */
-/* AEGIS IADS SYSTEM_DB — maps DCS unit types to AEGIS system codes   */
+/* AEGIS system identification — from the shared air-defense DB.       */
+/* Values mirror AEGIS.SYSTEM_DB in the bundled engine (see JSON).     */
 /* ------------------------------------------------------------------ */
 
-type AegisSystemCode =
-  | 'SA2' | 'SA3' | 'SA5' | 'SA6' | 'SA8' | 'SA10' | 'SA10B' | 'SA10C'
-  | 'SA11' | 'SA12' | 'SA12G' | 'SA13' | 'SA15' | 'SA15CH' | 'SA17'
-  | 'SA19' | 'SA20A' | 'SA20B' | 'SA21' | 'SA22' | 'SA23' | 'SA23G'
-  | 'SA23V4' | 'SA23V4G' | 'SAMPT' | 'HAWK' | 'PATRIOT' | 'NASAMS'
-  | 'GEPARD' | 'SHILKA' | 'ROLAND' | 'RAPIER';
-
+type AegisSystemCode = string;
 type AegisCategory = 'AREA' | 'SHORAD' | 'PD';
 type AegisRole = 'SAM' | 'EW' | 'PD' | 'PWR' | 'CMD';
 
 interface SystemEntry {
   code: AegisSystemCode;
-  trackRadar: string;
+  trackRadars: string[];
   category: AegisCategory;
   wez: number;
   nez: number;
   displayName: string;
 }
 
-const SYSTEM_DB: SystemEntry[] = [
-  // Area SAMs
-  { code: 'SA2',     trackRadar: 'SNR_75V',                  category: 'AREA',   wez: 22, nez: 14, displayName: 'SA-2 Guideline' },
-  { code: 'SA3',     trackRadar: 'snr s-125 tr',             category: 'AREA',   wez: 15, nez: 10, displayName: 'SA-3 Goa' },
-  { code: 'SA5',     trackRadar: 'RPC_5N62V',                category: 'AREA',   wez: 55, nez: 35, displayName: 'SA-5 Gammon' },
-  { code: 'SA6',     trackRadar: 'Kub 1S91 str',             category: 'AREA',   wez: 15, nez: 8,  displayName: 'SA-6 Gainful' },
-  { code: 'SA10',    trackRadar: 'S-300PS 40B6M tr',         category: 'AREA',   wez: 43, nez: 25, displayName: 'SA-10 Grumble' },
-  { code: 'SA10B',   trackRadar: 'S-300PS 40B6MD sr',        category: 'AREA',   wez: 43, nez: 25, displayName: 'SA-10B Grumble' },
-  { code: 'SA10C',   trackRadar: 'S-300PMU1 40B6M tr',       category: 'AREA',   wez: 75, nez: 40, displayName: 'SA-10C Grumble' },
-  { code: 'SA11',    trackRadar: 'SA-11 Buk SR 9S18M1',      category: 'AREA',   wez: 19, nez: 12, displayName: 'SA-11 Gadfly' },
-  { code: 'SA12',    trackRadar: 'S-300V 9S32 TR',           category: 'AREA',   wez: 40, nez: 25, displayName: 'SA-12 Gladiator' },
-  { code: 'SA12G',   trackRadar: 'S-300VM 9S32ME tr',        category: 'AREA',   wez: 50, nez: 30, displayName: 'SA-12G Giant' },
-  { code: 'SA17',    trackRadar: 'Buk-M2 9S36 Fire Dome tr', category: 'AREA',   wez: 25, nez: 15, displayName: 'SA-17 Grizzly' },
-  { code: 'SA20A',   trackRadar: 'S-300PMU2 92H6E tr',       category: 'AREA',   wez: 80, nez: 45, displayName: 'SA-20A Gargoyle' },
-  { code: 'SA20B',   trackRadar: 'S-400 92H6E tr',           category: 'AREA',   wez: 120, nez: 60, displayName: 'SA-20B' },
-  { code: 'SA21',    trackRadar: 'SAM SA-21 tr',             category: 'AREA',   wez: 150, nez: 80, displayName: 'SA-21 Growler' },
-  { code: 'SA23',    trackRadar: 'S-300VM 9S457ME sr',       category: 'AREA',   wez: 100, nez: 50, displayName: 'SA-23 Gladiator/Giant' },
-  { code: 'SA23G',   trackRadar: 'S-300VM 9S15M2 sr',        category: 'AREA',   wez: 100, nez: 50, displayName: 'SA-23G' },
-  { code: 'SA23V4',  trackRadar: 'S-300V4 9S32ME tr',        category: 'AREA',   wez: 200, nez: 100, displayName: 'SA-23 V4' },
-  { code: 'SA23V4G', trackRadar: 'S-300V4 9S457ME sr',       category: 'AREA',   wez: 200, nez: 100, displayName: 'SA-23 V4G' },
-  { code: 'SAMPT',   trackRadar: 'SAMPT Arabel tr',          category: 'AREA',   wez: 50, nez: 30, displayName: 'SAMP/T Mamba' },
-  { code: 'HAWK',    trackRadar: 'Hawk tr',                  category: 'AREA',   wez: 25, nez: 15, displayName: 'MIM-23 Hawk' },
-  { code: 'PATRIOT', trackRadar: 'Patriot str',              category: 'AREA',   wez: 80, nez: 40, displayName: 'MIM-104 Patriot' },
-  { code: 'NASAMS',  trackRadar: 'NASAMS_Radar_MPQ64F1',     category: 'AREA',   wez: 15, nez: 8,  displayName: 'NASAMS' },
-  // SHORAD
-  { code: 'SA8',     trackRadar: 'Osa 9A33 ln',              category: 'SHORAD', wez: 6, nez: 3,   displayName: 'SA-8 Gecko' },
-  { code: 'SA13',    trackRadar: 'Strela-10M3',              category: 'SHORAD', wez: 3, nez: 2,   displayName: 'SA-13 Gopher' },
-  { code: 'SA15',    trackRadar: 'Tor 9A331',                category: 'SHORAD', wez: 7, nez: 4,   displayName: 'SA-15 Gauntlet' },
-  { code: 'SA15CH',  trackRadar: 'HQ-17',                    category: 'SHORAD', wez: 7, nez: 4,   displayName: 'HQ-17 (SA-15 export)' },
-  { code: 'SA22',    trackRadar: '2S6 Tunguska',             category: 'SHORAD', wez: 5, nez: 3,   displayName: 'SA-22 Greyhound' },
-  { code: 'ROLAND',  trackRadar: 'Roland ADS',               category: 'SHORAD', wez: 5, nez: 3,   displayName: 'Roland' },
-  { code: 'RAPIER',  trackRadar: 'rapier_fsa_blindfire_radar',category: 'SHORAD', wez: 4, nez: 2,  displayName: 'Rapier' },
-  // Point Defense
-  { code: 'SA19',    trackRadar: '2S6 Tunguska',             category: 'PD',     wez: 5, nez: 3,   displayName: 'SA-19 Grison (PD)' },
-  { code: 'GEPARD',  trackRadar: 'Gepard',                   category: 'PD',     wez: 3, nez: 1,   displayName: 'Gepard' },
-  { code: 'SHILKA',  trackRadar: 'ZSU-23-4 Shilka',         category: 'PD',     wez: 2, nez: 1,   displayName: 'ZSU-23-4 Shilka' },
-];
+const SYSTEM_DB: SystemEntry[] = AEGIS_SYSTEMS.map((s) => ({
+  code: s.aegis.code,
+  trackRadars: s.aegis.trackRadars,
+  category: s.aegis.cat,
+  wez: s.aegis.wez,
+  nez: s.aegis.nez,
+  displayName: s.nato,
+}));
 
-const EWR_TYPES = [
-  '1L13 EWR', '55G6 EWR', 'EWR P-37 Bar Lock',
-  'FPS-117', 'FPS-117 Dome', 'FPS-117 ECS',
-  'Roland EWR', 'Dog Ear radar',
-];
+const SEARCH_RADAR_TYPES = AEGIS_SEARCH_RADAR_TYPES;
 
-const SEARCH_RADAR_TYPES = [
-  'p-19 s-125 sr', 'S-300PS 64H6E sr', 'S-300PS 40B6MD sr',
-  'SA-11 Buk CC 9S470M1', 'S-300VM 9S15M2 sr', 'S-300VM 9S457ME sr',
-  'Hawk sr', 'Patriot cp', 'NASAMS_Command_Post',
-];
+/** A PD-class system only becomes a PD- node when an area SAM or EW radar on
+ *  the same side sits within the engine's PD association range. A PD with no
+ *  parent at startup is logged "NO PARENT" and never joins a sector, so a lone
+ *  SA-15 / Shilka is emitted as an autonomous SAM- instead. */
+const PD_PARENT_RANGE_NM = 5;
 
 const SECTOR_COLORS: Record<string, string> = {
   NORTH: '#4a8fd4', SOUTH: '#d95050', EAST: '#d29922', WEST: '#3fb950', CENTER: '#c090d0',
@@ -117,7 +85,8 @@ interface AegisMatch {
 function identifyGroup(unitTypes: string[]): AegisMatch | null {
   for (const entry of SYSTEM_DB) {
     for (const t of unitTypes) {
-      if (t === entry.trackRadar || t.includes(entry.trackRadar)) {
+      if (entry.trackRadars.some((tr) => t === tr || t.includes(tr))) {
+        // Provisional — generateAssignments demotes PD→SAM when no parent is near.
         const role: AegisRole = entry.category === 'PD' ? 'PD' : 'SAM';
         return { system: entry, role, isEwr: false };
       }
@@ -167,6 +136,8 @@ interface AegisAssignment {
   zoneOverride: string;
   zoneRange: number | null;
   activationRange: number | null;
+  /** EW only: -DET{nm} detection cap */
+  detRange: number | null;
   linkedSamName: string;
   units: { unitId: number; name: string; type: string }[];
   unitCount: number;
@@ -176,8 +147,11 @@ interface AegisAssignment {
 
 function buildAegisName(a: AegisAssignment): string {
   switch (a.role) {
-    case 'EW':
-      return `EW-${a.sector}${a.sectorIndex > 1 ? `-${a.sectorIndex}` : ''}`;
+    case 'EW': {
+      let name = `EW-${a.sector}${a.sectorIndex > 1 ? `-${a.sectorIndex}` : ''}`;
+      if (a.detRange != null && a.detRange > 0) name += `-DET${a.detRange}`;
+      return name;
+    }
     case 'SAM': {
       let name = `SAM-${a.systemCode}-${a.sector}`;
       if (a.sectorIndex > 1) name += `-${a.sectorIndex}`;
@@ -214,6 +188,12 @@ export function AegisSetupPanel() {
   const [assignments, setAssignments] = useState<AegisAssignment[]>([]);
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [unmatchedGroups, setUnmatchedGroups] = useState<GroupRenamerData[]>([]);
+  const [preset, setPreset] = useState<AegisPresetId>('default');
+  const [optValues, setOptValues] = useState<Record<string, AegisOptionValue>>(() => presetValues('default'));
+  const [scriptOpts, setScriptOpts] = useState<AegisScriptOptions>(DEFAULT_SCRIPT_OPTIONS);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [setupMsg, setSetupMsg] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
 
   const unitPositions = useMemo(() => {
     const map = new Map<number, { lat: number; lon: number }>();
@@ -264,6 +244,22 @@ export function AegisSetupPanel() {
       centerLon /= identified.length;
     }
 
+    // PD-class sites with no area SAM of their side nearby stand alone as SAM-.
+    const nm = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+      const dLat = (b.lat - a.lat) * 60;
+      const dLon = (b.lon - a.lon) * 60 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+      return Math.hypot(dLat, dLon);
+    };
+    // Engine (_AutoAssociatePDs) accepts an AREA SAM or an EW radar as parent.
+    const parents = identified.filter((i) =>
+      (i.match.role === 'SAM' && i.match.system?.category === 'AREA') || i.match.role === 'EW');
+    for (const item of identified) {
+      if (item.match.role !== 'PD') continue;
+      const hasParent = parents.some((p) =>
+        p.group.coalition === item.group.coalition && nm(p.center, item.center) <= PD_PARENT_RANGE_NM);
+      if (!hasParent) item.match = { ...item.match, role: 'SAM' };
+    }
+
     const sectorCounters = new Map<string, number>();
     for (const { group, match, center } of identified) {
       const sector = assignSector(center.lat, center.lon, centerLat, centerLon);
@@ -277,7 +273,7 @@ export function AegisSetupPanel() {
         groupId: group.groupId, originalName: group.groupName, coalition: group.coalition,
         role, systemCode, systemDisplayName: match.system?.displayName || 'Early Warning Radar',
         sector, sectorIndex: currentCount, wez: match.system?.wez || 0, nez: match.system?.nez || 0,
-        newGroupName: '', zoneOverride: '', zoneRange: null, activationRange: null, linkedSamName: '',
+        newGroupName: '', zoneOverride: '', zoneRange: null, activationRange: null, detRange: null, linkedSamName: '',
         units: group.units, unitCount: group.unitCount, lat: center.lat, lon: center.lon,
       };
       assignment.newGroupName = buildAegisName(assignment);
@@ -344,6 +340,17 @@ export function AegisSetupPanel() {
     );
   }, []);
 
+  const updateDetRange = useCallback((groupId: number, range: number | null) => {
+    setAssignments((prev) =>
+      prev.map((a) => {
+        if (a.groupId !== groupId) return a;
+        const newA = { ...a, detRange: range };
+        newA.newGroupName = buildAegisName(newA);
+        return newA;
+      }),
+    );
+  }, []);
+
   const updateLinkedSam = useCallback((groupId: number, samName: string) => {
     setAssignments((prev) =>
       prev.map((a) => {
@@ -355,7 +362,34 @@ export function AegisSetupPanel() {
     );
   }, []);
 
+  const optionErrors = useMemo(() => validateOptions(optValues), [optValues]);
+
+  /** One generated setup script per side that has at least one SAM. */
+  const setups = useMemo(() => {
+    const sides = (['red', 'blue'] as const).filter((side) =>
+      assignments.some((a) => a.coalition === side && a.role === 'SAM'));
+    return sides.map((side) => {
+      const mine = assignments.filter((a) => a.coalition === side);
+      return {
+        side,
+        lua: buildAegisSetupLua({
+          side,
+          groupNames: mine.map((a) => a.newGroupName),
+          pdLinks: mine
+            .filter((a) => a.role === 'PD' && a.linkedSamName)
+            .map((a) => ({ pd: a.newGroupName, parent: a.linkedSamName })),
+          values: optValues,
+          script: scriptOpts,
+        }),
+      };
+    });
+  }, [assignments, optValues, scriptOpts]);
+
   const applyAll = useCallback(async () => {
+    if (optionErrors.length > 0) {
+      setSetupMsg({ tone: 'err', text: `Fix the AEGIS settings first: ${optionErrors[0]}` });
+      return;
+    }
     for (const a of assignments) {
       const unitNamesObj: Record<number, string> = {};
       for (let i = 0; i < a.units.length; i++) {
@@ -368,23 +402,38 @@ export function AegisSetupPanel() {
         field: 'groupRename',
         value: { groupId: a.groupId, newGroupName: a.newGroupName, unitNames: unitNamesObj },
       } as any);
-      // Set late activation + random heading for each unit
+      // Late activation hides the sites until the generated setup script
+      // activates them right before AEGIS starts. Without that script
+      // nothing activates them (the engine never does) — see aegisConfig.ts.
       for (const u of a.units) {
         addEdit({ unitId: u.unitId, field: 'lateActivation', value: true });
         addEdit({ unitId: u.unitId, field: 'heading', value: stableHeading(u.unitId) });
       }
     }
-    // v1.19.54 — wire MOOSE + AEGIS framework load triggers automatically
-    // so the user doesn't have to bounce over to the Triggers tab and
-    // hand-add them. Idempotent: re-applying after a tweak doesn't add
-    // duplicates (the helper checks for existing DO_SCRIPT_FILE rules).
+    // v1.19.54 — wire MOOSE + AEGIS framework load triggers automatically.
     // v1.19.113: self-persist (fetch-merge-save) so the load triggers survive
     // download even if the user never opens the Triggers tab.
+    // v1.19.156: ALSO write the per-side AEGIS:New/Activate setup rule — the
+    // engine was loaded but never started before this.
     if (sessionId) {
       try { await applyFrameworkTriggers(sessionId, AEGIS_BUNDLE); } catch { /* non-fatal */ }
+      try {
+        const res = await applyAegisSetupTriggers(sessionId, setups);
+        if (res.blockedBy) {
+          setSetupMsg({ tone: 'warn', text:
+            `Renames queued, but setup NOT written: trigger "${res.blockedBy}" already starts AEGIS. ` +
+            'Remove it in Triggers and re-apply, or keep your own setup (it must activate the late-activated groups).' });
+        } else if (res.written.length === 0) {
+          setSetupMsg({ tone: 'warn', text: 'Renames queued. No SAM sites found, so no AEGIS setup script was written.' });
+        } else {
+          setSetupMsg({ tone: 'ok', text: `Renames queued + ${res.written.join(', ')} written to Triggers.` });
+        }
+      } catch (e) {
+        setSetupMsg({ tone: 'err', text: `Renames queued, but saving the setup trigger failed: ${String(e)}` });
+      }
     }
     setApplied(true);
-  }, [assignments, addEdit, sessionId]);
+  }, [assignments, addEdit, sessionId, setups, optionErrors]);
 
   const roleStats = useMemo(() => {
     const stats = new Map<AegisRole, number>();
@@ -499,8 +548,34 @@ export function AegisSetupPanel() {
         <br />
         <strong style={{ color: '#cccccc' }}>Suffixes:</strong>{' '}
         <code style={{ color: '#e0e0e0' }}>-NEZ30</code> / <code style={{ color: '#e0e0e0' }}>-WEZ45</code> = zone override,{' '}
-        <code style={{ color: '#e0e0e0' }}>-ACT50</code> = activation range (nm)
+        <code style={{ color: '#e0e0e0' }}>-ACT50</code> = activation range (nm),{' '}
+        <code style={{ color: '#e0e0e0' }}>-DET120</code> = EW detection cap (nm)
       </div>
+
+      {/* AEGIS settings → generated AEGIS:New(...) setup script */}
+      <AegisSettings
+        preset={preset}
+        values={optValues}
+        scriptOpts={scriptOpts}
+        errors={optionErrors}
+        showAdvanced={showAdvanced}
+        showPreview={showPreview}
+        previewLua={setups.map((x) => x.lua).join('\n')}
+        onPreset={(id) => { setPreset(id); setOptValues(presetValues(id)); setApplied(false); }}
+        onValue={(k, v) => { setOptValues((prev) => ({ ...prev, [k]: v })); setApplied(false); }}
+        onScriptOpts={(o) => { setScriptOpts(o); setApplied(false); }}
+        onToggleAdvanced={() => setShowAdvanced((x) => !x)}
+        onTogglePreview={() => setShowPreview((x) => !x)}
+      />
+
+      {setupMsg && (
+        <div style={{
+          marginBottom: 12, padding: '8px 14px', borderRadius: 4, fontSize: 13,
+          background: '#222222',
+          border: `1px solid ${setupMsg.tone === 'ok' ? '#3fb950' : setupMsg.tone === 'warn' ? '#d29922' : '#d95050'}`,
+          color: setupMsg.tone === 'ok' ? '#3fb950' : setupMsg.tone === 'warn' ? '#d29922' : '#d95050',
+        }}>{setupMsg.text}</div>
+      )}
 
       {/* Assignment cards */}
       {assignments.map((a) => (
@@ -512,6 +587,7 @@ export function AegisSetupPanel() {
           onUpdateRole={updateRole}
           onUpdateZoneOverride={updateZoneOverride}
           onUpdateActivationRange={updateActivationRange}
+          onUpdateDetRange={updateDetRange}
           onUpdateLinkedSam={updateLinkedSam}
         />
       ))}
@@ -559,8 +635,8 @@ export function AegisSetupPanel() {
       }}>
         <div style={{ fontSize: 13, color: '#aaaaaa' }}>
           {applied
-            ? 'AEGIS names queued! Download your .miz to save changes.'
-            : `Ready to rename ${assignments.length} groups to AEGIS format.`}
+            ? 'AEGIS names queued + setup trigger written. Download your .miz to save changes.'
+            : `Ready to rename ${assignments.length} groups and write the AEGIS setup (${setups.map((x) => x.side).join(' + ') || 'no SAMs'}).`}
         </div>
         <button
           onClick={applyAll}
@@ -593,13 +669,14 @@ interface AegisCardProps {
   onUpdateRole: (groupId: number, role: AegisRole) => void;
   onUpdateZoneOverride: (groupId: number, zoneType: string, range: number | null) => void;
   onUpdateActivationRange: (groupId: number, range: number | null) => void;
+  onUpdateDetRange: (groupId: number, range: number | null) => void;
   onUpdateLinkedSam: (groupId: number, samName: string) => void;
 }
 
 function AegisCard({
   assignment: a, samNames,
   onUpdateSector, onUpdateRole, onUpdateZoneOverride,
-  onUpdateActivationRange, onUpdateLinkedSam,
+  onUpdateActivationRange, onUpdateDetRange, onUpdateLinkedSam,
 }: AegisCardProps) {
   const [expanded, setExpanded] = useState(false);
   const borderColor = ROLE_COLORS[a.role] || '#3a3a3a';
@@ -718,6 +795,22 @@ function AegisCard({
             </div>
           )}
 
+          {a.role === 'EW' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={labelStyle}>Detection cap</label>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={a.detRange ?? ''}
+                  onChange={(e) => onUpdateDetRange(a.groupId, e.target.value ? Number(e.target.value) : null)}
+                  placeholder="none"
+                  style={{ ...numInputStyle, width: 60 }}
+                />
+                <span style={{ fontSize: 11, color: '#aaaaaa' }}>nm</span>
+              </div>
+            </div>
+          )}
+
           {(a.role === 'PD' || a.role === 'PWR') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={labelStyle}>{a.role === 'PD' ? 'Protects SAM' : 'Powers SAM'}</label>
@@ -740,6 +833,135 @@ function AegisCard({
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings — preset + options that become the AEGIS:New config table  */
+/* ------------------------------------------------------------------ */
+
+interface AegisSettingsProps {
+  preset: AegisPresetId;
+  values: Record<string, AegisOptionValue>;
+  scriptOpts: AegisScriptOptions;
+  errors: string[];
+  showAdvanced: boolean;
+  showPreview: boolean;
+  previewLua: string;
+  onPreset: (id: AegisPresetId) => void;
+  onValue: (key: string, v: AegisOptionValue) => void;
+  onScriptOpts: (o: AegisScriptOptions) => void;
+  onToggleAdvanced: () => void;
+  onTogglePreview: () => void;
+}
+
+function AegisSettings(p: AegisSettingsProps) {
+  const changed = changedOptions(p.values).length;
+  const primary = AEGIS_OPTIONS.filter((o) => o.primary);
+  const groups = Array.from(new Set(AEGIS_OPTIONS.map((o) => o.group)));
+  const field = (o: AegisOptionDef) => {
+    const v = p.values[o.key];
+    const isChanged = v !== o.default;
+    let input: React.ReactNode;
+    if (o.choices) {
+      input = (
+        <select value={String(v)} onChange={(e) => p.onValue(o.key, e.target.value)} style={selectStyle}>
+          {o.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      );
+    } else if (typeof o.default === 'boolean') {
+      input = (
+        <input type="checkbox" checked={v === true} onChange={(e) => p.onValue(o.key, e.target.checked)} />
+      );
+    } else {
+      input = (
+        <input
+          type="number"
+          value={typeof v === 'number' && Number.isFinite(v) ? v : ''}
+          step={typeof o.default === 'number' && o.default < 1 ? 0.01 : 1}
+          min={0}
+          onChange={(e) => p.onValue(o.key, e.target.value === '' ? NaN : Number(e.target.value))}
+          style={{ ...numInputStyle, width: 64 }}
+        />
+      );
+    }
+    return (
+      <div key={o.key} title={o.help} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 }}>
+        <label style={{ ...labelStyle, color: isChanged ? '#d29922' : labelStyle.color }}>
+          {o.label}{o.unit ? ` (${o.unit})` : ''}
+        </label>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {input}
+          {isChanged && <span style={{ fontSize: 11, color: '#4a4a4a' }}>default {String(o.default)}</span>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ marginBottom: 16, border: '1px solid #3a3a3a', borderRadius: 4, background: '#222222' }}>
+      <div style={{ padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>IADS behaviour</div>
+        <select value={p.preset} onChange={(e) => p.onPreset(e.target.value as AegisPresetId)} style={selectStyle}>
+          {(Object.keys(AEGIS_PRESETS) as AegisPresetId[]).map((id) => (
+            <option key={id} value={id}>{AEGIS_PRESETS[id].label}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 12, color: '#aaaaaa', flex: 1 }}>{AEGIS_PRESETS[p.preset].help}</span>
+        <span style={{ fontSize: 12, color: changed ? '#d29922' : '#4a4a4a' }}>
+          {changed} setting{changed === 1 ? '' : 's'} off default
+        </span>
+      </div>
+
+      <div style={{ padding: '10px 14px', borderTop: '1px solid #3a3a3a', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        {primary.map(field)}
+      </div>
+
+      <div style={{ padding: '8px 14px', borderTop: '1px solid #3a3a3a', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={checkLabelStyle}>
+          <input type="checkbox" checked={p.scriptOpts.debug}
+            onChange={(e) => p.onScriptOpts({ ...p.scriptOpts, debug: e.target.checked })} />
+          Debug logging
+        </label>
+        <label style={checkLabelStyle}
+          title="The engine's F10 menu is global: BOTH coalitions can open it and read this side's IADS status.">
+          <input type="checkbox" checked={p.scriptOpts.f10Menu}
+            onChange={(e) => p.onScriptOpts({ ...p.scriptOpts, f10Menu: e.target.checked })} />
+          F10 status menu <span style={{ color: '#d29922', fontSize: 11 }}>(visible to both sides)</span>
+        </label>
+        <label style={checkLabelStyle}
+          title="Paints every IADS site on the F10 map for everyone. Mission-maker testing only.">
+          <input type="checkbox" checked={p.scriptOpts.mapDebug}
+            onChange={(e) => p.onScriptOpts({ ...p.scriptOpts, mapDebug: e.target.checked })} />
+          F10 map debug markers <span style={{ color: '#d29922', fontSize: 11 }}>(reveals sites)</span>
+        </label>
+        <span style={{ flex: 1 }} />
+        <button onClick={p.onToggleAdvanced} style={btnStyle}>{p.showAdvanced ? 'Hide advanced' : 'Advanced'}</button>
+        <button onClick={p.onTogglePreview} style={btnStyle}>{p.showPreview ? 'Hide script' : 'Preview script'}</button>
+      </div>
+
+      {p.errors.length > 0 && (
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #3a3a3a', color: '#d95050', fontSize: 12 }}>
+          {p.errors.map((e) => <div key={e}>{e}</div>)}
+        </div>
+      )}
+
+      {p.showAdvanced && groups.map((g) => (
+        <div key={g} style={{ padding: '10px 14px', borderTop: '1px solid #3a3a3a' }}>
+          <div style={{ ...labelStyle, color: '#cccccc', marginBottom: 8 }}>{g}</div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {AEGIS_OPTIONS.filter((o) => o.group === g && !o.primary).map(field)}
+          </div>
+        </div>
+      ))}
+
+      {p.showPreview && (
+        <pre style={{
+          margin: 0, padding: '10px 14px', borderTop: '1px solid #3a3a3a', maxHeight: 320, overflow: 'auto',
+          fontSize: 12, color: '#cccccc', fontFamily: "'B612 Mono', monospace", whiteSpace: 'pre',
+        }}>{p.previewLua || '-- No SAM sites identified: nothing to generate.'}</pre>
       )}
     </div>
   );
@@ -778,6 +1000,10 @@ const selectStyle: React.CSSProperties = {
 const numInputStyle: React.CSSProperties = {
   background: '#262626', border: '1px solid #3a3a3a', borderRadius: 3,
   color: '#e0e0e0', fontSize: 13, padding: '4px 6px', outline: 'none', fontFamily: 'inherit',
+};
+
+const checkLabelStyle: React.CSSProperties = {
+  fontSize: 13, color: '#cccccc', display: 'flex', gap: 6, alignItems: 'center',
 };
 
 const labelStyle: React.CSSProperties = {

@@ -22,6 +22,7 @@ interface MissionState {
   groups: MissionGroup[];
   units: MissionUnit[];
   threats: ThreatRing[];
+  ewRadars: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
   triggerZones: TriggerZone[];
@@ -81,6 +82,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   groups: [],
   units: [],
   threats: [],
+  ewRadars: [],
   airbases: [],
   drawings: [],
   triggerZones: [],
@@ -132,6 +134,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       groups: [...data.groups].sort((a, b) => a.groupName.localeCompare(b.groupName)),
       units: data.units,
       threats: data.threats,
+      ewRadars: data.ewRadars || [],
       airbases: data.airbases,
       drawings: data.drawings || [],
       triggerZones: data.triggerZones || [],
@@ -175,7 +178,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     set({
       sessionId: null, hostToken: null, sessionToken: null, assignedGroup: null,
       role: 'mission_maker' as const, filename: null, theater: null, overview: null,
-      groups: [], units: [], threats: [], airbases: [], drawings: [], triggerZones: [], missionOptions: {},
+      groups: [], units: [], threats: [], ewRadars: [], airbases: [], drawings: [], triggerZones: [], missionOptions: {},
       clientUnits: [], laserCapableUnits: [], allUnitsDonor: [], pylonOptions: {}, suggestions: [],
       allGroupsRenamer: [], liveryData: [], laserClsids: [], dtcFlights: [],
       countries: [],

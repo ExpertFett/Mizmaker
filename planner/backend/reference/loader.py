@@ -11,7 +11,7 @@ Sources:
   - launcher_settings: pydcs Weapons class (settings embedded in weapon dicts)
   - livery_db.json: baked database
   - dtc_defaults_fa18.json: datalinkfixer
-  - sam_threat_ranges.json: static threat ranges
+  - air_defense_db.json: SAM/AAA/EWR systems (single source, shared with frontend)
   - airbases.json: per-theater airbase data
 """
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _load_json(filename: str):
     if filename not in _cache:
         filepath = _DATA_DIR / filename
-        _cache[filename] = json.loads(filepath.read_text())
+        _cache[filename] = json.loads(filepath.read_text(encoding="utf-8"))
     return _cache[filename]
 
 
@@ -219,9 +219,34 @@ def get_dtc_defaults_fa18() -> dict:
     return _load_json("dtc_defaults_fa18.json")
 
 
+def get_air_defense_db() -> dict:
+    """Canonical air-defense DB — SAM/AAA/EWR systems. The frontend imports the
+    same file (src/data/airDefense.ts), so edit it there, never re-copy it."""
+    return _load_json("air_defense_db.json")
+
+
+def _ranges_for_role(role: str) -> dict:
+    out = {}
+    for s in get_air_defense_db()["systems"]:
+        if s.get("role") != role:
+            continue
+        for t in s.get("types", []):
+            out[t] = int(round(s["rangeKm"] * 1000))
+    return out
+
+
 def get_sam_threat_ranges() -> dict:
-    """SAM/AAA unit type → max range in meters. ~30 systems."""
-    return _load_json("sam_threat_ranges.json")
+    """SAM/AAA unit type → max engagement range in meters (threat rings)."""
+    if "sam_ranges" not in _cache:
+        _cache["sam_ranges"] = _ranges_for_role("sam")
+    return _cache["sam_ranges"]
+
+
+def get_ewr_ranges() -> dict:
+    """Early-warning radar unit type → NOMINAL detection range in meters."""
+    if "ewr_ranges" not in _cache:
+        _cache["ewr_ranges"] = _ranges_for_role("ew")
+    return _cache["ewr_ranges"]
 
 
 def get_airbases() -> dict:

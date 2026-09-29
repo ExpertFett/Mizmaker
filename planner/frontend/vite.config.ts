@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // src/data/airDefense.ts imports ../backend/data/air_defense_db.json (the
+    // single air-defense source shared with Flask) — let the dev server read it.
+    fs: { allow: ['..'] },
     proxy: {
       '/api': {
         target: 'http://localhost:5001',

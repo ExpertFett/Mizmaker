@@ -81,6 +81,9 @@ export interface ThreatRing {
    *  groups on the flight-lead map. Optional because older payloads
    *  pre-dating the change may not include it. */
   groupId?: number;
+  /** 'ew' = early-warning radar (ewRadars[]); range is NOMINAL detection,
+   *  not a weapon ring. Absent on SAM/AAA threats. */
+  role?: 'ew';
 }
 
 export interface Airbase {
@@ -234,6 +237,9 @@ export interface UploadResponse {
   groups: MissionGroup[];
   units: MissionUnit[];
   threats: ThreatRing[];
+  /** Early-warning radars — kept OUT of threats[] so briefs / route exposure /
+   *  MEZ auto-fill only ever see things that shoot. Older payloads omit it. */
+  ewRadars?: ThreatRing[];
   airbases: Airbase[];
   drawings: MissionDrawing[];
   triggerZones: TriggerZone[];

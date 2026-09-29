@@ -4,6 +4,9 @@ WORKDIR /app/frontend
 COPY planner/frontend/package.json planner/frontend/package-lock.json ./
 RUN npm ci
 COPY planner/frontend/ ./
+# Shared air-defense DB lives in the backend; the frontend imports it at build
+# time via ../../../backend/data (same relative layout as the repo).
+COPY planner/backend/data/air_defense_db.json /app/backend/data/air_defense_db.json
 RUN npm run build
 
 # Stage 2: Python backend + serve built frontend

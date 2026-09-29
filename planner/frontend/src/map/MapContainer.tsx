@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -181,6 +181,7 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
   const [groupChooser, setGroupChooser] = useState<
     { x: number; y: number; options: { id: number; name: string }[] } | null
   >(null);
+  const ewRadars = useMissionStore((s) => s.ewRadars);
   const { theater, units, groups, threats, airbases, drawings, triggerZones, selectedGroupId, selectGroup, overview, sessionId } =
     useMissionStore();
   const { layers, viewMode, hiddenGroupIds, unitCategoryFilter, previewAsFlightLead, addWaypointMode, measureMode, highlightMode, setSelectedWpIndex } = useMapStore();
@@ -836,9 +837,11 @@ export function MapContainer({ onDmpiPicked, onAirfieldPicked }: MapContainerPro
   // ThreatRing.groupId field (v0.9.27) is in place for when we
   // eventually let participants see threats — at that point the
   // filter would drop hidden ones via groupId.
-  const visibleThreats = useFlightLeadView
-    ? []
-    : threats;
+  // EW radar rings ride the same Threats layer (dashed, unfilled).
+  const visibleThreats = useMemo(
+    () => (useFlightLeadView ? [] : [...threats, ...ewRadars]),
+    [useFlightLeadView, threats, ewRadars],
+  );
 
   // Populate layers (re-filter when viewMode changes)
   useEffect(() => {
