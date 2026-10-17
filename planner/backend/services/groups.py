@@ -160,6 +160,7 @@ def _serialize_profile(p: dict) -> dict:
     return {
         "id": p["id"],
         "name": p["name"],
+        "kind": profile_kind(p),
         "olympusHost": p.get("olympus_host"),
         "olympusPort": p.get("olympus_port"),
         "lotatcUrl": p.get("lotatc_url"),
@@ -169,6 +170,38 @@ def _serialize_profile(p: dict) -> dict:
         "hasDiscord": bool(p.get("discord_webhook_enc")),
         "updatedAt": p.get("updated_at"),
     }
+
+
+# --- Server kinds ----------------------------------------------------------
+# A profile's `kind` picks the relay backend: 'olympus' (DCS Olympus, binary
+# feed, services/olympus_bridge) or 'olympuslite' (the single-file JSON hook,
+# services/olympuslite_bridge). Column added by migrations/0005_profile_kind.sql
+# with default 'olympus'; rows read before that migration have no key and are
+# treated as Olympus. Both relays only ever reach the host stored on the
+# profile, never a host supplied by the request.
+PROFILE_KINDS = ("olympus", "olympuslite")
+DEFAULT_PORTS = {"olympus": 4512, "olympuslite": 4513}
+_KIND_ERR = "kind must be olympus or olympuslite"
+
+
+def profile_kind(p: dict) -> str:
+    k = p.get("kind") or "olympus"
+    return k if k in PROFILE_KINDS else "olympus"
+
+
+def _bridge(p: dict):
+    """Relay module for a profile. Looked up per call (not bound at import) so
+    tests can monkeypatch either module's functions."""
+    if profile_kind(p) == "olympuslite":
+        from services import olympuslite_bridge as mod
+    else:
+        from services import olympus_bridge as mod
+    return mod
+
+
+def _conn(p: dict):
+    """(host, port) for a profile, with the kind's default port."""
+    return p.get("olympus_host"), p.get("olympus_port") or DEFAULT_PORTS[profile_kind(p)]
 
 
 # --------------------------------------------------------------------------
@@ -351,6 +384,9 @@ def register_group_routes(app) -> None:
         name = (body.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Profile name required"}), 400
+        kind = body.get("kind") or "olympus"
+        if kind not in PROFILE_KINDS:
+            return jsonify({"error": _KIND_ERR}), 400
         try:
             pw_enc = profile_crypto.encrypt_secret(body.get("olympusPassword"))
             # v1.19.50 — Discord webhook URL. Encrypted-at-rest because a
@@ -369,11 +405,15 @@ def register_group_routes(app) -> None:
         row = {
             "id": pid, "group_id": gid, "name": name,
             "olympus_host": body.get("olympusHost"),
-            "olympus_port": int(body.get("olympusPort") or 4512),
+            "olympus_port": int(body.get("olympusPort") or DEFAULT_PORTS[kind]),
             "olympus_password_enc": pw_enc,
             "lotatc_url": body.get("lotatcUrl"),
             "created_by": user["id"], "updated_at": _now_iso(),
         }
+        # Same "only reference a new column when it matters" rule as the
+        # Discord webhook: an Olympus profile still saves before 0005 runs.
+        if kind != "olympus":
+            row["kind"] = kind
         if webhook_enc is not None:
             row["discord_webhook_enc"] = webhook_enc
         sb.table("server_profiles").insert(row).execute()
@@ -392,8 +432,21 @@ def register_group_routes(app) -> None:
             patch["name"] = (body.get("name") or "").strip()
         if "olympusHost" in body:
             patch["olympus_host"] = body.get("olympusHost")
+        kind = None
+        if "kind" in body:
+            kind = body.get("kind") or "olympus"
+            if kind not in PROFILE_KINDS:
+                return jsonify({"error": _KIND_ERR}), 400
+            existing = (
+                sb.table("server_profiles").select("*")
+                .eq("id", pid).eq("group_id", gid).execute().data
+            ) or []
+            # Write the column only when it exists (the row has the key) or the
+            # value isn't the default, so edits keep working pre-migration.
+            if kind != "olympus" or (existing and "kind" in existing[0]):
+                patch["kind"] = kind
         if "olympusPort" in body:
-            patch["olympus_port"] = int(body.get("olympusPort") or 4512)
+            patch["olympus_port"] = int(body.get("olympusPort") or DEFAULT_PORTS[kind or "olympus"])
         if "lotatcUrl" in body:
             patch["lotatc_url"] = body.get("lotatcUrl")
         # Only touch the password when the caller explicitly sends one.
@@ -449,8 +502,8 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        from services.olympus_bridge import status_check
-        return jsonify(status_check(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or ""))
+        host, port = _conn(p)
+        return jsonify(_bridge(p).status_check(host, port, pw or ""))
 
     @app.route("/api/groups/<gid>/profiles/<pid>/discord/post", methods=["POST"])
     def profile_discord_post(gid, pid):
@@ -569,14 +622,13 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        host, port = p.get("olympus_host"), p.get("olympus_port") or 4512
+        host, port = _conn(p)
+        bridge = _bridge(p)
         # Debug: raw-bytes hex sample for reverse-engineering binary feeds.
         if request.args.get("debug") == "hex":
-            from services.olympus_bridge import fetch_telemetry_hex
-            r = fetch_telemetry_hex(host, port, pw or "", resource)
+            r = bridge.fetch_telemetry_hex(host, port, pw or "", resource)
             return jsonify(r), (200 if r.get("ok") else 502)
-        from services.olympus_bridge import fetch_telemetry
-        result = fetch_telemetry(host, port, pw or "", resource)
+        result = bridge.fetch_telemetry(host, port, pw or "", resource)
         resp = jsonify(result)
         resp.headers["Cache-Control"] = "no-store"  # live feed — never cache
         return resp, (200 if result.get("ok") else 502)
@@ -601,8 +653,8 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        from services.olympus_bridge import fetch_unit_database
-        result = fetch_unit_database(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", category)
+        host, port = _conn(p)
+        result = _bridge(p).fetch_unit_database(host, port, pw or "", category)
         return jsonify(result), (200 if result.get("ok") else 502)
 
     @app.route("/api/groups/<gid>/profiles/<pid>/unit-image/<filename>", methods=["GET"])
@@ -625,8 +677,8 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        from services.olympus_bridge import fetch_unit_image
-        result = fetch_unit_image(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", filename)
+        host, port = _conn(p)
+        result = _bridge(p).fetch_unit_image(host, port, pw or "", filename)
         if not result.get("ok"):
             return jsonify(result), 502
         return Response(result["raw"], mimetype=result["content_type"],
@@ -663,8 +715,8 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        from services.olympus_bridge import send_command
-        result = send_command(p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "", command, params)
+        host, port = _conn(p)
+        result = _bridge(p).send_command(host, port, pw or "", command, params)
         return jsonify(result), (200 if result.get("ok") else 502)
 
     # ----------------------------------------------------------------------
@@ -716,7 +768,6 @@ def register_group_routes(app) -> None:
         # the bridge script can be lat-only checked.
         lat = 89.0 + flag_index * 1e-6
         lng = -179.0
-        from services.olympus_bridge import send_command
         # spawnGroundUnits fires DCS's S_EVENT_BIRTH which our bridge script
         # listens for. Soldier M4 = smallest / cheapest unit type Olympus
         # exposes; immediate=true skips spawn-points consumption; spawnPoints
@@ -731,10 +782,8 @@ def register_group_routes(app) -> None:
             "units": units_payload, "coalition": "neutral", "country": "",
             "immediate": True, "spawnPoints": 0,
         }
-        result = send_command(
-            p.get("olympus_host"), p.get("olympus_port") or 4512, pw or "",
-            "spawnGroundUnits", params,
-        )
+        host, port = _conn(p)
+        result = _bridge(p).send_command(host, port, pw or "", "spawnGroundUnits", params)
         return jsonify({
             "ok": result.get("ok", False),
             "flagIndex": flag_index,

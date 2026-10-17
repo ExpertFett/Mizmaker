@@ -35,9 +35,18 @@ export interface GroupSummary {
   role: LiveRole | string;
 }
 
+/** Relay backend for a server profile: DCS Olympus (:4512/:3000, binary feed)
+ *  or OlympusLite (single-file JSON hook, :4513). The backend translates the
+ *  Olympus command vocabulary for OlympusLite, so callers don't branch. */
+export type ServerKind = 'olympus' | 'olympuslite';
+export const KIND_LABEL: Record<ServerKind, string> = { olympus: 'Olympus', olympuslite: 'OlympusLite' };
+export const DEFAULT_PORT: Record<ServerKind, number> = { olympus: 3000, olympuslite: 4513 };
+
 export interface ServerProfile {
   id: string;
   name: string;
+  /** Absent from backends older than the kind column → treat as 'olympus'. */
+  kind?: ServerKind;
   olympusHost: string | null;
   olympusPort: number | null;
   lotatcUrl: string | null;
@@ -136,6 +145,7 @@ export function listProfiles(gid: string) {
 
 export interface ProfileInput {
   name: string;
+  kind?: ServerKind;
   olympusHost?: string;
   olympusPort?: number;
   olympusPassword?: string;

@@ -16,8 +16,8 @@ import { LiveMap } from './LiveMap';
 import {
   listGroups, createGroup, joinGroup, listProfiles, createProfile, updateProfile, deleteProfile,
   createInvite, listMembers, removeMember, setMemberRole, testProfile, getTelemetry, getTelemetryHex,
-  sendCommand, ApiError, ROLE_LABEL, can,
-  type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput, type LiveRole,
+  sendCommand, ApiError, ROLE_LABEL, can, KIND_LABEL, DEFAULT_PORT,
+  type ServerKind, type GroupSummary, type ServerProfile, type GroupMember, type MeInfo, type ProfileInput, type LiveRole,
 } from '../../api/groups';
 
 const ROLE_OPTS: LiveRole[] = ['admin', 'commander', 'jtac', 'atc', 'operator'];
@@ -219,7 +219,7 @@ function GroupDashboard({ group, me, onChanged }: { group: GroupSummary; me: MeI
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{p.name}</div>
               <div style={{ ...dim, fontSize: 12 }}>
-                Olympus {p.olympusHost || '—'}:{p.olympusPort ?? 3000}
+                {KIND_LABEL[p.kind || 'olympus']} {p.olympusHost || '—'}:{p.olympusPort ?? DEFAULT_PORT[p.kind || 'olympus']}
                 {p.lotatcUrl ? ` · LotATC ${p.lotatcUrl}` : ''}
                 {p.hasPassword ? ' · 🔒' : ''}
               </div>
@@ -289,8 +289,9 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
   const isEdit = !!profile;
   const [f, setF] = useState({
     name: profile?.name ?? '',
+    kind: (profile?.kind ?? 'olympus') as ServerKind,
     olympusHost: profile?.olympusHost ?? '',
-    olympusPort: String(profile?.olympusPort ?? 3000),
+    olympusPort: String(profile?.olympusPort ?? DEFAULT_PORT[profile?.kind ?? 'olympus']),
     olympusPassword: '',
     lotatcUrl: profile?.lotatcUrl ?? '',
     discordWebhookUrl: '',  // v1.19.50 — blank in edit mode (not returned by API)
@@ -305,8 +306,9 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
     try {
       const data: ProfileInput = {
         name: f.name.trim(),
+        kind: f.kind,
         olympusHost: f.olympusHost.trim() || undefined,
-        olympusPort: Number(f.olympusPort) || 3000,
+        olympusPort: Number(f.olympusPort) || DEFAULT_PORT[f.kind],
         lotatcUrl: f.lotatcUrl.trim() || undefined,
       };
       if (f.olympusPassword) data.olympusPassword = f.olympusPassword; // only if typed
@@ -326,13 +328,24 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
       <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8, alignItems: 'center' }}>
         <label style={lbl}>Name</label>
         <input style={input} value={f.name} placeholder="Main Server" onChange={(e) => up({ name: e.target.value })} />
-        <label style={lbl}>Olympus host</label>
+        <label style={lbl}>Server type</label>
+        <select style={input} value={f.kind}
+                onChange={(e) => {
+                  const kind = e.target.value as ServerKind;
+                  // Swap the port only if it's still the other kind's default.
+                  const port = f.olympusPort === String(DEFAULT_PORT[f.kind]) ? String(DEFAULT_PORT[kind]) : f.olympusPort;
+                  up({ kind, olympusPort: port });
+                }}>
+          <option value="olympus">DCS Olympus</option>
+          <option value="olympuslite">OlympusLite (single-file hook)</option>
+        </select>
+        <label style={lbl}>{f.kind === 'olympuslite' ? 'Host' : 'Olympus host'}</label>
         <input style={input} value={f.olympusHost} placeholder="IP or hostname (no http://)" onChange={(e) => up({ olympusHost: e.target.value })} />
-        <label style={lbl}>Olympus port</label>
+        <label style={lbl}>{f.kind === 'olympuslite' ? 'Port' : 'Olympus port'}</label>
         <input style={{ ...input, width: 110 }} value={f.olympusPort} onChange={(e) => up({ olympusPort: e.target.value.replace(/[^0-9]/g, '') })} />
         <label style={lbl}>Role password</label>
         <input style={input} type="password" value={f.olympusPassword}
-               placeholder={isEdit ? '(unchanged — leave blank to keep)' : 'Game Master password'}
+               placeholder={isEdit ? '(unchanged — leave blank to keep)' : (f.kind === 'olympuslite' ? 'gm password (from Config/OlympusLite.lua)' : 'Game Master password')}
                onChange={(e) => up({ olympusPassword: e.target.value })} />
         <label style={lbl}>LotATC URL</label>
         <input style={input} value={f.lotatcUrl} placeholder="(optional) JSON export URL" onChange={(e) => up({ lotatcUrl: e.target.value })} />
@@ -350,7 +363,9 @@ function ProfileForm({ gid, profile, onDone, onCancel }: {
         <button style={btn} onClick={onCancel}>Cancel</button>
       </div>
       <p style={{ ...dim, fontSize: 11, margin: '8px 0 0' }}>
-        Olympus port is usually <strong>3000</strong> (the web port); host is just the IP/hostname.
+        {f.kind === 'olympuslite'
+          ? <>OlympusLite listens on <strong>4513</strong> by default; set <code>bind = "0.0.0.0"</code> in its config to reach it from here, and keep it on a LAN/VPN. Use the <strong>gm</strong> password for full control.</>
+          : <>Olympus port is usually <strong>3000</strong> (the web port); host is just the IP/hostname.</>}
       </p>
       {err && <div style={errBox}>✗ {err}</div>}
     </div>
@@ -530,7 +545,7 @@ function Terminal({ group, profile, onExit }: { group: GroupSummary; profile: Se
 
       <h2 style={{ margin: '0 0 2px', fontSize: 18 }}>{profile.name}</h2>
       <p style={{ ...dim, margin: '0 0 12px', fontSize: 12 }}>
-        Olympus {profile.olympusHost || '—'}:{profile.olympusPort ?? 3000}
+        {KIND_LABEL[profile.kind || 'olympus']} {profile.olympusHost || '—'}:{profile.olympusPort ?? DEFAULT_PORT[profile.kind || 'olympus']}
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
