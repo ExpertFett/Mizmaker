@@ -722,19 +722,19 @@ def register_group_routes(app) -> None:
     # ----------------------------------------------------------------------
     # Trigger fire (Phase 9). DCS missions normally fire triggers via the F10
     # comm menu or via in-game events; this exposes a web-side fire mechanism
-    # so the DM never has to leave the scope. Mechanism: spawn a tiny effect
-    # (smoke) at a magic-encoded coordinate; a mission-side bridge script
-    # listens for smoke at those coords and sets the matching user flag,
-    # which the (Editor-modified) trigger's condition watches.
+    # so the DM never has to leave the scope. Mechanism: spawn a throwaway
+    # neutral Soldier M4 that carries the flag index; the mission-side bridge
+    # script (Editor -> Scripts -> "DM trigger bridge", dcsopt-dm-bridge.lua)
+    # catches the BIRTH, sets the user flag the trigger watches and despawns it.
     #
-    # The magic-coord encoding: lat = 89.0 + flagIndex * 0.000_001, lng = -179.0
-    # Outside any DCS theatre projection so spawns don't visibly land on the
-    # mission area; ~0.1 m precision is ample for the flag-index integer.
-    # The bridge script (Editor → Scripts → "DM trigger bridge") matches lat
-    # vs the encoded value and dispatches.
+    # The signal spawns at a real airbase from the live picture and carries the
+    # flag in the group name (OlympusLite) or a 2-unit offset pair (Olympus) —
+    # see services/dm_trigger.py. (v1's off-map lat 89 + flag*1e-6 was clamped
+    # by DCS, live test 2026-10-17, so the bridge never saw it.)
     # ----------------------------------------------------------------------
     @app.route("/api/groups/<gid>/profiles/<pid>/fire_trigger", methods=["POST"])
     def fire_trigger(gid, pid):
+        from services import dm_trigger
         sb, user, err = _ctx()
         if err:
             return err
@@ -749,7 +749,7 @@ def register_group_routes(app) -> None:
             flag_index = int(flag_index)
         except (TypeError, ValueError):
             return jsonify({"error": "flagIndex required (int)"}), 400
-        if not (0 < flag_index < 1_000_000):
+        if not (dm_trigger.FLAG_MIN <= flag_index <= dm_trigger.FLAG_MAX):
             return jsonify({"error": "flagIndex out of range (1..999_999)"}), 400
         rows = (
             sb.table("server_profiles").select("*")
@@ -762,33 +762,27 @@ def register_group_routes(app) -> None:
             pw = profile_crypto.decrypt_secret(p.get("olympus_password_enc"))
         except profile_crypto.EncKeyMissing as e:
             return jsonify({"error": str(e)}), 503
-        # Encode flagIndex into the latitude's microsecond field. lat = 89 +
-        # flag*1e-6 stays comfortably under 90 for any flag in the allowed
-        # range. lng pegged at -179 so spawns cluster at the "fire pole" and
-        # the bridge script can be lat-only checked.
-        lat = 89.0 + flag_index * 1e-6
-        lng = -179.0
-        # spawnGroundUnits fires DCS's S_EVENT_BIRTH which our bridge script
-        # listens for. Soldier M4 = smallest / cheapest unit type Olympus
-        # exposes; immediate=true skips spawn-points consumption; spawnPoints
-        # = 0 to make sure even capped roles can fire. Coalition neutral so
-        # the spawn doesn't show up to red/blue players in the F10 picture.
-        units_payload = [{
-            "unitType": "Soldier M4",
-            "location": {"lat": lat, "lng": lng},
-            "skill": "Average", "liveryID": "",
-        }]
-        params = {
-            "units": units_payload, "coalition": "neutral", "country": "",
-            "immediate": True, "spawnPoints": 0,
-        }
         host, port = _conn(p)
-        result = _bridge(p).send_command(host, port, pw or "", "spawnGroundUnits", params)
+        bridge = _bridge(p)
+        ab = bridge.fetch_telemetry(host, port, pw or "", "airbases")
+        if not ab.get("ok"):
+            return jsonify({"ok": False, "flagIndex": flag_index,
+                            "error": ab.get("error") or "Couldn't read airbases"}), 502
+        anchor = dm_trigger.pick_anchor(ab.get("data"))
+        if anchor is None:
+            return jsonify({"ok": False, "flagIndex": flag_index,
+                            "error": "No land airbase in the live picture to anchor the trigger signal."}), 409
+        kind = profile_kind(p)
+        params = dm_trigger.spawn_params(kind, flag_index, anchor[:2])
+        result = bridge.send_command(host, port, pw or "", "spawnGroundUnits", params)
         return jsonify({
             "ok": result.get("ok", False),
             "flagIndex": flag_index,
-            "encodedLat": lat,
-            "encodedLng": lng,
+            "channel": "name" if kind == "olympuslite" else "pair",
+            "anchor": {"lat": anchor[0], "lng": anchor[1], "name": anchor[2]},
+            "encodedLat": anchor[0],
+            "encodedLng": anchor[1],
+            "error": result.get("error"),
             "raw": result,
         }), (200 if result.get("ok") else 502)
 

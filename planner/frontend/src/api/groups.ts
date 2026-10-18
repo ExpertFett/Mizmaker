@@ -322,9 +322,14 @@ export function getSrsStatus(gid: string) {
 export interface FireTriggerResp {
   ok: boolean;
   flagIndex: number;
-  encodedLat: number;
-  encodedLng: number;
-  raw: unknown;
+  /** How the flag rides the signal: group name (OlympusLite) or offset pair (Olympus). */
+  channel?: 'name' | 'pair';
+  /** Airbase the signal spawned at (encodedLat/encodedLng mirror it). */
+  anchor?: { lat: number; lng: number; name: string };
+  encodedLat?: number;
+  encodedLng?: number;
+  error?: string;
+  raw?: unknown;
 }
 export function fireTrigger(gid: string, pid: string, flagIndex: number) {
   return req<FireTriggerResp>(`/api/groups/${gid}/profiles/${pid}/fire_trigger`, {

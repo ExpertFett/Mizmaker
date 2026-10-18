@@ -294,7 +294,10 @@ def translate_spawn(command: str, params: dict) -> dict:
         if cat in ("air", "helicopter") and alt is not None:
             u["alt"] = alt
         units.append(u)
-    name = _NAME_RE.sub("", src[0]["unitType"]).strip() or cat
+    # groupName is a DCS:OPT extension (Olympus names groups itself); the DM
+    # trigger signal carries its flag in it (services/dm_trigger.py).
+    raw_name = params.get("groupName") if isinstance(params.get("groupName"), str) else src[0]["unitType"]
+    name = _NAME_RE.sub("", raw_name).strip() or cat
     return {"command": "spawn", "category": cat, "coalition": coalition,
             "name": name[:40], "units": units, "altType": "asl"}
 

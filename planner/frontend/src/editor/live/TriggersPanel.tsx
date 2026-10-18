@@ -7,12 +7,13 @@
  *
  * Fire mechanism:
  *   - Panel POSTs flagIndex to /api/groups/<gid>/profiles/<pid>/fire_trigger
- *   - Backend uses Olympus' spawnGroundUnits to spawn a Soldier M4 at a
- *     magic coord (lat 89° + flag×1e-6) that encodes the flag index
+ *   - Backend spawns a neutral Soldier M4 signal at a real airbase from the
+ *     live picture, carrying the flag in its group name (OlympusLite) or in a
+ *     2-unit offset pair (Olympus) — see backend services/dm_trigger.py.
+ *     (v1's off-map lat 89° encoding was clamped by DCS and never decoded.)
  *   - The dcsopt-dm-bridge.lua script (loaded into the mission) catches
- *     the S_EVENT_BIRTH, decodes the flag from the lat, sets the user
- *     flag the (Editor-modified) trigger condition watches, despawns the
- *     signal unit
+ *     the S_EVENT_BIRTH, decodes the flag, sets the user flag the
+ *     (Editor-modified) trigger condition watches, despawns the signal
  *
  * Trigger list sources:
  *   - Primary: same-tab .miz session, fetched via /api/triggers
@@ -111,7 +112,7 @@ export function TriggersPanel({ group, profile, onClose }: {
   const fire = async (flagIndex: number) => {
     try {
       const r = await fireTrigger(group.id, profile.id, flagIndex);
-      setLastFire({ flag: flagIndex, ok: r.ok, msg: r.ok ? `Spawned signal at ${r.encodedLat.toFixed(6)}°` : 'spawn failed' });
+      setLastFire({ flag: flagIndex, ok: r.ok, msg: r.ok ? `Signal spawned at ${r.anchor?.name ?? 'anchor'} (${r.channel})` : (r.error || 'spawn failed') });
     } catch (e) {
       setLastFire({ flag: flagIndex, ok: false, msg: e instanceof Error ? e.message : 'failed' });
     }
@@ -142,7 +143,7 @@ export function TriggersPanel({ group, profile, onClose }: {
 
       {/* Bridge-script + capability banner */}
       <div style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}`, fontSize: 10, color: C.textDim, lineHeight: 1.55 }}>
-        Bridge mechanism: spawn-signal at lat ≈ 89°. Mission must load
+        Bridge mechanism: a throwaway signal unit spawns at an airbase. Mission must load
         <span onClick={downloadBridge} style={{ color: C.accent, cursor: 'pointer', fontWeight: 600, marginLeft: 4 }}>
           dcsopt-dm-bridge.lua
         </span>{' '}
