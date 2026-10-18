@@ -764,6 +764,20 @@ def register_group_routes(app) -> None:
             return jsonify({"error": str(e)}), 503
         host, port = _conn(p)
         bridge = _bridge(p)
+        kind = profile_kind(p)
+        # OlympusLite 0.2.0+ sets the user flag itself (gm role): no signal
+        # unit, no bridge script needed in the mission. An older hook, or one
+        # whose mission side doesn't know "flag", falls through to the spawn.
+        if kind == "olympuslite" and bridge.supports_flag(host, port, pw or ""):
+            fr = bridge.set_flag(host, port, pw or "", flag_index, 1)
+            if not fr.get("unsupported"):
+                return jsonify({
+                    "ok": fr.get("ok", False),
+                    "flagIndex": flag_index,
+                    "channel": "flag",
+                    "error": fr.get("error"),
+                    "raw": fr,
+                }), (200 if fr.get("ok") else 502)
         ab = bridge.fetch_telemetry(host, port, pw or "", "airbases")
         if not ab.get("ok"):
             return jsonify({"ok": False, "flagIndex": flag_index,
@@ -772,7 +786,6 @@ def register_group_routes(app) -> None:
         if anchor is None:
             return jsonify({"ok": False, "flagIndex": flag_index,
                             "error": "No land airbase in the live picture to anchor the trigger signal."}), 409
-        kind = profile_kind(p)
         params = dm_trigger.spawn_params(kind, flag_index, anchor[:2])
         result = bridge.send_command(host, port, pw or "", "spawnGroundUnits", params)
         return jsonify({

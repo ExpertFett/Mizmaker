@@ -114,6 +114,8 @@ class TestFireRoute:
             return {"ok": True}
 
         monkeypatch.setattr(f"services.{mod}.send_command", send)
+        if kind == "olympuslite":  # a pre-0.2.0 hook: no direct flag command
+            monkeypatch.setattr("services.olympuslite_bridge.supports_flag", lambda *a: False)
         r = client.post(f"/api/groups/{gid}/profiles/{pid}/fire_trigger", json={"flagIndex": 9001})
         j = r.get_json()
         assert r.status_code == 200 and j["ok"] is True, j

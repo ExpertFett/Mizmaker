@@ -322,8 +322,10 @@ export function getSrsStatus(gid: string) {
 export interface FireTriggerResp {
   ok: boolean;
   flagIndex: number;
-  /** How the flag rides the signal: group name (OlympusLite) or offset pair (Olympus). */
-  channel?: 'name' | 'pair';
+  /** 'flag' = set directly by the OlympusLite 0.2.0+ hook (no signal unit, no
+   *  bridge script); otherwise how the flag rides the signal unit: group name
+   *  (older OlympusLite) or offset pair (Olympus). */
+  channel?: 'flag' | 'name' | 'pair';
   /** Airbase the signal spawned at (encodedLat/encodedLng mirror it). */
   anchor?: { lat: number; lng: number; name: string };
   encodedLat?: number;

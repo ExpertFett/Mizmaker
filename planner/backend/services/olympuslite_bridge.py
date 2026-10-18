@@ -8,11 +8,12 @@ services/olympus_bridge.py; the browser keeps speaking the Olympus command
 vocabulary (spawnGroundUnits / setPath / setROE / deleteUnit / smoke / ...) and
 this module translates it.
 
-API (OlympusLite README, v0.1.0):
-  GET  /health    no auth   {ok, version, installed, state, mission, modelTime}
+API (OlympusLite README, v0.2.0):
+  GET  /health    no auth   {ok, version, features, installed, state, mission, modelTime}
   GET  /units     any role  {time, units:[...], statics:[...], role}
   GET  /airbases  any role  [{name, id, coalition, kind, lat, lon}]
   POST /command   gm/blue/red  {"command": ..., ...} -> {ok, ...} | 400 {ok:false, error}
+                  ("flag" is gm-only, 0.2.0+: {"command":"flag","flag":N,"value":V})
   Auth: "X-OLite-Key: <password>" (the password picks the role). Default port 4513.
 
 Like the Olympus bridge, connection params only ever come from a group's stored
@@ -399,6 +400,59 @@ def send_command(host: str, port: int, password: str, command: str, params: dict
             return {"ok": False, "error": f"OlympusLite: {err or 'command failed'}"}
         responses.append(resp)
     return {"ok": True, "status": 200, "response": responses[-1] if len(responses) == 1 else responses}
+
+
+# --------------------------------------------------------------------------
+# Direct user flag (OlympusLite 0.2.0+, gm role only). Lets the DM fire a
+# mission trigger with no dcsopt-dm-bridge.lua in the mission.
+# --------------------------------------------------------------------------
+FLAG_MIN_VERSION = (0, 2, 0)
+
+
+def _version_tuple(v) -> Optional[Tuple[int, ...]]:
+    m = re.match(r"^\s*(\d+)\.(\d+)(?:\.(\d+))?", str(v or ""))
+    if not m:
+        return None
+    return tuple(int(x or 0) for x in m.groups())
+
+
+def supports_flag(host: str, port: int, password: str) -> bool:
+    """True when the hook's /health says it has the gm 'flag' command: it lists
+    "flag" in `features`, or reports version >= 0.2.0. Any failure -> False, so
+    the caller falls back to the spawn-signal channel."""
+    if not host:
+        return False
+    try:
+        _s, h = olite_request(host, port, password, "GET", "health")
+    except Exception:
+        return False
+    if not isinstance(h, dict):
+        return False
+    feats = h.get("features")
+    if isinstance(feats, list) and "flag" in feats:
+        return True
+    v = _version_tuple(h.get("version"))
+    return v is not None and v >= FLAG_MIN_VERSION
+
+
+def set_flag(host: str, port: int, password: str, flag: int, value=1) -> dict:
+    """POST {"command":"flag"} -> trigger.action.setUserFlag in the mission.
+    Returns {ok, response} | {ok:False, error, unsupported?}. `unsupported` is
+    True when the hook answered "unknown command" (older mission side)."""
+    if not host:
+        return {"ok": False, "error": "No OlympusLite host configured."}
+    try:
+        status, resp = olite_request(host, port, password, "POST", "command",
+                                     {"command": "flag", "flag": int(flag), "value": value})
+    except Exception as e:
+        return _err(e, host, port)
+    if status == 200 and isinstance(resp, dict) and resp.get("ok"):
+        return {"ok": True, "status": 200, "response": resp}
+    err = resp.get("error") if isinstance(resp, dict) else None
+    out = {"ok": False, "error": f"OlympusLite: {err or 'flag command failed'}"}
+    if err and "unknown command" in err:
+        out["unsupported"] = True
+    return out
 
 
 # --------------------------------------------------------------------------

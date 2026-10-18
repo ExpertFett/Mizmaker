@@ -7,6 +7,9 @@
  *
  * Fire mechanism:
  *   - Panel POSTs flagIndex to /api/groups/<gid>/profiles/<pid>/fire_trigger
+ *   - OlympusLite 0.2.0+ (gm password): the backend sends the hook's "flag"
+ *     command, which sets the user flag directly (channel 'flag'). No signal
+ *     unit and no bridge script. Everything below is the fallback.
  *   - Backend spawns a neutral Soldier M4 signal at a real airbase from the
  *     live picture, carrying the flag in its group name (OlympusLite) or in a
  *     2-unit offset pair (Olympus) — see backend services/dm_trigger.py.
@@ -112,7 +115,9 @@ export function TriggersPanel({ group, profile, onClose }: {
   const fire = async (flagIndex: number) => {
     try {
       const r = await fireTrigger(group.id, profile.id, flagIndex);
-      setLastFire({ flag: flagIndex, ok: r.ok, msg: r.ok ? `Signal spawned at ${r.anchor?.name ?? 'anchor'} (${r.channel})` : (r.error || 'spawn failed') });
+      setLastFire({ flag: flagIndex, ok: r.ok, msg: r.ok
+        ? (r.channel === 'flag' ? `Flag ${flagIndex} set directly by OlympusLite` : `Signal spawned at ${r.anchor?.name ?? 'anchor'} (${r.channel})`)
+        : (r.error || 'fire failed') });
     } catch (e) {
       setLastFire({ flag: flagIndex, ok: false, msg: e instanceof Error ? e.message : 'failed' });
     }
@@ -147,7 +152,8 @@ export function TriggersPanel({ group, profile, onClose }: {
         <span onClick={downloadBridge} style={{ color: C.accent, cursor: 'pointer', fontWeight: 600, marginLeft: 4 }}>
           dcsopt-dm-bridge.lua
         </span>{' '}
-        for fires to actually take effect.
+        for fires to actually take effect. OlympusLite 0.2.0+ servers (gm password)
+        set the flag directly and need no bridge script.
         {!canFire && <div style={{ color: C.red, marginTop: 4 }}>Your role can&apos;t fire triggers (read-only view).</div>}
       </div>
 
