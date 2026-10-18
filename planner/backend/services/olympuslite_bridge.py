@@ -331,10 +331,11 @@ def translate(command: str, params: dict, resolve) -> list:
     group = u.get("group")
 
     if command == "deleteUnit":
-        out = []
+        # Delete FIRST, then the effect at its last position: an explosion first
+        # can kill the unit, and the delete then fails "no such unit" (seen live).
+        out = [{"command": "delete", "unit": u.get("name")}]
         if params.get("explosion"):
             out.append({"command": "explosion", "lat": u.get("lat"), "lon": u.get("lon"), "power": 100})
-        out.append({"command": "delete", "unit": u.get("name")})
         return out
     if command == "setPath":
         path = params.get("path") or []
@@ -389,7 +390,7 @@ def send_command(host: str, port: int, password: str, command: str, params: dict
             return _err(e, host, port)
         if status != 200 or not (isinstance(resp, dict) and resp.get("ok")):
             err = resp.get("error") if isinstance(resp, dict) else None
-            # A best-effort explosion ahead of a delete shouldn't block the delete.
+            # The cosmetic explosion after a delete is best-effort (gm-only server-side).
             if body["command"] == "explosion" and command == "deleteUnit":
                 continue
             return {"ok": False, "error": f"OlympusLite: {err or 'command failed'}"}

@@ -250,7 +250,7 @@ class TestTranslate:
         assert tr("deleteUnit", {"ID": 202, "explosion": False, "explosionType": "", "immediate": True}) == [
             {"command": "delete", "unit": "Hornet-1"}]
         boom = tr("deleteUnit", {"ID": 101, "explosion": True})
-        assert [b["command"] for b in boom] == ["explosion", "delete"]
+        assert [b["command"] for b in boom] == ["delete", "explosion"]
 
     @pytest.mark.parametrize("cmd,params,expect", [
         ("setROE", {"ROE": 1}, {"roe": "free"}),
@@ -314,10 +314,10 @@ class TestSendCommand:
         r = olb.send_command("127.0.0.1", fake.port, GM, "smoke", {"location": {"lat": 1, "lng": 2}})
         assert r == {"ok": False, "error": "OlympusLite: smoke refused"}
 
-    def test_failed_explosion_does_not_block_delete(self, fake):
+    def test_failed_explosion_after_delete_still_ok(self, fake):
         fake.fail_command = "explosion"
         r = olb.send_command("127.0.0.1", fake.port, GM, "deleteUnit", {"ID": 101, "explosion": True})
-        assert r["ok"] and [c["command"] for c in fake.commands] == ["explosion", "delete"]
+        assert r["ok"] and [c["command"] for c in fake.commands] == ["delete", "explosion"]
 
     def test_observer_rejected(self, fake):
         r = olb.send_command("127.0.0.1", fake.port, OBS, "smoke", {"location": {"lat": 1, "lng": 2}})
